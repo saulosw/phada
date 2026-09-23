@@ -1,0 +1,35 @@
+{
+  "name": "phada",
+  "version": "0.0.0",
+  "description": "Code review orchestration that runs on your machine with the AI CLI you already pay for.",
+  "scripts": {
+    "test": "vitest run",
+    "dev": "tsx src/main.ts",
+    "review": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test:watch": "vitest",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/saulosw/phada.git"
+  },
+  "license": "UNLICENSED",
+  "bugs": {
+    "url": "https://github.com/saulosw/phada/issues"
+  },
+  "homepage": "https://github.com/saulosw/phada#readme",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "private": true,
+  "devDependencies": {
+    "@types/node": "^22.20.4",
+    "prettier": "^3.9.8",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.1"
+  }
+}

@@ -1,7 +1,14 @@
+# dependencies and build output
 node_modules/
 dist/
 coverage/
+*.log
+
+# secrets
 .env
 .env.*
 !.env.example
-*.log
+
+# local-only agent instructions (not published yet)
+AGENTS.md
+CLAUDE.md
