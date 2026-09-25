@@ -1,0 +1,31 @@
+{
+  "additions": 15,
+  "base": {
+    "ref": "develop",
+    "repo": {
+      "full_name": "saulosw/phada-dev-web"
+    },
+    "sha": "c0d92ffe6bcf7cbe3200b67190cf1324162a66be"
+  },
+  "body": "Fixture for Phada tests: a trimmed real response from the GitHub REST API.",
+  "changed_files": 2,
+  "commits": 1,
+  "deletions": 1,
+  "draft": false,
+  "head": {
+    "ref": "t000/seeded-crystals",
+    "repo": {
+      "full_name": "saulosw/phada-dev-web"
+    },
+    "sha": "f41a2c3280de0d54ab06d79fa18e93e576e511e6"
+  },
+  "html_url": "https://github.com/saulosw/phada-dev-web/pull/3",
+  "merged": false,
+  "number": 3,
+  "state": "open",
+  "title": "[T000 test] feat: let users spend crystals in the shop",
+  "url": "https://api.github.com/repos/saulosw/phada-dev-web/pulls/3",
+  "user": {
+    "login": "saulosw"
+  }
+}
