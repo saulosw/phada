@@ -1,0 +1,62 @@
+#!/usr/bin/env node
+import { writeFileSync } from 'node:fs'
+
+let stdin = ''
+for await (const chunk of process.stdin) stdin += chunk
+
+const env = process.env
+if (env.FAKE_CLAUDE_CAPTURE) {
+  const captured = {
+    argv: process.argv.slice(2),
+    stdin,
+    cwd: process.cwd(),
+    env: { GITHUB_TOKEN: env.GITHUB_TOKEN, GH_TOKEN: env.GH_TOKEN },
+  }
+  writeFileSync(env.FAKE_CLAUDE_CAPTURE, JSON.stringify(captured))
+}
+
+const secret = env.FAKE_CLAUDE_SECRET ?? ''
+const detail = env.FAKE_CLAUDE_DETAIL ?? 'API Error: 500'
+const result = (fields) => JSON.stringify({ type: 'result', subtype: 'success', ...fields })
+
+switch (env.FAKE_CLAUDE_MODE ?? 'success') {
+  case 'success':
+    process.stdout.write(
+      result({ is_error: false, result: 'LGTM from fake', modelUsage: { 'claude-fake-1': {} } }),
+    )
+    break
+  case 'no_model':
+    process.stdout.write(result({ is_error: false, result: 'LGTM from fake' }))
+    break
+  case 'is_error':
+    process.stdout.write(result({ is_error: true, result: `${detail} ${secret}` }))
+    process.exitCode = 1
+    break
+  case 'logged_out':
+    process.stdout.write(result({ is_error: true, result: 'Not logged in · Please run /login' }))
+    process.exitCode = 1
+    break
+  case 'logged_out_stderr':
+    process.stderr.write('Invalid API key · Please run /login\n')
+    process.exitCode = 1
+    break
+  case 'exit1':
+    process.stderr.write(`boom ${secret}\n`)
+    process.exitCode = 1
+    break
+  case 'exit1_silent':
+    process.exitCode = 1
+    break
+  case 'invalid_json':
+    process.stdout.write(`not json ${secret}`)
+    break
+  case 'crash':
+    process.kill(process.pid, 'SIGKILL')
+    break
+  case 'hang':
+    setInterval(() => {}, 1_000)
+    break
+  default:
+    process.stderr.write(`fake-claude: unknown FAKE_CLAUDE_MODE "${env.FAKE_CLAUDE_MODE}"\n`)
+    process.exitCode = 99
+}
