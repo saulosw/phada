@@ -10,6 +10,7 @@ import { fetchPullRequest } from './github/pull-request.js'
 import type { FetchPullRequestOptions, PullRequest } from './github/pull-request.js'
 import { ClaudeCliProvider } from './providers/claude.js'
 import { CodexCliProvider } from './providers/codex.js'
+import { OllamaProvider } from './providers/ollama.js'
 import type { ReviewProvider } from './providers/types.js'
 import { runReview } from './review/run-review.js'
 
@@ -31,8 +32,15 @@ export function createProvider(name: string, options: ProviderOptions): ReviewPr
       return new ClaudeCliProvider(options)
     case 'codex':
       return new CodexCliProvider(options)
+    case 'ollama':
+      if (options.model === undefined) {
+        throw new UsageError(
+          '--provider ollama needs --model, e.g. qwen2.5-coder:7b, llama3.1:8b or gpt-oss:120b-cloud (see "ollama list").',
+        )
+      }
+      return new OllamaProvider({ model: options.model })
     default:
-      throw new UsageError(`Unknown provider "${name}". Available: claude, codex.`)
+      throw new UsageError(`Unknown provider "${name}". Available: claude, codex, ollama.`)
   }
 }
 

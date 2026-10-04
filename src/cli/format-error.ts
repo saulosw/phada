@@ -25,6 +25,11 @@ const PROVIDER_HINTS: Readonly<Record<string, ProviderHints>> = {
     install: 'npm i -g @openai/codex',
     login: 'Run "codex login".',
   },
+  ollama: {
+    name: 'Ollama',
+    install: 'https://ollama.com/download',
+    login: 'Run "ollama signin" to use :cloud models.',
+  },
 }
 
 export function formatError(error: unknown, options: { debug: boolean }): FormattedError {
@@ -52,6 +57,7 @@ function describe(error: unknown): { summary: string; exitCode: 1 | 2 } {
 }
 
 function describeProviderError(error: ProviderError): string {
+  if (error.reason === 'prompt-too-large') return `${error.message} Phada never truncates a diff.`
   const hints = PROVIDER_HINTS[error.providerId]
   if (hints === undefined) return error.message
   if (error.reason === 'not-installed') return `${hints.name} is not installed: ${hints.install}`

@@ -16,18 +16,19 @@ export type CliCommand =
 
 export const USAGE = `Usage: npm run review -- <owner/repo#N | pull request URL> [options]
 
-Reviews a GitHub pull request with the AI CLI you are logged into and prints the review.
+Reviews a GitHub pull request with the AI provider you choose and prints the review.
 
 Options:
-  --provider <name>   AI provider: claude or codex (default: claude)
-  --model <name>      Model (default: the model set in the provider's own config;
-                      for claude, opus when none is set)
+  --provider <name>   AI provider: claude, codex or ollama (default: claude)
+  --model <name>      Model (required for ollama; otherwise the model set in the
+                      provider's own config; for claude, opus when none is set)
   --language <tag>    Review language, e.g. pt-BR (default: English)
   --debug             Show error details
   -h, --help          Show this help
 
 Environment:
-  GITHUB_TOKEN        GitHub token with read access, e.g. export GITHUB_TOKEN=$(gh auth token)`
+  GITHUB_TOKEN        GitHub token with read access, e.g. export GITHUB_TOKEN=$(gh auth token)
+  OLLAMA_HOST         Ollama address (default: 127.0.0.1:11434)`
 
 const LANGUAGE_TAG = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/
 

@@ -3,12 +3,14 @@ import { promisify } from 'node:util'
 import { describe, expect, it } from 'vitest'
 import { pullRequestFixture } from '../test/support/pull-request.js'
 import { USAGE } from './cli/args.js'
+import { UsageError } from './cli/errors.js'
 import { PullRequestNotFoundError } from './github/errors.js'
 import type { FetchPullRequestOptions, PullRequest } from './github/pull-request.js'
 import { createProvider, run } from './main.js'
 import type { MainDeps, ProviderOptions } from './main.js'
 import { ClaudeCliProvider } from './providers/claude.js'
 import { CodexCliProvider } from './providers/codex.js'
+import { OllamaProvider } from './providers/ollama.js'
 import { ProviderError } from './providers/types.js'
 import type { ReviewOutput, ReviewPrompt, ReviewProvider } from './providers/types.js'
 
@@ -139,12 +141,20 @@ describe('run', () => {
     expect(h.fetches[0]?.token).toBe(TOKEN)
   })
 
+  it('asks for --model with exit 2 before fetching when the provider is ollama', async () => {
+    const h = harness()
+
+    expect(await run(['acme/shop#12', '--provider', 'ollama'], h.deps)).toBe(2)
+    expect(h.stderr()).toContain('phada: --provider ollama needs --model')
+    expect(h.fetches).toHaveLength(0)
+  })
+
   it('rejects an unknown provider with exit 2 before fetching', async () => {
     const h = harness()
 
     expect(await run(['acme/shop#12', '--provider', 'gpt'], h.deps)).toBe(2)
     expect(h.stderr()).toBe(
-      'phada: Unknown provider "gpt". Available: claude, codex. Run with --help for usage.\n',
+      'phada: Unknown provider "gpt". Available: claude, codex, ollama. Run with --help for usage.\n',
     )
     expect(h.fetches).toHaveLength(0)
   })
@@ -219,6 +229,17 @@ describe('createProvider', () => {
 
   it('creates the Codex provider for "codex"', () => {
     expect(createProvider('codex', { model: 'gpt-x' })).toBeInstanceOf(CodexCliProvider)
+  })
+
+  it('creates the Ollama provider for "ollama" with a model', () => {
+    expect(createProvider('ollama', { model: 'qwen2.5-coder:7b' })).toBeInstanceOf(OllamaProvider)
+  })
+
+  it('asks for --model when the provider is ollama', () => {
+    expect(() => createProvider('ollama', {})).toThrow(UsageError)
+    expect(() => createProvider('ollama', {})).toThrow(
+      '--provider ollama needs --model, e.g. qwen2.5-coder:7b, llama3.1:8b or gpt-oss:120b-cloud (see "ollama list").',
+    )
   })
 })
 

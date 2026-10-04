@@ -66,6 +66,7 @@ describe('parseCliArgs', () => {
       '--debug',
       '--help',
       'GITHUB_TOKEN',
+      'OLLAMA_HOST',
     ]) {
       expect(USAGE).toContain(option)
     }

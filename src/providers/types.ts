@@ -22,7 +22,12 @@ export interface ReviewProvider {
 }
 
 export type ProviderErrorReason =
-  'not-installed' | 'not-authenticated' | 'timeout' | 'failed' | 'invalid-output'
+  | 'not-installed'
+  | 'not-authenticated'
+  | 'timeout'
+  | 'failed'
+  | 'invalid-output'
+  | 'prompt-too-large'
 
 export class ProviderError extends Error {
   override readonly name = 'ProviderError'

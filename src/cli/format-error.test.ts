@@ -88,6 +88,25 @@ describe('formatError', () => {
       1,
     ],
     [
+      new ProviderError('ollama', 'not-installed', 'Ollama was not found.'),
+      'phada: Ollama is not installed: https://ollama.com/download',
+      1,
+    ],
+    [
+      new ProviderError('ollama', 'not-authenticated', 'Ollama refused the request for "m:cloud".'),
+      'phada: Ollama is not logged in. Run "ollama signin" to use :cloud models.',
+      1,
+    ],
+    [
+      new ProviderError(
+        'ollama',
+        'prompt-too-large',
+        'The review needs about 40000 tokens but qwen2.5-coder:7b holds 32768. Use a model with a larger context window (see "ollama show qwen2.5-coder:7b") or a :cloud model.',
+      ),
+      'phada: The review needs about 40000 tokens but qwen2.5-coder:7b holds 32768. Use a model with a larger context window (see "ollama show qwen2.5-coder:7b") or a :cloud model. Phada never truncates a diff.',
+      1,
+    ],
+    [
       new ProviderError('claude-cli', 'timeout', 'Claude did not answer within 600s.'),
       'phada: Claude did not answer within 600s.',
       1,
