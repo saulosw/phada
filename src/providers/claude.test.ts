@@ -1,14 +1,18 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { basename, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ClaudeCliProvider } from './claude.js'
 import type { ClaudeCliProviderOptions } from './claude.js'
 import { ProviderError } from './types.js'
+import type { ReviewPrompt } from './types.js'
 
 const FAKE_CLAUDE = resolve('test/fixtures/bin/fake-claude')
 const FAKE_SECRET = `ghp_${'A1b2C3d4E5'.repeat(4)}`
-const PROMPT = 'Review this diff, please: +const answer = 42'
+const PROMPT: ReviewPrompt = {
+  instructions: 'You are a careful reviewer. Trusted instructions only.',
+  data: 'Review this diff, please: +const answer = 42',
+}
 const EXPECTED_ARGS = [
   '-p',
   '--output-format',
@@ -24,6 +28,7 @@ const EXPECTED_ARGS = [
 interface Capture {
   argv: string[]
   stdin: string
+  instructions: string | null
   cwd: string
   env: { GITHUB_TOKEN?: string; GH_TOKEN?: string }
 }
@@ -43,6 +48,7 @@ afterEach(() => {
 function provider(mode: string, options: ClaudeCliProviderOptions = {}): ClaudeCliProvider {
   return new ClaudeCliProvider({
     command: FAKE_CLAUDE,
+    homeDir: workDir,
     ...options,
     env: {
       PATH: process.env.PATH,
@@ -74,15 +80,41 @@ describe('ClaudeCliProvider', () => {
     expect(new ClaudeCliProvider().id).toBe('claude-cli')
   })
 
-  it('returns the review text, the model that answered and the duration', async () => {
+  it('returns the review text, the model that answered, the duration and the token usage', async () => {
     const output = await provider('success').review(PROMPT)
 
     expect(output).toEqual({
       text: 'LGTM from fake',
       model: 'claude-fake-1',
       durationMs: expect.any(Number),
+      usage: { inputTokens: 3512, outputTokens: 420 },
     })
     expect(output.durationMs).toBeGreaterThan(0)
+  })
+
+  it('leaves the usage out when Claude does not report it', async () => {
+    const output = await provider('no_usage').review(PROMPT)
+
+    expect(output).not.toHaveProperty('usage')
+  })
+
+  it('counts missing usage fields as zero', async () => {
+    const output = await provider('partial_usage').review(PROMPT)
+
+    expect(output.usage).toEqual({ inputTokens: 0, outputTokens: 7 })
+  })
+
+  it('names the model that wrote most of the answer and lists the others', async () => {
+    const output = await provider('multi_model').review(PROMPT)
+
+    expect(output.model).toBe('claude-fake-1')
+    expect(output.additionalModels).toEqual(['claude-helper-1', 'claude-other-1'])
+  })
+
+  it('lists no additional models when only one model answered', async () => {
+    const output = await provider('success').review(PROMPT)
+
+    expect(output).not.toHaveProperty('additionalModels')
   })
 
   it('leaves the model out when Claude does not report it', async () => {
@@ -94,21 +126,76 @@ describe('ClaudeCliProvider', () => {
   it('runs claude headless, without tools, MCP, session or user settings', async () => {
     await provider('success').review(PROMPT)
 
-    expect(readCapture().argv).toEqual(EXPECTED_ARGS)
+    const { argv, cwd } = readCapture()
+    expect(argv).toEqual([
+      ...EXPECTED_ARGS,
+      '--append-system-prompt-file',
+      join(cwd, 'instructions.md'),
+      '--model=opus',
+    ])
   })
 
-  it('sends the prompt on stdin and never in argv', async () => {
+  it('sends the instructions as a system prompt file inside the temp dir', async () => {
+    await provider('success').review(PROMPT)
+
+    const { instructions, argv, cwd } = readCapture()
+    const instructionsPath = argv[argv.indexOf('--append-system-prompt-file') + 1] ?? ''
+    expect(instructions).toBe(PROMPT.instructions)
+    expect(dirname(instructionsPath)).toBe(cwd)
+    expect(existsSync(instructionsPath)).toBe(false)
+  })
+
+  it('sends only the data on stdin and keeps both parts out of argv', async () => {
     await provider('success').review(PROMPT)
 
     const capture = readCapture()
-    expect(capture.stdin).toBe(PROMPT)
+    expect(capture.stdin).toBe(PROMPT.data)
     expect(capture.argv.join(' ')).not.toContain('Review this diff')
+    expect(capture.argv.join(' ')).not.toContain('Trusted instructions')
   })
 
-  it('appends --model when a model is configured', async () => {
+  it('reports invalid-output when Claude answers with an empty review', async () => {
+    const error = await reviewError(provider('empty_result'))
+
+    expect(error.reason).toBe('invalid-output')
+    expect(error.message).toBe('Claude returned an empty review.')
+  })
+
+  it('delivers a diff near the 1 MB limit intact on stdin', async () => {
+    const data = 'x'.repeat(1_000_000)
+
+    const output = await provider('echo_stdin_size').review({ ...PROMPT, data })
+
+    expect(output.text).toBe('1000000')
+  })
+
+  it('passes the configured model', async () => {
     await provider('success', { model: 'claude-test-model' }).review(PROMPT)
 
-    expect(readCapture().argv).toEqual([...EXPECTED_ARGS, '--model', 'claude-test-model'])
+    expect(readCapture().argv.at(-1)).toBe('--model=claude-test-model')
+  })
+
+  it('keeps a model that starts with a dash in a single argument', async () => {
+    await provider('success', { model: '--tools=Bash' }).review(PROMPT)
+
+    const { argv } = readCapture()
+    expect(argv.at(-1)).toBe('--model=--tools=Bash')
+    expect(argv).not.toContain('--tools=Bash')
+  })
+
+  it('falls back to the model from ANTHROPIC_MODEL', async () => {
+    await provider('success', { env: { ANTHROPIC_MODEL: 'claude-env-model' } }).review(PROMPT)
+
+    expect(readCapture().argv.at(-1)).toBe('--model=claude-env-model')
+  })
+
+  it("falls back to the model in the user's Claude settings", async () => {
+    mkdirSync(join(workDir, '.claude'))
+    writeFileSync(join(workDir, '.claude', 'settings.json'), '{"model":"claude-settings-model"}')
+
+    await provider('success').review(PROMPT)
+
+    expect(readCapture().argv.at(-1)).toBe('--model=claude-settings-model')
   })
 
   it('removes GITHUB_TOKEN and GH_TOKEN from the child env', async () => {

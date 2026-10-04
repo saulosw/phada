@@ -1,12 +1,24 @@
+export interface ReviewPrompt {
+  instructions: string
+  data: string
+}
+
+export interface TokenUsage {
+  inputTokens: number
+  outputTokens: number
+}
+
 export interface ReviewOutput {
   text: string
   durationMs: number
   model?: string
+  additionalModels?: string[]
+  usage?: TokenUsage
 }
 
 export interface ReviewProvider {
   readonly id: string
-  review(prompt: string): Promise<ReviewOutput>
+  review(prompt: ReviewPrompt): Promise<ReviewOutput>
 }
 
 export type ProviderErrorReason =

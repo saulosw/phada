@@ -1,14 +1,20 @@
 #!/usr/bin/env node
-import { writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 
 let stdin = ''
 for await (const chunk of process.stdin) stdin += chunk
 
 const env = process.env
+const argv = process.argv.slice(2)
+const instructionsPath = argv[argv.indexOf('--append-system-prompt-file') + 1]
 if (env.FAKE_CLAUDE_CAPTURE) {
   const captured = {
-    argv: process.argv.slice(2),
+    argv,
     stdin,
+    instructions:
+      instructionsPath !== undefined && existsSync(instructionsPath)
+        ? readFileSync(instructionsPath, 'utf8')
+        : null,
     cwd: process.cwd(),
     env: { GITHUB_TOKEN: env.GITHUB_TOKEN, GH_TOKEN: env.GH_TOKEN },
   }
@@ -18,15 +24,56 @@ if (env.FAKE_CLAUDE_CAPTURE) {
 const secret = env.FAKE_CLAUDE_SECRET ?? ''
 const detail = env.FAKE_CLAUDE_DETAIL ?? 'API Error: 500'
 const result = (fields) => JSON.stringify({ type: 'result', subtype: 'success', ...fields })
+const usage = {
+  input_tokens: 12,
+  cache_creation_input_tokens: 3000,
+  cache_read_input_tokens: 500,
+  output_tokens: 420,
+}
 
 switch (env.FAKE_CLAUDE_MODE ?? 'success') {
   case 'success':
     process.stdout.write(
-      result({ is_error: false, result: 'LGTM from fake', modelUsage: { 'claude-fake-1': {} } }),
+      result({
+        is_error: false,
+        result: 'LGTM from fake',
+        modelUsage: { 'claude-fake-1': {} },
+        usage,
+      }),
     )
     break
   case 'no_model':
-    process.stdout.write(result({ is_error: false, result: 'LGTM from fake' }))
+    process.stdout.write(result({ is_error: false, result: 'LGTM from fake', usage }))
+    break
+  case 'no_usage':
+    process.stdout.write(
+      result({ is_error: false, result: 'LGTM from fake', modelUsage: { 'claude-fake-1': {} } }),
+    )
+    break
+  case 'multi_model':
+    process.stdout.write(
+      result({
+        is_error: false,
+        result: 'LGTM from fake',
+        modelUsage: {
+          'claude-helper-1': { outputTokens: 30 },
+          'claude-fake-1': { outputTokens: 420 },
+          'claude-other-1': null,
+        },
+        usage,
+      }),
+    )
+    break
+  case 'empty_result':
+    process.stdout.write(result({ is_error: false, result: '  \n', usage }))
+    break
+  case 'echo_stdin_size':
+    process.stdout.write(result({ is_error: false, result: String(stdin.length), usage }))
+    break
+  case 'partial_usage':
+    process.stdout.write(
+      result({ is_error: false, result: 'LGTM from fake', usage: { output_tokens: 7 } }),
+    )
     break
   case 'is_error':
     process.stdout.write(result({ is_error: true, result: `${detail} ${secret}` }))

@@ -1,18 +1,26 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { z } from 'zod'
 import { CommandError, CommandNotFoundError, CommandTimeoutError } from '../process/errors.js'
 import { runCommand } from '../process/run-command.js'
 import type { RunCommandResult } from '../process/run-command.js'
+import { resolveClaudeModel } from './claude-model.js'
 import { redactSecrets } from './redact-secrets.js'
 import { ProviderError } from './types.js'
-import type { ProviderErrorReason, ReviewOutput, ReviewProvider } from './types.js'
+import type {
+  ProviderErrorReason,
+  ReviewOutput,
+  ReviewPrompt,
+  ReviewProvider,
+  TokenUsage,
+} from './types.js'
 
 const PROVIDER_ID = 'claude-cli'
 const DEFAULT_COMMAND = 'claude'
 const DEFAULT_TIMEOUT_MS = 600_000
 const TEMP_DIR_PREFIX = 'phada-claude-'
+const INSTRUCTIONS_FILE = 'instructions.md'
 const MAX_DETAIL_LENGTH = 500
 const MAX_OUTPUT_PREVIEW_LENGTH = 200
 const BASE_ARGS: readonly string[] = [
@@ -29,12 +37,23 @@ const BASE_ARGS: readonly string[] = [
 const GITHUB_TOKEN_KEYS: ReadonlySet<string> = new Set(['GITHUB_TOKEN', 'GH_TOKEN'])
 const NOT_AUTHENTICATED = /not logged in|\/login|authenticat|api key/i
 
+const ClaudeUsage = z.object({
+  input_tokens: z.number().optional(),
+  cache_creation_input_tokens: z.number().optional(),
+  cache_read_input_tokens: z.number().optional(),
+  output_tokens: z.number().optional(),
+})
+type ClaudeUsage = z.infer<typeof ClaudeUsage>
+
+const ModelOutputTokens = z.object({ outputTokens: z.number().optional() })
+
 const ClaudeResult = z.object({
   type: z.literal('result'),
   subtype: z.string(),
   is_error: z.boolean(),
   result: z.string().optional(),
   modelUsage: z.record(z.string(), z.unknown()).optional(),
+  usage: ClaudeUsage.optional(),
 })
 type ClaudeResult = z.infer<typeof ClaudeResult>
 
@@ -43,35 +62,51 @@ export interface ClaudeCliProviderOptions {
   model?: string
   timeoutMs?: number
   env?: NodeJS.ProcessEnv
+  homeDir?: string
 }
 
 export class ClaudeCliProvider implements ReviewProvider {
   readonly id = PROVIDER_ID
   readonly #command: string
-  readonly #args: readonly string[]
+  readonly #model: string | undefined
   readonly #timeoutMs: number
   readonly #env: NodeJS.ProcessEnv
+  readonly #homeDir: string | undefined
 
   constructor(options: ClaudeCliProviderOptions = {}) {
     this.#command = options.command ?? DEFAULT_COMMAND
-    this.#args = options.model ? [...BASE_ARGS, '--model', options.model] : BASE_ARGS
+    this.#model = options.model
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
     this.#env = options.env ?? process.env
+    this.#homeDir = options.homeDir
   }
 
-  async review(prompt: string): Promise<ReviewOutput> {
+  async review(prompt: ReviewPrompt): Promise<ReviewOutput> {
     const cwd = await mkdtemp(join(tmpdir(), TEMP_DIR_PREFIX))
     try {
-      return toReviewOutput(await this.#run(prompt, cwd))
+      const instructionsPath = join(cwd, INSTRUCTIONS_FILE)
+      await writeFile(instructionsPath, prompt.instructions)
+      const model = await resolveClaudeModel({
+        model: this.#model,
+        env: this.#env,
+        homeDir: this.#homeDir,
+      })
+      const args = [
+        ...BASE_ARGS,
+        '--append-system-prompt-file',
+        instructionsPath,
+        `--model=${model}`,
+      ]
+      return toReviewOutput(await this.#run(args, prompt.data, cwd))
     } finally {
       await rm(cwd, { recursive: true, force: true })
     }
   }
 
-  async #run(prompt: string, cwd: string): Promise<RunCommandResult> {
+  async #run(args: readonly string[], data: string, cwd: string): Promise<RunCommandResult> {
     try {
-      return await runCommand(this.#command, this.#args, {
-        stdin: prompt,
+      return await runCommand(this.#command, args, {
+        stdin: data,
         cwd,
         env: withoutGitHubTokens(this.#env),
         timeoutMs: this.#timeoutMs,
@@ -115,10 +150,40 @@ function toReviewOutput(run: RunCommandResult): ReviewOutput {
 
   const claude = parsed.data
   if (claude.is_error || claude.result === undefined) throw claudeError(claude)
+  if (claude.result.trim() === '') {
+    throw new ProviderError(PROVIDER_ID, 'invalid-output', 'Claude returned an empty review.')
+  }
 
-  const model = Object.keys(claude.modelUsage ?? {})[0]
-  const output: ReviewOutput = { text: claude.result, durationMs: run.durationMs }
-  return model === undefined ? output : { ...output, model }
+  const [model, ...additionalModels] = modelsByOutput(claude.modelUsage ?? {})
+  return {
+    text: claude.result,
+    durationMs: run.durationMs,
+    ...(model === undefined ? {} : { model }),
+    ...(additionalModels.length === 0 ? {} : { additionalModels }),
+    ...(claude.usage === undefined ? {} : { usage: toTokenUsage(claude.usage) }),
+  }
+}
+
+function modelsByOutput(modelUsage: Record<string, unknown>): string[] {
+  return Object.entries(modelUsage)
+    .map(([name, usage], index) => ({ name, outputTokens: outputTokensOf(usage), index }))
+    .sort((a, b) => b.outputTokens - a.outputTokens || a.index - b.index)
+    .map(({ name }) => name)
+}
+
+function outputTokensOf(usage: unknown): number {
+  const parsed = ModelOutputTokens.safeParse(usage)
+  return parsed.success ? (parsed.data.outputTokens ?? 0) : 0
+}
+
+function toTokenUsage(usage: ClaudeUsage): TokenUsage {
+  return {
+    inputTokens:
+      (usage.input_tokens ?? 0) +
+      (usage.cache_creation_input_tokens ?? 0) +
+      (usage.cache_read_input_tokens ?? 0),
+    outputTokens: usage.output_tokens ?? 0,
+  }
 }
 
 function parseJson(text: string): unknown {

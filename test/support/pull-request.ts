@@ -1,0 +1,22 @@
+import type { PullRequest } from '../../src/github/pull-request.js'
+
+export function pullRequestFixture(overrides: Partial<PullRequest> = {}): PullRequest {
+  return {
+    repo: 'acme/shop',
+    number: 12,
+    url: 'https://github.com/acme/shop/pull/12',
+    title: 'Let users spend crystals',
+    description: 'Adds a spend endpoint.',
+    author: 'octocat',
+    state: 'open',
+    draft: false,
+    baseRef: 'main',
+    baseSha: '0000000000000000000000000000000000000000',
+    headRef: 'feature/spend',
+    headSha: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
+    fromFork: false,
+    stats: { changedFiles: 2, additions: 15, deletions: 1, commits: 1 },
+    diff: 'diff --git a/src/shop.ts b/src/shop.ts\n+export const spend = () => {}\n',
+    ...overrides,
+  }
+}

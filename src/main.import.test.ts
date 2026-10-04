@@ -5,12 +5,15 @@ describe('main module import', () => {
     vi.restoreAllMocks()
   })
 
-  it('does not run main() when imported', async () => {
+  it('does not run the CLI when imported', async () => {
     vi.resetModules()
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const stdout = vi.spyOn(process.stdout, 'write').mockImplementation(() => true)
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true)
 
     await import('./main.js')
 
-    expect(log).not.toHaveBeenCalled()
+    expect(stdout).not.toHaveBeenCalled()
+    expect(stderr).not.toHaveBeenCalled()
+    expect(process.exitCode).toBeUndefined()
   })
 })
