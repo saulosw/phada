@@ -8,6 +8,7 @@ import type { FetchPullRequestOptions, PullRequest } from './github/pull-request
 import { createProvider, run } from './main.js'
 import type { MainDeps, ProviderOptions } from './main.js'
 import { ClaudeCliProvider } from './providers/claude.js'
+import { CodexCliProvider } from './providers/codex.js'
 import { ProviderError } from './providers/types.js'
 import type { ReviewOutput, ReviewPrompt, ReviewProvider } from './providers/types.js'
 
@@ -143,7 +144,7 @@ describe('run', () => {
 
     expect(await run(['acme/shop#12', '--provider', 'gpt'], h.deps)).toBe(2)
     expect(h.stderr()).toBe(
-      'phada: Unknown provider "gpt". Available: claude. Run with --help for usage.\n',
+      'phada: Unknown provider "gpt". Available: claude, codex. Run with --help for usage.\n',
     )
     expect(h.fetches).toHaveLength(0)
   })
@@ -214,6 +215,10 @@ describe('run', () => {
 describe('createProvider', () => {
   it('creates the Claude provider for "claude"', () => {
     expect(createProvider('claude', {})).toBeInstanceOf(ClaudeCliProvider)
+  })
+
+  it('creates the Codex provider for "codex"', () => {
+    expect(createProvider('codex', { model: 'gpt-x' })).toBeInstanceOf(CodexCliProvider)
   })
 })
 

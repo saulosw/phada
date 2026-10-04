@@ -78,6 +78,16 @@ describe('formatError', () => {
       1,
     ],
     [
+      new ProviderError('codex-cli', 'not-installed', 'Codex CLI was not found (command "codex").'),
+      'phada: Codex CLI is not installed: npm i -g @openai/codex',
+      1,
+    ],
+    [
+      new ProviderError('codex-cli', 'not-authenticated', 'Codex exited with code 1: 401'),
+      'phada: Codex CLI is not logged in. Run "codex login".',
+      1,
+    ],
+    [
       new ProviderError('claude-cli', 'timeout', 'Claude did not answer within 600s.'),
       'phada: Claude did not answer within 600s.',
       1,

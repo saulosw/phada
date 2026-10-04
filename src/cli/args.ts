@@ -19,8 +19,9 @@ export const USAGE = `Usage: npm run review -- <owner/repo#N | pull request URL>
 Reviews a GitHub pull request with the AI CLI you are logged into and prints the review.
 
 Options:
-  --provider <name>   AI provider: claude (default: claude)
-  --model <name>      Model (default: your Claude default model, then opus)
+  --provider <name>   AI provider: claude or codex (default: claude)
+  --model <name>      Model (default: the model set in the provider's own config;
+                      for claude, opus when none is set)
   --language <tag>    Review language, e.g. pt-BR (default: English)
   --debug             Show error details
   -h, --help          Show this help

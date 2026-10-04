@@ -9,6 +9,7 @@ import { formatPullRequestRef } from './github/pull-request-ref.js'
 import { fetchPullRequest } from './github/pull-request.js'
 import type { FetchPullRequestOptions, PullRequest } from './github/pull-request.js'
 import { ClaudeCliProvider } from './providers/claude.js'
+import { CodexCliProvider } from './providers/codex.js'
 import type { ReviewProvider } from './providers/types.js'
 import { runReview } from './review/run-review.js'
 
@@ -28,8 +29,10 @@ export function createProvider(name: string, options: ProviderOptions): ReviewPr
   switch (name) {
     case 'claude':
       return new ClaudeCliProvider(options)
+    case 'codex':
+      return new CodexCliProvider(options)
     default:
-      throw new UsageError(`Unknown provider "${name}". Available: claude.`)
+      throw new UsageError(`Unknown provider "${name}". Available: claude, codex.`)
   }
 }
 

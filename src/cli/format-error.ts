@@ -20,6 +20,11 @@ const PROVIDER_HINTS: Readonly<Record<string, ProviderHints>> = {
     install: 'https://code.claude.com',
     login: 'Run "claude" and then /login.',
   },
+  'codex-cli': {
+    name: 'Codex CLI',
+    install: 'npm i -g @openai/codex',
+    login: 'Run "codex login".',
+  },
 }
 
 export function formatError(error: unknown, options: { debug: boolean }): FormattedError {

@@ -1,0 +1,115 @@
+#!/usr/bin/env node
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+
+let stdin = ''
+for await (const chunk of process.stdin) stdin += chunk
+
+const env = process.env
+const argv = process.argv.slice(2)
+const outputPath = argv[argv.indexOf('-o') + 1]
+const instructionsSetting = argv.find((arg) => arg.startsWith('model_instructions_file='))
+const instructionsPath =
+  instructionsSetting === undefined
+    ? undefined
+    : JSON.parse(instructionsSetting.slice('model_instructions_file='.length))
+if (env.FAKE_CODEX_CAPTURE) {
+  const captured = {
+    argv,
+    stdin,
+    instructions:
+      instructionsPath !== undefined && existsSync(instructionsPath)
+        ? readFileSync(instructionsPath, 'utf8')
+        : null,
+    cwd: process.cwd(),
+    env: { GITHUB_TOKEN: env.GITHUB_TOKEN, GH_TOKEN: env.GH_TOKEN },
+  }
+  writeFileSync(env.FAKE_CODEX_CAPTURE, JSON.stringify(captured))
+}
+
+const secret = env.FAKE_CODEX_SECRET ?? ''
+const usage = {
+  input_tokens: 8739,
+  cached_input_tokens: 4000,
+  output_tokens: 410,
+  reasoning_output_tokens: 20,
+}
+const emit = (...events) =>
+  process.stdout.write(events.map((event) => `${JSON.stringify(event)}\n`).join(''))
+const started = [{ type: 'thread.started', thread_id: 'fake-thread' }, { type: 'turn.started' }]
+const message = {
+  type: 'item.completed',
+  item: { id: 'item_0', type: 'agent_message', text: 'LGTM' },
+}
+const unauthorized =
+  'unexpected status 401 Unauthorized: Missing bearer or basic authentication in header'
+
+switch (env.FAKE_CODEX_MODE ?? 'success') {
+  case 'success':
+    emit(...started, message, { type: 'turn.completed', usage })
+    writeFileSync(outputPath, 'LGTM from fake codex')
+    break
+  case 'no_usage':
+    emit(...started, message)
+    writeFileSync(outputPath, 'LGTM from fake codex')
+    break
+  case 'noisy_stdout':
+    process.stdout.write('not json\n{"type":"unknown.event"}\n')
+    emit({ type: 'turn.completed', usage: { input_tokens: 1, output_tokens: 1 } })
+    emit({ type: 'turn.completed', usage })
+    writeFileSync(outputPath, 'LGTM from fake codex')
+    break
+  case 'echo_stdin_size':
+    emit(...started, { type: 'turn.completed', usage })
+    writeFileSync(outputPath, String(stdin.length))
+    break
+  case 'empty_output':
+    emit(...started, message, { type: 'turn.completed', usage })
+    writeFileSync(outputPath, '  \n')
+    break
+  case 'no_output':
+    emit(...started, { type: 'turn.completed', usage })
+    break
+  case 'no_output_with_error':
+    emit(...started, { type: 'error', message: 'model context window exceeded' })
+    break
+  case 'logged_out':
+    process.stderr.write(
+      `2026-10-04T18:37:21Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 401 Unauthorized\n`,
+    )
+    emit(
+      ...started,
+      { type: 'error', message: `Reconnecting... 1/5 (${unauthorized})` },
+      { type: 'turn.failed', error: { message: unauthorized } },
+    )
+    process.exitCode = 1
+    break
+  case 'turn_failed':
+    emit(
+      ...started,
+      { type: 'error', message: 'Reconnecting... 1/5 (stream disconnected)' },
+      { type: 'turn.failed', error: { message: `stream failed: boom ${secret}` } },
+    )
+    process.exitCode = 1
+    break
+  case 'turn_failed_custom':
+    emit(
+      ...started,
+      { type: 'error', message: `Reconnecting... 1/5 (${unauthorized})` },
+      { type: 'turn.failed', error: { message: env.FAKE_CODEX_FAILURE ?? '' } },
+    )
+    process.exitCode = 1
+    break
+  case 'stderr_only':
+    process.stderr.write(`error: unexpected argument '--nope' found ${secret}\n`)
+    process.exitCode = 2
+    break
+  case 'exit1_silent':
+    process.exitCode = 1
+    break
+  case 'hang':
+    setInterval(() => {}, 1_000)
+    break
+  default:
+    process.stderr.write(`fake-codex: unknown FAKE_CODEX_MODE "${env.FAKE_CODEX_MODE}"\n`)
+    process.exitCode = 99
+}

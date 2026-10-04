@@ -1,12 +1,10 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
-import { CommandError, CommandNotFoundError, CommandTimeoutError } from '../process/errors.js'
-import { runCommand } from '../process/run-command.js'
 import type { RunCommandResult } from '../process/run-command.js'
+import { runCli, snippet, withTempDir } from './cli-run.js'
+import type { CliNames } from './cli-run.js'
 import { resolveClaudeModel } from './claude-model.js'
-import { redactSecrets } from './redact-secrets.js'
 import { ProviderError } from './types.js'
 import type {
   ProviderErrorReason,
@@ -17,6 +15,7 @@ import type {
 } from './types.js'
 
 const PROVIDER_ID = 'claude-cli'
+const NAMES: CliNames = { product: 'Claude Code', short: 'Claude' }
 const DEFAULT_COMMAND = 'claude'
 const DEFAULT_TIMEOUT_MS = 600_000
 const TEMP_DIR_PREFIX = 'phada-claude-'
@@ -34,7 +33,6 @@ const BASE_ARGS: readonly string[] = [
   '--setting-sources=',
   '--disable-slash-commands',
 ]
-const GITHUB_TOKEN_KEYS: ReadonlySet<string> = new Set(['GITHUB_TOKEN', 'GH_TOKEN'])
 const NOT_AUTHENTICATED = /not logged in|\/login|authenticat|api key/i
 
 const ClaudeUsage = z.object({
@@ -81,9 +79,8 @@ export class ClaudeCliProvider implements ReviewProvider {
     this.#homeDir = options.homeDir
   }
 
-  async review(prompt: ReviewPrompt): Promise<ReviewOutput> {
-    const cwd = await mkdtemp(join(tmpdir(), TEMP_DIR_PREFIX))
-    try {
+  review(prompt: ReviewPrompt): Promise<ReviewOutput> {
+    return withTempDir(TEMP_DIR_PREFIX, async (cwd) => {
       const instructionsPath = join(cwd, INSTRUCTIONS_FILE)
       await writeFile(instructionsPath, prompt.instructions)
       const model = await resolveClaudeModel({
@@ -91,57 +88,19 @@ export class ClaudeCliProvider implements ReviewProvider {
         env: this.#env,
         homeDir: this.#homeDir,
       })
-      const args = [
-        ...BASE_ARGS,
-        '--append-system-prompt-file',
-        instructionsPath,
-        `--model=${model}`,
-      ]
-      return toReviewOutput(await this.#run(args, prompt.data, cwd))
-    } finally {
-      await rm(cwd, { recursive: true, force: true })
-    }
-  }
-
-  async #run(args: readonly string[], data: string, cwd: string): Promise<RunCommandResult> {
-    try {
-      return await runCommand(this.#command, args, {
-        stdin: data,
+      const run = await runCli({
+        providerId: PROVIDER_ID,
+        names: NAMES,
+        command: this.#command,
+        args: [...BASE_ARGS, '--append-system-prompt-file', instructionsPath, `--model=${model}`],
+        stdin: prompt.data,
         cwd,
-        env: withoutGitHubTokens(this.#env),
+        env: this.#env,
         timeoutMs: this.#timeoutMs,
       })
-    } catch (error) {
-      throw toProviderError(error)
-    }
+      return toReviewOutput(run)
+    })
   }
-}
-
-function withoutGitHubTokens(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  return Object.fromEntries(Object.entries(env).filter(([key]) => !GITHUB_TOKEN_KEYS.has(key)))
-}
-
-function toProviderError(error: unknown): unknown {
-  if (error instanceof CommandNotFoundError) {
-    return new ProviderError(
-      PROVIDER_ID,
-      'not-installed',
-      `Claude Code was not found (command "${error.command}").`,
-      { cause: error },
-    )
-  }
-  if (error instanceof CommandTimeoutError) {
-    return new ProviderError(
-      PROVIDER_ID,
-      'timeout',
-      `Claude did not answer within ${error.timeoutMs / 1000}s.`,
-      { cause: error },
-    )
-  }
-  if (error instanceof CommandError) {
-    return new ProviderError(PROVIDER_ID, 'failed', error.message, { cause: error })
-  }
-  return error
 }
 
 function toReviewOutput(run: RunCommandResult): ReviewOutput {
@@ -223,8 +182,4 @@ function unreadableOutputError({ stdout, stderr, exitCode }: RunCommandResult): 
 
 function reasonFor(detail: string): ProviderErrorReason {
   return NOT_AUTHENTICATED.test(detail) ? 'not-authenticated' : 'failed'
-}
-
-function snippet(text: string, maxLength: number): string {
-  return redactSecrets(text).trim().slice(0, maxLength)
 }
