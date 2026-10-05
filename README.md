@@ -35,7 +35,10 @@ banner out of the file). A review of a large pull request can take a few minutes
 
 ### What a review looks like
 
-The AI answers in a fixed JSON shape that Phada validates; Phada then prints:
+Phada sends the diff with the line number of every added and context line, so the AI copies
+the line instead of counting it. The AI answers in a fixed JSON shape that Phada validates, and
+every finding must point to a file of the pull request and a line inside the diff. Phada then
+prints:
 
 - **Confidence score (0–5)**, computed by Phada from the findings, never by the AI: 5 means no
   problems found, 4 only P2 findings, 3 one P1, 2 two or more P1, 1 one P0, 0 two or more P0.
@@ -47,8 +50,8 @@ The AI answers in a fixed JSON shape that Phada validates; Phada then prints:
   - **P0 · Must fix**: security holes, data loss, crashes, wrong money handling;
   - **P1 · Should fix**: bugs, incorrect behavior, edge cases, race conditions, leaks;
   - **P2 · Consider**: maintainability or design risks with a concrete consequence.
-- A footer with how many findings were dropped (below confidence 80, or not in the expected
-  shape) and the provider, model, time and tokens.
+- A footer with how many findings were dropped (outside the diff, duplicates, below
+  confidence 80, or not in the expected shape) and the provider, model, time and tokens.
 
 If the AI's answer is not a valid review, Phada stops with an error instead of printing it;
 `--debug` shows the start of the answer.

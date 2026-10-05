@@ -55,14 +55,26 @@ describe('parseReviewReport', () => {
       findingFixture({ confidence: 120 }),
       findingFixture({ confidence: 85.5 }),
       findingFixture({ line: 0 }),
-      { ...findingFixture(), extra: true },
       'not an object',
     ]
 
     const parsed = parseReviewReport(reviewReportJson({ findings }))
 
     expect(parsed.findings).toEqual([findingFixture()])
-    expect(parsed.invalid).toBe(7)
+    expect(parsed.invalid).toBe(6)
+  })
+
+  it('keeps a finding or a file entry that carries an extra key, without the key', () => {
+    const parsed = parseReviewReport(
+      reviewReportJson({
+        files: [{ path: 'a.ts', change: 'x', kind: 'source' }],
+        findings: [{ ...findingFixture(), category: 'security' }],
+      }),
+    )
+
+    expect(parsed.files).toEqual([{ path: 'a.ts', change: 'x' }])
+    expect(parsed.findings).toEqual([findingFixture()])
+    expect(parsed.invalid).toBe(0)
   })
 
   it('drops a finding without a fix key but keeps a null fix', () => {

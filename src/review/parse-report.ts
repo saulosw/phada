@@ -1,13 +1,11 @@
+import type { z } from 'zod'
 import { InvalidReviewReportError } from './errors.js'
 import { ReportEnvelopeSchema, ReportFileSchema, ReportFindingSchema } from './report-schema.js'
 import type { Finding } from './types.js'
 
 const PREVIEW_LENGTH = 500
 
-export interface ReportFile {
-  path: string
-  change: string
-}
+export type ReportFile = z.infer<typeof ReportFileSchema>
 
 export interface ParsedReport {
   summary: string

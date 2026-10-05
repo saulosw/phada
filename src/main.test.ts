@@ -92,7 +92,7 @@ describe('run', () => {
     expect(h.stderr()).toBe(
       [
         'Fetching acme/shop#12…',
-        'acme/shop#12 · a1b2c3d · 2 files · +15 −1 · 70 B diff',
+        'acme/shop#12 · a1b2c3d · 2 files · +15 −1 · 523 B diff',
         'Reviewing with fake-cli… (this can take a few minutes)',
         '',
       ].join('\n'),

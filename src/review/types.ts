@@ -40,6 +40,8 @@ export interface Score {
 export interface DroppedFindings {
   invalid: number
   belowFloor: number
+  outsideDiff: number
+  duplicate: number
   belowCut: number
 }
 

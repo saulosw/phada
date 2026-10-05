@@ -51,7 +51,7 @@ describe('runReview', () => {
         files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 1 }],
         findings: [findingFixture()],
         score: { value: 3, reason: '1 P1 finding (shop.ts:1)' },
-        dropped: { invalid: 0, belowFloor: 0, belowCut: 0 },
+        dropped: { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0, belowCut: 0 },
       },
     })
   })
@@ -84,7 +84,26 @@ describe('runReview', () => {
         findingFixture({ severity: 'P2', confidence: 95, line: 9 }),
       ],
       score: { value: 1, reason: '1 P0 finding (shop.ts:2)' },
-      dropped: { invalid: 1, belowFloor: 1, belowCut: 1 },
+      dropped: { invalid: 1, belowFloor: 1, outsideDiff: 0, duplicate: 0, belowCut: 1 },
+    })
+  })
+
+  it('drops findings outside the diff and repeated findings, and counts them', async () => {
+    const text = reviewReportJson({
+      findings: [
+        findingFixture({ line: 2 }),
+        findingFixture({ line: 2, confidence: 85 }),
+        findingFixture({ line: 40 }),
+        findingFixture({ file: 'src/other.ts' }),
+      ],
+    })
+    const provider = new FakeProvider(() => Promise.resolve({ text, durationMs: 1 }))
+
+    const outcome = await runReview({ pullRequest: pullRequestFixture() }, { provider })
+
+    expect(outcome.status === 'reviewed' && outcome.result).toMatchObject({
+      findings: [findingFixture({ line: 2 })],
+      dropped: { invalid: 0, belowFloor: 0, outsideDiff: 2, duplicate: 1, belowCut: 0 },
     })
   })
 
@@ -113,7 +132,7 @@ describe('runReview', () => {
       files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 0 }],
       findings: [],
       score: { value: 5, reason: 'no problems found' },
-      dropped: { invalid: 0, belowFloor: 0, belowCut: 0 },
+      dropped: { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0, belowCut: 0 },
     })
   })
 
@@ -142,7 +161,7 @@ describe('runReview', () => {
       files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 1 }],
       findings: [findingFixture()],
       score: { value: 3, reason: '1 P1 finding (shop.ts:1)' },
-      dropped: { invalid: 0, belowFloor: 0, belowCut: 0 },
+      dropped: { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0, belowCut: 0 },
     })
   })
 

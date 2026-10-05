@@ -45,7 +45,7 @@ const RESULT: ReviewResult = {
     }),
   ],
   score: { value: 1, reason: '1 P0 finding (shop.ts:3)' },
-  dropped: { invalid: 1, belowFloor: 1, belowCut: 2 },
+  dropped: { invalid: 1, belowFloor: 1, outsideDiff: 2, duplicate: 1, belowCut: 2 },
 }
 
 describe('formatPullRequestSummary', () => {
@@ -113,7 +113,7 @@ describe('formatReview', () => {
         '   Fix: Return a cleanup.',
         '',
         '---',
-        '3 findings · 4 dropped (3 below confidence 80, 1 invalid)',
+        '3 findings · 7 dropped (2 outside the diff, 1 duplicate, 3 below confidence 80, 1 invalid)',
         'claude-cli · claude-sonnet-5 · 2m11s · 41.2k in / 13.0k out',
         '',
       ].join('\n'),
@@ -126,7 +126,7 @@ describe('formatReview', () => {
       files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 0 }],
       findings: [],
       score: { value: 5, reason: 'no problems found' },
-      dropped: { invalid: 0, belowFloor: 0, belowCut: 0 },
+      dropped: { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0, belowCut: 0 },
     }
 
     const output = formatReview(pullRequestFixture(), result)
@@ -147,6 +147,23 @@ describe('formatReview', () => {
     expect(output).toContain(`**Confidence score: ${value}/5** (${label}): r\n`)
   })
 
+  it.each([
+    [{ outsideDiff: 1 }, '1 dropped (1 outside the diff)'],
+    [{ duplicate: 2 }, '2 dropped (2 duplicates)'],
+    [{ belowFloor: 1, belowCut: 1 }, '2 dropped (2 below confidence 80)'],
+    [{ invalid: 3 }, '3 dropped (3 invalid)'],
+    [{ outsideDiff: 1, invalid: 1 }, '2 dropped (1 outside the diff, 1 invalid)'],
+  ])('lists only the reasons that dropped something: %j', (counts, text) => {
+    const dropped = { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0, belowCut: 0 }
+
+    const output = formatReview(pullRequestFixture(), {
+      ...RESULT,
+      dropped: { ...dropped, ...counts },
+    })
+
+    expect(output).toContain(`\n3 findings · ${text}\n`)
+  })
+
   it('leaves out an empty summary and an empty file table', () => {
     const output = formatReview(pullRequestFixture(), { ...RESULT, summary: '  ', files: [] })
 
@@ -165,6 +182,26 @@ describe('formatReview', () => {
 
     expect(output).toContain('| src/f19.ts | x | 0 |\n\n+3 more files\n')
     expect(output).not.toContain('src/f20.ts')
+  })
+
+  it('says one more file in the singular', () => {
+    const files = Array.from({ length: 21 }, (_, index) => ({
+      path: `src/f${index}.ts`,
+      change: 'x',
+      findings: 0,
+    }))
+
+    expect(formatReview(pullRequestFixture(), { ...RESULT, files })).toContain(
+      '| src/f19.ts | x | 0 |\n\n+1 more file\n',
+    )
+  })
+
+  it('keeps a backslash before a pipe from opening a new column', () => {
+    const files = [{ path: 'src/a.ts', change: 'Splits on \\| and \\\\|', findings: 0 }]
+
+    expect(formatReview(pullRequestFixture(), { ...RESULT, files })).toContain(
+      '| src/a.ts | Splits on \\\\\\| and \\\\\\\\\\| | 0 |',
+    )
   })
 
   it('marks draft and closed pull requests', () => {

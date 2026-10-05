@@ -62,7 +62,8 @@ function filesSection(files: readonly FileChange[]): string {
   const rows = files
     .slice(0, MAX_FILE_ROWS)
     .map(({ path, change, findings }) => `| ${cell(path)} | ${cell(change)} | ${findings} |`)
-  const more = files.length > MAX_FILE_ROWS ? [`\n+${files.length - MAX_FILE_ROWS} more files`] : []
+  const hidden = files.length - MAX_FILE_ROWS
+  const more = hidden > 0 ? [`\n+${formatCount(hidden, 'more file')}`] : []
   return [
     '## Files',
     '',
@@ -98,13 +99,17 @@ function findingItem(number: number, finding: Finding): string {
 }
 
 function countsLine({ findings, dropped }: ReviewResult): string {
-  const reasons = [
-    [dropped.belowFloor + dropped.belowCut, `below confidence ${MIN_CONFIDENCE}`],
-    [dropped.invalid, 'invalid'],
-  ] as const
-  const parts = reasons.filter(([count]) => count > 0).map(([count, label]) => `${count} ${label}`)
-  const total = dropped.belowFloor + dropped.belowCut + dropped.invalid
-  const droppedText = total === 0 ? '' : ` · ${total} dropped (${parts.join(', ')})`
+  const belowCut = dropped.belowFloor + dropped.belowCut
+  const reasons: ReadonlyArray<readonly [number, string]> = [
+    [dropped.outsideDiff, `${dropped.outsideDiff} outside the diff`],
+    [dropped.duplicate, formatCount(dropped.duplicate, 'duplicate')],
+    [belowCut, `${belowCut} below confidence ${MIN_CONFIDENCE}`],
+    [dropped.invalid, `${dropped.invalid} invalid`],
+  ]
+  const shown = reasons.filter(([count]) => count > 0)
+  const total = shown.reduce((sum, [count]) => sum + count, 0)
+  const droppedText =
+    total === 0 ? '' : ` · ${total} dropped (${shown.map(([, text]) => text).join(', ')})`
   return `${formatCount(findings.length, 'finding')}${droppedText}`
 }
 
@@ -132,7 +137,7 @@ function indent(text: string): string {
 }
 
 function cell(text: string): string {
-  return singleLine(text).replaceAll('|', '\\|')
+  return singleLine(text).replace(/(\\*)\|/g, '$1$1\\|')
 }
 
 function singleLine(text: string): string {
