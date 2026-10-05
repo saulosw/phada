@@ -12,6 +12,7 @@ const FAKE_SECRET = `ghp_${'A1b2C3d4E5'.repeat(4)}`
 const PROMPT: ReviewPrompt = {
   instructions: 'You are a careful reviewer. Trusted instructions only.',
   data: 'Review this diff, please: +const answer = 42',
+  outputSchema: { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'] },
 }
 const DISABLED_FEATURES = [
   'apps',
@@ -35,6 +36,7 @@ interface Capture {
   argv: string[]
   stdin: string
   instructions: string | null
+  outputSchema: string | null
   cwd: string
   env: { GITHUB_TOKEN?: string; GH_TOKEN?: string }
 }
@@ -133,10 +135,22 @@ describe('CodexCliProvider', () => {
       '--json',
       '-c',
       `model_instructions_file=${JSON.stringify(join(cwd, 'instructions.md'))}`,
+      '--output-schema',
+      join(cwd, 'output-schema.json'),
       '-o',
       join(cwd, 'last-message.txt'),
       '-',
     ])
+  })
+
+  it('writes the output schema to a file inside the temp dir', async () => {
+    await provider('success').review(PROMPT)
+
+    const { outputSchema, argv, cwd } = readCapture()
+    const schemaPath = argv[argv.indexOf('--output-schema') + 1] ?? ''
+    expect(JSON.parse(outputSchema ?? 'null')).toEqual(PROMPT.outputSchema)
+    expect(dirname(schemaPath)).toBe(cwd)
+    expect(existsSync(schemaPath)).toBe(false)
   })
 
   it('sends the instructions as the model instructions file inside the temp dir', async () => {

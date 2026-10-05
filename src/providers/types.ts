@@ -1,6 +1,9 @@
+export type JsonSchema = Readonly<Record<string, unknown>>
+
 export interface ReviewPrompt {
   instructions: string
   data: string
+  outputSchema: JsonSchema
 }
 
 export interface TokenUsage {

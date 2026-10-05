@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { findingFixture } from '../../test/support/finding.js'
 import { pullRequestFixture } from '../../test/support/pull-request.js'
 import type { ReviewResult } from '../review/types.js'
 import { formatPullRequestSummary, formatReview } from './format-review.js'
@@ -7,9 +8,44 @@ const RESULT: ReviewResult = {
   target: { repo: 'acme/shop', number: 12, headSha: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678' },
   providerId: 'claude-cli',
   model: 'claude-sonnet-5',
-  text: '1. [high] src/shop.ts:1 — spend has no auth (confidence 90)\n',
   durationMs: 131_400,
   usage: { inputTokens: 41_234, outputTokens: 13_012 },
+  summary: 'Adds a spend endpoint and a cooldown hook.',
+  files: [
+    { path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 2 },
+    { path: 'src/cooldown.ts', change: 'Drops the interval cleanup', findings: 1 },
+  ],
+  findings: [
+    findingFixture({
+      severity: 'P0',
+      confidence: 100,
+      file: 'src/shop.ts',
+      line: 3,
+      title: "Caller can spend another user's crystals",
+      why: 'The body overrides the authenticated id.',
+      fix: 'Use req.userId.',
+    }),
+    findingFixture({
+      severity: 'P1',
+      confidence: 95,
+      file: 'src/shop.ts',
+      line: 7,
+      title: 'Concurrent spends are charged once',
+      why: 'Two requests read the same balance.',
+      fix: null,
+    }),
+    findingFixture({
+      severity: 'P2',
+      confidence: 85,
+      file: 'src/cooldown.ts',
+      line: 18,
+      title: 'Timer leaks',
+      why: 'Each render starts a new interval.\nOld ones keep running.',
+      fix: 'Return a cleanup.',
+    }),
+  ],
+  score: { value: 1, reason: '1 P0 finding (shop.ts:3)' },
+  dropped: { invalid: 1, belowFloor: 1, belowCut: 2 },
 }
 
 describe('formatPullRequestSummary', () => {
@@ -37,19 +73,98 @@ describe('formatPullRequestSummary', () => {
 })
 
 describe('formatReview', () => {
-  it('prints a header, the review and a footer with provider, model, time and tokens', () => {
+  it('prints the score, summary, files, findings by severity and a footer', () => {
     expect(formatReview(pullRequestFixture(), RESULT)).toBe(
       [
         '# Review of acme/shop#12: Let users spend crystals',
         'https://github.com/acme/shop/pull/12 · head a1b2c3d · open',
         '',
-        '1. [high] src/shop.ts:1 — spend has no auth (confidence 90)',
+        '**Confidence score: 1/5** (critical problems): 1 P0 finding (shop.ts:3)',
+        '',
+        '## Summary',
+        '',
+        'Adds a spend endpoint and a cooldown hook.',
+        '',
+        '## Files',
+        '',
+        '| File | Change | Findings |',
+        '| --- | --- | --- |',
+        '| src/shop.ts | Adds the spend endpoint | 2 |',
+        '| src/cooldown.ts | Drops the interval cleanup | 1 |',
+        '',
+        '## Findings',
+        '',
+        '### P0 · Must fix',
+        '',
+        "1. **src/shop.ts:3**: Caller can spend another user's crystals (confidence 100)",
+        '   The body overrides the authenticated id.',
+        '   Fix: Use req.userId.',
+        '',
+        '### P1 · Should fix',
+        '',
+        '2. **src/shop.ts:7**: Concurrent spends are charged once (confidence 95)',
+        '   Two requests read the same balance.',
+        '',
+        '### P2 · Consider',
+        '',
+        '3. **src/cooldown.ts:18**: Timer leaks (confidence 85)',
+        '   Each render starts a new interval.',
+        '   Old ones keep running.',
+        '   Fix: Return a cleanup.',
         '',
         '---',
+        '3 findings · 4 dropped (3 below confidence 80, 1 invalid)',
         'claude-cli · claude-sonnet-5 · 2m11s · 41.2k in / 13.0k out',
         '',
       ].join('\n'),
     )
+  })
+
+  it('shows a clean review without the findings section', () => {
+    const result: ReviewResult = {
+      ...RESULT,
+      files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 0 }],
+      findings: [],
+      score: { value: 5, reason: 'no problems found' },
+      dropped: { invalid: 0, belowFloor: 0, belowCut: 0 },
+    }
+
+    const output = formatReview(pullRequestFixture(), result)
+
+    expect(output).toContain('\n**Confidence score: 5/5** (ready to merge): no problems found\n')
+    expect(output).not.toContain('## Findings')
+    expect(output).toContain('\n---\n0 findings\nclaude-cli ·')
+  })
+
+  it.each([
+    [4, 'minor polish needed'],
+    [3, 'implementation issues'],
+    [2, 'significant bugs'],
+    [0, 'critical problems'],
+  ] as const)('labels a score of %d as %s', (value, label) => {
+    const output = formatReview(pullRequestFixture(), { ...RESULT, score: { value, reason: 'r' } })
+
+    expect(output).toContain(`**Confidence score: ${value}/5** (${label}): r\n`)
+  })
+
+  it('leaves out an empty summary and an empty file table', () => {
+    const output = formatReview(pullRequestFixture(), { ...RESULT, summary: '  ', files: [] })
+
+    expect(output).not.toContain('## Summary')
+    expect(output).not.toContain('## Files')
+  })
+
+  it('shows at most 20 files and says how many more there are', () => {
+    const files = Array.from({ length: 23 }, (_, index) => ({
+      path: `src/f${index}.ts`,
+      change: 'x',
+      findings: 0,
+    }))
+
+    const output = formatReview(pullRequestFixture(), { ...RESULT, files })
+
+    expect(output).toContain('| src/f19.ts | x | 0 |\n\n+3 more files\n')
+    expect(output).not.toContain('src/f20.ts')
   })
 
   it('marks draft and closed pull requests', () => {
@@ -69,18 +184,26 @@ describe('formatReview', () => {
   it('leaves the model and the tokens out when the provider did not report them', () => {
     const { model: _model, usage: _usage, ...result } = RESULT
 
-    expect(formatReview(pullRequestFixture(), { ...result, durationMs: 42_149 })).toContain(
-      '\n---\nclaude-cli · 42.1s\n',
+    expect(formatReview(pullRequestFixture(), { ...result, durationMs: 42_149 })).toMatch(
+      /\nclaude-cli · 42\.1s\n$/,
     )
   })
 
-  it('removes terminal control sequences from the title and the review', () => {
+  it('keeps text from the pull request and the AI from breaking the terminal or the markdown', () => {
     const pr = pullRequestFixture({ title: 'Fix\u001B[2J\r\nthe shop' })
+    const result: ReviewResult = {
+      ...RESULT,
+      summary: 'Looks fine\u001B]0;pwned\u0007',
+      files: [{ path: 'src/a|b.ts', change: 'Splits\nthe | table', findings: 1 }],
+      findings: [findingFixture({ file: 'src/a|b.ts', title: 'Bad\ntitle\u001B[31m' })],
+    }
 
-    const output = formatReview(pr, { ...RESULT, text: 'Looks fine\u001B]0;pwned\u0007' })
+    const output = formatReview(pr, result)
 
     expect(output).not.toMatch(/[\u0000-\u0008\u000B-\u001F\u007F-\u009F]/)
     expect(output).toContain('# Review of acme/shop#12: Fix[2J the shop\n')
     expect(output).toContain('\nLooks fine]0;pwned\n')
+    expect(output).toContain('| src/a\\|b.ts | Splits the \\| table | 1 |')
+    expect(output).toContain('**src/a|b.ts:1**: Bad title[31m (confidence 90)')
   })
 })

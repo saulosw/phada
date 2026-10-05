@@ -11,6 +11,7 @@ const MODEL = 'qwen2.5-coder:7b'
 const PROMPT: ReviewPrompt = {
   instructions: 'You are a careful reviewer. Trusted instructions only.',
   data: 'Review this diff, please: +const answer = 42',
+  outputSchema: { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'] },
 }
 const PROMPT_CHARS = PROMPT.instructions.length + PROMPT.data.length
 const UNCOUNTED_CHAT = { prompt_eval_count: undefined, eval_count: undefined }
@@ -123,6 +124,7 @@ describe('OllamaProvider', () => {
         { role: 'system', content: PROMPT.instructions },
         { role: 'user', content: PROMPT.data },
       ],
+      format: PROMPT.outputSchema,
       options: { num_ctx: 9216, num_predict: 8192 },
     })
   })

@@ -12,14 +12,49 @@ export interface ReviewTarget {
   headSha: string
 }
 
+export type Severity = 'P0' | 'P1' | 'P2'
+
+export interface Finding {
+  severity: Severity
+  confidence: number
+  file: string
+  line: number
+  title: string
+  why: string
+  fix: string | null
+}
+
+export interface FileChange {
+  path: string
+  change: string
+  findings: number
+}
+
+export type ScoreValue = 0 | 1 | 2 | 3 | 4 | 5
+
+export interface Score {
+  value: ScoreValue
+  reason: string
+}
+
+export interface DroppedFindings {
+  invalid: number
+  belowFloor: number
+  belowCut: number
+}
+
 export interface ReviewResult {
   target: ReviewTarget
   providerId: string
   model?: string
   additionalModels?: string[]
-  text: string
   durationMs: number
   usage?: TokenUsage
+  summary: string
+  files: FileChange[]
+  findings: Finding[]
+  score: Score
+  dropped: DroppedFindings
 }
 
 export type ReviewOutcome =

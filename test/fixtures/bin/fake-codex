@@ -12,6 +12,9 @@ const instructionsPath =
   instructionsSetting === undefined
     ? undefined
     : JSON.parse(instructionsSetting.slice('model_instructions_file='.length))
+const outputSchemaPath = argv.includes('--output-schema')
+  ? argv[argv.indexOf('--output-schema') + 1]
+  : undefined
 if (env.FAKE_CODEX_CAPTURE) {
   const captured = {
     argv,
@@ -19,6 +22,10 @@ if (env.FAKE_CODEX_CAPTURE) {
     instructions:
       instructionsPath !== undefined && existsSync(instructionsPath)
         ? readFileSync(instructionsPath, 'utf8')
+        : null,
+    outputSchema:
+      outputSchemaPath !== undefined && existsSync(outputSchemaPath)
+        ? readFileSync(outputSchemaPath, 'utf8')
         : null,
     cwd: process.cwd(),
     env: { GITHUB_TOKEN: env.GITHUB_TOKEN, GH_TOKEN: env.GH_TOKEN },

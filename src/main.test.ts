@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { describe, expect, it } from 'vitest'
 import { pullRequestFixture } from '../test/support/pull-request.js'
+import { reviewReportJson } from '../test/support/review-report.js'
 import { USAGE } from './cli/args.js'
 import { UsageError } from './cli/errors.js'
 import { PullRequestNotFoundError } from './github/errors.js'
@@ -17,7 +18,7 @@ import type { ReviewOutput, ReviewPrompt, ReviewProvider } from './providers/typ
 const execFileAsync = promisify(execFile)
 const TOKEN = `ghp_${'A1b2C3d4E5'.repeat(4)}`
 const OUTPUT: ReviewOutput = {
-  text: 'No significant problems found.',
+  text: reviewReportJson({ findings: [] }),
   durationMs: 42_149,
   model: 'claude-fake-1',
   usage: { inputTokens: 3512, outputTokens: 420 },
@@ -101,9 +102,20 @@ describe('run', () => {
         '# Review of acme/shop#12: Let users spend crystals',
         'https://github.com/acme/shop/pull/12 · head a1b2c3d · open',
         '',
-        'No significant problems found.',
+        '**Confidence score: 5/5** (ready to merge): no problems found',
+        '',
+        '## Summary',
+        '',
+        'Adds a spend endpoint.',
+        '',
+        '## Files',
+        '',
+        '| File | Change | Findings |',
+        '| --- | --- | --- |',
+        '| src/shop.ts | Adds the spend endpoint | 0 |',
         '',
         '---',
+        '0 findings',
         'fake-cli · claude-fake-1 · 42.1s · 3.5k in / 420 out',
         '',
       ].join('\n'),
@@ -117,7 +129,9 @@ describe('run', () => {
     await run(['acme/shop#12', '--model', 'opus', '--language', 'pt-BR'], h.deps)
 
     expect(h.providers).toEqual([{ name: 'claude', options: { model: 'opus' } }])
-    expect(h.prompts[0]?.instructions).toContain('Write the review in pt-BR.')
+    expect(h.prompts[0]?.instructions).toContain(
+      'Write summary, change, title, why and fix in pt-BR;',
+    )
   })
 
   it.each([{}, { GITHUB_TOKEN: '' }, { GITHUB_TOKEN: '  \n' }])(

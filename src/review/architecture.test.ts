@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 const REVIEW_DIR = new URL('./', import.meta.url)
-const ALLOWED_VALUE_IMPORTS = new Set(['node:crypto'])
+const ALLOWED_VALUE_IMPORTS = new Set(['node:crypto', 'zod'])
 const ALLOWED_TYPE_IMPORTS = new Set(['../providers/types.js', '../github/pull-request.js'])
 const STATIC_MODULE = /^\s*(?:import|export)\s+(type\s+)?(?:[^'"]*?\bfrom\s+)?['"]([^'"]+)['"]/gm
 const DYNAMIC_MODULE = /\bimport\(\s*['"]([^'"]+)['"]\s*\)/g
@@ -43,9 +43,10 @@ function isAllowedModule(specifier: string, typeOnly: boolean): boolean {
 }
 
 describe('boundaryViolations', () => {
-  it('accepts its own files, node:crypto and type-only imports of the interfaces', () => {
+  it('accepts its own files, node:crypto, zod and type-only imports of the interfaces', () => {
     const code = [
       "import { randomBytes } from 'node:crypto'",
+      "import { z } from 'zod'",
       "import type { ReviewProvider } from '../providers/types.js'",
       "import type {\n  PullRequest,\n} from '../github/pull-request.js'",
       "import { buildReviewPrompt } from './prompt.js'",

@@ -8,6 +8,7 @@ import {
   PullRequestNotFoundError,
 } from '../github/errors.js'
 import { ProviderError } from '../providers/types.js'
+import { InvalidReviewReportError } from '../review/errors.js'
 import { MissingGitHubTokenError, UsageError } from './errors.js'
 import { formatError } from './format-error.js'
 
@@ -130,6 +131,28 @@ describe('formatError', () => {
     const error = new ProviderError('claude-cli', 'failed', 'Claude said:\n\u001B[31mboom\u001B[0m')
 
     expect(format(error).message).toBe('phada: Claude said: [31mboom[0m')
+  })
+
+  it('explains an answer that is not a review and points to --debug', () => {
+    const error = new InvalidReviewReportError('no JSON object in the answer', 'Sure! Looks good.')
+
+    expect(format(error)).toEqual({
+      message:
+        'phada: The AI did not return a valid review (no JSON object in the answer). Run with --debug to see its answer.',
+      exitCode: 1,
+    })
+  })
+
+  it('shows the start of the AI answer in debug mode, without control characters', () => {
+    const error = new InvalidReviewReportError(
+      'no JSON object in the answer',
+      'Sure!\u001B[2J Looks good.',
+    )
+
+    const debug = format(error, true).message
+
+    expect(debug).toContain('\nAI answer (start):\nSure![2J Looks good.')
+    expect(format(error).message).not.toContain('Sure!')
   })
 
   it('adds the stack and the cause chain only in debug mode', () => {

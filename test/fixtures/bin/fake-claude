@@ -79,6 +79,18 @@ switch (env.FAKE_CLAUDE_MODE ?? 'success') {
     process.stdout.write(result({ is_error: true, result: `${detail} ${secret}` }))
     process.exitCode = 1
     break
+  case 'max_turns':
+    process.stdout.write(
+      JSON.stringify({
+        type: 'result',
+        subtype: 'error_max_turns',
+        is_error: true,
+        errors: ['Reached maximum number of turns (3)'],
+        usage,
+      }),
+    )
+    process.exitCode = 1
+    break
   case 'logged_out':
     process.stdout.write(result({ is_error: true, result: 'Not logged in · Please run /login' }))
     process.exitCode = 1

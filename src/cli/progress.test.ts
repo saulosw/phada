@@ -3,7 +3,7 @@ import type { ReviewOutput, ReviewPrompt, ReviewProvider } from '../providers/ty
 import { withProgress } from './progress.js'
 import type { TextOutput } from './progress.js'
 
-const PROMPT: ReviewPrompt = { instructions: 'rules', data: 'diff' }
+const PROMPT: ReviewPrompt = { instructions: 'rules', data: 'diff', outputSchema: {} }
 const OUTPUT: ReviewOutput = { text: 'ok', durationMs: 1 }
 const CLEAR_LINE = '\r\u001B[2K'
 

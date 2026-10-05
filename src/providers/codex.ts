@@ -15,6 +15,7 @@ const DEFAULT_TIMEOUT_MS = 600_000
 const TEMP_DIR_PREFIX = 'phada-codex-'
 const INSTRUCTIONS_FILE = 'instructions.md'
 const OUTPUT_FILE = 'last-message.txt'
+const OUTPUT_SCHEMA_FILE = 'output-schema.json'
 const MAX_DETAIL_LENGTH = 500
 const DISABLED_FEATURES: readonly string[] = [
   'apps',
@@ -88,7 +89,9 @@ export class CodexCliProvider implements ReviewProvider {
     return withTempDir(TEMP_DIR_PREFIX, async (cwd) => {
       const instructionsPath = join(cwd, INSTRUCTIONS_FILE)
       const outputPath = join(cwd, OUTPUT_FILE)
+      const schemaPath = join(cwd, OUTPUT_SCHEMA_FILE)
       await writeFile(instructionsPath, prompt.instructions)
+      await writeFile(schemaPath, JSON.stringify(prompt.outputSchema))
       const model = await resolveCodexModel({
         model: this.#model,
         env: this.#env,
@@ -98,7 +101,7 @@ export class CodexCliProvider implements ReviewProvider {
         providerId: PROVIDER_ID,
         names: NAMES,
         command: this.#command,
-        args: codexArgs(instructionsPath, outputPath, model),
+        args: codexArgs({ instructionsPath, schemaPath, outputPath, model }),
         stdin: prompt.data,
         cwd,
         env: this.#env,
@@ -111,11 +114,20 @@ export class CodexCliProvider implements ReviewProvider {
   }
 }
 
-function codexArgs(instructionsPath: string, outputPath: string, model: string | undefined) {
+interface CodexArgsOptions {
+  instructionsPath: string
+  schemaPath: string
+  outputPath: string
+  model: string | undefined
+}
+
+function codexArgs({ instructionsPath, schemaPath, outputPath, model }: CodexArgsOptions) {
   return [
     ...BASE_ARGS,
     '-c',
     `model_instructions_file=${JSON.stringify(instructionsPath)}`,
+    '--output-schema',
+    schemaPath,
     '-o',
     outputPath,
     ...(model === undefined ? [] : [`--model=${model}`]),

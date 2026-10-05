@@ -1,6 +1,9 @@
 import { randomBytes } from 'node:crypto'
 import type { ReviewProvider } from '../providers/types.js'
+import { parseReviewReport } from './parse-report.js'
 import { buildReviewPrompt } from './prompt.js'
+import { scoreFindings } from './score.js'
+import { selectFindings, summarizeFiles } from './select-findings.js'
 import type { ReviewOutcome, ReviewRequest } from './types.js'
 
 export interface RunReviewDeps {
@@ -19,6 +22,8 @@ export async function runReview(
   const { text, durationMs, model, additionalModels, usage } = await deps.provider.review(
     buildReviewPrompt(request, createNonce()),
   )
+  const report = parseReviewReport(text)
+  const selection = selectFindings(report.findings)
   return {
     status: 'reviewed',
     result: {
@@ -26,9 +31,17 @@ export async function runReview(
       providerId: deps.provider.id,
       ...(model === undefined ? {} : { model }),
       ...(additionalModels === undefined ? {} : { additionalModels }),
-      text,
       durationMs,
       ...(usage === undefined ? {} : { usage }),
+      summary: report.summary,
+      files: summarizeFiles(report.files, selection.findings),
+      findings: selection.findings,
+      score: scoreFindings(selection.findings),
+      dropped: {
+        invalid: report.invalid,
+        belowFloor: selection.belowFloor,
+        belowCut: selection.belowCut,
+      },
     },
   }
 }

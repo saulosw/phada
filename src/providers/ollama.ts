@@ -84,6 +84,7 @@ export class OllamaProvider implements ReviewProvider {
           { role: 'system', content: prompt.instructions },
           { role: 'user', content: prompt.data },
         ],
+        format: prompt.outputSchema,
         options: {
           num_ctx: numCtx,
           num_predict: OUTPUT_RESERVE,

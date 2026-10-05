@@ -12,6 +12,7 @@ const FAKE_SECRET = `ghp_${'A1b2C3d4E5'.repeat(4)}`
 const PROMPT: ReviewPrompt = {
   instructions: 'You are a careful reviewer. Trusted instructions only.',
   data: 'Review this diff, please: +const answer = 42',
+  outputSchema: { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'] },
 }
 const EXPECTED_ARGS = [
   '-p',
@@ -131,6 +132,9 @@ describe('ClaudeCliProvider', () => {
       ...EXPECTED_ARGS,
       '--append-system-prompt-file',
       join(cwd, 'instructions.md'),
+      '--max-turns',
+      '3',
+      `--json-schema=${JSON.stringify(PROMPT.outputSchema)}`,
       '--model=opus',
     ])
   })
@@ -239,6 +243,13 @@ describe('ClaudeCliProvider', () => {
 
     expect(error.reason).toBe('failed')
     expect(error.message).toBe('Claude returned an error: API Error: 500 [REDACTED]')
+  })
+
+  it('reports invalid-output when Claude gives up after too many answers off the schema', async () => {
+    const error = await reviewError(provider('max_turns'))
+
+    expect(error.reason).toBe('invalid-output')
+    expect(error.message).toBe('Claude did not return a valid review in 3 attempts.')
   })
 
   it('reports failed with the exit code and the redacted stderr when there is no JSON', async () => {

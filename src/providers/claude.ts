@@ -22,6 +22,8 @@ const TEMP_DIR_PREFIX = 'phada-claude-'
 const INSTRUCTIONS_FILE = 'instructions.md'
 const MAX_DETAIL_LENGTH = 500
 const MAX_OUTPUT_PREVIEW_LENGTH = 200
+const MAX_ATTEMPTS = 3
+const MAX_TURNS_SUBTYPE = 'error_max_turns'
 const BASE_ARGS: readonly string[] = [
   '-p',
   '--output-format',
@@ -92,7 +94,15 @@ export class ClaudeCliProvider implements ReviewProvider {
         providerId: PROVIDER_ID,
         names: NAMES,
         command: this.#command,
-        args: [...BASE_ARGS, '--append-system-prompt-file', instructionsPath, `--model=${model}`],
+        args: [
+          ...BASE_ARGS,
+          '--append-system-prompt-file',
+          instructionsPath,
+          '--max-turns',
+          String(MAX_ATTEMPTS),
+          `--json-schema=${JSON.stringify(prompt.outputSchema)}`,
+          `--model=${model}`,
+        ],
         stdin: prompt.data,
         cwd,
         env: this.#env,
@@ -108,6 +118,13 @@ function toReviewOutput(run: RunCommandResult): ReviewOutput {
   if (!parsed.success) throw unreadableOutputError(run)
 
   const claude = parsed.data
+  if (claude.subtype === MAX_TURNS_SUBTYPE) {
+    throw new ProviderError(
+      PROVIDER_ID,
+      'invalid-output',
+      `Claude did not return a valid review in ${MAX_ATTEMPTS} attempts.`,
+    )
+  }
   if (claude.is_error || claude.result === undefined) throw claudeError(claude)
   if (claude.result.trim() === '') {
     throw new ProviderError(PROVIDER_ID, 'invalid-output', 'Claude returned an empty review.')

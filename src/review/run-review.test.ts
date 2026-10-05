@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
+import { findingFixture } from '../../test/support/finding.js'
 import { pullRequestFixture } from '../../test/support/pull-request.js'
+import { reviewReportJson } from '../../test/support/review-report.js'
 import type { ReviewOutput, ReviewPrompt, ReviewProvider } from '../providers/types.js'
+import { InvalidReviewReportError } from './errors.js'
 import { buildReviewPrompt } from './prompt.js'
+import { REVIEW_REPORT_JSON_SCHEMA } from './report-schema.js'
 import { runReview } from './run-review.js'
 
 class FakeProvider implements ReviewProvider {
@@ -17,7 +21,7 @@ class FakeProvider implements ReviewProvider {
 }
 
 const OUTPUT: ReviewOutput = {
-  text: '1. [high] src/shop.ts:1 — spend has no auth (confidence 90)',
+  text: reviewReportJson(),
   durationMs: 1234,
   model: 'claude-fake-1',
   usage: { inputTokens: 3512, outputTokens: 420 },
@@ -41,23 +45,75 @@ describe('runReview', () => {
         },
         providerId: 'fake-cli',
         model: 'claude-fake-1',
-        text: OUTPUT.text,
         durationMs: 1234,
         usage: { inputTokens: 3512, outputTokens: 420 },
+        summary: 'Adds a spend endpoint.',
+        files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 1 }],
+        findings: [findingFixture()],
+        score: { value: 3, reason: '1 P1 finding (shop.ts:1)' },
+        dropped: { invalid: 0, belowFloor: 0, belowCut: 0 },
       },
     })
   })
 
+  it('asks the provider for the review report schema', async () => {
+    const provider = new FakeProvider(() => Promise.resolve(OUTPUT))
+
+    await runReview({ pullRequest: pullRequestFixture() }, { provider })
+
+    expect(provider.prompts[0]?.outputSchema).toBe(REVIEW_REPORT_JSON_SCHEMA)
+  })
+
+  it('shows only confident findings, sorted, and counts what it dropped', async () => {
+    const text = reviewReportJson({
+      findings: [
+        findingFixture({ severity: 'P2', confidence: 95, line: 9 }),
+        findingFixture({ severity: 'P0', confidence: 80, line: 2 }),
+        findingFixture({ confidence: 60 }),
+        findingFixture({ confidence: 10 }),
+        { severity: 'P1' },
+      ],
+    })
+    const provider = new FakeProvider(() => Promise.resolve({ text, durationMs: 1 }))
+
+    const outcome = await runReview({ pullRequest: pullRequestFixture() }, { provider })
+
+    expect(outcome.status === 'reviewed' && outcome.result).toMatchObject({
+      findings: [
+        findingFixture({ severity: 'P0', confidence: 80, line: 2 }),
+        findingFixture({ severity: 'P2', confidence: 95, line: 9 }),
+      ],
+      score: { value: 1, reason: '1 P0 finding (shop.ts:2)' },
+      dropped: { invalid: 1, belowFloor: 1, belowCut: 1 },
+    })
+  })
+
+  it('rejects an answer that is not a review report', async () => {
+    const provider = new FakeProvider(() =>
+      Promise.resolve({ text: 'No significant problems found.', durationMs: 1 }),
+    )
+
+    await expect(
+      runReview({ pullRequest: pullRequestFixture() }, { provider }),
+    ).rejects.toBeInstanceOf(InvalidReviewReportError)
+  })
+
   it('leaves model and usage out when the provider does not report them', async () => {
-    const provider = new FakeProvider(() => Promise.resolve({ text: 'ok', durationMs: 5 }))
+    const provider = new FakeProvider(() =>
+      Promise.resolve({ text: reviewReportJson({ findings: [] }), durationMs: 5 }),
+    )
 
     const outcome = await runReview({ pullRequest: pullRequestFixture() }, { provider })
 
     expect(outcome.status === 'reviewed' && outcome.result).toEqual({
       target: expect.any(Object),
       providerId: 'fake-cli',
-      text: 'ok',
       durationMs: 5,
+      summary: 'Adds a spend endpoint.',
+      files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 0 }],
+      findings: [],
+      score: { value: 5, reason: 'no problems found' },
+      dropped: { invalid: 0, belowFloor: 0, belowCut: 0 },
     })
   })
 
@@ -80,9 +136,13 @@ describe('runReview', () => {
       },
       providerId: 'fake-cli',
       model: 'claude-fake-1',
-      text: OUTPUT.text,
       durationMs: 1234,
       usage: { inputTokens: 3512, outputTokens: 420 },
+      summary: 'Adds a spend endpoint.',
+      files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 1 }],
+      findings: [findingFixture()],
+      score: { value: 3, reason: '1 P1 finding (shop.ts:1)' },
+      dropped: { invalid: 0, belowFloor: 0, belowCut: 0 },
     })
   })
 
