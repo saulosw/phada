@@ -1,5 +1,5 @@
 import type { PullRequest } from '../github/pull-request.js'
-import { MIN_CONFIDENCE } from '../review/select-findings.js'
+import { CONFIDENCE_FLOOR } from '../review/select-findings.js'
 import type { FileChange, Finding, ReviewResult, ScoreValue, Severity } from '../review/types.js'
 import { toTerminalText } from './terminal-text.js'
 import { formatBytes, formatCount, formatDuration, formatTokens } from './units.js'
@@ -14,6 +14,8 @@ const SCORE_LABELS: Readonly<Record<ScoreValue, string>> = {
   1: 'critical problems',
   0: 'critical problems',
 }
+const RULE_LINE = /^(\s*)(([-=*_])(?:\s*\3)*\s*)$/
+const BLOCK_MARKER = /^((?:\s*(?:>|[-*+]\s|\d{1,9}[.)]\s))*\s*)(#|<|```|~~~)/
 const SEVERITY_HEADINGS: ReadonlyArray<readonly [Severity, string]> = [
   ['P0', 'P0 · Must fix'],
   ['P1', 'P1 · Should fix'],
@@ -43,6 +45,7 @@ export function formatReview(pr: PullRequest, result: ReviewResult): string {
     summarySection(result.summary),
     filesSection(result.files),
     findingsSection(result.findings),
+    worthCheckingSection(result),
     ['---', countsLine(result), footer(result)].join('\n'),
   ]
   return `${sections.filter((section) => section !== '').join('\n\n')}\n`
@@ -53,7 +56,7 @@ function scoreLine({ score }: ReviewResult): string {
 }
 
 function summarySection(summary: string): string {
-  const text = toTerminalText(summary).trim()
+  const text = blockText(summary)
   return text === '' ? '' : `## Summary\n\n${text}`
 }
 
@@ -90,27 +93,47 @@ function findingsSection(findings: readonly Finding[]): string {
 function findingItem(number: number, finding: Finding): string {
   const lines = [
     `${number}. **${singleLine(finding.file)}:${finding.line}**: ${singleLine(finding.title)} (confidence ${finding.confidence})`,
-    indent(toTerminalText(finding.why).trim()),
+    indent(blockText(finding.why)),
   ]
   if (finding.fix !== null && finding.fix.trim() !== '') {
-    lines.push(indent(`Fix: ${toTerminalText(finding.fix).trim()}`))
+    lines.push(indent(`Fix: ${blockText(finding.fix)}`))
   }
   return lines.join('\n')
 }
 
-function countsLine({ findings, dropped }: ReviewResult): string {
-  const belowCut = dropped.belowFloor + dropped.belowCut
+function worthCheckingSection({
+  worthChecking,
+  worthCheckingOmitted,
+  minConfidence,
+}: ReviewResult): string {
+  if (worthChecking.length === 0) return ''
+  const items = worthChecking.map(
+    ({ severity, file, line, title, confidence }) =>
+      `- **${severity}** · ${singleLine(file)}:${line}: ${singleLine(title)} (confidence ${confidence})`,
+  )
+  if (worthCheckingOmitted > 0) items.push(`- … (+${worthCheckingOmitted} more)`)
+  return [`## Worth checking (confidence below ${minConfidence})`, '', ...items].join('\n')
+}
+
+function countsLine({
+  findings,
+  worthChecking,
+  worthCheckingOmitted,
+  dropped,
+}: ReviewResult): string {
   const reasons: ReadonlyArray<readonly [number, string]> = [
     [dropped.outsideDiff, `${dropped.outsideDiff} outside the diff`],
     [dropped.duplicate, formatCount(dropped.duplicate, 'duplicate')],
-    [belowCut, `${belowCut} below confidence ${MIN_CONFIDENCE}`],
+    [dropped.belowFloor, `${dropped.belowFloor} below confidence ${CONFIDENCE_FLOOR}`],
     [dropped.invalid, `${dropped.invalid} invalid`],
   ]
   const shown = reasons.filter(([count]) => count > 0)
   const total = shown.reduce((sum, [count]) => sum + count, 0)
-  const droppedText =
-    total === 0 ? '' : ` · ${total} dropped (${shown.map(([, text]) => text).join(', ')})`
-  return `${formatCount(findings.length, 'finding')}${droppedText}`
+  const parts = [formatCount(findings.length, 'finding')]
+  const toCheck = worthChecking.length + worthCheckingOmitted
+  if (toCheck > 0) parts.push(`${toCheck} worth checking`)
+  if (total > 0) parts.push(`${total} dropped (${shown.map(([, text]) => text).join(', ')})`)
+  return parts.join(' · ')
 }
 
 function footer(result: ReviewResult): string {
@@ -133,6 +156,14 @@ function indent(text: string): string {
   return text
     .split('\n')
     .map((line) => `   ${line}`)
+    .join('\n')
+}
+
+function blockText(text: string): string {
+  return toTerminalText(text)
+    .trim()
+    .split('\n')
+    .map((line) => line.replace(RULE_LINE.test(line) ? RULE_LINE : BLOCK_MARKER, '$1\\$2'))
     .join('\n')
 }
 

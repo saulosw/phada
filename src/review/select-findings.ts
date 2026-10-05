@@ -3,36 +3,44 @@ import type { DiffFile } from './diff-lines.js'
 import type { ReportFile } from './parse-report.js'
 import type { FileChange, Finding, Severity } from './types.js'
 
-const CONFIDENCE_FLOOR = 50
-export const MIN_CONFIDENCE = 80
+export const CONFIDENCE_FLOOR = 50
+export const MAX_CONFIDENCE = 100
+const MAX_WORTH_CHECKING = 5
 
 const SEVERITY_RANK: Readonly<Record<Severity, number>> = { P0: 0, P1: 1, P2: 2 }
 
 export interface Selection {
   findings: Finding[]
+  worthChecking: Finding[]
+  worthCheckingOmitted: number
   belowFloor: number
   outsideDiff: number
   duplicate: number
-  belowCut: number
+}
+
+export function isConfidenceCut(value: number): boolean {
+  return Number.isInteger(value) && value >= CONFIDENCE_FLOOR && value <= MAX_CONFIDENCE
 }
 
 export function selectFindings(
   findings: readonly Finding[],
   diffFiles: readonly DiffFile[],
+  minConfidence: number,
 ): Selection {
   const aboveFloor = findings.filter((finding) => finding.confidence >= CONFIDENCE_FLOOR)
   const inDiff = aboveFloor.flatMap((finding) => {
     const file = findDiffFile(finding.file, diffFiles)
     return file?.lines.has(finding.line) ? [{ ...finding, file: file.path }] : []
   })
-  const unique = withoutDuplicates(inDiff)
-  const shown = unique.filter(clearsCut)
+  const unique = withoutDuplicates(inDiff, minConfidence)
+  const unsure = unique.filter((finding) => !clearsCut(finding, minConfidence)).sort(byPriority)
   return {
-    findings: shown.sort(byPriority),
+    findings: unique.filter((finding) => clearsCut(finding, minConfidence)).sort(byPriority),
+    worthChecking: unsure.slice(0, MAX_WORTH_CHECKING),
+    worthCheckingOmitted: Math.max(unsure.length - MAX_WORTH_CHECKING, 0),
     belowFloor: findings.length - aboveFloor.length,
     outsideDiff: aboveFloor.length - inDiff.length,
     duplicate: inDiff.length - unique.length,
-    belowCut: unique.length - shown.length,
   }
 }
 
@@ -58,12 +66,14 @@ export function summarizeFiles(
     .sort((a, b) => b.findings - a.findings || compareText(a.path, b.path))
 }
 
-function withoutDuplicates(findings: readonly Finding[]): Finding[] {
+function withoutDuplicates(findings: readonly Finding[], minConfidence: number): Finding[] {
   const kept = new Map<string, Finding>()
   for (const finding of findings) {
     const key = duplicateKey(finding)
     const current = kept.get(key)
-    if (current === undefined || byPreference(finding, current) < 0) kept.set(key, finding)
+    if (current === undefined || byPreference(finding, current, minConfidence) < 0) {
+      kept.set(key, finding)
+    }
   }
   return [...kept.values()]
 }
@@ -80,12 +90,12 @@ function normalizedTitle(title: string): string {
     .trim()
 }
 
-function byPreference(a: Finding, b: Finding): number {
-  return Number(clearsCut(b)) - Number(clearsCut(a)) || byWeight(a, b)
+function byPreference(a: Finding, b: Finding, minConfidence: number): number {
+  return Number(clearsCut(b, minConfidence)) - Number(clearsCut(a, minConfidence)) || byWeight(a, b)
 }
 
-function clearsCut(finding: Finding): boolean {
-  return finding.confidence >= MIN_CONFIDENCE
+function clearsCut(finding: Finding, minConfidence: number): boolean {
+  return finding.confidence >= minConfidence
 }
 
 function byPriority(a: Finding, b: Finding): number {

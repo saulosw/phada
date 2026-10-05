@@ -4,8 +4,16 @@ import { parseDiffFiles } from './diff-lines.js'
 import { parseReviewReport } from './parse-report.js'
 import { buildReviewPrompt } from './prompt.js'
 import { scoreFindings } from './score.js'
-import { selectFindings, summarizeFiles } from './select-findings.js'
+import {
+  CONFIDENCE_FLOOR,
+  isConfidenceCut,
+  MAX_CONFIDENCE,
+  selectFindings,
+  summarizeFiles,
+} from './select-findings.js'
 import type { ReviewOutcome, ReviewRequest } from './types.js'
+
+export const DEFAULT_MIN_CONFIDENCE = 60
 
 export interface RunReviewDeps {
   provider: ReviewProvider
@@ -16,7 +24,12 @@ export async function runReview(
   request: ReviewRequest,
   deps: RunReviewDeps,
 ): Promise<ReviewOutcome> {
-  const { pullRequest } = request
+  const { pullRequest, minConfidence = DEFAULT_MIN_CONFIDENCE } = request
+  if (!isConfidenceCut(minConfidence)) {
+    throw new RangeError(
+      `Invalid minConfidence ${minConfidence}: use an integer from ${CONFIDENCE_FLOOR} to ${MAX_CONFIDENCE}.`,
+    )
+  }
   if (pullRequest.diff.trim() === '') return { status: 'skipped', reason: 'empty-diff' }
 
   const createNonce = deps.createNonce ?? randomNonce
@@ -25,7 +38,7 @@ export async function runReview(
   )
   const report = parseReviewReport(text)
   const diffFiles = parseDiffFiles(pullRequest.diff)
-  const selection = selectFindings(report.findings, diffFiles)
+  const selection = selectFindings(report.findings, diffFiles, minConfidence)
   return {
     status: 'reviewed',
     result: {
@@ -38,13 +51,15 @@ export async function runReview(
       summary: report.summary,
       files: summarizeFiles(report.files, selection.findings, diffFiles),
       findings: selection.findings,
+      worthChecking: selection.worthChecking,
+      worthCheckingOmitted: selection.worthCheckingOmitted,
+      minConfidence,
       score: scoreFindings(selection.findings),
       dropped: {
         invalid: report.invalid,
         belowFloor: selection.belowFloor,
         outsideDiff: selection.outsideDiff,
         duplicate: selection.duplicate,
-        belowCut: selection.belowCut,
       },
     },
   }

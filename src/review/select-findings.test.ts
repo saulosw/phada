@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { findingFixture } from '../../test/support/finding.js'
 import { parseDiffFiles } from './diff-lines.js'
-import { selectFindings, summarizeFiles } from './select-findings.js'
+import { isConfidenceCut, selectFindings, summarizeFiles } from './select-findings.js'
+import type { Finding } from './types.js'
 
 function addedFile(path: string): string[] {
   return [
@@ -43,16 +44,67 @@ function usersFinding(line: number, title = 'spend has no auth') {
   return findingFixture({ file: 'api/src/users.ts', line, title })
 }
 
+const CUT = 80
+
+function describeFinding({ severity, confidence, file, line }: Finding): string {
+  return `${severity} ${confidence} ${file}:${line}`
+}
+
 describe('selectFindings', () => {
-  it('shows findings at confidence 80 or more and counts the rest by reason', () => {
-    const findings = [49, 50, 79, 80, 100].map((confidence) =>
+  it('shows findings at the cut or above and keeps the rest above the floor to check', () => {
+    const findings = [49, 50, 74, 75, 100].map((confidence) =>
       findingFixture({ confidence, title: `problem ${confidence}` }),
     )
 
-    const selection = selectFindings(findings, DIFF_FILES)
+    const selection = selectFindings(findings, DIFF_FILES, 75)
 
-    expect(selection.findings.map(({ confidence }) => confidence)).toEqual([100, 80])
-    expect(selection).toMatchObject({ belowFloor: 1, outsideDiff: 0, duplicate: 0, belowCut: 2 })
+    expect(selection.findings.map(({ confidence }) => confidence)).toEqual([100, 75])
+    expect(selection.worthChecking.map(({ confidence }) => confidence)).toEqual([74, 50])
+    expect(selection).toMatchObject({
+      worthCheckingOmitted: 0,
+      belowFloor: 1,
+      outsideDiff: 0,
+      duplicate: 0,
+    })
+  })
+
+  it.each([
+    [50, [100, 75, 74, 50], []],
+    [100, [100], [75, 74, 50]],
+  ])('applies a cut of %d', (minConfidence, shown, toCheck) => {
+    const findings = [50, 74, 75, 100].map((confidence) =>
+      findingFixture({ confidence, title: `problem ${confidence}` }),
+    )
+
+    const selection = selectFindings(findings, DIFF_FILES, minConfidence)
+
+    expect(selection.findings.map(({ confidence }) => confidence)).toEqual(shown)
+    expect(selection.worthChecking.map(({ confidence }) => confidence)).toEqual(toCheck)
+    expect(selection.worthCheckingOmitted).toBe(0)
+  })
+
+  it('keeps at most five findings to check, ordered like the findings, and counts the rest', () => {
+    const findings = [
+      findingFixture({ severity: 'P2', confidence: 70, file: 'a.ts', line: 1 }),
+      findingFixture({ severity: 'P0', confidence: 55, file: 'z.ts', line: 1 }),
+      findingFixture({ severity: 'P1', confidence: 60, file: 'b.ts', line: 2 }),
+      findingFixture({ severity: 'P1', confidence: 60, file: 'a.ts', line: 3 }),
+      findingFixture({ severity: 'P1', confidence: 65, file: 'c.ts', line: 1 }),
+      findingFixture({ severity: 'P2', confidence: 79, file: 'c.ts', line: 2 }),
+      findingFixture({ severity: 'P2', confidence: 50, file: 'z.ts', line: 5 }),
+    ].map((finding, index) => ({ ...finding, title: `problem ${index}` }))
+
+    const selection = selectFindings(findings, DIFF_FILES, CUT)
+
+    expect(selection.findings).toEqual([])
+    expect(selection.worthChecking.map(describeFinding)).toEqual([
+      'P0 55 z.ts:1',
+      'P1 65 c.ts:1',
+      'P1 60 a.ts:3',
+      'P1 60 b.ts:2',
+      'P2 79 c.ts:2',
+    ])
+    expect(selection.worthCheckingOmitted).toBe(2)
   })
 
   it('orders by severity, then confidence, then file, then line', () => {
@@ -65,13 +117,9 @@ describe('selectFindings', () => {
       findingFixture({ severity: 'P0', confidence: 80, file: 'z.ts', line: 1 }),
     ].map((finding, index) => ({ ...finding, title: `problem ${index}` }))
 
-    const ordered = selectFindings(findings, DIFF_FILES).findings
+    const ordered = selectFindings(findings, DIFF_FILES, CUT).findings
 
-    expect(
-      ordered.map(
-        ({ severity, confidence, file, line }) => `${severity} ${confidence} ${file}:${line}`,
-      ),
-    ).toEqual([
+    expect(ordered.map(describeFinding)).toEqual([
       'P0 80 z.ts:1',
       'P1 95 a.ts:3',
       'P1 95 a.ts:7',
@@ -84,7 +132,7 @@ describe('selectFindings', () => {
   it('does not change the order of the findings it was given', () => {
     const findings = [findingFixture({ severity: 'P2' }), findingFixture({ severity: 'P0' })]
 
-    selectFindings(findings, DIFF_FILES)
+    selectFindings(findings, DIFF_FILES, CUT)
 
     expect(findings.map(({ severity }) => severity)).toEqual(['P2', 'P0'])
   })
@@ -96,7 +144,7 @@ describe('selectFindings', () => {
     [9, false],
     [14, false],
   ])('keeps a finding on line %d only if it is inside a hunk (%s)', (line, kept) => {
-    const selection = selectFindings([usersFinding(line)], DIFF_FILES)
+    const selection = selectFindings([usersFinding(line)], DIFF_FILES, CUT)
 
     expect(selection.findings).toHaveLength(kept ? 1 : 0)
     expect(selection.outsideDiff).toBe(kept ? 0 : 1)
@@ -106,6 +154,7 @@ describe('selectFindings', () => {
     const selection = selectFindings(
       [findingFixture({ file: 'src/missing.ts' }), findingFixture({ file: 'src/old.ts' })],
       DIFF_FILES,
+      CUT,
     )
 
     expect(selection.findings).toEqual([])
@@ -115,7 +164,7 @@ describe('selectFindings', () => {
   it.each(['b/api/src/users.ts', './api/src/users.ts', 'users.ts', 'src/users.ts'])(
     'uses the full path of the changed file when the AI writes %s',
     (file) => {
-      const [finding] = selectFindings([{ ...usersFinding(11), file }], DIFF_FILES).findings
+      const [finding] = selectFindings([{ ...usersFinding(11), file }], DIFF_FILES, CUT).findings
 
       expect(finding?.file).toBe('api/src/users.ts')
     },
@@ -129,25 +178,30 @@ describe('selectFindings', () => {
         { ...usersFinding(11, 'Spend, has no auth.'), severity: 'P1', confidence: 95 },
       ],
       DIFF_FILES,
+      CUT,
     )
 
     expect(selection.findings.map(({ severity }) => severity)).toEqual(['P0'])
     expect(selection.duplicate).toBe(2)
   })
 
-  it('keeps the copy of a repeated problem that clears the confidence cut', () => {
+  it.each([
+    [80, 'P1 95'],
+    [60, 'P0 60'],
+  ])('keeps the copy of a repeated problem that clears a cut of %d', (minConfidence, kept) => {
     const selection = selectFindings(
       [
         { ...usersFinding(11), severity: 'P0', confidence: 60 },
         { ...usersFinding(11), severity: 'P1', confidence: 95 },
       ],
       DIFF_FILES,
+      minConfidence,
     )
 
     expect(
       selection.findings.map(({ severity, confidence }) => `${severity} ${confidence}`),
-    ).toEqual(['P1 95'])
-    expect(selection).toMatchObject({ duplicate: 1, belowCut: 0 })
+    ).toEqual([kept])
+    expect(selection).toMatchObject({ worthChecking: [], duplicate: 1 })
   })
 
   it('keeps the more confident of two duplicates with the same severity', () => {
@@ -157,6 +211,7 @@ describe('selectFindings', () => {
         { ...usersFinding(11), confidence: 95 },
       ],
       DIFF_FILES,
+      CUT,
     )
 
     expect(selection.findings.map(({ confidence }) => confidence)).toEqual([95])
@@ -171,6 +226,7 @@ describe('selectFindings', () => {
         usersFinding(12),
       ],
       DIFF_FILES,
+      CUT,
     )
 
     expect(selection.findings).toHaveLength(3)
@@ -187,15 +243,31 @@ describe('selectFindings', () => {
         { ...usersFinding(12, 'unsure'), confidence: 70 },
       ],
       DIFF_FILES,
+      CUT,
     )
 
     expect(selection).toEqual({
       findings: [{ ...usersFinding(11, 'twice'), confidence: 90 }],
+      worthChecking: [{ ...usersFinding(12, 'unsure'), confidence: 70 }],
+      worthCheckingOmitted: 0,
       belowFloor: 1,
       outsideDiff: 1,
       duplicate: 1,
-      belowCut: 1,
     })
+  })
+})
+
+describe('isConfidenceCut', () => {
+  it.each([
+    [50, true],
+    [75, true],
+    [100, true],
+    [49, false],
+    [101, false],
+    [75.5, false],
+    [Number.NaN, false],
+  ])('says whether %d is a valid confidence cut (%s)', (value, valid) => {
+    expect(isConfidenceCut(value)).toBe(valid)
   })
 })
 

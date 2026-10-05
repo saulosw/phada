@@ -2,6 +2,7 @@ import { pathToFileURL } from 'node:url'
 import { parseCliArgs, USAGE } from './cli/args.js'
 import { MissingGitHubTokenError, UsageError } from './cli/errors.js'
 import { formatError } from './cli/format-error.js'
+import { formatReviewJson } from './cli/format-json.js'
 import { formatPullRequestSummary, formatReview } from './cli/format-review.js'
 import { withProgress } from './cli/progress.js'
 import type { TextOutput } from './cli/progress.js'
@@ -63,14 +64,17 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
     deps.stderr.write(`${formatPullRequestSummary(pullRequest)}\n`)
 
     const outcome = await runReview(
-      { pullRequest, language: command.language },
+      { pullRequest, language: command.language, minConfidence: command.minConfidence },
       { provider: withProgress(provider, deps.stderr) },
     )
     if (outcome.status === 'skipped') {
       deps.stderr.write('Nothing to review: the pull request has no changes.\n')
-      return 0
     }
-    deps.stdout.write(formatReview(pullRequest, outcome.result))
+    if (command.format === 'json') {
+      deps.stdout.write(formatReviewJson(pullRequest, outcome))
+    } else if (outcome.status === 'reviewed') {
+      deps.stdout.write(formatReview(pullRequest, outcome.result))
+    }
     return 0
   } catch (error) {
     const { message, exitCode } = formatError(error, { debug })

@@ -4,6 +4,7 @@ import type { TokenUsage } from '../providers/types.js'
 export interface ReviewRequest {
   pullRequest: PullRequest
   language?: string
+  minConfidence?: number
 }
 
 export interface ReviewTarget {
@@ -42,7 +43,6 @@ export interface DroppedFindings {
   belowFloor: number
   outsideDiff: number
   duplicate: number
-  belowCut: number
 }
 
 export interface ReviewResult {
@@ -55,6 +55,9 @@ export interface ReviewResult {
   summary: string
   files: FileChange[]
   findings: Finding[]
+  worthChecking: Finding[]
+  worthCheckingOmitted: number
+  minConfidence: number
   score: Score
   dropped: DroppedFindings
 }

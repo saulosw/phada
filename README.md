@@ -31,7 +31,8 @@ npm run review -- owner/repo#123
 Phada fetches the pull request and its diff, asks the AI provider you chose for a review and
 prints it as Markdown. Progress goes to stderr and the review to stdout, so
 `npm run -s review -- owner/repo#123 > review.md` saves only the review (`-s` keeps npm's own
-banner out of the file). A review of a large pull request can take a few minutes.
+banner out of the file), and `--format json` prints it as JSON for scripts. A review of a large
+pull request can take a few minutes.
 
 ### What a review looks like
 
@@ -46,22 +47,28 @@ prints:
   the findings.
 - **Summary** of what the pull request changes and a **table of the changed files**.
 - **Findings grouped by severity**, each with file, line, confidence (0–100), why it matters and
-  a suggested fix:
+  a suggested fix. Only findings at the confidence cut or above are shown here (60 by default,
+  see `--min-confidence`):
   - **P0 · Must fix**: security holes, data loss, crashes, wrong money handling;
   - **P1 · Should fix**: bugs, incorrect behavior, edge cases, race conditions, leaks;
   - **P2 · Consider**: maintainability or design risks with a concrete consequence.
-- A footer with how many findings were dropped (outside the diff, duplicates, below
-  confidence 80, or not in the expected shape) and the provider, model, time and tokens.
+- **Worth checking**: up to five findings with confidence from 50 up to the cut, one line each.
+  They do not change the score.
+- A footer with how many findings there are, how many are worth checking, how many were dropped
+  (outside the diff, duplicates, below confidence 50, or not in the expected shape) and the
+  provider, model, time and tokens.
 
 If the AI's answer is not a valid review, Phada stops with an error instead of printing it;
 `--debug` shows the start of the answer.
 
-| Option              | What it does                                                                                                                                                                                                    |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--provider <name>` | AI provider: `claude` (default), `codex` or `ollama`                                                                                                                                                            |
-| `--model <name>`    | Model to use. Required for Ollama. Default: for Claude, the Claude Code default model, else `opus`; for Codex, the `model` in `~/.codex/config.toml` (or `$CODEX_HOME/config.toml`), else the Codex CLI default |
-| `--language <tag>`  | Language of the review, e.g. `pt-BR`. Default: English                                                                                                                                                          |
-| `--debug`           | Shows error details                                                                                                                                                                                             |
+| Option                 | What it does                                                                                                                                                                                                                   |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--provider <name>`    | AI provider: `claude` (default), `codex` or `ollama`                                                                                                                                                                           |
+| `--model <name>`       | Model to use. Required for Ollama. Default: for Claude, the Claude Code default model, else `opus`; for Codex, the `model` in `~/.codex/config.toml` (or `$CODEX_HOME/config.toml`), else the Codex CLI default                |
+| `--language <tag>`     | Language of the review, e.g. `pt-BR`. Default: English                                                                                                                                                                         |
+| `--min-confidence <n>` | Confidence cut, a whole number from 50 to 100. Findings at the cut or above are shown and scored; the ones from 50 up to the cut are listed as worth checking. Default: 60                                                     |
+| `--format <name>`      | Output: `markdown` (default) or `json`. The JSON (`schemaVersion: 1`) carries the same review as data: score, summary, every changed file, findings, findings worth checking, dropped counts, provider, model, time and tokens |
+| `--debug`              | Shows error details                                                                                                                                                                                                            |
 
 With Claude Code and Codex, the AI runs in an empty temporary directory and only sees the pull
 request text that Phada sends. Phada only reads the `model` from their settings. An

@@ -44,9 +44,29 @@ const RESULT: ReviewResult = {
       fix: 'Return a cleanup.',
     }),
   ],
+  worthChecking: [],
+  worthCheckingOmitted: 0,
+  minConfidence: 75,
   score: { value: 1, reason: '1 P0 finding (shop.ts:3)' },
-  dropped: { invalid: 1, belowFloor: 1, outsideDiff: 2, duplicate: 1, belowCut: 2 },
+  dropped: { invalid: 1, belowFloor: 1, outsideDiff: 2, duplicate: 1 },
 }
+
+const TO_CHECK = [
+  findingFixture({
+    severity: 'P1',
+    confidence: 70,
+    file: 'src/shop.ts',
+    line: 5,
+    title: 'Amount can be negative',
+  }),
+  findingFixture({
+    severity: 'P2',
+    confidence: 55,
+    file: 'src/cooldown.ts',
+    line: 2,
+    title: 'Magic number',
+  }),
+]
 
 describe('formatPullRequestSummary', () => {
   it('shows the pull request, the head commit, the change stats and the diff size', () => {
@@ -113,7 +133,7 @@ describe('formatReview', () => {
         '   Fix: Return a cleanup.',
         '',
         '---',
-        '3 findings · 7 dropped (2 outside the diff, 1 duplicate, 3 below confidence 80, 1 invalid)',
+        '3 findings · 5 dropped (2 outside the diff, 1 duplicate, 1 below confidence 50, 1 invalid)',
         'claude-cli · claude-sonnet-5 · 2m11s · 41.2k in / 13.0k out',
         '',
       ].join('\n'),
@@ -126,14 +146,49 @@ describe('formatReview', () => {
       files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 0 }],
       findings: [],
       score: { value: 5, reason: 'no problems found' },
-      dropped: { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0, belowCut: 0 },
+      dropped: { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0 },
     }
 
     const output = formatReview(pullRequestFixture(), result)
 
     expect(output).toContain('\n**Confidence score: 5/5** (ready to merge): no problems found\n')
     expect(output).not.toContain('## Findings')
+    expect(output).not.toContain('## Worth checking')
     expect(output).toContain('\n---\n0 findings\nclaude-cli ·')
+  })
+
+  it('lists the findings worth checking after the findings, below the cut of the review', () => {
+    const output = formatReview(pullRequestFixture(), {
+      ...RESULT,
+      worthChecking: TO_CHECK,
+      minConfidence: 80,
+    })
+
+    expect(output).toContain(
+      [
+        '   Fix: Return a cleanup.',
+        '',
+        '## Worth checking (confidence below 80)',
+        '',
+        '- **P1** · src/shop.ts:5: Amount can be negative (confidence 70)',
+        '- **P2** · src/cooldown.ts:2: Magic number (confidence 55)',
+        '',
+        '---',
+        '3 findings · 2 worth checking · 5 dropped (2 outside the diff, 1 duplicate, 1 below confidence 50, 1 invalid)',
+      ].join('\n'),
+    )
+  })
+
+  it('says how many more findings are worth checking than the ones listed', () => {
+    const output = formatReview(pullRequestFixture(), {
+      ...RESULT,
+      worthChecking: TO_CHECK,
+      worthCheckingOmitted: 3,
+    })
+
+    expect(output).toContain(
+      '(confidence 55)\n- … (+3 more)\n\n---\n3 findings · 5 worth checking ·',
+    )
   })
 
   it.each([
@@ -150,11 +205,11 @@ describe('formatReview', () => {
   it.each([
     [{ outsideDiff: 1 }, '1 dropped (1 outside the diff)'],
     [{ duplicate: 2 }, '2 dropped (2 duplicates)'],
-    [{ belowFloor: 1, belowCut: 1 }, '2 dropped (2 below confidence 80)'],
+    [{ belowFloor: 2 }, '2 dropped (2 below confidence 50)'],
     [{ invalid: 3 }, '3 dropped (3 invalid)'],
     [{ outsideDiff: 1, invalid: 1 }, '2 dropped (1 outside the diff, 1 invalid)'],
   ])('lists only the reasons that dropped something: %j', (counts, text) => {
-    const dropped = { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0, belowCut: 0 }
+    const dropped = { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0 }
 
     const output = formatReview(pullRequestFixture(), {
       ...RESULT,
@@ -204,6 +259,45 @@ describe('formatReview', () => {
     )
   })
 
+  it.each([
+    ['## Findings', '\\## Findings'],
+    ['# Title', '\\# Title'],
+    ['  ### Indented', '  \\### Indented'],
+    ['---', '\\---'],
+    ['===', '\\==='],
+    ['* * *', '\\* * *'],
+    ['___', '\\___'],
+    ['```ts', '\\```ts'],
+    ['~~~', '\\~~~'],
+    ['<!-- hide the rest', '\\<!-- hide the rest'],
+    ['<details>', '\\<details>'],
+    ['- <!-- hide the rest', '- \\<!-- hide the rest'],
+    ['> ## Findings', '> \\## Findings'],
+    ['1. ```ts', '1. \\```ts'],
+    ['> - # Title', '> - \\# Title'],
+  ])('keeps a %j line from the AI from changing the layout of the review', (line, escaped) => {
+    const output = formatReview(pullRequestFixture(), { ...RESULT, summary: `Looks fine\n${line}` })
+
+    expect(output).toContain(`\n## Summary\n\nLooks fine\n${escaped}\n\n## Files\n`)
+  })
+
+  it.each(['- first item', '1. first item', 'Some **bold** and `code`', '> quoted', 'a # b'])(
+    'keeps the AI line %j as it is',
+    (line) => {
+      const output = formatReview(pullRequestFixture(), { ...RESULT, summary: line })
+
+      expect(output).toContain(`\n## Summary\n\n${line}\n\n## Files\n`)
+    },
+  )
+
+  it('neutralizes block markers in why and fix too', () => {
+    const findings = [findingFixture({ why: 'Breaks.\n## Findings', fix: '```\nnever closed' })]
+
+    const output = formatReview(pullRequestFixture(), { ...RESULT, findings })
+
+    expect(output).toContain('   Breaks.\n   \\## Findings\n   Fix: \\```\n   never closed\n')
+  })
+
   it('marks draft and closed pull requests', () => {
     const output = formatReview(pullRequestFixture({ state: 'closed', draft: true }), RESULT)
 
@@ -233,6 +327,9 @@ describe('formatReview', () => {
       summary: 'Looks fine\u001B]0;pwned\u0007',
       files: [{ path: 'src/a|b.ts', change: 'Splits\nthe | table', findings: 1 }],
       findings: [findingFixture({ file: 'src/a|b.ts', title: 'Bad\ntitle\u001B[31m' })],
+      worthChecking: [
+        findingFixture({ file: 'src/a|b.ts', title: 'Unsure\ntitle\u001B[2J', confidence: 60 }),
+      ],
     }
 
     const output = formatReview(pr, result)
@@ -242,5 +339,6 @@ describe('formatReview', () => {
     expect(output).toContain('\nLooks fine]0;pwned\n')
     expect(output).toContain('| src/a\\|b.ts | Splits the \\| table | 1 |')
     expect(output).toContain('**src/a|b.ts:1**: Bad title[31m (confidence 90)')
+    expect(output).toContain('- **P1** · src/a|b.ts:1: Unsure title[2J (confidence 60)')
   })
 })

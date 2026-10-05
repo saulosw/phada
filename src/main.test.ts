@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { describe, expect, it } from 'vitest'
+import { findingFixture } from '../test/support/finding.js'
 import { pullRequestFixture } from '../test/support/pull-request.js'
 import { reviewReportJson } from '../test/support/review-report.js'
 import { USAGE } from './cli/args.js'
@@ -132,6 +133,59 @@ describe('run', () => {
     expect(h.prompts[0]?.instructions).toContain(
       'Write summary, change, title, why and fix in pt-BR;',
     )
+  })
+
+  it('applies --min-confidence to the review', async () => {
+    const text = reviewReportJson({ findings: [findingFixture({ confidence: 85 })] })
+    const h = harness({ review: () => Promise.resolve({ ...OUTPUT, text }) })
+
+    expect(await run(['acme/shop#12', '--min-confidence', '90'], h.deps)).toBe(0)
+    expect(h.stdout()).toContain(
+      '## Worth checking (confidence below 90)\n\n- **P1** · src/shop.ts:1: spend has no auth (confidence 85)\n',
+    )
+    expect(h.stdout()).toContain('\n0 findings · 1 worth checking\n')
+  })
+
+  it('prints only the JSON review on stdout with --format json', async () => {
+    const h = harness()
+
+    expect(await run(['acme/shop#12', '--format', 'json'], h.deps)).toBe(0)
+    expect(JSON.parse(h.stdout())).toMatchObject({
+      schemaVersion: 1,
+      status: 'reviewed',
+      pullRequest: { repo: 'acme/shop', number: 12 },
+      review: { score: { value: 5 }, minConfidence: 60, findings: [] },
+    })
+    expect(h.stderr()).toContain('Reviewing with fake-cli…')
+  })
+
+  it('prints a skipped review as JSON when the pull request has no changes', async () => {
+    const h = harness({ pullRequest: () => Promise.resolve(pullRequestFixture({ diff: '' })) })
+
+    expect(await run(['acme/shop#12', '--format', 'json'], h.deps)).toBe(0)
+    expect(JSON.parse(h.stdout())).toMatchObject({ status: 'skipped', reason: 'empty-diff' })
+    expect(h.stderr()).toContain('Nothing to review: the pull request has no changes.\n')
+  })
+
+  it('keeps errors on stderr and stdout empty with --format json', async () => {
+    const h = harness({
+      review: () =>
+        Promise.reject(new ProviderError('claude-cli', 'not-authenticated', 'Not logged in')),
+    })
+
+    expect(await run(['acme/shop#12', '--format', 'json'], h.deps)).toBe(1)
+    expect(h.stdout()).toBe('')
+    expect(h.stderr()).toContain('phada: Claude Code is not logged in.')
+  })
+
+  it('rejects an unknown format with exit 2 before fetching', async () => {
+    const h = harness()
+
+    expect(await run(['acme/shop#12', '--format', 'xml'], h.deps)).toBe(2)
+    expect(h.stderr()).toBe(
+      'phada: Invalid --format "xml". Use markdown or json. Run with --help for usage.\n',
+    )
+    expect(h.fetches).toHaveLength(0)
   })
 
   it.each([{}, { GITHUB_TOKEN: '' }, { GITHUB_TOKEN: '  \n' }])(

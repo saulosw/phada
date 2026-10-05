@@ -6,7 +6,7 @@ import type { ReviewOutput, ReviewPrompt, ReviewProvider } from '../providers/ty
 import { InvalidReviewReportError } from './errors.js'
 import { buildReviewPrompt } from './prompt.js'
 import { REVIEW_REPORT_JSON_SCHEMA } from './report-schema.js'
-import { runReview } from './run-review.js'
+import { DEFAULT_MIN_CONFIDENCE, runReview } from './run-review.js'
 
 class FakeProvider implements ReviewProvider {
   readonly id = 'fake-cli'
@@ -50,8 +50,11 @@ describe('runReview', () => {
         summary: 'Adds a spend endpoint.',
         files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 1 }],
         findings: [findingFixture()],
+        worthChecking: [],
+        worthCheckingOmitted: 0,
+        minConfidence: 60,
         score: { value: 3, reason: '1 P1 finding (shop.ts:1)' },
-        dropped: { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0, belowCut: 0 },
+        dropped: { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0 },
       },
     })
   })
@@ -64,12 +67,12 @@ describe('runReview', () => {
     expect(provider.prompts[0]?.outputSchema).toBe(REVIEW_REPORT_JSON_SCHEMA)
   })
 
-  it('shows only confident findings, sorted, and counts what it dropped', async () => {
+  it('shows findings from confidence 60 by default, sorted, and counts what it dropped', async () => {
     const text = reviewReportJson({
       findings: [
         findingFixture({ severity: 'P2', confidence: 95, line: 9 }),
-        findingFixture({ severity: 'P0', confidence: 80, line: 2 }),
-        findingFixture({ confidence: 60 }),
+        findingFixture({ severity: 'P0', confidence: 60, line: 2 }),
+        findingFixture({ confidence: 59 }),
         findingFixture({ confidence: 10 }),
         { severity: 'P1' },
       ],
@@ -80,13 +83,53 @@ describe('runReview', () => {
 
     expect(outcome.status === 'reviewed' && outcome.result).toMatchObject({
       findings: [
-        findingFixture({ severity: 'P0', confidence: 80, line: 2 }),
+        findingFixture({ severity: 'P0', confidence: 60, line: 2 }),
         findingFixture({ severity: 'P2', confidence: 95, line: 9 }),
       ],
+      worthChecking: [findingFixture({ confidence: 59 })],
+      worthCheckingOmitted: 0,
+      minConfidence: DEFAULT_MIN_CONFIDENCE,
       score: { value: 1, reason: '1 P0 finding (shop.ts:2)' },
-      dropped: { invalid: 1, belowFloor: 1, outsideDiff: 0, duplicate: 0, belowCut: 1 },
+      dropped: { invalid: 1, belowFloor: 1, outsideDiff: 0, duplicate: 0 },
     })
   })
+
+  it('applies the confidence cut of the request and returns it', async () => {
+    const text = reviewReportJson({
+      findings: [findingFixture({ confidence: 90, line: 2 }), findingFixture({ confidence: 60 })],
+    })
+    const provider = new FakeProvider(() => Promise.resolve({ text, durationMs: 1 }))
+
+    const outcome = await runReview(
+      { pullRequest: pullRequestFixture(), minConfidence: 95 },
+      { provider },
+    )
+
+    expect(outcome.status === 'reviewed' && outcome.result).toMatchObject({
+      findings: [],
+      worthChecking: [
+        findingFixture({ confidence: 90, line: 2 }),
+        findingFixture({ confidence: 60 }),
+      ],
+      minConfidence: 95,
+      score: { value: 5, reason: 'no problems found' },
+      files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 0 }],
+    })
+  })
+
+  it.each([49, 101, 75.5])(
+    'rejects a confidence cut of %d without calling the provider',
+    async (minConfidence) => {
+      const provider = new FakeProvider(() => Promise.resolve(OUTPUT))
+
+      await expect(
+        runReview({ pullRequest: pullRequestFixture(), minConfidence }, { provider }),
+      ).rejects.toThrow(
+        new RangeError(`Invalid minConfidence ${minConfidence}: use an integer from 50 to 100.`),
+      )
+      expect(provider.prompts).toHaveLength(0)
+    },
+  )
 
   it('drops findings outside the diff and repeated findings, and counts them', async () => {
     const text = reviewReportJson({
@@ -103,7 +146,7 @@ describe('runReview', () => {
 
     expect(outcome.status === 'reviewed' && outcome.result).toMatchObject({
       findings: [findingFixture({ line: 2 })],
-      dropped: { invalid: 0, belowFloor: 0, outsideDiff: 2, duplicate: 1, belowCut: 0 },
+      dropped: { invalid: 0, belowFloor: 0, outsideDiff: 2, duplicate: 1 },
     })
   })
 
@@ -131,8 +174,11 @@ describe('runReview', () => {
       summary: 'Adds a spend endpoint.',
       files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 0 }],
       findings: [],
+      worthChecking: [],
+      worthCheckingOmitted: 0,
+      minConfidence: 60,
       score: { value: 5, reason: 'no problems found' },
-      dropped: { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0, belowCut: 0 },
+      dropped: { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0 },
     })
   })
 
@@ -160,8 +206,11 @@ describe('runReview', () => {
       summary: 'Adds a spend endpoint.',
       files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 1 }],
       findings: [findingFixture()],
+      worthChecking: [],
+      worthCheckingOmitted: 0,
+      minConfidence: 60,
       score: { value: 3, reason: '1 P1 finding (shop.ts:1)' },
-      dropped: { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0, belowCut: 0 },
+      dropped: { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0 },
     })
   })
 
