@@ -79,6 +79,19 @@ describe('withProgress', () => {
     expect(output.written).toEqual(['Reviewing with fake-cli… (this can take a few minutes)\n'])
   })
 
+  it('names the action it is waiting for', async () => {
+    const { provider, settle } = deferredProvider()
+    const output = recorder(false)
+
+    const review = withProgress(provider, output, 'Verifying findings').review(PROMPT)
+    settle().resolve(OUTPUT)
+    await review
+
+    expect(output.written).toEqual([
+      'Verifying findings with fake-cli… (this can take a few minutes)\n',
+    ])
+  })
+
   it('stops the timer and clears the line when the provider fails', async () => {
     const { provider, settle } = deferredProvider()
     const output = recorder(true)

@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import type { ReviewProvider } from '../providers/types.js'
+import type { ReviewProvider, TokenUsage } from '../providers/types.js'
 import { parseDiffFiles } from './diff-lines.js'
 import { parseReviewReport } from './parse-report.js'
 import { buildReviewPrompt } from './prompt.js'
@@ -8,15 +8,19 @@ import {
   CONFIDENCE_FLOOR,
   isConfidenceCut,
   MAX_CONFIDENCE,
-  selectFindings,
+  prepareCandidates,
+  splitAtCut,
   summarizeFiles,
+  VERIFY_CANDIDATE_FLOOR,
 } from './select-findings.js'
 import type { ReviewOutcome, ReviewRequest } from './types.js'
+import { verifyCandidates } from './verify-findings.js'
 
 export const DEFAULT_MIN_CONFIDENCE = 60
 
 export interface RunReviewDeps {
   provider: ReviewProvider
+  verifier?: ReviewProvider
   createNonce?: () => string
 }
 
@@ -38,7 +42,23 @@ export async function runReview(
   )
   const report = parseReviewReport(text)
   const diffFiles = parseDiffFiles(pullRequest.diff)
-  const selection = selectFindings(report.findings, diffFiles, minConfidence)
+  const verify = request.verify === true
+  const prepared = prepareCandidates(
+    report.findings,
+    diffFiles,
+    minConfidence,
+    verify ? VERIFY_CANDIDATE_FLOOR : CONFIDENCE_FLOOR,
+  )
+  const checked = verify
+    ? await verifyCandidates(
+        request,
+        prepared.candidates,
+        deps.verifier ?? deps.provider,
+        createNonce(),
+      )
+    : undefined
+  const selection = splitAtCut(checked?.findings ?? prepared.candidates, minConfidence)
+  const totalUsage = sumUsage(usage, checked?.verification.usage)
   return {
     status: 'reviewed',
     result: {
@@ -46,8 +66,8 @@ export async function runReview(
       providerId: deps.provider.id,
       ...(model === undefined ? {} : { model }),
       ...(additionalModels === undefined ? {} : { additionalModels }),
-      durationMs,
-      ...(usage === undefined ? {} : { usage }),
+      durationMs: durationMs + (checked?.verification.durationMs ?? 0),
+      ...(totalUsage === undefined ? {} : { usage: totalUsage }),
       summary: report.summary,
       files: summarizeFiles(report.files, selection.findings, diffFiles),
       findings: selection.findings,
@@ -57,11 +77,24 @@ export async function runReview(
       score: scoreFindings(selection.findings),
       dropped: {
         invalid: report.invalid,
-        belowFloor: selection.belowFloor,
-        outsideDiff: selection.outsideDiff,
-        duplicate: selection.duplicate,
+        belowFloor: prepared.belowFloor + selection.belowFloor,
+        outsideDiff: prepared.outsideDiff,
+        duplicate: prepared.duplicate,
+        rejected: checked?.verification.rejected.length ?? 0,
       },
+      ...(checked === undefined ? {} : { verification: checked.verification }),
     },
+  }
+}
+
+function sumUsage(
+  review: TokenUsage | undefined,
+  verification: TokenUsage | undefined,
+): TokenUsage | undefined {
+  if (review === undefined || verification === undefined) return review ?? verification
+  return {
+    inputTokens: review.inputTokens + verification.inputTokens,
+    outputTokens: review.outputTokens + verification.outputTokens,
   }
 }
 

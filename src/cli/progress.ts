@@ -9,11 +9,15 @@ export interface TextOutput {
 const TICK_MS = 1000
 const CLEAR_LINE = '\r\u001B[2K'
 
-export function withProgress(provider: ReviewProvider, output: TextOutput): ReviewProvider {
+export function withProgress(
+  provider: ReviewProvider,
+  output: TextOutput,
+  action = 'Reviewing',
+): ReviewProvider {
   return {
     id: provider.id,
     async review(prompt: ReviewPrompt) {
-      const stop = showProgress(`Reviewing with ${provider.id}…`, output)
+      const stop = showProgress(`${action} with ${provider.id}…`, output)
       try {
         return await provider.review(prompt)
       } finally {

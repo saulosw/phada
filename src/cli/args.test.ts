@@ -16,6 +16,7 @@ describe('parseCliArgs', () => {
       ref: REF,
       provider: 'claude',
       format: 'markdown',
+      verify: false,
       debug: false,
     })
   })
@@ -27,7 +28,7 @@ describe('parseCliArgs', () => {
   it('reads every option', () => {
     const argv = ['acme/shop#12', '--provider', 'codex', '--model', ' opus ', '--language', 'pt-BR']
 
-    const options = ['--min-confidence', '60', '--format', 'json', '--debug']
+    const options = ['--min-confidence', '60', '--format', 'json', '--verify', '--debug']
 
     expect(parseCliArgs([...argv, ...options])).toEqual({
       kind: 'review',
@@ -37,6 +38,7 @@ describe('parseCliArgs', () => {
       language: 'pt-BR',
       minConfidence: 60,
       format: 'json',
+      verify: true,
       debug: true,
     })
   })
@@ -89,6 +91,7 @@ describe('parseCliArgs', () => {
       '--language',
       '--min-confidence',
       '--format',
+      '--verify',
       '--debug',
       '--help',
       'GITHUB_TOKEN',
@@ -96,6 +99,10 @@ describe('parseCliArgs', () => {
     ]) {
       expect(USAGE).toContain(option)
     }
+  })
+
+  it('rejects a value given to --verify', () => {
+    expect(() => parseCliArgs(['acme/shop#12', '--verify=yes'])).toThrow(UsageError)
   })
 
   it('shows the default confidence cut in the usage text', () => {

@@ -1,9 +1,13 @@
 import { z } from 'zod'
 import type { JsonSchema } from '../providers/types.js'
 
+export const SeveritySchema = z.enum(['P0', 'P1', 'P2'])
+
+export const ConfidenceSchema = z.number().int().min(0).max(100)
+
 const FINDING_SHAPE = {
-  severity: z.enum(['P0', 'P1', 'P2']),
-  confidence: z.number().int().min(0).max(100),
+  severity: SeveritySchema,
+  confidence: ConfidenceSchema,
   file: z.string().min(1),
   line: z.number().int().positive(),
   title: z.string().min(1),
@@ -23,16 +27,16 @@ export const ReportEnvelopeSchema = z.object({
   findings: z.array(z.unknown()),
 })
 
-export const REVIEW_REPORT_JSON_SCHEMA: JsonSchema = withoutDialect(
-  z.toJSONSchema(
-    z.strictObject({
-      summary: z.string(),
-      files: z.array(z.strictObject(FILE_SHAPE)),
-      findings: z.array(z.strictObject(FINDING_SHAPE)),
-    }),
-  ),
+export const REVIEW_REPORT_JSON_SCHEMA = providerSchema(
+  z.strictObject({
+    summary: z.string(),
+    files: z.array(z.strictObject(FILE_SHAPE)),
+    findings: z.array(z.strictObject(FINDING_SHAPE)),
+  }),
 )
 
-function withoutDialect(schema: Record<string, unknown>): JsonSchema {
-  return Object.fromEntries(Object.entries(schema).filter(([key]) => key !== '$schema'))
+export function providerSchema(schema: z.ZodType): JsonSchema {
+  return Object.fromEntries(
+    Object.entries(z.toJSONSchema(schema)).filter(([key]) => key !== '$schema'),
+  )
 }

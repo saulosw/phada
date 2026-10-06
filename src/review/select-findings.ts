@@ -5,42 +5,57 @@ import type { FileChange, Finding, Severity } from './types.js'
 
 export const CONFIDENCE_FLOOR = 50
 export const MAX_CONFIDENCE = 100
+export const VERIFY_CANDIDATE_FLOOR = 25
 const MAX_WORTH_CHECKING = 5
 
 const SEVERITY_RANK: Readonly<Record<Severity, number>> = { P0: 0, P1: 1, P2: 2 }
 
-export interface Selection {
+export interface Candidates {
+  candidates: Finding[]
+  belowFloor: number
+  outsideDiff: number
+  duplicate: number
+}
+
+export interface CutSplit {
   findings: Finding[]
   worthChecking: Finding[]
   worthCheckingOmitted: number
   belowFloor: number
-  outsideDiff: number
-  duplicate: number
 }
 
 export function isConfidenceCut(value: number): boolean {
   return Number.isInteger(value) && value >= CONFIDENCE_FLOOR && value <= MAX_CONFIDENCE
 }
 
-export function selectFindings(
+export function prepareCandidates(
   findings: readonly Finding[],
   diffFiles: readonly DiffFile[],
   minConfidence: number,
-): Selection {
-  const aboveFloor = findings.filter((finding) => finding.confidence >= CONFIDENCE_FLOOR)
+  floor = CONFIDENCE_FLOOR,
+): Candidates {
+  const aboveFloor = findings.filter((finding) => finding.confidence >= floor)
   const inDiff = aboveFloor.flatMap((finding) => {
     const file = findDiffFile(finding.file, diffFiles)
     return file?.lines.has(finding.line) ? [{ ...finding, file: file.path }] : []
   })
-  const unique = withoutDuplicates(inDiff, minConfidence)
-  const unsure = unique.filter((finding) => !clearsCut(finding, minConfidence)).sort(byPriority)
+  const candidates = withoutDuplicates(inDiff, minConfidence)
   return {
-    findings: unique.filter((finding) => clearsCut(finding, minConfidence)).sort(byPriority),
+    candidates,
+    belowFloor: findings.length - aboveFloor.length,
+    outsideDiff: aboveFloor.length - inDiff.length,
+    duplicate: inDiff.length - candidates.length,
+  }
+}
+
+export function splitAtCut(findings: readonly Finding[], minConfidence: number): CutSplit {
+  const aboveFloor = findings.filter(isAboveFloor)
+  const unsure = aboveFloor.filter((finding) => !clearsCut(finding, minConfidence)).sort(byPriority)
+  return {
+    findings: aboveFloor.filter((finding) => clearsCut(finding, minConfidence)).sort(byPriority),
     worthChecking: unsure.slice(0, MAX_WORTH_CHECKING),
     worthCheckingOmitted: Math.max(unsure.length - MAX_WORTH_CHECKING, 0),
     belowFloor: findings.length - aboveFloor.length,
-    outsideDiff: aboveFloor.length - inDiff.length,
-    duplicate: inDiff.length - unique.length,
   }
 }
 
@@ -92,6 +107,10 @@ function normalizedTitle(title: string): string {
 
 function byPreference(a: Finding, b: Finding, minConfidence: number): number {
   return Number(clearsCut(b, minConfidence)) - Number(clearsCut(a, minConfidence)) || byWeight(a, b)
+}
+
+function isAboveFloor(finding: Finding): boolean {
+  return finding.confidence >= CONFIDENCE_FLOOR
 }
 
 function clearsCut(finding: Finding, minConfidence: number): boolean {

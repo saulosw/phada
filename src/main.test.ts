@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { findingFixture } from '../test/support/finding.js'
 import { pullRequestFixture } from '../test/support/pull-request.js'
 import { reviewReportJson } from '../test/support/review-report.js'
+import { verdictFixture, verificationJson } from '../test/support/verification.js'
 import { USAGE } from './cli/args.js'
 import { UsageError } from './cli/errors.js'
 import { PullRequestNotFoundError } from './github/errors.js'
@@ -144,6 +145,29 @@ describe('run', () => {
       '## Worth checking (confidence below 90)\n\n- **P1** · src/shop.ts:1: spend has no auth (confidence 85)\n',
     )
     expect(h.stdout()).toContain('\n0 findings · 1 worth checking\n')
+  })
+
+  it('checks the findings with a second call to the same provider with --verify', async () => {
+    const answers: ReviewOutput[] = [
+      { ...OUTPUT, text: reviewReportJson({ findings: [findingFixture({ confidence: 55 })] }) },
+      { text: verificationJson([verdictFixture({ confidence: 95 })]), durationMs: 1000 },
+    ]
+    const h = harness({ review: () => Promise.resolve(answers.shift() ?? OUTPUT) })
+
+    expect(await run(['acme/shop#12', '--verify'], h.deps)).toBe(0)
+    expect(h.providers).toHaveLength(1)
+    expect(h.prompts.map(({ data }) => data.includes('<<<PHADA_FINDINGS_'))).toEqual([false, true])
+    expect(h.stderr()).toContain(
+      [
+        'Reviewing with fake-cli… (this can take a few minutes)',
+        'Verifying findings with fake-cli… (this can take a few minutes)',
+        '',
+      ].join('\n'),
+    )
+    expect(h.stdout()).toContain('1. **src/shop.ts:1**: spend has no auth (confidence 95)')
+    expect(h.stdout()).toContain(
+      '\nfake-cli · claude-fake-1 · verified · 43.1s · 3.5k in / 420 out\n',
+    )
   })
 
   it('prints only the JSON review on stdout with --format json', async () => {

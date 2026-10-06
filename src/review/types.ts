@@ -5,6 +5,7 @@ export interface ReviewRequest {
   pullRequest: PullRequest
   language?: string
   minConfidence?: number
+  verify?: boolean
 }
 
 export interface ReviewTarget {
@@ -25,6 +26,19 @@ export interface Finding {
   fix: string | null
 }
 
+export interface RejectedFinding extends Finding {
+  reason: string
+}
+
+export interface Verification {
+  candidates: number
+  confirmed: number
+  unverified: number
+  rejected: RejectedFinding[]
+  durationMs: number
+  usage?: TokenUsage
+}
+
 export interface FileChange {
   path: string
   change: string
@@ -43,6 +57,7 @@ export interface DroppedFindings {
   belowFloor: number
   outsideDiff: number
   duplicate: number
+  rejected: number
 }
 
 export interface ReviewResult {
@@ -60,6 +75,7 @@ export interface ReviewResult {
   minConfidence: number
   score: Score
   dropped: DroppedFindings
+  verification?: Verification
 }
 
 export type ReviewOutcome =

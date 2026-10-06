@@ -28,7 +28,7 @@ const RESULT: ReviewResult = {
   worthCheckingOmitted: 2,
   minConfidence: 75,
   score: { value: 1, reason: '1 P0 finding (shop.ts:3)' },
-  dropped: { invalid: 0, belowFloor: 1, outsideDiff: 2, duplicate: 0 },
+  dropped: { invalid: 0, belowFloor: 1, outsideDiff: 2, duplicate: 0, rejected: 0 },
 }
 
 function parse(output: string): unknown {
@@ -52,12 +52,58 @@ describe('formatReviewJson', () => {
         worthChecking: [findingFixture({ severity: 'P2', confidence: 60, line: 5, fix: null })],
         worthCheckingOmitted: 2,
         minConfidence: 75,
-        dropped: { invalid: 0, belowFloor: 1, outsideDiff: 2, duplicate: 0 },
+        dropped: { invalid: 0, belowFloor: 1, outsideDiff: 2, duplicate: 0, rejected: 0 },
+        verification: null,
         provider: { id: 'codex-cli', model: 'gpt-6-astra', additionalModels: ['gpt-6-mini'] },
         durationMs: 16_400,
         usage: { inputTokens: 9700, outputTokens: 417 },
       },
     })
+  })
+
+  it('prints the verification with the rejected findings and why they were rejected', () => {
+    const rejected = findingFixture({ severity: 'P1', confidence: 55, line: 8, fix: null })
+    const result: ReviewResult = {
+      ...RESULT,
+      dropped: { ...RESULT.dropped, rejected: 1 },
+      verification: {
+        candidates: 4,
+        confirmed: 2,
+        unverified: 1,
+        rejected: [{ ...rejected, reason: 'Handled at line 4.' }],
+        durationMs: 9000,
+        usage: { inputTokens: 9800, outputTokens: 200 },
+      },
+    }
+
+    const output = parse(formatReviewJson(pullRequestFixture(), { status: 'reviewed', result }))
+
+    expect(output).toMatchObject({
+      review: {
+        dropped: { rejected: 1 },
+        verification: {
+          candidates: 4,
+          confirmed: 2,
+          unverified: 1,
+          rejected: [{ ...rejected, reason: 'Handled at line 4.' }],
+          durationMs: 9000,
+          usage: { inputTokens: 9800, outputTokens: 200 },
+        },
+      },
+    })
+  })
+
+  it('prints a null usage for a verification that did not report it', () => {
+    const verification = { candidates: 0, confirmed: 0, unverified: 0, rejected: [], durationMs: 0 }
+
+    const output = parse(
+      formatReviewJson(pullRequestFixture(), {
+        status: 'reviewed',
+        result: { ...RESULT, verification },
+      }),
+    )
+
+    expect(output).toMatchObject({ review: { verification: { ...verification, usage: null } } })
   })
 
   it('keeps the same shape when the provider reports no model or usage', () => {
@@ -99,6 +145,13 @@ describe('formatReviewJson', () => {
     const result = {
       ...RESULT,
       findings: [finding],
+      verification: {
+        candidates: 1,
+        confirmed: 0,
+        unverified: 0,
+        rejected: [{ ...finding, reason: 'Speculative.', debug: 'internal' }],
+        durationMs: 1,
+      },
       usage: { inputTokens: 1, outputTokens: 2, cachedTokens: 3 },
     }
 
@@ -106,5 +159,6 @@ describe('formatReviewJson', () => {
 
     expect(output).not.toContain('category')
     expect(output).not.toContain('cachedTokens')
+    expect(output).not.toContain('internal')
   })
 })

@@ -48,7 +48,7 @@ const RESULT: ReviewResult = {
   worthCheckingOmitted: 0,
   minConfidence: 75,
   score: { value: 1, reason: '1 P0 finding (shop.ts:3)' },
-  dropped: { invalid: 1, belowFloor: 1, outsideDiff: 2, duplicate: 1 },
+  dropped: { invalid: 1, belowFloor: 1, outsideDiff: 2, duplicate: 1, rejected: 0 },
 }
 
 const TO_CHECK = [
@@ -146,7 +146,7 @@ describe('formatReview', () => {
       files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 0 }],
       findings: [],
       score: { value: 5, reason: 'no problems found' },
-      dropped: { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0 },
+      dropped: { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0, rejected: 0 },
     }
 
     const output = formatReview(pullRequestFixture(), result)
@@ -208,8 +208,9 @@ describe('formatReview', () => {
     [{ belowFloor: 2 }, '2 dropped (2 below confidence 50)'],
     [{ invalid: 3 }, '3 dropped (3 invalid)'],
     [{ outsideDiff: 1, invalid: 1 }, '2 dropped (1 outside the diff, 1 invalid)'],
+    [{ rejected: 2, outsideDiff: 1 }, '3 dropped (2 rejected by verification, 1 outside the diff)'],
   ])('lists only the reasons that dropped something: %j', (counts, text) => {
-    const dropped = { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0 }
+    const dropped = { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0, rejected: 0 }
 
     const output = formatReview(pullRequestFixture(), {
       ...RESULT,
@@ -217,6 +218,46 @@ describe('formatReview', () => {
     })
 
     expect(output).toContain(`\n3 findings · ${text}\n`)
+  })
+
+  it.each([
+    [0, 'claude-cli · claude-sonnet-5 · verified · 2m11s · 41.2k in / 13.0k out'],
+    [2, 'claude-cli · claude-sonnet-5 · verified, 2 unchecked · 2m11s · 41.2k in / 13.0k out'],
+  ])('says the review was verified, with %d findings left unchecked', (unverified, footer) => {
+    const verification = {
+      candidates: 5,
+      confirmed: 3 - unverified,
+      unverified,
+      rejected: [{ ...findingFixture(), reason: 'Speculative.' }],
+      durationMs: 30_000,
+    }
+
+    const output = formatReview(pullRequestFixture(), { ...RESULT, verification })
+
+    expect(output.endsWith(`\n${footer}\n`)).toBe(true)
+    expect(output).not.toContain('Speculative.')
+  })
+
+  it('says the review was not verified when no finding got a verdict', () => {
+    const verification = {
+      candidates: 3,
+      confirmed: 0,
+      unverified: 3,
+      rejected: [],
+      durationMs: 30_000,
+    }
+
+    const output = formatReview(pullRequestFixture(), { ...RESULT, verification })
+
+    expect(
+      output.endsWith(
+        '\nclaude-cli · claude-sonnet-5 · not verified (3 unchecked) · 2m11s · 41.2k in / 13.0k out\n',
+      ),
+    ).toBe(true)
+  })
+
+  it('does not mention the verification of a review that was not verified', () => {
+    expect(formatReview(pullRequestFixture(), RESULT)).not.toContain('verified')
   })
 
   it('leaves out an empty summary and an empty file table', () => {

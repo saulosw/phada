@@ -1,6 +1,13 @@
 import type { PullRequest } from '../github/pull-request.js'
 import { CONFIDENCE_FLOOR } from '../review/select-findings.js'
-import type { FileChange, Finding, ReviewResult, ScoreValue, Severity } from '../review/types.js'
+import type {
+  FileChange,
+  Finding,
+  ReviewResult,
+  ScoreValue,
+  Severity,
+  Verification,
+} from '../review/types.js'
 import { toTerminalText } from './terminal-text.js'
 import { formatBytes, formatCount, formatDuration, formatTokens } from './units.js'
 
@@ -122,6 +129,7 @@ function countsLine({
   dropped,
 }: ReviewResult): string {
   const reasons: ReadonlyArray<readonly [number, string]> = [
+    [dropped.rejected, `${dropped.rejected} rejected by verification`],
     [dropped.outsideDiff, `${dropped.outsideDiff} outside the diff`],
     [dropped.duplicate, formatCount(dropped.duplicate, 'duplicate')],
     [dropped.belowFloor, `${dropped.belowFloor} below confidence ${CONFIDENCE_FLOOR}`],
@@ -139,12 +147,18 @@ function countsLine({
 function footer(result: ReviewResult): string {
   const parts = [result.providerId]
   if (result.model !== undefined) parts.push(toTerminalText(modelLabel(result)))
+  if (result.verification !== undefined) parts.push(verificationLabel(result.verification))
   parts.push(formatDuration(result.durationMs))
   if (result.usage !== undefined) {
     const { inputTokens, outputTokens } = result.usage
     parts.push(`${formatTokens(inputTokens)} in / ${formatTokens(outputTokens)} out`)
   }
   return parts.join(' · ')
+}
+
+function verificationLabel({ candidates, unverified }: Verification): string {
+  if (unverified > 0 && unverified === candidates) return `not verified (${unverified} unchecked)`
+  return unverified > 0 ? `verified, ${unverified} unchecked` : 'verified'
 }
 
 function modelLabel({ model, additionalModels }: ReviewResult): string {

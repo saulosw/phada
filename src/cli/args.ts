@@ -17,6 +17,7 @@ export type CliCommand =
       language?: string
       minConfidence?: number
       format: OutputFormat
+      verify: boolean
       debug: boolean
     }
 
@@ -32,6 +33,8 @@ Options:
   --min-confidence <n>  Confidence cut from ${CONFIDENCE_FLOOR} to ${MAX_CONFIDENCE} (default: ${DEFAULT_MIN_CONFIDENCE}); findings
                         below it are listed as worth checking
   --format <name>       Output: markdown or json (default: markdown)
+  --verify              Check every finding with a second call to the AI (about
+                        twice the time and tokens)
   --debug               Show error details
   -h, --help            Show this help
 
@@ -65,6 +68,7 @@ export function parseCliArgs(argv: readonly string[]): CliCommand {
     ...(values.language === undefined ? {} : { language: values.language }),
     ...(minConfidence === undefined ? {} : { minConfidence }),
     format: values.format,
+    verify: values.verify,
     debug: values.debug,
   }
 }
@@ -81,6 +85,7 @@ function parseKnownArgs(argv: readonly string[]) {
         language: { type: 'string' },
         'min-confidence': { type: 'string' },
         format: { type: 'string', default: 'markdown' },
+        verify: { type: 'boolean', default: false },
         debug: { type: 'boolean', default: false },
         help: { type: 'boolean', short: 'h', default: false },
       },

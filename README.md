@@ -55,20 +55,31 @@ prints:
 - **Worth checking**: up to five findings with confidence from 50 up to the cut, one line each.
   They do not change the score.
 - A footer with how many findings there are, how many are worth checking, how many were dropped
-  (outside the diff, duplicates, below confidence 50, or not in the expected shape) and the
-  provider, model, time and tokens.
+  (rejected by verification, outside the diff, duplicates, below confidence 50, or not in the
+  expected shape) and the provider, model, time and tokens.
+
+With `--verify`, the first pass asks the AI for every candidate from confidence 25 instead of 50,
+and Phada makes a second call to the same AI before scoring. It sends the pull request, the diff
+and the candidates, without their severity and confidence, and asks a skeptical reviewer to
+confirm each one, with its own severity and confidence, or reject it. Rejected findings leave the
+review and are counted in the footer; `--format json` lists them with the reason. Confirmed
+findings still below 50 are dropped like any other. A finding without an answer keeps its first
+rating and the footer says how many were left unchecked (`not verified` when none got an answer).
+A verified review takes about twice the time and tokens; the time and tokens shown are the total
+of both calls.
 
 If the AI's answer is not a valid review, Phada stops with an error instead of printing it;
 `--debug` shows the start of the answer.
 
-| Option                 | What it does                                                                                                                                                                                                                   |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `--provider <name>`    | AI provider: `claude` (default), `codex` or `ollama`                                                                                                                                                                           |
-| `--model <name>`       | Model to use. Required for Ollama. Default: for Claude, the Claude Code default model, else `opus`; for Codex, the `model` in `~/.codex/config.toml` (or `$CODEX_HOME/config.toml`), else the Codex CLI default                |
-| `--language <tag>`     | Language of the review, e.g. `pt-BR`. Default: English                                                                                                                                                                         |
-| `--min-confidence <n>` | Confidence cut, a whole number from 50 to 100. Findings at the cut or above are shown and scored; the ones from 50 up to the cut are listed as worth checking. Default: 60                                                     |
-| `--format <name>`      | Output: `markdown` (default) or `json`. The JSON (`schemaVersion: 1`) carries the same review as data: score, summary, every changed file, findings, findings worth checking, dropped counts, provider, model, time and tokens |
-| `--debug`              | Shows error details                                                                                                                                                                                                            |
+| Option                 | What it does                                                                                                                                                                                                                                                       |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--provider <name>`    | AI provider: `claude` (default), `codex` or `ollama`                                                                                                                                                                                                               |
+| `--model <name>`       | Model to use. Required for Ollama. Default: for Claude, the Claude Code default model, else `opus`; for Codex, the `model` in `~/.codex/config.toml` (or `$CODEX_HOME/config.toml`), else the Codex CLI default                                                    |
+| `--language <tag>`     | Language of the review, e.g. `pt-BR`. Default: English                                                                                                                                                                                                             |
+| `--min-confidence <n>` | Confidence cut, a whole number from 50 to 100. Findings at the cut or above are shown and scored; the ones from 50 up to the cut are listed as worth checking. Default: 60                                                                                         |
+| `--format <name>`      | Output: `markdown` (default) or `json`. The JSON (`schemaVersion: 1`) carries the same review as data: score, summary, every changed file, findings, findings worth checking, dropped counts, the verification (with `--verify`), provider, model, time and tokens |
+| `--verify`             | Checks every finding with a second call to the AI before scoring (see above). Off by default                                                                                                                                                                       |
+| `--debug`              | Shows error details                                                                                                                                                                                                                                                |
 
 With Claude Code and Codex, the AI runs in an empty temporary directory and only sees the pull
 request text that Phada sends. Phada only reads the `model` from their settings. An

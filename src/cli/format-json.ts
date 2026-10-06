@@ -1,5 +1,12 @@
 import type { PullRequest } from '../github/pull-request.js'
-import type { Finding, ReviewOutcome, ReviewResult } from '../review/types.js'
+import type { TokenUsage } from '../providers/types.js'
+import type {
+  Finding,
+  RejectedFinding,
+  ReviewOutcome,
+  ReviewResult,
+  Verification,
+} from '../review/types.js'
 
 const SCHEMA_VERSION = 1
 
@@ -31,7 +38,7 @@ export function formatReviewJson(pr: PullRequest, outcome: ReviewOutcome): strin
 }
 
 function reviewJson(result: ReviewResult) {
-  const { score, dropped, usage } = result
+  const { score, dropped } = result
   return {
     score: { value: score.value, reason: score.reason },
     summary: result.summary,
@@ -45,18 +52,38 @@ function reviewJson(result: ReviewResult) {
       belowFloor: dropped.belowFloor,
       outsideDiff: dropped.outsideDiff,
       duplicate: dropped.duplicate,
+      rejected: dropped.rejected,
     },
+    verification: result.verification === undefined ? null : verificationJson(result.verification),
     provider: {
       id: result.providerId,
       model: result.model ?? null,
       additionalModels: result.additionalModels ?? [],
     },
     durationMs: result.durationMs,
-    usage:
-      usage === undefined
-        ? null
-        : { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens },
+    usage: usageJson(result.usage),
   }
+}
+
+function verificationJson(verification: Verification) {
+  return {
+    candidates: verification.candidates,
+    confirmed: verification.confirmed,
+    unverified: verification.unverified,
+    rejected: verification.rejected.map(rejectedJson),
+    durationMs: verification.durationMs,
+    usage: usageJson(verification.usage),
+  }
+}
+
+function usageJson(usage: TokenUsage | undefined) {
+  return usage === undefined
+    ? null
+    : { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens }
+}
+
+function rejectedJson(rejected: RejectedFinding) {
+  return { ...findingJson(rejected), reason: rejected.reason }
 }
 
 function findingJson({ severity, confidence, file, line, title, why, fix }: Finding) {

@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { findingFixture } from '../../test/support/finding.js'
 import { parseDiffFiles } from './diff-lines.js'
-import { isConfidenceCut, selectFindings, summarizeFiles } from './select-findings.js'
+import {
+  isConfidenceCut,
+  prepareCandidates,
+  splitAtCut,
+  summarizeFiles,
+  VERIFY_CANDIDATE_FLOOR,
+} from './select-findings.js'
 import type { Finding } from './types.js'
 
 function addedFile(path: string): string[] {
@@ -50,7 +56,17 @@ function describeFinding({ severity, confidence, file, line }: Finding): string 
   return `${severity} ${confidence} ${file}:${line}`
 }
 
-describe('selectFindings', () => {
+function selectFindings(
+  findings: readonly Finding[],
+  diffFiles: typeof DIFF_FILES,
+  minConfidence: number,
+) {
+  const { candidates, ...dropped } = prepareCandidates(findings, diffFiles, minConfidence)
+  const { belowFloor, ...split } = splitAtCut(candidates, minConfidence)
+  return { ...split, ...dropped, belowFloor: dropped.belowFloor + belowFloor }
+}
+
+describe('prepareCandidates and splitAtCut', () => {
   it('shows findings at the cut or above and keeps the rest above the floor to check', () => {
     const findings = [49, 50, 74, 75, 100].map((confidence) =>
       findingFixture({ confidence, title: `problem ${confidence}` }),
@@ -250,6 +266,66 @@ describe('selectFindings', () => {
       findings: [{ ...usersFinding(11, 'twice'), confidence: 90 }],
       worthChecking: [{ ...usersFinding(12, 'unsure'), confidence: 70 }],
       worthCheckingOmitted: 0,
+      belowFloor: 1,
+      outsideDiff: 1,
+      duplicate: 1,
+    })
+  })
+})
+
+describe('splitAtCut', () => {
+  it('drops findings below the floor and counts them', () => {
+    const findings = [49, 50, 0].map((confidence) =>
+      findingFixture({ confidence, title: `problem ${confidence}` }),
+    )
+
+    expect(splitAtCut(findings, 60)).toEqual({
+      findings: [],
+      worthChecking: [findingFixture({ confidence: 50, title: 'problem 50' })],
+      worthCheckingOmitted: 0,
+      belowFloor: 2,
+    })
+  })
+
+  it('does not change the order of the findings it was given', () => {
+    const findings = [findingFixture({ severity: 'P2' }), findingFixture({ severity: 'P0' })]
+
+    splitAtCut(findings, 60)
+
+    expect(findings.map(({ severity }) => severity)).toEqual(['P2', 'P0'])
+  })
+})
+
+describe('prepareCandidates', () => {
+  it('keeps candidates from a lower floor when given one', () => {
+    const findings = [24, 25, 49].map((confidence) =>
+      findingFixture({ confidence, title: `problem ${confidence}` }),
+    )
+
+    const prepared = prepareCandidates(findings, DIFF_FILES, CUT, VERIFY_CANDIDATE_FLOOR)
+
+    expect(prepared.candidates.map(({ confidence }) => confidence)).toEqual([25, 49])
+    expect(prepared.belowFloor).toBe(1)
+  })
+
+  it('keeps the candidates above the floor, inside the diff and unique, without cutting them', () => {
+    const prepared = prepareCandidates(
+      [
+        findingFixture({ confidence: 40, title: 'low' }),
+        findingFixture({ file: 'src/missing.ts', title: 'outside' }),
+        { ...usersFinding(11, 'twice'), confidence: 90 },
+        { ...usersFinding(11, 'twice'), confidence: 60 },
+        { ...usersFinding(12, 'unsure'), confidence: 55 },
+      ],
+      DIFF_FILES,
+      CUT,
+    )
+
+    expect(prepared).toEqual({
+      candidates: [
+        { ...usersFinding(11, 'twice'), confidence: 90 },
+        { ...usersFinding(12, 'unsure'), confidence: 55 },
+      ],
       belowFloor: 1,
       outsideDiff: 1,
       duplicate: 1,

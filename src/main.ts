@@ -64,8 +64,16 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
     deps.stderr.write(`${formatPullRequestSummary(pullRequest)}\n`)
 
     const outcome = await runReview(
-      { pullRequest, language: command.language, minConfidence: command.minConfidence },
-      { provider: withProgress(provider, deps.stderr) },
+      {
+        pullRequest,
+        language: command.language,
+        minConfidence: command.minConfidence,
+        verify: command.verify,
+      },
+      {
+        provider: withProgress(provider, deps.stderr),
+        verifier: withProgress(provider, deps.stderr, 'Verifying findings'),
+      },
     )
     if (outcome.status === 'skipped') {
       deps.stderr.write('Nothing to review: the pull request has no changes.\n')
