@@ -47,8 +47,10 @@ prints:
   the findings.
 - **Summary** of what the pull request changes and a **table of the changed files**.
 - **Findings grouped by severity**, each with file, line, confidence (0–100), why it matters and
-  a suggested fix. Only findings at the confidence cut or above are shown here (60 by default,
-  see `--min-confidence`):
+  a suggested fix. Confidence is how sure the AI is that the problem is real and happens as
+  described; how often it happens and how much it costs go into the severity, so a real but rare
+  bug is a sure finding with a lower severity (a P0 stays P0 however rarely it happens). Only
+  findings at the confidence cut or above are shown here (60 by default, see `--min-confidence`):
   - **P0 · Must fix**: security holes, data loss, crashes, wrong money handling;
   - **P1 · Should fix**: bugs, incorrect behavior, edge cases, race conditions, leaks;
   - **P2 · Consider**: maintainability or design risks with a concrete consequence.
@@ -62,7 +64,8 @@ With `--verify`, the first pass asks the AI for every candidate from confidence 
 and Phada makes a second call to the same AI before scoring. It sends the pull request, the diff
 and the candidates, without their severity and confidence, and asks a skeptical reviewer to
 confirm each one, with its own severity and confidence, or reject it. Rejected findings leave the
-review and are counted in the footer; `--format json` lists them with the reason. Confirmed
+review and are counted in the footer; `--format json` lists them with the reason, and gives the
+verifier's reason for every confirmed finding too (`null` for a finding it did not check). Confirmed
 findings still below 50 are dropped like any other. A finding without an answer keeps its first
 rating and the footer says how many were left unchecked (`not verified` when none got an answer).
 A verified review takes about twice the time and tokens; the time and tokens shown are the total

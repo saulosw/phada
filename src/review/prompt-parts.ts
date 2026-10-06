@@ -1,9 +1,12 @@
 import type { PullRequest } from '../github/pull-request.js'
 
-export const CONFIDENCE_SCALE = `Rate each candidate problem from 0 to 100 for how confident you are that it
-is real and will happen in practice: 0 does not survive light scrutiny;
-25 might be real but is unverified; 50 is real but minor or rare; 75 is very
-likely real and important; 100 is certain from the diff alone.`
+export const CONFIDENCE_SCALE = `Rate each candidate problem from 0 to 100 for how sure you are that it is
+real: that the code does what you describe and the problem happens as described
+when that code runs. Confidence is not about impact or how often it happens: a
+rare or minor problem that the diff proves is real still gets a high confidence.
+0 does not survive light scrutiny; 25 might be real, but the diff does not show
+it; 50 is more likely real than not, with a doubt the diff cannot settle; 75 is
+very likely real, with a small doubt left; 100 is certain from the diff alone.`
 
 export const SEVERITY = `Give each finding a severity:
 - P0, must fix before merging: security holes (injection, running code that comes
@@ -12,8 +15,10 @@ export const SEVERITY = `Give each finding a severity:
 - P1, should fix: bugs, incorrect behavior, unhandled edge cases, race conditions,
   resource leaks.
 - P2, worth considering: maintainability or design risks with a concrete consequence.
-Severity is how much the problem matters; confidence is how sure you are that it
-is real. Rate them independently.`
+Severity is how much the problem matters; confidence is only how sure you are
+that it is real. A P0 problem stays P0 however rarely it happens. Below P0, how
+often it happens counts toward severity: a real problem that is rare or cheap
+gets a lower severity, not a lower confidence. Rate them independently.`
 
 export const DIFF_ONLY = `You see only the diff, not the rest of the repository. If a problem depends
 on code you cannot see, report it only if the diff alone makes it evident.`

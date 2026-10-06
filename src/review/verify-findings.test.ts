@@ -24,14 +24,14 @@ class FakeVerifier implements ReviewProvider {
 }
 
 describe('applyVerdicts', () => {
-  it('takes the severity and confidence of a confirmed candidate and keeps the rest', () => {
+  it('takes the severity, confidence and reason of a confirmed candidate and keeps the rest', () => {
     const applied = applyVerdicts(
       [FIRST],
       [verdictFixture({ severity: 'P1', confidence: 85, reason: 'Real.' })],
     )
 
     expect(applied).toEqual({
-      findings: [{ ...FIRST, severity: 'P1', confidence: 85 }],
+      findings: [{ ...FIRST, severity: 'P1', confidence: 85, reason: 'Real.' }],
       rejected: [],
       confirmed: 1,
       unverified: 0,
@@ -52,7 +52,9 @@ describe('applyVerdicts', () => {
       ],
     )
 
-    expect(applied.findings).toEqual([{ ...FIRST, severity: 'P1', confidence: 90 }])
+    expect(applied.findings).toEqual([
+      { ...FIRST, severity: 'P1', confidence: 90, reason: 'The diff shows it.' },
+    ])
     expect(applied.rejected).toEqual([{ ...SECOND, reason: 'Handled at line 4.' }])
     expect(applied).toMatchObject({ confirmed: 1, unverified: 0 })
   })
@@ -60,7 +62,11 @@ describe('applyVerdicts', () => {
   it('keeps a candidate without a verdict as the review rated it and counts it', () => {
     const applied = applyVerdicts([FIRST, SECOND, THIRD], [verdictFixture({ id: 2 })])
 
-    expect(applied.findings).toEqual([FIRST, { ...SECOND, severity: 'P1', confidence: 90 }, THIRD])
+    expect(applied.findings).toEqual([
+      FIRST,
+      { ...SECOND, severity: 'P1', confidence: 90, reason: 'The diff shows it.' },
+      THIRD,
+    ])
     expect(applied).toMatchObject({ confirmed: 1, unverified: 2 })
   })
 
@@ -75,7 +81,7 @@ describe('applyVerdicts', () => {
     )
 
     expect(applied).toEqual({
-      findings: [{ ...FIRST, severity: 'P1', confidence: 75 }],
+      findings: [{ ...FIRST, severity: 'P1', confidence: 75, reason: 'The diff shows it.' }],
       rejected: [],
       confirmed: 1,
       unverified: 0,
@@ -106,7 +112,7 @@ describe('verifyCandidates', () => {
       buildVerifyPrompt(request, [FIRST, SECOND, THIRD], 'abcdefabcdef'),
     ])
     expect(checked).toEqual({
-      findings: [{ ...FIRST, severity: 'P1', confidence: 80 }, THIRD],
+      findings: [{ ...FIRST, severity: 'P1', confidence: 80, reason: 'The diff shows it.' }, THIRD],
       verification: {
         candidates: 3,
         confirmed: 1,

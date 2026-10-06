@@ -48,8 +48,15 @@ describe('formatReviewJson', () => {
         score: { value: 1, reason: '1 P0 finding (shop.ts:3)' },
         summary: 'Adds a spend endpoint.',
         files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 1 }],
-        findings: [findingFixture({ severity: 'P0', confidence: 95, line: 3 })],
-        worthChecking: [findingFixture({ severity: 'P2', confidence: 60, line: 5, fix: null })],
+        findings: [
+          { ...findingFixture({ severity: 'P0', confidence: 95, line: 3 }), reason: null },
+        ],
+        worthChecking: [
+          {
+            ...findingFixture({ severity: 'P2', confidence: 60, line: 5, fix: null }),
+            reason: null,
+          },
+        ],
         worthCheckingOmitted: 2,
         minConfidence: 75,
         dropped: { invalid: 0, belowFloor: 1, outsideDiff: 2, duplicate: 0, rejected: 0 },
@@ -89,6 +96,20 @@ describe('formatReviewJson', () => {
           durationMs: 9000,
           usage: { inputTokens: 9800, outputTokens: 200 },
         },
+      },
+    })
+  })
+
+  it('prints why the verifier confirmed a finding, and null for one it did not check', () => {
+    const confirmed = findingFixture({ confidence: 85, reason: 'Line 3 trusts the request body.' })
+    const result: ReviewResult = { ...RESULT, findings: [confirmed] }
+
+    const output = parse(formatReviewJson(pullRequestFixture(), { status: 'reviewed', result }))
+
+    expect(output).toMatchObject({
+      review: {
+        findings: [{ ...confirmed, reason: 'Line 3 trusts the request body.' }],
+        worthChecking: [{ reason: null }],
       },
     })
   })

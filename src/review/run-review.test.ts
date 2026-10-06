@@ -323,7 +323,7 @@ describe('runReview', () => {
         durationMs: 1600,
         usage: { inputTokens: 6200, outputTokens: 550 },
         files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 1 }],
-        findings: [{ ...findingA, severity: 'P1', confidence: 85 }],
+        findings: [{ ...findingA, severity: 'P1', confidence: 85, reason: 'The diff shows it.' }],
         worthChecking: [],
         score: { value: 3, reason: '1 P1 finding (shop.ts:3)' },
         dropped: { invalid: 0, belowFloor: 2, outsideDiff: 1, duplicate: 0, rejected: 1 },

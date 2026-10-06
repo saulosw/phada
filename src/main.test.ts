@@ -170,6 +170,26 @@ describe('run', () => {
     )
   })
 
+  it('fails the review and points to --debug when the verification has no verdicts', async () => {
+    const answers = () => [
+      { ...OUTPUT, text: reviewReportJson({ findings: [findingFixture({ confidence: 55 })] }) },
+      { text: 'All of them look fine to me.', durationMs: 1000 },
+    ]
+    const quietAnswers = answers()
+    const debugAnswers = answers()
+    const quiet = harness({ review: () => Promise.resolve(quietAnswers.shift() ?? OUTPUT) })
+    const debug = harness({ review: () => Promise.resolve(debugAnswers.shift() ?? OUTPUT) })
+
+    expect(await run(['acme/shop#12', '--verify', '--format', 'json'], quiet.deps)).toBe(1)
+    expect(await run(['acme/shop#12', '--verify', '--debug'], debug.deps)).toBe(1)
+    expect(quiet.stdout()).toBe('')
+    expect(quiet.stderr().split('\n').at(-2)).toBe(
+      'phada: The AI did not return a valid review (no verdicts in the verification). Run with --debug to see its answer.',
+    )
+    expect(quiet.stderr()).not.toContain('All of them look fine')
+    expect(debug.stderr()).toContain('AI answer (start):\nAll of them look fine to me.')
+  })
+
   it('prints only the JSON review on stdout with --format json', async () => {
     const h = harness()
 

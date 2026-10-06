@@ -1,12 +1,6 @@
 import type { PullRequest } from '../github/pull-request.js'
 import type { TokenUsage } from '../providers/types.js'
-import type {
-  Finding,
-  RejectedFinding,
-  ReviewOutcome,
-  ReviewResult,
-  Verification,
-} from '../review/types.js'
+import type { Finding, ReviewOutcome, ReviewResult, Verification } from '../review/types.js'
 
 const SCHEMA_VERSION = 1
 
@@ -70,7 +64,7 @@ function verificationJson(verification: Verification) {
     candidates: verification.candidates,
     confirmed: verification.confirmed,
     unverified: verification.unverified,
-    rejected: verification.rejected.map(rejectedJson),
+    rejected: verification.rejected.map(findingJson),
     durationMs: verification.durationMs,
     usage: usageJson(verification.usage),
   }
@@ -82,10 +76,6 @@ function usageJson(usage: TokenUsage | undefined) {
     : { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens }
 }
 
-function rejectedJson(rejected: RejectedFinding) {
-  return { ...findingJson(rejected), reason: rejected.reason }
-}
-
-function findingJson({ severity, confidence, file, line, title, why, fix }: Finding) {
-  return { severity, confidence, file, line, title, why, fix }
+function findingJson({ severity, confidence, file, line, title, why, fix, reason }: Finding) {
+  return { severity, confidence, file, line, title, why, fix, reason: reason ?? null }
 }

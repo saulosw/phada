@@ -70,6 +70,7 @@ export function applyVerdicts(
         ...candidate,
         severity: verdict.severity,
         confidence: verdict.confidence,
+        reason: verdict.reason,
       })
     }
   })

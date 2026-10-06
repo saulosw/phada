@@ -11,8 +11,8 @@ const NONCE = '0123456789ab'
 
 describe('buildReviewPrompt', () => {
   it.each([
-    [undefined, 'd3151cf9affaf6256323277b749403eb9a1518dbfcfda89762d6356da034820b'],
-    ['pt-BR', 'd27d40c8c04646ee7d4590f1477606f8fda3fedbf459f93bc94ca07bcd5b08c7'],
+    [undefined, '74ee8ca7aca662965ebe983ffcfb8946905540b249da74120469ee7764b29db0'],
+    ['pt-BR', '5854922ca63390b4272dfea2d6c374326b57b15169e196f423e363332eccb66d'],
   ])('keeps the review instructions word for word (language %s)', (language, digest) => {
     const { instructions } = buildReviewPrompt(
       { pullRequest: pullRequestFixture(), language },
@@ -42,6 +42,26 @@ describe('buildReviewPrompt', () => {
 
     expect(instructions).toContain('Report every candidate rated 25 or higher.')
     expect(instructions).not.toContain('50 or higher')
+  })
+
+  it('rates confidence only by how sure the reviewer is that the problem is real', () => {
+    const { instructions } = buildReviewPrompt({ pullRequest: pullRequestFixture() }, NONCE)
+
+    expect(instructions).toContain('how sure you are that it is\nreal')
+    expect(instructions).toContain('Confidence is not about impact or how often it happens')
+    expect(instructions).toContain(
+      '50 is more likely real than not, with a doubt the diff cannot settle',
+    )
+    expect(instructions).not.toContain('minor or rare')
+    expect(instructions).not.toContain('important')
+  })
+
+  it('leaves how often a problem happens to the severity, except for P0', () => {
+    const { instructions } = buildReviewPrompt({ pullRequest: pullRequestFixture() }, NONCE)
+
+    expect(instructions).toContain('A P0 problem stays P0 however rarely it happens.')
+    expect(instructions).toContain('Below P0, how\noften it happens counts toward severity')
+    expect(instructions).toContain('gets a lower severity, not a lower confidence')
   })
 
   it('defines P0, P1 and P2 and keeps severity apart from confidence', () => {

@@ -24,6 +24,7 @@ export interface Finding {
   title: string
   why: string
   fix: string | null
+  reason?: string
 }
 
 export interface RejectedFinding extends Finding {
