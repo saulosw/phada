@@ -12,17 +12,23 @@ const TOKEN_FORMAT = /^[\x21-\x7E]+$/
 export const ACCEPT_JSON = 'application/vnd.github+json'
 export const ACCEPT_DIFF = 'application/vnd.github.diff'
 
+export interface GitHubRequestInit {
+  method?: 'GET' | 'POST'
+  body?: string
+}
+
 export interface GitHubRequestContext {
   token: string
   fetch: typeof globalThis.fetch
   timeoutMs: number
 }
 
-/** GET on the GitHub REST API. Throws only for a malformed token, network failure or timeout. */
+/** A GitHub API request (GET by default). Throws only for a malformed token, network failure or timeout. */
 export async function sendGitHubRequest(
   ctx: GitHubRequestContext,
   path: string,
   accept: string,
+  init: GitHubRequestInit = {},
 ): Promise<Response> {
   if (!TOKEN_FORMAT.test(ctx.token)) {
     throw new GitHubRequestError(
@@ -32,12 +38,15 @@ export async function sendGitHubRequest(
   const { fetch } = ctx
   try {
     return await fetch(`${API_BASE_URL}${path}`, {
+      ...(init.method === undefined ? {} : { method: init.method }),
       headers: {
         Authorization: `Bearer ${ctx.token}`,
         Accept: accept,
+        ...(init.body === undefined ? {} : { 'Content-Type': 'application/json' }),
         'X-GitHub-Api-Version': API_VERSION,
         'User-Agent': USER_AGENT,
       },
+      ...(init.body === undefined ? {} : { body: init.body }),
       signal: AbortSignal.timeout(ctx.timeoutMs),
     })
   } catch (error) {
@@ -115,7 +124,7 @@ export function redact(text: string, token: string): string {
 
 // GitHub signals rate limits on a 403 by headers, or only by the message for some
 // secondary limits.
-function isRateLimited(headers: Headers, apiMessage: string | undefined): boolean {
+export function isRateLimited(headers: Headers, apiMessage: string | undefined): boolean {
   return (
     headers.get('x-ratelimit-remaining') === '0' ||
     headers.has('retry-after') ||
@@ -123,7 +132,7 @@ function isRateLimited(headers: Headers, apiMessage: string | undefined): boolea
   )
 }
 
-function readRateLimit(headers: Headers): RateLimitDetails {
+export function readRateLimit(headers: Headers): RateLimitDetails {
   const details: RateLimitDetails = {}
   const reset = parseSeconds(headers.get('x-ratelimit-reset'))
   const retryAfter = parseSeconds(headers.get('retry-after'))

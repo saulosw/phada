@@ -1,0 +1,34 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "reviewThreads": {
+          "pageInfo": {
+            "hasNextPage": false,
+            "endCursor": "Y3Vyc29yOnYyOpK0MjAyNi0xMC0wOFQwMDo1ODo0MFrOqieEMA=="
+          },
+          "nodes": [
+            {
+              "isResolved": false,
+              "path": "api/src/routes/users.ts",
+              "line": 63,
+              "comments": {
+                "nodes": [
+                  {
+                    "body": "**P0** · Any user can spend another user's crystals · confidence 95\n\nThe user id comes from the request body.\n\n<!-- phada:finding -->",
+                    "author": {
+                      "login": "saulosw"
+                    },
+                    "pullRequestReview": {
+                      "id": "PRR_kwDOQNCyRM8AAAABRNso_Q"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

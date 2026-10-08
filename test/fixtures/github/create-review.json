@@ -1,0 +1,12 @@
+{
+  "id": 5450180861,
+  "node_id": "PRR_kwDOQNCyRM8AAAABRNso_Q",
+  "user": {
+    "login": "saulosw"
+  },
+  "body": "Captured review.\n\n<!-- phada:review sha=f41a2c3280de0d54ab06d79fa18e93e576e511e6 findings=1 -->",
+  "state": "COMMENTED",
+  "html_url": "https://github.com/saulosw/phada-dev-web/pull/11#pullrequestreview-5450180861",
+  "commit_id": "f41a2c3280de0d54ab06d79fa18e93e576e511e6",
+  "submitted_at": "2026-10-08T00:58:40Z"
+}

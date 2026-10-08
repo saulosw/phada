@@ -1,0 +1,29 @@
+{
+  "data": {
+    "viewer": {
+      "login": "saulosw"
+    },
+    "repository": {
+      "pullRequest": {
+        "reviews": {
+          "pageInfo": {
+            "hasNextPage": false,
+            "endCursor": "Y3Vyc29yOnYyOpO0MjAyNi0xMC0wOFQwMDo1ODo0MFq0MjAyNi0xMC0wOFQwMDo1ODo0MFrPAAAAAUTbKP0="
+          },
+          "nodes": [
+            {
+              "id": "PRR_kwDOQNCyRM8AAAABRNso_Q",
+              "body": "Captured review.\n\n<!-- phada:review sha=f41a2c3280de0d54ab06d79fa18e93e576e511e6 findings=1 -->",
+              "author": {
+                "login": "saulosw"
+              },
+              "commit": {
+                "oid": "f41a2c3280de0d54ab06d79fa18e93e576e511e6"
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

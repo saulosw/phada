@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { findingFixture } from '../../test/support/finding.js'
 import { pullRequestFixture } from '../../test/support/pull-request.js'
 import type { ReviewResult } from '../review/types.js'
-import { formatReviewJson } from './format-json.js'
+import { formatAlreadyReviewedJson, formatReviewJson } from './format-json.js'
 
 const PULL_REQUEST = {
   repo: 'acme/shop',
@@ -65,6 +65,7 @@ describe('formatReviewJson', () => {
         durationMs: 16_400,
         usage: { inputTokens: 9700, outputTokens: 417 },
       },
+      publication: null,
     })
   })
 
@@ -148,6 +149,7 @@ describe('formatReviewJson', () => {
       status: 'skipped',
       reason: 'empty-diff',
       pullRequest: PULL_REQUEST,
+      publication: null,
     })
   })
 
@@ -181,5 +183,85 @@ describe('formatReviewJson', () => {
     expect(output).not.toContain('category')
     expect(output).not.toContain('cachedTokens')
     expect(output).not.toContain('internal')
+  })
+})
+
+describe('publication', () => {
+  const reviewed = { status: 'reviewed', result: RESULT } as const
+  const publicationOf = (output: string) => (parse(output) as { publication: unknown }).publication
+
+  it('prints a published review with its URL and counts', () => {
+    const url = 'https://github.com/acme/shop/pull/12#pullrequestreview-1'
+    const output = formatReviewJson(pullRequestFixture(), reviewed, {
+      status: 'published',
+      url,
+      comments: 2,
+      stillOpen: 1,
+    })
+
+    expect(publicationOf(output)).toEqual({ status: 'published', url, comments: 2, stillOpen: 1 })
+    expect(parse(output)).toMatchObject({ status: 'reviewed', review: { summary: RESULT.summary } })
+  })
+
+  it('prints a failed publication with the error', () => {
+    const output = formatReviewJson(pullRequestFixture(), reviewed, {
+      status: 'failed',
+      error: 'GitHub denied publishing the review.',
+    })
+
+    expect(publicationOf(output)).toEqual({
+      status: 'failed',
+      error: 'GitHub denied publishing the review.',
+    })
+  })
+
+  it('prints the exact body and comments of a dry run', () => {
+    const review = {
+      body: 'Body',
+      comments: [{ path: 'src/shop.ts', line: 3, body: 'Comment', extra: 'x' }],
+    }
+
+    expect(
+      publicationOf(
+        formatReviewJson(pullRequestFixture(), reviewed, {
+          status: 'dry-run',
+          review,
+          stillOpen: 0,
+        }),
+      ),
+    ).toEqual({
+      status: 'dry-run',
+      body: 'Body',
+      comments: [{ path: 'src/shop.ts', line: 3, body: 'Comment' }],
+      stillOpen: 0,
+      wouldSkip: null,
+    })
+    expect(
+      publicationOf(
+        formatReviewJson(pullRequestFixture(), reviewed, {
+          status: 'dry-run',
+          review,
+          stillOpen: 1,
+          wouldSkip: { kind: 'open-threads', openThreads: 2 },
+        }),
+      ),
+    ).toMatchObject({ stillOpen: 1, wouldSkip: { reason: 'open-threads', openThreads: 2 } })
+  })
+
+  it('prints a pull request Phada already reviewed', () => {
+    expect(
+      parse(formatAlreadyReviewedJson(pullRequestFixture(), { kind: 'nothing-found' })),
+    ).toEqual({
+      schemaVersion: 1,
+      status: 'skipped',
+      reason: 'already-reviewed',
+      pullRequest: PULL_REQUEST,
+      publication: { status: 'skipped', reason: 'nothing-found', openThreads: 0 },
+    })
+    expect(
+      parse(
+        formatAlreadyReviewedJson(pullRequestFixture(), { kind: 'open-threads', openThreads: 3 }),
+      ),
+    ).toMatchObject({ publication: { reason: 'open-threads', openThreads: 3 } })
   })
 })

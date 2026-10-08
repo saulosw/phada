@@ -1,16 +1,20 @@
 # Phada
 
+> **Phada publishes by default.** `phada review` posts the review on the pull request as the
+> owner of the GitHub token. Use `--dry-run` to only print it.
+
 Phada reviews a GitHub pull request with the AI you already use — Claude Code, Codex or a model
-served by Ollama — and prints the review in your terminal.
+served by Ollama — and publishes the review on the pull request.
 
 It runs on your machine. Phada fetches the pull request and its diff, sends them to the AI
-provider you choose, checks that the answer is a valid review, scores it and prints it as
-Markdown or JSON. It does not write anything to GitHub.
+provider you choose, checks that the answer is a valid review and scores it. It prints the review
+as Markdown or JSON and posts it on the pull request: one comment on the line of each finding and
+the rest in the review body (see [Publishing](#publishing)).
 
 ## Requirements
 
 - Node.js 22 or newer
-- A GitHub token that can read the pull request (see [GitHub token](#github-token))
+- A GitHub token that can read the pull request and write reviews (see [GitHub token](#github-token))
 - One AI provider:
   - [Claude Code](https://code.claude.com/) (`claude`), logged in with your subscription,
   - [Codex CLI](https://developers.openai.com/codex/cli) (`codex`, install with `npm i -g @openai/codex`, then `codex login`), or
@@ -39,18 +43,22 @@ phada review https://github.com/owner/repo/pull/123 --provider codex
 
 Progress goes to stderr and the review to stdout, so `phada review owner/repo#123 > review.md`
 saves only the review, and `--format json` prints it as JSON for scripts. A review of a large pull
-request can take a few minutes.
+request can take a few minutes. `phada review owner/repo#123 --dry-run` prints exactly what would
+be posted and posts nothing.
 
 `phada --help` lists the commands and `phada review --help` lists the review options.
 
 ### GitHub token
 
 Phada reads the token from `GITHUB_TOKEN`, or from `GH_TOKEN` when `GITHUB_TOKEN` is not set. It
-only reads the pull request, so a read-only token is enough:
+reads the pull request and its reviews and publishes a review, so the token needs:
 
-- a fine-grained token with **Contents: Read-only** and **Pull requests: Read-only** on the
+- a fine-grained token with **Contents: Read-only** and **Pull requests: Read and write** on the
   repository, or
-- a classic token; it needs the `repo` scope for private repositories.
+- a classic token with the `repo` scope (`public_repo` is enough for public repositories).
+
+A read-only token is enough with `--dry-run`. Without write access, Phada still prints the review
+and then stops with an error that names the missing permission.
 
 If you use the GitHub CLI, `export GITHUB_TOKEN=$(gh auth token)` reuses its login (older `gh`
 versions without `gh auth token` show it with `gh auth status -t`).
@@ -95,25 +103,62 @@ of both calls.
 If the AI's answer is not a valid review, Phada stops with an error instead of printing it;
 `--debug` shows the start of the answer.
 
+## Publishing
+
+Each run posts one GitHub review (a comment review, never an approval or a request for changes)
+on the commit it reviewed, as the owner of the token:
+
+- every finding becomes a comment on its line, with severity, title, confidence, why it matters
+  and the suggested fix;
+- the review body has the score, the summary, the changed files, how many findings were posted,
+  the findings worth checking, what was dropped and the provider and model;
+- a pull request without changes gets nothing.
+
+Phada reads its earlier reviews and threads on the pull request first, and only counts the ones
+written by the owner of the token. It decides before calling the AI:
+
+| Earlier Phada review on the same commit                | What happens                                             |
+| ------------------------------------------------------ | -------------------------------------------------------- |
+| None                                                   | Reviews and publishes                                    |
+| Exists, and a Phada thread on the pull request is open | Skips: "already reviewed by Phada; N threads still open" |
+| Exists, it had findings and every thread is resolved   | Reviews and publishes again                              |
+| Exists and found nothing                               | Skips: "already reviewed by Phada; nothing was found"    |
+
+`--force` always reviews; `--dry-run` never skips and says what a real run would do. A skipped run
+exits with 0 and does not call the AI.
+
+After a new push, a finding that matches an open Phada thread (same file, and the same title or a
+line within three of it) is not posted again as a comment: the review body lists it under "Still
+open from previous reviews", so it never disappears from the pull request. When every finding is
+still open, Phada posts only a short note saying there is nothing new and how many findings remain
+open. Resolved threads never block a finding.
+
+Text written by the AI cannot mention anyone, link other issues or pull requests (`#12`, `owner/repo#12`), add HTML or forge Phada's own markers, and a body
+longer than GitHub allows is shortened with a visible "(truncated)". Two runs on the same pull
+request at the same time can both publish. GitHub refuses a new review while you have a pending
+review of your own open in its interface; submit or discard it first.
+
 ## Options
 
-| Option                 | What it does                                                                                                                                                                                                                                                       |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `--provider <name>`    | AI provider: `claude` (default), `codex` or `ollama`                                                                                                                                                                                                               |
-| `--model <name>`       | Model to use. Required for Ollama. Default: for Claude, the Claude Code default model, else `opus`; for Codex, the `model` in `~/.codex/config.toml` (or `$CODEX_HOME/config.toml`), else the Codex CLI default                                                    |
-| `--language <tag>`     | Language of the review, e.g. `pt-BR`. Default: English                                                                                                                                                                                                             |
-| `--min-confidence <n>` | Confidence cut, a whole number from 50 to 100. Findings at the cut or above are shown and scored; the ones from 50 up to the cut are listed as worth checking. Default: 60                                                                                         |
-| `--format <name>`      | Output: `markdown` (default) or `json`. The JSON (`schemaVersion: 1`) carries the same review as data: score, summary, every changed file, findings, findings worth checking, dropped counts, the verification (with `--verify`), provider, model, time and tokens |
-| `--verify`             | Checks every finding with a second call to the AI before scoring (see above). Off by default                                                                                                                                                                       |
-| `--debug`              | Shows error details                                                                                                                                                                                                                                                |
+| Option                 | What it does                                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--provider <name>`    | AI provider: `claude` (default), `codex` or `ollama`                                                                                                                                                                                                                                                                                                                                         |
+| `--model <name>`       | Model to use. Required for Ollama. Default: for Claude, the Claude Code default model, else `opus`; for Codex, the `model` in `~/.codex/config.toml` (or `$CODEX_HOME/config.toml`), else the Codex CLI default                                                                                                                                                                              |
+| `--language <tag>`     | Language of the review, e.g. `pt-BR`. The AI writes its text in it, and Phada's own headings and labels follow it in English (`en`) and Portuguese (`pt`, `pt-BR`); other languages keep those labels in English. Default: English                                                                                                                                                           |
+| `--min-confidence <n>` | Confidence cut, a whole number from 50 to 100. Findings at the cut or above are shown and scored; the ones from 50 up to the cut are listed as worth checking. Default: 60                                                                                                                                                                                                                   |
+| `--format <name>`      | Output: `markdown` (default) or `json`. The JSON (`schemaVersion: 1`) carries the same review as data: score, summary, every changed file, findings, findings worth checking, dropped counts, the verification (with `--verify`), provider, model, time and tokens, and a `publication` block (`published` with the URL, `failed`, `dry-run` with the exact body and comments, or `skipped`) |
+| `--verify`             | Checks every finding with a second call to the AI before scoring (see above). Off by default                                                                                                                                                                                                                                                                                                 |
+| `--dry-run`            | Prints exactly what would be published (the review body and every comment) and posts nothing                                                                                                                                                                                                                                                                                                 |
+| `--force`              | Reviews and publishes even when Phada already reviewed this commit (see [Publishing](#publishing))                                                                                                                                                                                                                                                                                           |
+| `--debug`              | Shows error details                                                                                                                                                                                                                                                                                                                                                                          |
 
 ## Exit codes
 
-| Code | Meaning                                                                       |
-| ---- | ----------------------------------------------------------------------------- |
-| 0    | The review was printed, or the pull request has no changes to review          |
-| 1    | Something failed: GitHub, the AI provider, or an answer that is not a review  |
-| 2    | The command line is wrong (unknown option, invalid pull request reference, …) |
+| Code | Meaning                                                                                                                                          |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 0    | The review was published (or printed with `--dry-run`), Phada skipped a commit it already reviewed, or the pull request has no changes to review |
+| 1    | Something failed: GitHub, the AI provider, an answer that is not a review, or publishing (the review is printed first)                           |
+| 2    | The command line is wrong (unknown option, invalid pull request reference, …)                                                                    |
 
 ## What the AI sees
 

@@ -34,9 +34,13 @@ const PROVIDER_HINTS: Readonly<Record<string, ProviderHints>> = {
 }
 
 export function formatError(error: unknown, options: { debug: boolean }): FormattedError {
-  const { summary, exitCode } = describe(error)
-  const line = `phada: ${singleLine(summary)}`
+  const line = `phada: ${errorSummary(error)}`
+  const { exitCode } = describe(error)
   return { message: options.debug ? `${line}\n${details(error)}` : line, exitCode }
+}
+
+export function errorSummary(error: unknown): string {
+  return singleLine(describe(error).summary)
 }
 
 function describe(error: unknown): { summary: string; exitCode: 1 | 2 } {

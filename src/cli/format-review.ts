@@ -1,33 +1,15 @@
 import type { PullRequest } from '../github/pull-request.js'
-import { CONFIDENCE_FLOOR } from '../review/select-findings.js'
-import type {
-  FileChange,
-  Finding,
-  ReviewResult,
-  ScoreValue,
-  Severity,
-  Verification,
-} from '../review/types.js'
+import { scoreFocus } from '../review/score.js'
+import type { FileChange, Finding, ReviewResult, Severity } from '../review/types.js'
+import { english } from './i18n/en.js'
+import type { Messages } from './i18n/messages.js'
+import { blockText, cell, singleLine } from './markdown-text.js'
+import { modelLabel, shortSha } from './review-text.js'
 import { toTerminalText } from './terminal-text.js'
 import { formatBytes, formatCount, formatDuration, formatTokens } from './units.js'
 
-const SHORT_SHA_LENGTH = 7
 const MAX_FILE_ROWS = 20
-const SCORE_LABELS: Readonly<Record<ScoreValue, string>> = {
-  5: 'ready to merge',
-  4: 'minor polish needed',
-  3: 'implementation issues',
-  2: 'significant bugs',
-  1: 'critical problems',
-  0: 'critical problems',
-}
-const RULE_LINE = /^(\s*)(([-=*_])(?:\s*\3)*\s*)$/
-const BLOCK_MARKER = /^((?:\s*(?:>|[-*+]\s|\d{1,9}[.)]\s))*\s*)(#|<|```|~~~)/
-const SEVERITY_HEADINGS: ReadonlyArray<readonly [Severity, string]> = [
-  ['P0', 'P0 · Must fix'],
-  ['P1', 'P1 · Should fix'],
-  ['P2', 'P2 · Consider'],
-]
+const SEVERITIES: readonly Severity[] = ['P0', 'P1', 'P2']
 
 export function formatPullRequestSummary(pr: PullRequest): string {
   const { changedFiles, additions, deletions } = pr.stats
@@ -41,129 +23,116 @@ export function formatPullRequestSummary(pr: PullRequest): string {
   ].join(' · ')
 }
 
-export function formatReview(pr: PullRequest, result: ReviewResult): string {
-  const state = pr.draft ? `${pr.state}, draft` : pr.state
+export function formatReview(
+  pr: PullRequest,
+  result: ReviewResult,
+  messages: Messages = english,
+): string {
+  const { terminal } = messages
   const sections = [
     [
-      `# Review of ${pr.repo}#${pr.number}: ${singleLine(pr.title)}`,
-      `${pr.url} · head ${shortSha(result.target.headSha)} · ${state}`,
+      `# ${terminal.reviewOf} ${pr.repo}#${pr.number}: ${singleLine(pr.title)}`,
+      `${pr.url} · ${terminal.head} ${shortSha(result.target.headSha)} · ${terminal.state(pr.state, pr.draft)}`,
     ].join('\n'),
-    scoreLine(result),
-    summarySection(result.summary),
-    filesSection(result.files),
-    findingsSection(result.findings),
-    worthCheckingSection(result),
-    ['---', countsLine(result), footer(result)].join('\n'),
+    scoreLine(result, messages),
+    summarySection(result.summary, messages),
+    filesSection(result.files, messages),
+    findingsSection(result.findings, messages),
+    worthCheckingSection(result, messages),
+    ['---', countsLine(result, messages), footer(result, messages)].join('\n'),
   ]
   return `${sections.filter((section) => section !== '').join('\n\n')}\n`
 }
 
-function scoreLine({ score }: ReviewResult): string {
-  return `**Confidence score: ${score.value}/5** (${SCORE_LABELS[score.value]}): ${singleLine(score.reason)}`
+function scoreLine({ score, findings }: ReviewResult, messages: Messages): string {
+  const reason = messages.scoreReason(scoreFocus(findings))
+  return `**${messages.terminal.score}: ${score.value}/5** (${messages.scoreLabels[score.value]}): ${singleLine(reason)}`
 }
 
-function summarySection(summary: string): string {
+function summarySection(summary: string, messages: Messages): string {
   const text = blockText(summary)
-  return text === '' ? '' : `## Summary\n\n${text}`
+  return text === '' ? '' : `## ${messages.summary}\n\n${text}`
 }
 
-function filesSection(files: readonly FileChange[]): string {
+function filesSection(files: readonly FileChange[], messages: Messages): string {
   if (files.length === 0) return ''
   const rows = files
     .slice(0, MAX_FILE_ROWS)
     .map(({ path, change, findings }) => `| ${cell(path)} | ${cell(change)} | ${findings} |`)
   const hidden = files.length - MAX_FILE_ROWS
-  const more = hidden > 0 ? [`\n+${formatCount(hidden, 'more file')}`] : []
+  const more = hidden > 0 ? [`\n+${messages.moreFiles(hidden)}`] : []
   return [
-    '## Files',
+    `## ${messages.files}`,
     '',
-    '| File | Change | Findings |',
+    `| ${messages.fileColumns.join(' | ')} |`,
     '| --- | --- | --- |',
     ...rows,
     ...more,
   ].join('\n')
 }
 
-function findingsSection(findings: readonly Finding[]): string {
+function findingsSection(findings: readonly Finding[], messages: Messages): string {
   if (findings.length === 0) return ''
   let number = 0
-  const groups = SEVERITY_HEADINGS.flatMap(([severity, heading]) => {
+  const groups = SEVERITIES.flatMap((severity) => {
     const group = findings.filter((finding) => finding.severity === severity)
     if (group.length === 0) return []
     return [
-      [`### ${heading}`, ...group.map((finding) => findingItem(++number, finding))].join('\n\n'),
+      [
+        `### ${messages.terminal.severity[severity]}`,
+        ...group.map((finding) => findingItem(++number, finding, messages)),
+      ].join('\n\n'),
     ]
   })
-  return ['## Findings', ...groups].join('\n\n')
+  return [`## ${messages.terminal.findings}`, ...groups].join('\n\n')
 }
 
-function findingItem(number: number, finding: Finding): string {
+function findingItem(number: number, finding: Finding, messages: Messages): string {
   const lines = [
-    `${number}. **${singleLine(finding.file)}:${finding.line}**: ${singleLine(finding.title)} (confidence ${finding.confidence})`,
+    `${number}. **${singleLine(finding.file)}:${finding.line}**: ${singleLine(finding.title)} (${messages.confidence} ${finding.confidence})`,
     indent(blockText(finding.why)),
   ]
   if (finding.fix !== null && finding.fix.trim() !== '') {
-    lines.push(indent(`Fix: ${blockText(finding.fix)}`))
+    lines.push(indent(`${messages.fix}: ${blockText(finding.fix)}`))
   }
   return lines.join('\n')
 }
 
-function worthCheckingSection({
-  worthChecking,
-  worthCheckingOmitted,
-  minConfidence,
-}: ReviewResult): string {
+function worthCheckingSection(
+  { worthChecking, worthCheckingOmitted, minConfidence }: ReviewResult,
+  messages: Messages,
+): string {
   if (worthChecking.length === 0) return ''
   const items = worthChecking.map(
     ({ severity, file, line, title, confidence }) =>
-      `- **${severity}** · ${singleLine(file)}:${line}: ${singleLine(title)} (confidence ${confidence})`,
+      `- **${severity}** · ${singleLine(file)}:${line}: ${singleLine(title)} (${messages.confidence} ${confidence})`,
   )
-  if (worthCheckingOmitted > 0) items.push(`- … (+${worthCheckingOmitted} more)`)
-  return [`## Worth checking (confidence below ${minConfidence})`, '', ...items].join('\n')
+  if (worthCheckingOmitted > 0) items.push(`- ${messages.moreItems(worthCheckingOmitted)}`)
+  return [`## ${messages.worthChecking(minConfidence)}`, '', ...items].join('\n')
 }
 
-function countsLine({
-  findings,
-  worthChecking,
-  worthCheckingOmitted,
-  dropped,
-}: ReviewResult): string {
-  const reasons: ReadonlyArray<readonly [number, string]> = [
-    [dropped.rejected, `${dropped.rejected} rejected by verification`],
-    [dropped.outsideDiff, `${dropped.outsideDiff} outside the diff`],
-    [dropped.duplicate, formatCount(dropped.duplicate, 'duplicate')],
-    [dropped.belowFloor, `${dropped.belowFloor} below confidence ${CONFIDENCE_FLOOR}`],
-    [dropped.invalid, `${dropped.invalid} invalid`],
-  ]
-  const shown = reasons.filter(([count]) => count > 0)
-  const total = shown.reduce((sum, [count]) => sum + count, 0)
-  const parts = [formatCount(findings.length, 'finding')]
+function countsLine(
+  { findings, worthChecking, worthCheckingOmitted, dropped }: ReviewResult,
+  messages: Messages,
+): string {
+  const parts = [messages.terminal.findingCount(findings.length)]
   const toCheck = worthChecking.length + worthCheckingOmitted
-  if (toCheck > 0) parts.push(`${toCheck} worth checking`)
-  if (total > 0) parts.push(`${total} dropped (${shown.map(([, text]) => text).join(', ')})`)
+  if (toCheck > 0) parts.push(messages.terminal.worthCheckingCount(toCheck))
+  const droppedPart = messages.dropped(dropped)
+  if (droppedPart !== '') parts.push(droppedPart)
   return parts.join(' · ')
 }
 
-function footer(result: ReviewResult): string {
+function footer(result: ReviewResult, messages: Messages): string {
   const parts = [result.providerId]
   if (result.model !== undefined) parts.push(toTerminalText(modelLabel(result)))
-  if (result.verification !== undefined) parts.push(verificationLabel(result.verification))
+  if (result.verification !== undefined) parts.push(messages.verification(result.verification))
   parts.push(formatDuration(result.durationMs))
   if (result.usage !== undefined) {
     const { inputTokens, outputTokens } = result.usage
-    parts.push(`${formatTokens(inputTokens)} in / ${formatTokens(outputTokens)} out`)
+    parts.push(messages.terminal.tokens(formatTokens(inputTokens), formatTokens(outputTokens)))
   }
   return parts.join(' · ')
-}
-
-function verificationLabel({ candidates, unverified }: Verification): string {
-  if (unverified > 0 && unverified === candidates) return `not verified (${unverified} unchecked)`
-  return unverified > 0 ? `verified, ${unverified} unchecked` : 'verified'
-}
-
-function modelLabel({ model, additionalModels }: ReviewResult): string {
-  if (additionalModels === undefined || additionalModels.length === 0) return model ?? ''
-  return `${model} (+ ${additionalModels.join(', ')})`
 }
 
 function indent(text: string): string {
@@ -171,26 +140,4 @@ function indent(text: string): string {
     .split('\n')
     .map((line) => `   ${line}`)
     .join('\n')
-}
-
-function blockText(text: string): string {
-  return toTerminalText(text)
-    .trim()
-    .split('\n')
-    .map((line) => line.replace(RULE_LINE.test(line) ? RULE_LINE : BLOCK_MARKER, '$1\\$2'))
-    .join('\n')
-}
-
-function cell(text: string): string {
-  return singleLine(text).replace(/(\\*)\|/g, '$1$1\\|')
-}
-
-function singleLine(text: string): string {
-  return toTerminalText(text)
-    .replace(/\s*\n\s*/g, ' ')
-    .trim()
-}
-
-function shortSha(sha: string): string {
-  return sha.slice(0, SHORT_SHA_LENGTH)
 }

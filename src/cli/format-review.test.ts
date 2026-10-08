@@ -3,6 +3,7 @@ import { findingFixture } from '../../test/support/finding.js'
 import { pullRequestFixture } from '../../test/support/pull-request.js'
 import type { ReviewResult } from '../review/types.js'
 import { formatPullRequestSummary, formatReview } from './format-review.js'
+import { messagesFor } from './i18n/messages.js'
 
 const RESULT: ReviewResult = {
   target: { repo: 'acme/shop', number: 12, headSha: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678' },
@@ -199,7 +200,32 @@ describe('formatReview', () => {
   ] as const)('labels a score of %d as %s', (value, label) => {
     const output = formatReview(pullRequestFixture(), { ...RESULT, score: { value, reason: 'r' } })
 
-    expect(output).toContain(`**Confidence score: ${value}/5** (${label}): r\n`)
+    expect(output).toContain(`**Confidence score: ${value}/5** (${label}): `)
+  })
+
+  it('writes the whole review artifact in Brazilian Portuguese', () => {
+    const output = formatReview(
+      pullRequestFixture({ state: 'closed', draft: true }),
+      { ...RESULT, worthChecking: TO_CHECK },
+      messagesFor('pt-BR'),
+    )
+
+    expect(output).toContain('# Revisão de acme/shop#12: Let users spend crystals')
+    expect(output).toContain('· commit a1b2c3d · fechada, rascunho')
+    expect(output).toContain(
+      '**Nota de confiança: 1/5** (problemas críticos): 1 problema P0 (shop.ts:3)',
+    )
+    expect(output).toContain('## Resumo')
+    expect(output).toContain('| Arquivo | Alteração | Problemas |')
+    expect(output).toContain('## Problemas')
+    expect(output).toContain('### P0 · Corrigir antes do merge')
+    expect(output).toContain('(confiança 100)')
+    expect(output).toContain('Correção sugerida: Use req.userId.')
+    expect(output).toContain('## Vale verificar (confiança abaixo de 75)')
+    expect(output).toContain('3 problemas · 2 para verificar')
+    expect(output).toContain('41.2k de entrada / 13.0k de saída')
+    expect(output).not.toContain('## Summary')
+    expect(output).not.toContain('(confidence ')
   })
 
   it.each([

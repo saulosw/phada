@@ -67,6 +67,27 @@ describe('sendGitHubRequest', () => {
     ])
   })
 
+  it('sends a POST with a JSON body when asked', async () => {
+    const { ctx, calls } = contextWith([{ status: 200, body: '{}' }])
+
+    await sendGitHubRequest(ctx, '/graphql', ACCEPT_JSON, { method: 'POST', body: '{"a":1}' })
+
+    expect(calls).toEqual([
+      {
+        url: 'https://api.github.com/graphql',
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${TOKEN}`,
+          accept: ACCEPT_JSON,
+          'content-type': 'application/json',
+          'x-github-api-version': '2022-11-28',
+          'user-agent': 'phada',
+        },
+        body: '{"a":1}',
+      },
+    ])
+  })
+
   it('uses the accept header it is given', async () => {
     const fake = createFakeFetch({ [ACCEPT_DIFF]: [{ status: 200, body: 'diff' }] })
 

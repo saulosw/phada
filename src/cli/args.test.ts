@@ -42,6 +42,8 @@ describe('parseCliArgs', () => {
       provider: 'claude',
       format: 'markdown',
       verify: false,
+      dryRun: false,
+      force: false,
       debug: false,
     })
   })
@@ -56,8 +58,9 @@ describe('parseCliArgs', () => {
     const argv = ['acme/shop#12', '--provider', 'codex', '--model', ' opus ', '--language', 'pt-BR']
 
     const options = ['--min-confidence', '60', '--format', 'json', '--verify', '--debug']
+    const publishing = ['--dry-run', '--force']
 
-    expect(parseCliArgs(['review', ...argv, ...options])).toEqual({
+    expect(parseCliArgs(['review', ...argv, ...options, ...publishing])).toEqual({
       kind: 'review',
       ref: REF,
       provider: 'codex',
@@ -66,6 +69,8 @@ describe('parseCliArgs', () => {
       minConfidence: 60,
       format: 'json',
       verify: true,
+      dryRun: true,
+      force: true,
       debug: true,
     })
   })
@@ -127,6 +132,8 @@ describe('parseCliArgs', () => {
       '--min-confidence',
       '--format',
       '--verify',
+      '--dry-run',
+      '--force',
       '--debug',
       '--help',
       'GITHUB_TOKEN',
@@ -137,8 +144,20 @@ describe('parseCliArgs', () => {
     }
   })
 
-  it('rejects a value given to --verify', () => {
-    expect(() => parseCliArgs(['review', 'acme/shop#12', '--verify=yes'])).toThrow(UsageError)
+  it.each(['--verify=yes', '--dry-run=yes', '--force=yes'])(
+    'rejects a value given to a switch: %s',
+    (option) => {
+      expect(() => parseCliArgs(['review', 'acme/shop#12', option])).toThrow(UsageError)
+    },
+  )
+
+  it('says that a review is published unless --dry-run is given', () => {
+    expect(USAGE).toContain(
+      'review <pull request>  Review a pull request and publish the review on it',
+    )
+    expect(REVIEW_USAGE).toContain('and publishes the')
+    expect(REVIEW_USAGE).toContain('Use --dry-run to only print it.')
+    expect(REVIEW_USAGE).toContain('can read the pull request and write')
   })
 
   it('shows the default confidence cut in the review usage text', () => {

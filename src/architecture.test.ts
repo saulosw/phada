@@ -1,19 +1,38 @@
 import { readdirSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-const REVIEW_DIR = new URL('./', import.meta.url)
-const ALLOWED_VALUE_IMPORTS = new Set(['node:crypto', 'zod'])
-const ALLOWED_TYPE_IMPORTS = new Set(['../providers/types.js', '../github/pull-request.js'])
+interface Boundary {
+  dir: string
+  values: ReadonlySet<string>
+  types: ReadonlySet<string>
+  expected: string[]
+}
+
+const REVIEW: Boundary = {
+  dir: 'review',
+  values: new Set(['node:crypto', 'zod']),
+  types: new Set(['../providers/types.js', '../github/pull-request.js']),
+  expected: ['prompt.ts', 'run-review.ts', 'types.ts'],
+}
+const PUBLISH: Boundary = {
+  dir: 'publish',
+  values: new Set(),
+  types: new Set(['../review/types.js', '../github/pull-request-reviews.js']),
+  expected: ['decide-run.ts', 'markers.ts', 'plan-publication.ts'],
+}
 const STATIC_MODULE = /^\s*(?:import|export)\s+(type\s+)?(?:[^'"]*?\bfrom\s+)?['"]([^'"]+)['"]/gm
 const DYNAMIC_MODULE = /\bimport\(\s*['"]([^'"]+)['"]\s*\)/g
 const STRING_LITERAL = /(['"`])(?:\\.|(?!\1)[^\\])*\1/g
 const FORBIDDEN_GLOBALS = ['process', 'console']
 
-const sources = readdirSync(REVIEW_DIR)
-  .filter((name) => name.endsWith('.ts') && !name.endsWith('.test.ts'))
-  .map((name) => ({ name, code: readFileSync(new URL(name, REVIEW_DIR), 'utf8') }))
+function sourcesOf({ dir }: Boundary) {
+  const url = new URL(`./${dir}/`, import.meta.url)
+  return readdirSync(url)
+    .filter((name) => name.endsWith('.ts') && !name.endsWith('.test.ts'))
+    .map((name) => ({ name, code: readFileSync(new URL(name, url), 'utf8') }))
+}
 
-function boundaryViolations(code: string): string[] {
+function boundaryViolations(code: string, boundary: Boundary = REVIEW): string[] {
   const modules = [
     ...[...code.matchAll(STATIC_MODULE)].map(([, typeOnly, specifier = '']) => ({
       specifier,
@@ -25,7 +44,7 @@ function boundaryViolations(code: string): string[] {
     })),
   ]
   const violations = modules
-    .filter(({ specifier, typeOnly }) => !isAllowedModule(specifier, typeOnly))
+    .filter(({ specifier, typeOnly }) => !isAllowedModule(specifier, typeOnly, boundary))
     .map(({ specifier }) => `imports '${specifier}'`)
   const codeWithoutStrings = code.replace(STRING_LITERAL, "''")
   for (const name of FORBIDDEN_GLOBALS) {
@@ -34,11 +53,11 @@ function boundaryViolations(code: string): string[] {
   return violations
 }
 
-function isAllowedModule(specifier: string, typeOnly: boolean): boolean {
+function isAllowedModule(specifier: string, typeOnly: boolean, boundary: Boundary): boolean {
   return (
     specifier.startsWith('./') ||
-    ALLOWED_VALUE_IMPORTS.has(specifier) ||
-    (typeOnly && ALLOWED_TYPE_IMPORTS.has(specifier))
+    boundary.values.has(specifier) ||
+    (typeOnly && boundary.types.has(specifier))
   )
 }
 
@@ -78,14 +97,38 @@ describe('boundaryViolations', () => {
   })
 })
 
-describe('review engine boundaries', () => {
-  it('has source files to check', () => {
-    expect(sources.map(({ name }) => name)).toEqual(
-      expect.arrayContaining(['prompt.ts', 'run-review.ts', 'types.ts']),
-    )
+describe('publish boundary rules', () => {
+  it('accepts type-only imports of the review types and the review state', () => {
+    const code = [
+      "import type { Finding } from '../review/types.js'",
+      "import type { PullRequestReviewState } from '../github/pull-request-reviews.js'",
+      "import { FINDING_MARKER } from './markers.js'",
+    ].join('\n')
+
+    expect(boundaryViolations(code, PUBLISH)).toEqual([])
   })
 
-  it.each(sources)('$name stays inside the engine boundary', ({ code }) => {
-    expect(boundaryViolations(code)).toEqual([])
+  it.each([
+    [
+      'a value import of the GitHub client',
+      "import { fetchReviewState } from '../github/pull-request-reviews.js'",
+    ],
+    ['the CLI formatters', "import { formatReview } from '../cli/format-review.js'"],
+    ['zod', "import { z } from 'zod'"],
+    ['process.env', 'const token = process.env.GITHUB_TOKEN'],
+  ])('flags %s', (_case, code) => {
+    expect(boundaryViolations(code, PUBLISH)).not.toEqual([])
+  })
+})
+
+describe.each([REVIEW, PUBLISH])('$dir boundary', (boundary) => {
+  const sources = sourcesOf(boundary)
+
+  it('has source files to check', () => {
+    expect(sources.map(({ name }) => name)).toEqual(expect.arrayContaining(boundary.expected))
+  })
+
+  it.each(sources)('$name stays inside the boundary', ({ code }) => {
+    expect(boundaryViolations(code, boundary)).toEqual([])
   })
 })

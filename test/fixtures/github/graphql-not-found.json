@@ -1,0 +1,23 @@
+{
+  "data": {
+    "viewer": {
+      "login": "saulosw"
+    },
+    "repository": {
+      "pullRequest": null
+    }
+  },
+  "errors": [
+    {
+      "type": "NOT_FOUND",
+      "path": ["repository", "pullRequest"],
+      "locations": [
+        {
+          "line": 3,
+          "column": 135
+        }
+      ],
+      "message": "Could not resolve to a PullRequest with the number of 99999."
+    }
+  ]
+}

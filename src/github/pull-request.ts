@@ -1,4 +1,5 @@
-import { DiffTooLargeError, GitHubRequestError, PullRequestNotFoundError } from './errors.js'
+import { DiffTooLargeError, PullRequestNotFoundError } from './errors.js'
+import { booleanField, field, invalidPayload, numberField, stringField } from './json-fields.js'
 import { formatPullRequestRef } from './pull-request-ref.js'
 import type { PullRequestRef } from './pull-request-ref.js'
 import {
@@ -137,38 +138,4 @@ function toPullRequestMetadata(json: unknown): PullRequestMetadata {
       commits: numberField(json, 'commits'),
     },
   }
-}
-
-function field(root: unknown, path: string): unknown {
-  let value = root
-  for (const key of path.split('.')) {
-    value = isRecord(value) ? value[key] : undefined
-  }
-  return value
-}
-
-function stringField(root: unknown, path: string): string {
-  const value = field(root, path)
-  if (typeof value !== 'string') throw invalidPayload(path)
-  return value
-}
-
-function numberField(root: unknown, path: string): number {
-  const value = field(root, path)
-  if (typeof value !== 'number') throw invalidPayload(path)
-  return value
-}
-
-function booleanField(root: unknown, path: string): boolean {
-  const value = field(root, path)
-  if (typeof value !== 'boolean') throw invalidPayload(path)
-  return value
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
-}
-
-function invalidPayload(path: string): GitHubRequestError {
-  return new GitHubRequestError(`Unexpected GitHub response: missing or invalid "${path}"`)
 }

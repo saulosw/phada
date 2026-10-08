@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { findingFixture } from '../../test/support/finding.js'
-import { scoreFindings } from './score.js'
+import { scoreFindings, scoreFocus } from './score.js'
 import type { Severity } from './types.js'
 
 function findings(...severities: Severity[]) {
@@ -47,5 +47,24 @@ describe('scoreFindings', () => {
     expect(scoreFindings(findings('P2', 'P2', 'P2', 'P2')).reason).toBe(
       '4 P2 findings (f0.ts:1, f1.ts:2, f2.ts:3, …)',
     )
+  })
+})
+
+describe('scoreFocus', () => {
+  it('names the most severe findings and up to three of their places', () => {
+    expect(scoreFocus(findings('P2', 'P1', 'P1'))).toEqual({
+      severity: 'P1',
+      count: 2,
+      locations: ['f1.ts:2', 'f2.ts:3'],
+    })
+    expect(scoreFocus(findings('P0', 'P0', 'P0', 'P0'))).toEqual({
+      severity: 'P0',
+      count: 4,
+      locations: ['f0.ts:1', 'f1.ts:2', 'f2.ts:3', '…'],
+    })
+  })
+
+  it('has no focus without findings', () => {
+    expect(scoreFocus([])).toBeUndefined()
   })
 })

@@ -5,8 +5,16 @@ import { reviewReportJson } from '../test/support/review-report.js'
 import { verdictFixture, verificationJson } from '../test/support/verification.js'
 import { REVIEW_USAGE, USAGE } from './cli/args.js'
 import { UsageError } from './cli/errors.js'
-import { PullRequestNotFoundError } from './github/errors.js'
+import { formatAlreadyReviewedJson } from './cli/format-json.js'
+import type { CreateReviewOptions, CreatedReview } from './github/create-review.js'
+import { PullRequestNotFoundError, ReviewPermissionError } from './github/errors.js'
+import type {
+  FetchReviewStateOptions,
+  PullRequestReviewState,
+  ReviewThread,
+} from './github/pull-request-reviews.js'
 import type { FetchPullRequestOptions, PullRequest } from './github/pull-request.js'
+import { FINDING_MARKER, reviewMarker } from './publish/markers.js'
 import { createProvider, run } from './main.js'
 import type { MainDeps, ProviderOptions } from './main.js'
 import { ClaudeCliProvider } from './providers/claude.js'
@@ -23,11 +31,18 @@ const OUTPUT: ReviewOutput = {
   usage: { inputTokens: 3512, outputTokens: 420 },
 }
 
+const HEAD_SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
+const REVIEW_URL = 'https://github.com/acme/shop/pull/12#pullrequestreview-1'
+const EMPTY_STATE: PullRequestReviewState = { viewer: 'octocat', reviews: [], threads: [] }
+
 interface Harness {
   deps: MainDeps
   stdout: () => string
   stderr: () => string
   fetches: FetchPullRequestOptions[]
+  stateFetches: FetchReviewStateOptions[]
+  posts: CreateReviewOptions[]
+  events: string[]
   providers: { name: string; options: ProviderOptions }[]
   prompts: ReviewPrompt[]
 }
@@ -37,21 +52,40 @@ function harness(
     env?: NodeJS.ProcessEnv
     pullRequest?: () => Promise<PullRequest>
     review?: () => Promise<ReviewOutput>
+    reviewState?: () => Promise<PullRequestReviewState>
+    createReview?: () => Promise<CreatedReview>
   } = {},
 ): Harness {
   const out: string[] = []
   const err: string[] = []
   const fetches: FetchPullRequestOptions[] = []
+  const stateFetches: FetchReviewStateOptions[] = []
+  const posts: CreateReviewOptions[] = []
+  const events: string[] = []
   const providers: { name: string; options: ProviderOptions }[] = []
   const prompts: ReviewPrompt[] = []
   const deps: MainDeps = {
     env: overrides.env ?? { GITHUB_TOKEN: TOKEN },
     version: '1.2.3',
-    stdout: { write: (text: string) => out.push(text) },
+    stdout: {
+      write: (text: string) => {
+        events.push('stdout')
+        return out.push(text)
+      },
+    },
     stderr: { write: (text: string) => err.push(text) },
     fetchPullRequest: (options) => {
       fetches.push(options)
       return overrides.pullRequest?.() ?? Promise.resolve(pullRequestFixture())
+    },
+    fetchReviewState: (options) => {
+      stateFetches.push(options)
+      return overrides.reviewState?.() ?? Promise.resolve(EMPTY_STATE)
+    },
+    createReview: (options) => {
+      events.push('post')
+      posts.push(options)
+      return overrides.createReview?.() ?? Promise.resolve({ url: REVIEW_URL })
     },
     createProvider: (name, options) => {
       providers.push({ name, options })
@@ -59,6 +93,7 @@ function harness(
       const provider: ReviewProvider = {
         id: 'fake-cli',
         review: (prompt) => {
+          events.push('provider')
           prompts.push(prompt)
           return overrides.review?.() ?? Promise.resolve(OUTPUT)
         },
@@ -71,9 +106,40 @@ function harness(
     stdout: () => out.join(''),
     stderr: () => err.join(''),
     fetches,
+    stateFetches,
+    posts,
+    events,
     providers,
     prompts,
   }
+}
+
+function phadaState(threads: Partial<ReviewThread>[], findings = 1): PullRequestReviewState {
+  return {
+    viewer: 'octocat',
+    reviews: [
+      {
+        id: 'R1',
+        author: 'octocat',
+        body: `Review\n\n${reviewMarker({ sha: HEAD_SHA, findings })}`,
+        commitSha: HEAD_SHA,
+      },
+    ],
+    threads: threads.map((thread) => ({
+      isResolved: false,
+      path: 'src/shop.ts',
+      line: 3,
+      author: 'octocat',
+      body: `**P1** · spend has no auth · confidence 90\n\nWhy.\n\n${FINDING_MARKER}`,
+      reviewId: 'R1',
+      ...thread,
+    })),
+  }
+}
+
+const WITH_FINDING: ReviewOutput = {
+  ...OUTPUT,
+  text: reviewReportJson({ findings: [findingFixture({ line: 3 })] }),
 }
 
 describe('run', () => {
@@ -119,6 +185,8 @@ describe('run', () => {
         'Fetching acme/shop#12…',
         'acme/shop#12 · a1b2c3d · 2 files · +15 −1 · 523 B diff',
         'Reviewing with fake-cli… (this can take a few minutes)',
+        'Publishing the review…',
+        `Published the review: ${REVIEW_URL}`,
         '',
       ].join('\n'),
     )
@@ -156,6 +224,11 @@ describe('run', () => {
     expect(h.providers).toEqual([{ name: 'claude', options: { model: 'opus' } }])
     expect(h.prompts[0]?.instructions).toContain(
       'Write summary, change, title, why and fix in pt-BR;',
+    )
+    expect(h.posts[0]?.body).toContain('## Revisão do Phada 🦋: 5/5 (pronto para merge)')
+    expect(h.posts[0]?.body).toContain('### Resumo')
+    expect(h.stdout()).toContain(
+      '**Nota de confiança: 5/5** (pronto para merge): nenhum problema encontrado',
     )
   })
 
@@ -264,7 +337,7 @@ describe('run', () => {
 
       expect(await run(['review', 'acme/shop#12'], h.deps)).toBe(1)
       expect(h.stderr()).toBe(
-        'phada: No GitHub token found. Set GITHUB_TOKEN (or GH_TOKEN) to a token that can read the pull request, e.g. export GITHUB_TOKEN=$(gh auth token)\n',
+        'phada: No GitHub token found. Set GITHUB_TOKEN (or GH_TOKEN) to a token that can read the pull request and write reviews (read-only is enough with --dry-run), e.g. export GITHUB_TOKEN=$(gh auth token)\n',
       )
       expect(h.fetches).toHaveLength(0)
     },
@@ -388,5 +461,192 @@ describe('createProvider', () => {
     expect(() => createProvider('ollama', {})).toThrow(
       '--provider ollama needs --model, e.g. qwen2.5-coder:7b, llama3.1:8b or gpt-oss:120b-cloud (see "ollama list").',
     )
+  })
+})
+
+describe('run publishing', () => {
+  const REVIEW = ['review', 'acme/shop#12']
+
+  it('publishes the review after printing it', async () => {
+    const h = harness({ review: () => Promise.resolve(WITH_FINDING) })
+
+    expect(await run(REVIEW, h.deps)).toBe(0)
+    expect(h.events).toEqual(['provider', 'stdout', 'post'])
+    expect(h.stdout()).toContain('# Review of acme/shop#12')
+    expect(h.posts).toHaveLength(1)
+    const [post] = h.posts
+    expect(post).toMatchObject({
+      owner: 'acme',
+      repo: 'shop',
+      number: 12,
+      token: TOKEN,
+      commitSha: HEAD_SHA,
+      comments: [{ path: 'src/shop.ts', line: 3 }],
+    })
+    expect(post?.comments[0]?.body).toContain('**P1** · spend has no auth · confidence 90')
+    expect(post?.body.endsWith(reviewMarker({ sha: HEAD_SHA, findings: 1 }))).toBe(true)
+    expect(h.stderr()).toContain(
+      `Publishing the review…\nPublished the review with 1 inline comment: ${REVIEW_URL}\n`,
+    )
+  })
+
+  it('fetches the review state with the token and the ref', async () => {
+    const h = harness()
+
+    await run(REVIEW, h.deps)
+
+    expect(h.stateFetches).toEqual([{ owner: 'acme', repo: 'shop', number: 12, token: TOKEN }])
+  })
+
+  it('skips before the provider when the same commit has open Phada threads', async () => {
+    const h = harness({ reviewState: () => Promise.resolve(phadaState([{}])) })
+
+    expect(await run(REVIEW, h.deps)).toBe(0)
+    expect(h.prompts).toHaveLength(0)
+    expect(h.posts).toHaveLength(0)
+    expect(h.stdout()).toBe('')
+    expect(h.stderr().split('\n').at(-2)).toBe(
+      'a1b2c3d already reviewed by Phada; 1 thread still open. Use --force to review again.',
+    )
+  })
+
+  it('skips the same commit when its review found nothing', async () => {
+    const h = harness({ reviewState: () => Promise.resolve(phadaState([], 0)) })
+
+    expect(await run(REVIEW, h.deps)).toBe(0)
+    expect(h.prompts).toHaveLength(0)
+    expect(h.stderr()).toContain('a1b2c3d already reviewed by Phada; nothing was found.')
+  })
+
+  it('prints a skipped run as JSON with --format json', async () => {
+    const h = harness({ reviewState: () => Promise.resolve(phadaState([{}])) })
+
+    expect(await run([...REVIEW, '--format', 'json'], h.deps)).toBe(0)
+    expect(h.stdout()).toBe(
+      formatAlreadyReviewedJson(pullRequestFixture(), { kind: 'open-threads', openThreads: 1 }),
+    )
+  })
+
+  it('reviews the same commit again once every thread is resolved', async () => {
+    const h = harness({
+      reviewState: () => Promise.resolve(phadaState([{ isResolved: true }])),
+      review: () => Promise.resolve(WITH_FINDING),
+    })
+
+    expect(await run(REVIEW, h.deps)).toBe(0)
+    expect(h.prompts).toHaveLength(1)
+    expect(h.posts[0]?.comments).toHaveLength(1)
+  })
+
+  it('reviews again with --force', async () => {
+    const h = harness({ reviewState: () => Promise.resolve(phadaState([{}])) })
+
+    expect(await run([...REVIEW, '--force'], h.deps)).toBe(0)
+    expect(h.prompts).toHaveLength(1)
+    expect(h.posts).toHaveLength(1)
+  })
+
+  it('never skips with --dry-run and posts nothing', async () => {
+    const h = harness({
+      reviewState: () =>
+        Promise.resolve(phadaState([{ line: 40, body: `Other\n\n${FINDING_MARKER}` }])),
+      review: () => Promise.resolve(WITH_FINDING),
+    })
+
+    expect(await run([...REVIEW, '--dry-run'], h.deps)).toBe(0)
+    expect(h.prompts).toHaveLength(1)
+    expect(h.posts).toHaveLength(0)
+    expect(h.stdout()).toContain('## 🦋 Phada review: 3/5 (implementation issues)')
+    expect(h.stdout()).toContain('===== Inline comment 1/1 · src/shop.ts:3 =====')
+    expect(h.stderr()).toContain(
+      'Dry run: nothing was posted.\nWithout --dry-run: a1b2c3d already reviewed by Phada; 1 thread still open. Use --force to review again.\n',
+    )
+  })
+
+  it('prints the dry run as JSON with the review and the publication preview', async () => {
+    const h = harness({ review: () => Promise.resolve(WITH_FINDING) })
+
+    expect(await run([...REVIEW, '--dry-run', '--format', 'json'], h.deps)).toBe(0)
+    const json = JSON.parse(h.stdout()) as Record<string, unknown>
+    expect(json).toMatchObject({
+      status: 'reviewed',
+      review: { findings: [{ line: 3 }] },
+      publication: {
+        status: 'dry-run',
+        comments: [{ path: 'src/shop.ts', line: 3 }],
+        wouldSkip: null,
+      },
+    })
+    expect(h.posts).toHaveLength(0)
+  })
+
+  it('does not repost a finding that has an open Phada thread', async () => {
+    const old = phadaState([{ reviewId: 'old' }])
+    const h = harness({
+      reviewState: () => Promise.resolve({ ...old, reviews: [] }),
+      review: () => Promise.resolve(WITH_FINDING),
+    })
+
+    expect(await run(REVIEW, h.deps)).toBe(0)
+    expect(h.posts[0]?.comments).toEqual([])
+    expect(h.posts[0]?.body).toContain(
+      'No new problems in a1b2c3d. 1 Phada comment from previous reviews is still open',
+    )
+    expect(h.stderr()).toContain(
+      `Published the review: ${REVIEW_URL} (1 finding still open from previous reviews)`,
+    )
+  })
+
+  it('prints the review before a failing POST and exits with 1', async () => {
+    const h = harness({
+      review: () => Promise.resolve(WITH_FINDING),
+      createReview: () => Promise.reject(new ReviewPermissionError('acme/shop#12')),
+    })
+
+    expect(await run(REVIEW, h.deps)).toBe(1)
+    expect(h.stdout()).toContain('# Review of acme/shop#12')
+    expect(h.stdout()).toContain('spend has no auth')
+    expect(h.stderr().split('\n').at(-2)).toContain(
+      'phada: GitHub denied publishing the review on acme/shop#12 (HTTP 403)',
+    )
+  })
+
+  it('prints the JSON with the failed publication when the POST fails', async () => {
+    const error = new ReviewPermissionError('acme/shop#12')
+    const h = harness({ createReview: () => Promise.reject(error) })
+
+    expect(await run([...REVIEW, '--format', 'json'], h.deps)).toBe(1)
+    expect(JSON.parse(h.stdout())).toMatchObject({
+      status: 'reviewed',
+      publication: { status: 'failed', error: error.message },
+    })
+  })
+
+  it('prints the JSON after a successful POST with the URL', async () => {
+    const h = harness({ review: () => Promise.resolve(WITH_FINDING) })
+
+    expect(await run([...REVIEW, '--format', 'json'], h.deps)).toBe(0)
+    expect(h.events).toEqual(['provider', 'post', 'stdout'])
+    expect(JSON.parse(h.stdout())).toMatchObject({
+      publication: { status: 'published', url: REVIEW_URL, comments: 1, stillOpen: 0 },
+    })
+  })
+
+  it('does not post when the pull request has no changes', async () => {
+    const h = harness({ pullRequest: () => Promise.resolve(pullRequestFixture({ diff: '' })) })
+
+    expect(await run([...REVIEW, '--format', 'json'], h.deps)).toBe(0)
+    expect(h.posts).toHaveLength(0)
+    expect(JSON.parse(h.stdout())).toMatchObject({ status: 'skipped', publication: null })
+  })
+
+  it('stops before the provider when the review state cannot be read', async () => {
+    const h = harness({
+      reviewState: () => Promise.reject(new PullRequestNotFoundError('acme/shop#12')),
+    })
+
+    expect(await run(REVIEW, h.deps)).toBe(1)
+    expect(h.prompts).toHaveLength(0)
+    expect(h.posts).toHaveLength(0)
   })
 })

@@ -21,6 +21,8 @@ export type CliCommand =
       minConfidence?: number
       format: OutputFormat
       verify: boolean
+      dryRun: boolean
+      force: boolean
       debug: boolean
     }
 
@@ -29,7 +31,7 @@ export const USAGE = `Usage: phada <command> [options]
 Reviews GitHub pull requests with the AI provider you choose.
 
 Commands:
-  review <pull request>  Review a pull request and print the review
+  review <pull request>  Review a pull request and publish the review on it
 
 Options:
   -h, --help             Show this help
@@ -39,7 +41,9 @@ Run "phada review --help" for the review options.`
 
 export const REVIEW_USAGE = `Usage: phada review <owner/repo#N | pull request URL> [options]
 
-Reviews a GitHub pull request with the AI provider you choose and prints the review.
+Reviews a GitHub pull request with the AI provider you choose and publishes the
+review on it as the owner of the GitHub token: one review with a comment on the
+line of each finding. Use --dry-run to only print it.
 
 Options:
   --provider <name>     AI provider: claude, codex or ollama (default: claude)
@@ -51,12 +55,14 @@ Options:
   --format <name>       Output: markdown or json (default: markdown)
   --verify              Check every finding with a second call to the AI (about
                         twice the time and tokens)
+  --dry-run             Print what would be published and post nothing
+  --force               Review again even if Phada already reviewed this commit
   --debug               Show error details
   -h, --help            Show this help
 
 Environment:
-  GITHUB_TOKEN          GitHub token that can read the pull request, e.g.
-                        export GITHUB_TOKEN=$(gh auth token)
+  GITHUB_TOKEN          GitHub token that can read the pull request and write
+                        reviews, e.g. export GITHUB_TOKEN=$(gh auth token)
   GH_TOKEN              Used when GITHUB_TOKEN is not set
   OLLAMA_HOST           Ollama address (default: 127.0.0.1:11434)`
 
@@ -118,6 +124,8 @@ function parseReviewArgs(argv: readonly string[]): CliCommand {
     ...(minConfidence === undefined ? {} : { minConfidence }),
     format: values.format,
     verify: values.verify,
+    dryRun: values['dry-run'],
+    force: values.force,
     debug: values.debug,
   }
 }
@@ -129,6 +137,8 @@ const REVIEW_OPTIONS = {
   'min-confidence': { type: 'string' },
   format: { type: 'string', default: 'markdown' },
   verify: { type: 'boolean', default: false },
+  'dry-run': { type: 'boolean', default: false },
+  force: { type: 'boolean', default: false },
   debug: { type: 'boolean', default: false },
   help: { type: 'boolean', short: 'h', default: false },
 } as const satisfies ParseArgsOptionsConfig

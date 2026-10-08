@@ -115,3 +115,51 @@ export class GitHubRequestError extends GitHubError {
     this.status = options.status
   }
 }
+
+export class GitHubGraphQLError extends GitHubError {
+  override readonly name = 'GitHubGraphQLError'
+  readonly apiMessage: string
+  readonly type?: string
+
+  constructor(apiMessage: string, type?: string) {
+    super(`GitHub GraphQL API error: ${apiMessage}`)
+    this.apiMessage = apiMessage
+    this.type = type
+  }
+}
+
+export class ReviewPermissionError extends GitHubError {
+  override readonly name = 'ReviewPermissionError'
+  readonly apiMessage?: string
+
+  constructor(ref: string, apiMessage?: string) {
+    const summary =
+      `GitHub denied publishing the review on ${ref} (HTTP 403): the token cannot write pull request reviews. ` +
+      'Use a fine-grained token with "Pull requests: Read and write" or a classic token with the repo scope ' +
+      '(public_repo for public repositories), or run with --dry-run to only print the review.'
+    super(apiMessage === undefined ? summary : `${summary} GitHub says: ${apiMessage}`)
+    this.apiMessage = apiMessage
+  }
+}
+
+export class ReviewRepositoryAccessError extends GitHubError {
+  override readonly name = 'ReviewRepositoryAccessError'
+
+  constructor(ref: string) {
+    super(
+      `GitHub answered 404 when publishing the review on ${ref}: the token cannot write to this repository. A fine-grained token must include the repository.`,
+    )
+  }
+}
+
+export class ReviewRejectedError extends GitHubError {
+  override readonly name = 'ReviewRejectedError'
+  readonly details?: string
+
+  constructor(ref: string, details?: string) {
+    super(
+      `GitHub rejected the review on ${ref} (HTTP 422)${details === undefined ? '.' : `: ${details}`}`,
+    )
+    this.details = details
+  }
+}

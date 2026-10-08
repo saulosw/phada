@@ -6,17 +6,27 @@ import {
   GitHubRequestError,
   InvalidPullRequestRefError,
   PullRequestNotFoundError,
+  ReviewPermissionError,
 } from '../github/errors.js'
 import { ProviderError } from '../providers/types.js'
 import { InvalidReviewReportError } from '../review/errors.js'
 import { MissingGitHubTokenError, UsageError } from './errors.js'
-import { formatError } from './format-error.js'
+import { errorSummary, formatError } from './format-error.js'
 
 const TOKEN = `ghp_${'A1b2C3d4E5'.repeat(4)}`
 
 function format(error: unknown, debug = false) {
   return formatError(error, { debug })
 }
+
+describe('errorSummary', () => {
+  it('is the message of formatError without the program name', () => {
+    const error = new ReviewPermissionError('acme/shop#12')
+
+    expect(errorSummary(error)).toBe(error.message)
+    expect(formatError(error, { debug: false }).message).toBe(`phada: ${error.message}`)
+  })
+})
 
 describe('formatError', () => {
   it.each([
@@ -32,7 +42,7 @@ describe('formatError', () => {
     ],
     [
       new MissingGitHubTokenError(),
-      'phada: No GitHub token found. Set GITHUB_TOKEN (or GH_TOKEN) to a token that can read the pull request, e.g. export GITHUB_TOKEN=$(gh auth token)',
+      'phada: No GitHub token found. Set GITHUB_TOKEN (or GH_TOKEN) to a token that can read the pull request and write reviews (read-only is enough with --dry-run), e.g. export GITHUB_TOKEN=$(gh auth token)',
       1,
     ],
     [
