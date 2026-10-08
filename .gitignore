@@ -9,6 +9,5 @@ coverage/
 .env.*
 !.env.example
 
-# local-only agent instructions (not published yet)
-AGENTS.md
-CLAUDE.md
+# personal agent instructions
+CLAUDE.local.md

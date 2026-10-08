@@ -2,5 +2,4 @@ node_modules/
 coverage/
 dist/
 package-lock.json
-AGENTS.md
-CLAUDE.md
+CLAUDE.local.md

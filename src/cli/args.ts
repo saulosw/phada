@@ -1,4 +1,6 @@
 import { parseArgs } from 'node:util'
+import type { ParseArgsOptionsConfig } from 'node:util'
+import { InvalidPullRequestRefError } from '../github/errors.js'
 import { parsePullRequestRef } from '../github/pull-request-ref.js'
 import type { PullRequestRef } from '../github/pull-request-ref.js'
 import { DEFAULT_MIN_CONFIDENCE } from '../review/run-review.js'
@@ -8,7 +10,8 @@ import { UsageError } from './errors.js'
 export type OutputFormat = 'markdown' | 'json'
 
 export type CliCommand =
-  | { kind: 'help' }
+  | { kind: 'help'; text: string }
+  | { kind: 'version' }
   | {
       kind: 'review'
       ref: PullRequestRef
@@ -21,7 +24,20 @@ export type CliCommand =
       debug: boolean
     }
 
-export const USAGE = `Usage: npm run review -- <owner/repo#N | pull request URL> [options]
+export const USAGE = `Usage: phada <command> [options]
+
+Reviews GitHub pull requests with the AI provider you choose.
+
+Commands:
+  review <pull request>  Review a pull request and print the review
+
+Options:
+  -h, --help             Show this help
+  -v, --version          Show the version
+
+Run "phada review --help" for the review options.`
+
+export const REVIEW_USAGE = `Usage: phada review <owner/repo#N | pull request URL> [options]
 
 Reviews a GitHub pull request with the AI provider you choose and prints the review.
 
@@ -39,14 +55,47 @@ Options:
   -h, --help            Show this help
 
 Environment:
-  GITHUB_TOKEN          GitHub token with read access, e.g. export GITHUB_TOKEN=$(gh auth token)
+  GITHUB_TOKEN          GitHub token that can read the pull request, e.g.
+                        export GITHUB_TOKEN=$(gh auth token)
+  GH_TOKEN              Used when GITHUB_TOKEN is not set
   OLLAMA_HOST           Ollama address (default: 127.0.0.1:11434)`
 
 const LANGUAGE_TAG = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/
 
 export function parseCliArgs(argv: readonly string[]): CliCommand {
-  const { values, positionals } = parseKnownArgs(argv)
-  if (values.help) return { kind: 'help' }
+  const [command, ...rest] = argv
+  if (command === 'review') return parseReviewArgs(rest)
+  if (command !== undefined && !command.startsWith('-')) throw unknownCommand(command)
+
+  const { values } = parseOptions(argv, {
+    help: { type: 'boolean', short: 'h', default: false },
+    version: { type: 'boolean', short: 'v', default: false },
+  })
+  if (values.help) return { kind: 'help', text: USAGE }
+  if (values.version) return { kind: 'version' }
+  throw new UsageError('Missing the command, e.g. phada review owner/repo#123.')
+}
+
+function unknownCommand(command: string): UsageError {
+  if (isPullRequestRef(command)) {
+    return new UsageError(`Unknown command "${command}". Did you mean "phada review ${command}"?`)
+  }
+  return new UsageError(`Unknown command "${command}". Available: review.`)
+}
+
+function isPullRequestRef(input: string): boolean {
+  try {
+    parsePullRequestRef(input)
+    return true
+  } catch (error) {
+    if (error instanceof InvalidPullRequestRefError) return false
+    throw error
+  }
+}
+
+function parseReviewArgs(argv: readonly string[]): CliCommand {
+  const { values, positionals } = parseOptions(argv, REVIEW_OPTIONS)
+  if (values.help) return { kind: 'help', text: REVIEW_USAGE }
 
   const [input, ...extra] = positionals
   if (input === undefined) throw new UsageError('Missing the pull request to review.')
@@ -73,23 +122,20 @@ export function parseCliArgs(argv: readonly string[]): CliCommand {
   }
 }
 
-function parseKnownArgs(argv: readonly string[]) {
+const REVIEW_OPTIONS = {
+  provider: { type: 'string', default: 'claude' },
+  model: { type: 'string' },
+  language: { type: 'string' },
+  'min-confidence': { type: 'string' },
+  format: { type: 'string', default: 'markdown' },
+  verify: { type: 'boolean', default: false },
+  debug: { type: 'boolean', default: false },
+  help: { type: 'boolean', short: 'h', default: false },
+} as const satisfies ParseArgsOptionsConfig
+
+function parseOptions<T extends ParseArgsOptionsConfig>(argv: readonly string[], options: T) {
   try {
-    return parseArgs({
-      args: [...argv],
-      allowPositionals: true,
-      strict: true,
-      options: {
-        provider: { type: 'string', default: 'claude' },
-        model: { type: 'string' },
-        language: { type: 'string' },
-        'min-confidence': { type: 'string' },
-        format: { type: 'string', default: 'markdown' },
-        verify: { type: 'boolean', default: false },
-        debug: { type: 'boolean', default: false },
-        help: { type: 'boolean', short: 'h', default: false },
-      },
-    })
+    return parseArgs({ args: [...argv], allowPositionals: true, strict: true, options })
   } catch (error) {
     const message = error instanceof Error ? firstSentence(error.message) : String(error)
     throw new UsageError(`${message}.`, { cause: error })

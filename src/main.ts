@@ -1,5 +1,4 @@
-import { pathToFileURL } from 'node:url'
-import { parseCliArgs, USAGE } from './cli/args.js'
+import { parseCliArgs } from './cli/args.js'
 import { MissingGitHubTokenError, UsageError } from './cli/errors.js'
 import { formatError } from './cli/format-error.js'
 import { formatReviewJson } from './cli/format-json.js'
@@ -21,6 +20,7 @@ export interface ProviderOptions {
 
 export interface MainDeps {
   env: NodeJS.ProcessEnv
+  version: string
   stdout: TextOutput
   stderr: TextOutput
   fetchPullRequest: (options: FetchPullRequestOptions) => Promise<PullRequest>
@@ -50,12 +50,16 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
   try {
     const command = parseCliArgs(argv)
     if (command.kind === 'help') {
-      deps.stdout.write(`${USAGE}\n`)
+      deps.stdout.write(`${command.text}\n`)
+      return 0
+    }
+    if (command.kind === 'version') {
+      deps.stdout.write(`${deps.version}\n`)
       return 0
     }
     debug = command.debug
 
-    const token = deps.env.GITHUB_TOKEN?.trim()
+    const token = deps.env.GITHUB_TOKEN?.trim() || deps.env.GH_TOKEN?.trim()
     if (!token) throw new MissingGitHubTokenError()
     const provider = deps.createProvider(command.provider, { model: command.model })
 
@@ -89,15 +93,4 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
     deps.stderr.write(`${message}\n`)
     return exitCode
   }
-}
-
-const entry = process.argv[1]
-if (entry !== undefined && import.meta.url === pathToFileURL(entry).href) {
-  process.exitCode = await run(process.argv.slice(2), {
-    env: process.env,
-    stdout: process.stdout,
-    stderr: process.stderr,
-    fetchPullRequest,
-    createProvider,
-  })
 }

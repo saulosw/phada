@@ -6,6 +6,8 @@ export class MissingGitHubTokenError extends Error {
   override readonly name = 'MissingGitHubTokenError'
 
   constructor() {
-    super('GITHUB_TOKEN is not set. Run: export GITHUB_TOKEN=$(gh auth token)')
+    super(
+      'No GitHub token found. Set GITHUB_TOKEN (or GH_TOKEN) to a token that can read the pull request, e.g. export GITHUB_TOKEN=$(gh auth token)',
+    )
   }
 }

@@ -1,40 +1,61 @@
 # Phada
 
-> Your repositories. Your rules. Your context. Your AI providers. Your execution strategy.
+Phada reviews a GitHub pull request with the AI you already use — Claude Code, Codex or a model
+served by Ollama — and prints the review in your terminal.
 
-Phada is an open source orchestrator for AI code review of GitHub pull requests. Phada is not
-the AI, and no single AI provider is the product: it connects your repositories, your review
-rules and context, the AI provider you choose and the place where the review runs.
-
-It starts local: Phada runs on your machine and uses the AI you already have — an AI CLI you are
-logged into and paying for (Claude Code or Codex) or a model served by Ollama — instead of a per-seat review SaaS.
-
-**Status:** early proof of concept. There is nothing to install yet.
+It runs on your machine. Phada fetches the pull request and its diff, sends them to the AI
+provider you choose, checks that the answer is a valid review, scores it and prints it as
+Markdown or JSON. It does not write anything to GitHub.
 
 ## Requirements
 
 - Node.js 22 or newer
-- [GitHub CLI](https://cli.github.com/) (`gh`), logged in
+- A GitHub token that can read the pull request (see [GitHub token](#github-token))
 - One AI provider:
   - [Claude Code](https://code.claude.com/) (`claude`), logged in with your subscription,
   - [Codex CLI](https://developers.openai.com/codex/cli) (`codex`, install with `npm i -g @openai/codex`, then `codex login`), or
   - [Ollama](https://ollama.com/download), running, with a model pulled (e.g. `ollama pull qwen2.5-coder:7b`)
 
-## Try it
+## Install
 
 ```bash
-npm ci
-export GITHUB_TOKEN=$(gh auth token)   # older gh without "auth token": gh auth status -t
-npm run review -- owner/repo#123
+npm install -g phada
+phada --version
 ```
 
-Phada fetches the pull request and its diff, asks the AI provider you chose for a review and
-prints it as Markdown. Progress goes to stderr and the review to stdout, so
-`npm run -s review -- owner/repo#123 > review.md` saves only the review (`-s` keeps npm's own
-banner out of the file), and `--format json` prints it as JSON for scripts. A review of a large
-pull request can take a few minutes.
+Or run it without installing:
 
-### What a review looks like
+```bash
+npx phada review owner/repo#123
+```
+
+## Usage
+
+```bash
+export GITHUB_TOKEN=$(gh auth token)
+phada review owner/repo#123
+phada review https://github.com/owner/repo/pull/123 --provider codex
+```
+
+Progress goes to stderr and the review to stdout, so `phada review owner/repo#123 > review.md`
+saves only the review, and `--format json` prints it as JSON for scripts. A review of a large pull
+request can take a few minutes.
+
+`phada --help` lists the commands and `phada review --help` lists the review options.
+
+### GitHub token
+
+Phada reads the token from `GITHUB_TOKEN`, or from `GH_TOKEN` when `GITHUB_TOKEN` is not set. It
+only reads the pull request, so a read-only token is enough:
+
+- a fine-grained token with **Contents: Read-only** and **Pull requests: Read-only** on the
+  repository, or
+- a classic token; it needs the `repo` scope for private repositories.
+
+If you use the GitHub CLI, `export GITHUB_TOKEN=$(gh auth token)` reuses its login (older `gh`
+versions without `gh auth token` show it with `gh auth status -t`).
+
+## What a review looks like
 
 Phada sends the diff with the line number of every added and context line, so the AI copies
 the line instead of counting it. The AI answers in a fixed JSON shape that Phada validates, and
@@ -74,6 +95,8 @@ of both calls.
 If the AI's answer is not a valid review, Phada stops with an error instead of printing it;
 `--debug` shows the start of the answer.
 
+## Options
+
 | Option                 | What it does                                                                                                                                                                                                                                                       |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `--provider <name>`    | AI provider: `claude` (default), `codex` or `ollama`                                                                                                                                                                                                               |
@@ -84,9 +107,20 @@ If the AI's answer is not a valid review, Phada stops with an error instead of p
 | `--verify`             | Checks every finding with a second call to the AI before scoring (see above). Off by default                                                                                                                                                                       |
 | `--debug`              | Shows error details                                                                                                                                                                                                                                                |
 
+## Exit codes
+
+| Code | Meaning                                                                       |
+| ---- | ----------------------------------------------------------------------------- |
+| 0    | The review was printed, or the pull request has no changes to review          |
+| 1    | Something failed: GitHub, the AI provider, or an answer that is not a review  |
+| 2    | The command line is wrong (unknown option, invalid pull request reference, …) |
+
+## What the AI sees
+
 With Claude Code and Codex, the AI runs in an empty temporary directory and only sees the pull
 request text that Phada sends. Phada only reads the `model` from their settings. An
-`AGENTS.md`/`CLAUDE.md` in or above that temporary directory is never loaded.
+`AGENTS.md`/`CLAUDE.md` in or above that temporary directory is never loaded, and the GitHub
+token is removed from the environment of the AI process.
 
 Claude Code runs without tools, MCP servers or your personal settings (hooks, plugins, skills,
 `CLAUDE.md`).
@@ -102,7 +136,7 @@ keep it free of instructions you do not want applied to your reviews.
 
 ```bash
 ollama pull qwen2.5-coder:7b
-npm run review -- owner/repo#123 --provider ollama --model qwen2.5-coder:7b
+phada review owner/repo#123 --provider ollama --model qwen2.5-coder:7b
 ```
 
 Phada talks to Ollama at `127.0.0.1:11434` (or `OLLAMA_HOST`). It checks the model's context
@@ -117,19 +151,15 @@ model silently cut the diff.
 - **A remote `OLLAMA_HOST`** (another machine or a hosted Ollama) also sends the diff off your
   machine, to that server.
 
-## Scripts
+## Status
 
-| Script                 | What it does                                                          |
-| ---------------------- | --------------------------------------------------------------------- |
-| `npm run review`       | Reviews a pull request (see Try it)                                   |
-| `npm run dev`          | Same as `npm run review` (runs from source with `tsx`, no build step) |
-| `npm run typecheck`    | Type-checks the project with `tsc --noEmit`                           |
-| `npm test`             | Runs the test suite with Vitest                                       |
-| `npm run format`       | Formats the code with Prettier                                        |
-| `npm run format:check` | Checks formatting (used by CI)                                        |
+Phada is in `0.x`: options and output can change between minor versions. The JSON output carries
+a `schemaVersion` so scripts can tell when its shape changes.
 
-## Security
+## Contributing, security and license
 
-Tokens are read from environment variables only and are never printed or committed.
-Phada never reads or manages the credentials of your AI CLI — authentication belongs to
-that tool.
+- [CONTRIBUTING.md](CONTRIBUTING.md) explains how to run Phada from source and send a change.
+- [SECURITY.md](SECURITY.md) explains how to report a vulnerability privately.
+- Tokens are read from environment variables only and are never printed. Phada never reads or
+  manages the credentials of your AI CLI: authentication belongs to that tool.
+- Phada is licensed under the [Apache License 2.0](LICENSE).

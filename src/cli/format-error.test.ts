@@ -32,7 +32,7 @@ describe('formatError', () => {
     ],
     [
       new MissingGitHubTokenError(),
-      'phada: GITHUB_TOKEN is not set. Run: export GITHUB_TOKEN=$(gh auth token)',
+      'phada: No GitHub token found. Set GITHUB_TOKEN (or GH_TOKEN) to a token that can read the pull request, e.g. export GITHUB_TOKEN=$(gh auth token)',
       1,
     ],
     [
