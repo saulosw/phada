@@ -4,6 +4,7 @@ import { MissingGitHubTokenError, UsageError } from './cli/errors.js'
 import { errorSummary, formatError } from './cli/format-error.js'
 import { formatGitHubPreview, formatGitHubReview } from './cli/format-github.js'
 import type { GitHubReview } from './cli/format-github.js'
+import { formatContextLine, formatContextSection } from './cli/format-context.js'
 import { formatAlreadyReviewedJson, formatReviewJson } from './cli/format-json.js'
 import type { Publication } from './cli/format-json.js'
 import { formatPublishedMessage, formatSkipMessage } from './cli/format-publication.js'
@@ -14,6 +15,10 @@ import { runInit } from './cli/init.js'
 import { withProgress } from './cli/progress.js'
 import type { TextOutput } from './cli/progress.js'
 import type { LocalFileSystem } from './config/local-files.js'
+import { resolveProvider } from './config/merge-config.js'
+import { expandHome, loadUserLayers } from './config/user-config.js'
+import { loadContext } from './context/load-context.js'
+import type { ContextReport } from './context/types.js'
 import type { CreatedReview, CreateReviewOptions } from './github/create-review.js'
 import type {
   FetchReviewStateOptions,
@@ -22,6 +27,7 @@ import type {
 import { formatPullRequestRef } from './github/pull-request-ref.js'
 import type { PullRequestRef } from './github/pull-request-ref.js'
 import type { FetchPullRequestOptions, PullRequest } from './github/pull-request.js'
+import type { RepositoryFilesOptions, RepositoryTree } from './github/repository-files.js'
 import { ClaudeCliProvider } from './providers/claude.js'
 import { CodexCliProvider } from './providers/codex.js'
 import { OllamaProvider } from './providers/ollama.js'
@@ -50,6 +56,12 @@ export interface MainDeps {
   fetchPullRequest: (options: FetchPullRequestOptions) => Promise<PullRequest>
   fetchReviewState: (options: FetchReviewStateOptions) => Promise<PullRequestReviewState>
   createReview: (options: CreateReviewOptions) => Promise<CreatedReview>
+  fetchRepositoryTree: (
+    options: RepositoryFilesOptions & { sha: string },
+  ) => Promise<RepositoryTree>
+  fetchRepositoryFile: (
+    options: RepositoryFilesOptions & { path: string; ref: string },
+  ) => Promise<string | null>
   createProvider: (name: string, options: ProviderOptions) => ReviewProvider
 }
 
@@ -92,7 +104,16 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
 
     const token = deps.env.GITHUB_TOKEN?.trim() || deps.env.GH_TOKEN?.trim()
     if (!token) throw new MissingGitHubTokenError()
-    const provider = deps.createProvider(command.provider ?? 'claude', { model: command.model })
+    const { owner, repo } = command.ref
+    const userLayers = await loadUserLayers({
+      env: deps.env,
+      home: deps.home,
+      owner,
+      repo,
+      files: deps.files,
+    })
+    const choice = resolveProvider({ provider: command.provider, model: command.model }, userLayers)
+    const provider = deps.createProvider(choice.provider, { model: choice.model })
 
     deps.stderr.write(`Fetching ${formatPullRequestRef(command.ref)}…\n`)
     const pullRequest = await deps.fetchPullRequest({ ...command.ref, token })
@@ -112,12 +133,30 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
       return 0
     }
 
+    const repository = { ...command.ref, token }
+    const loaded = await loadContext({
+      diff: pullRequest.diff,
+      baseSha: pullRequest.baseSha,
+      userLayers,
+      sources: {
+        readTree: () => deps.fetchRepositoryTree({ ...repository, sha: pullRequest.baseSha }),
+        readRepoFile: (path) =>
+          deps.fetchRepositoryFile({ ...repository, path, ref: pullRequest.baseSha }),
+        readLocalFile: (path) => deps.files.readText(expandHome(path, deps.home)),
+        listLocalDocs: (path) => deps.files.listDocs(expandHome(path, deps.home)),
+      },
+    })
+    for (const warning of loaded.report.warnings) deps.stderr.write(`Warning: ${warning}\n`)
+    deps.stderr.write(`${formatContextLine(loaded.report)}\n`)
+    const language = command.language ?? loaded.options.language
+
     const outcome = await runReview(
       {
-        pullRequest,
-        language: command.language,
-        minConfidence: command.minConfidence,
-        verify: command.verify ?? false,
+        pullRequest: { ...pullRequest, diff: loaded.diff },
+        language,
+        minConfidence: command.minConfidence ?? loaded.options.minConfidence,
+        verify: command.verify ?? loaded.options.verify ?? false,
+        context: loaded.context,
       },
       {
         provider: withProgress(provider, deps.stderr),
@@ -125,13 +164,19 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
       },
     )
     if (outcome.status === 'skipped') {
-      deps.stderr.write('Nothing to review: the pull request has no changes.\n')
-      if (command.format === 'json') deps.stdout.write(formatReviewJson(pullRequest, outcome))
+      deps.stderr.write(
+        outcome.reason === 'all-ignored'
+          ? 'Nothing to review: every changed file is ignored.\n'
+          : 'Nothing to review: the pull request has no changes.\n',
+      )
+      if (command.format === 'json') {
+        deps.stdout.write(formatReviewJson(pullRequest, outcome, null, loaded.report))
+      }
       return 0
     }
 
     const plan = planPublication(outcome.result.findings, state)
-    const messages = messagesFor(command.language)
+    const messages = messagesFor(language)
     const review = formatGitHubReview(outcome.result, plan, undefined, messages)
     if (command.dryRun) {
       printDryRun(
@@ -143,17 +188,19 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
         plan,
         decision.wouldSkip,
         messages,
+        loaded.report,
       )
     } else {
       await publish(
         deps,
-        { ...command.ref, token },
+        repository,
         command.format,
         pullRequest,
         outcome,
         review,
         plan,
         messages,
+        loaded.report,
       )
     }
     return 0
@@ -173,6 +220,7 @@ function printDryRun(
   plan: PublicationPlan,
   wouldSkip: SkipReason | undefined,
   messages: Messages,
+  context: ContextReport,
 ): void {
   if (format === 'json') {
     const publication: Publication = {
@@ -181,9 +229,9 @@ function printDryRun(
       stillOpen: plan.stillOpen.length,
       ...(wouldSkip === undefined ? {} : { wouldSkip }),
     }
-    deps.stdout.write(formatReviewJson(pullRequest, outcome, publication))
+    deps.stdout.write(formatReviewJson(pullRequest, outcome, publication, context))
   } else {
-    deps.stdout.write(formatGitHubPreview(review, messages))
+    deps.stdout.write(`${formatGitHubPreview(review, messages)}\n${formatContextSection(context)}`)
   }
   deps.stderr.write('Dry run: nothing was posted.\n')
   if (wouldSkip !== undefined) {
@@ -200,6 +248,7 @@ async function publish(
   review: GitHubReview,
   plan: PublicationPlan,
   messages: Messages,
+  context: ContextReport,
 ): Promise<void> {
   if (format === 'markdown') deps.stdout.write(formatReview(pullRequest, outcome.result, messages))
   deps.stderr.write('Publishing the review…\n')
@@ -214,7 +263,7 @@ async function publish(
   } catch (error) {
     if (format === 'json') {
       const failed: Publication = { status: 'failed', error: errorSummary(error) }
-      deps.stdout.write(formatReviewJson(pullRequest, outcome, failed))
+      deps.stdout.write(formatReviewJson(pullRequest, outcome, failed, context))
     }
     throw error
   }
@@ -222,7 +271,7 @@ async function publish(
   const stillOpen = plan.stillOpen.length
   if (format === 'json') {
     const published: Publication = { status: 'published', url: created.url, comments, stillOpen }
-    deps.stdout.write(formatReviewJson(pullRequest, outcome, published))
+    deps.stdout.write(formatReviewJson(pullRequest, outcome, published, context))
   }
   deps.stderr.write(`${formatPublishedMessage(created.url, comments, stillOpen)}\n`)
 }

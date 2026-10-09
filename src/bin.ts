@@ -5,6 +5,7 @@ import { nodeFileSystem } from './config/local-files.js'
 import { createReview } from './github/create-review.js'
 import { fetchReviewState } from './github/pull-request-reviews.js'
 import { fetchPullRequest } from './github/pull-request.js'
+import { fetchRepositoryFile, fetchRepositoryTree } from './github/repository-files.js'
 import { createProvider, run } from './main.js'
 
 const packageJson = await readFile(new URL('../package.json', import.meta.url), 'utf8')
@@ -21,5 +22,7 @@ process.exitCode = await run(process.argv.slice(2), {
   fetchPullRequest,
   fetchReviewState,
   createReview,
+  fetchRepositoryTree,
+  fetchRepositoryFile,
   createProvider,
 })

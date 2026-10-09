@@ -16,6 +16,7 @@ import type {
   ReviewThread,
 } from './github/pull-request-reviews.js'
 import type { FetchPullRequestOptions, PullRequest } from './github/pull-request.js'
+import type { RepositoryTree } from './github/repository-files.js'
 import { FINDING_MARKER, reviewMarker } from './publish/markers.js'
 import { createProvider, run } from './main.js'
 import type { MainDeps, ProviderOptions } from './main.js'
@@ -40,6 +41,8 @@ const EMPTY_STATE: PullRequestReviewState = { viewer: 'octocat', reviews: [], th
 interface Harness {
   deps: MainDeps
   files: MemoryFiles
+  treeFetches: { sha: string }[]
+  fileFetches: { path: string; ref: string }[]
   stdout: () => string
   stderr: () => string
   fetches: FetchPullRequestOptions[]
@@ -58,9 +61,14 @@ function harness(
     reviewState?: () => Promise<PullRequestReviewState>
     createReview?: () => Promise<CreatedReview>
     files?: MemoryFiles
+    repoFiles?: Record<string, string>
+    tree?: () => Promise<RepositoryTree>
   } = {},
 ): Harness {
   const files = overrides.files ?? memoryFiles()
+  const repoFiles = overrides.repoFiles ?? {}
+  const treeFetches: { sha: string }[] = []
+  const fileFetches: { path: string; ref: string }[] = []
   const out: string[] = []
   const err: string[] = []
   const fetches: FetchPullRequestOptions[] = []
@@ -95,6 +103,18 @@ function harness(
       posts.push(options)
       return overrides.createReview?.() ?? Promise.resolve({ url: REVIEW_URL })
     },
+    fetchRepositoryTree: (options) => {
+      treeFetches.push({ sha: options.sha })
+      if (overrides.tree !== undefined) return overrides.tree()
+      return Promise.resolve({
+        entries: Object.entries(repoFiles).map(([path, text]) => ({ path, size: text.length })),
+        truncated: false,
+      })
+    },
+    fetchRepositoryFile: (options) => {
+      fileFetches.push({ path: options.path, ref: options.ref })
+      return Promise.resolve(repoFiles[options.path] ?? null)
+    },
     createProvider: (name, options) => {
       providers.push({ name, options })
       if (name !== 'claude') return createProvider(name, options)
@@ -112,6 +132,8 @@ function harness(
   return {
     deps,
     files,
+    treeFetches,
+    fileFetches,
     stdout: () => out.join(''),
     stderr: () => err.join(''),
     fetches,
@@ -193,6 +215,7 @@ describe('run', () => {
       [
         'Fetching acme/shop#12…',
         'acme/shop#12 · a1b2c3d · 2 files · +15 −1 · 523 B diff',
+        'Context: no rules or docs',
         'Reviewing with fake-cli… (this can take a few minutes)',
         'Publishing the review…',
         `Published the review: ${REVIEW_URL}`,
@@ -677,5 +700,129 @@ describe('run init', () => {
 
     expect(await run(['init'], h.deps)).toBe(2)
     expect(h.stderr()).toContain('Not inside a git repository.')
+  })
+})
+
+describe('run with config and repository context', () => {
+  const BASE_SHA = '0000000000000000000000000000000000000000'
+
+  it('fails with a usage error for an invalid user config before fetching the pull request', async () => {
+    const h = harness({ files: memoryFiles({ '/cfg/config.yml': 'colour: red' }) })
+
+    expect(await run(['review', 'acme/shop#12'], h.deps)).toBe(2)
+    expect(h.stderr()).toContain('Invalid config /cfg/config.yml: colour:')
+    expect(h.fetches).toEqual([])
+  })
+
+  it('takes the provider and model from the user config, and the flags over them', async () => {
+    const configured = harness({
+      files: memoryFiles({ '/cfg/repos/acme/shop/config.yml': 'provider: claude\nmodel: sonnet' }),
+    })
+    await run(['review', 'acme/shop#12', '--dry-run'], configured.deps)
+
+    const flagged = harness({ files: memoryFiles({ '/cfg/config.yml': 'model: sonnet' }) })
+    await run(['review', 'acme/shop#12', '--dry-run', '--model', 'opus'], flagged.deps)
+
+    expect(configured.providers).toEqual([{ name: 'claude', options: { model: 'sonnet' } }])
+    expect(flagged.providers).toEqual([{ name: 'claude', options: { model: 'opus' } }])
+  })
+
+  it('reads the repository config and docs at the base commit and sends them to the AI', async () => {
+    const h = harness({
+      repoFiles: {
+        '.phada/config.yml': 'language: pt-BR\nrules:\n  - id: orm-only\n    rule: Use the ORM.',
+        'AGENTS.md': 'Keep handlers thin.',
+      },
+    })
+
+    expect(await run(['review', 'acme/shop#12', '--dry-run'], h.deps)).toBe(0)
+
+    expect(h.treeFetches).toEqual([{ sha: BASE_SHA }])
+    expect(h.fileFetches.every((fetch) => fetch.ref === BASE_SHA)).toBe(true)
+    expect(h.prompts[0]?.instructions).toContain('[orm-only] (files: **)\nUse the ORM.')
+    expect(h.prompts[0]?.instructions).toContain('in pt-BR')
+    expect(h.prompts[0]?.data).toContain('=== AGENTS.md ===\nKeep handlers thin.')
+    expect(h.stderr()).toContain('Context: 1 rule · 1 doc (19 B)\n')
+  })
+
+  it('lets --language win over the repository config', async () => {
+    const h = harness({ repoFiles: { '.phada/config.yml': 'language: pt-BR' } })
+
+    await run(['review', 'acme/shop#12', '--dry-run', '--language', 'en'], h.deps)
+
+    expect(h.prompts[0]?.instructions).toContain('in en')
+  })
+
+  it('turns verification on from the config and off with --no-verify', async () => {
+    const files = () => memoryFiles({ '/cfg/config.yml': 'verify: true' })
+    const on = harness({ files: files(), review: () => Promise.resolve(WITH_FINDING) })
+    const off = harness({ files: files(), review: () => Promise.resolve(WITH_FINDING) })
+
+    await run(['review', 'acme/shop#12', '--dry-run'], on.deps)
+    await run(['review', 'acme/shop#12', '--dry-run', '--no-verify'], off.deps)
+
+    expect(on.prompts).toHaveLength(2)
+    expect(off.prompts).toHaveLength(1)
+  })
+
+  it('skips a reviewed commit before reading the repository', async () => {
+    const h = harness({ reviewState: () => Promise.resolve(phadaState([{}])) })
+
+    expect(await run(['review', 'acme/shop#12'], h.deps)).toBe(0)
+    expect(h.treeFetches).toEqual([])
+  })
+
+  it('reviews without the repository context when the token cannot read it', async () => {
+    const h = harness({
+      tree: () => Promise.reject(new Error('GitHub rejected the token (HTTP 403)')),
+    })
+
+    expect(await run(['review', 'acme/shop#12', '--dry-run'], h.deps)).toBe(0)
+    expect(h.stderr()).toContain(
+      'Could not read the repository at 0000000 (GitHub rejected the token (HTTP 403)): reviewing without its rules and docs.',
+    )
+    expect(h.prompts).toHaveLength(1)
+  })
+
+  it('does not call the AI when every changed file is ignored', async () => {
+    const diff = pullRequestFixture().diff.replaceAll('src/shop.ts', 'package-lock.json')
+    const h = harness({ pullRequest: () => Promise.resolve(pullRequestFixture({ diff })) })
+
+    expect(await run(['review', 'acme/shop#12', '--format', 'json'], h.deps)).toBe(0)
+    expect(h.stderr()).toContain('Nothing to review: every changed file is ignored.')
+    expect(h.prompts).toEqual([])
+    expect(JSON.parse(h.stdout())).toMatchObject({
+      status: 'skipped',
+      reason: 'all-ignored',
+      context: { ignored: ['package-lock.json'] },
+    })
+  })
+
+  it('prints the context in the JSON and after the dry-run preview', async () => {
+    const repoFiles = { '.phada/rules.md': 'Use the ORM.' }
+    const json = harness({ repoFiles })
+    const markdown = harness({ repoFiles })
+
+    await run(['review', 'acme/shop#12', '--dry-run', '--format', 'json'], json.deps)
+    await run(['review', 'acme/shop#12', '--dry-run'], markdown.deps)
+
+    expect(JSON.parse(json.stdout())).toMatchObject({
+      context: { rules: [{ key: '.phada/rules.md', status: 'applied' }] },
+    })
+    expect(markdown.stdout()).toContain(
+      '## Context sent to the AI\n\nRules:\n- .phada/rules.md (.phada/rules.md)\n',
+    )
+  })
+
+  it('expands ~ in local files from the user config', async () => {
+    const files = memoryFiles({
+      '/cfg/config.yml': 'localFiles: ["~/notes/rules.md"]',
+      '/home/u/notes/rules.md': 'Money is in cents.',
+    })
+    const h = harness({ files })
+
+    await run(['review', 'acme/shop#12', '--dry-run'], h.deps)
+
+    expect(h.prompts[0]?.data).toContain('=== local:/home/u/notes/rules.md ===\nMoney is in cents.')
   })
 })
