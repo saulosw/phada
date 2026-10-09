@@ -135,4 +135,5 @@ npm run dev -- review owner/repo#N     # needs GITHUB_TOKEN or GH_TOKEN
 
 - One change per pull request, with Conventional Commits messages in English.
 - Done means: format, typecheck, tests and smoke green (locally and in CI), no secrets, and the
-  README updated when user-visible behavior changes.
+  README and the `Unreleased` section of [CHANGELOG.md](CHANGELOG.md) updated when user-visible
+  behavior changes.

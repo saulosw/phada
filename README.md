@@ -199,7 +199,8 @@ model silently cut the diff.
 ## Status
 
 Phada is in `0.x`: options and output can change between minor versions. The JSON output carries
-a `schemaVersion` so scripts can tell when its shape changes.
+a `schemaVersion` so scripts can tell when its shape changes. [CHANGELOG.md](CHANGELOG.md) lists
+what changed in each version.
 
 ## Contributing, security and license
 

@@ -67,6 +67,9 @@ CI runs the same four commands.
   and the imperative mood, on one line: `feat: add the --verify option`, `fix: …`, `docs: …`.
 - One change per pull request. Describe what changes and why, how you tested it, and anything a
   reviewer should look at first.
+- A change that users notice (a new option, different output, a fixed bug) adds a line to the
+  `Unreleased` section of [CHANGELOG.md](CHANGELOG.md), and updates the README when it changes
+  how Phada is used.
 
 By contributing, you agree that your contributions are licensed under the
 [Apache License 2.0](LICENSE).
