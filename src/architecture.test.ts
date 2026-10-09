@@ -20,6 +20,17 @@ const PUBLISH: Boundary = {
   types: new Set(['../review/types.js', '../github/pull-request-reviews.js']),
   expected: ['decide-run.ts', 'markers.ts', 'plan-publication.ts'],
 }
+const CONTEXT: Boundary = {
+  dir: 'context',
+  values: new Set([
+    'picomatch',
+    'node:path',
+    '../config/parse-config.js',
+    '../config/merge-config.js',
+  ]),
+  types: new Set(['../review/types.js', '../config/types.js', '../github/repository-files.js']),
+  expected: ['ignore.ts', 'load-context.ts', 'select-docs.ts', 'split-diff.ts'],
+}
 const STATIC_MODULE = /^\s*(?:import|export)\s+(type\s+)?(?:[^'"]*?\bfrom\s+)?['"]([^'"]+)['"]/gm
 const DYNAMIC_MODULE = /\bimport\(\s*['"]([^'"]+)['"]\s*\)/g
 const STRING_LITERAL = /(['"`])(?:\\.|(?!\1)[^\\])*\1/g
@@ -121,7 +132,33 @@ describe('publish boundary rules', () => {
   })
 })
 
-describe.each([REVIEW, PUBLISH])('$dir boundary', (boundary) => {
+describe('context boundary rules', () => {
+  it('accepts picomatch, path, the pure config helpers and type-only imports', () => {
+    const code = [
+      "import picomatch from 'picomatch'",
+      "import { posix } from 'node:path'",
+      "import { mergeConfig } from '../config/merge-config.js'",
+      "import type { ConfigLayer } from '../config/types.js'",
+      "import type { RepositoryTree } from '../github/repository-files.js'",
+    ].join('\n')
+
+    expect(boundaryViolations(code, CONTEXT)).toEqual([])
+  })
+
+  it.each([
+    ['the file system', "import { readFile } from 'node:fs/promises'"],
+    ['the user config loader', "import { loadUserLayers } from '../config/user-config.js'"],
+    [
+      'a value import of the GitHub client',
+      "import { fetchRepositoryTree } from '../github/repository-files.js'",
+    ],
+    ['process.env', 'const home = process.env.HOME'],
+  ])('flags %s', (_case, code) => {
+    expect(boundaryViolations(code, CONTEXT)).not.toEqual([])
+  })
+})
+
+describe.each([REVIEW, PUBLISH, CONTEXT])('$dir boundary', (boundary) => {
   const sources = sourcesOf(boundary)
 
   it('has source files to check', () => {

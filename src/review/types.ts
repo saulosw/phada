@@ -1,11 +1,31 @@
 import type { PullRequest } from '../github/pull-request.js'
 import type { TokenUsage } from '../providers/types.js'
 
+export interface ContextRule {
+  key: string
+  text: string
+  scope: string[]
+  severity?: Severity
+  origin: string
+}
+
+export interface ContextDoc {
+  path: string
+  content: string
+}
+
+export interface ReviewContext {
+  rules: ContextRule[]
+  docs: ContextDoc[]
+  ignored: string[]
+}
+
 export interface ReviewRequest {
   pullRequest: PullRequest
   language?: string
   minConfidence?: number
   verify?: boolean
+  context?: ReviewContext
 }
 
 export interface ReviewTarget {
