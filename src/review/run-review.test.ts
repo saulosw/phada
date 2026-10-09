@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { findingFixture } from '../../test/support/finding.js'
 import { pullRequestFixture } from '../../test/support/pull-request.js'
+import { reviewContextFixture } from '../../test/support/review-context.js'
 import { reviewReportJson } from '../../test/support/review-report.js'
 import { verdictFixture, verificationJson } from '../../test/support/verification.js'
 import type { ReviewOutput, ReviewPrompt, ReviewProvider } from '../providers/types.js'
@@ -449,5 +450,76 @@ describe('runReview', () => {
     await expect(runReview({ pullRequest: pullRequestFixture() }, { provider })).rejects.toBe(
       failure,
     )
+  })
+})
+
+describe('runReview with repository context', () => {
+  const context = reviewContextFixture()
+
+  it('keeps only known rules and sources on the findings', async () => {
+    const provider = new FakeProvider(() =>
+      Promise.resolve({
+        ...OUTPUT,
+        text: reviewReportJson({
+          findings: [
+            {
+              ...findingFixture({ line: 3 }),
+              rule: 'orm-only',
+              sources: ['docs/conventions.md', 'docs/invented.md'],
+            },
+            { ...findingFixture({ line: 5, title: 'other' }), rule: 'invented', sources: [] },
+          ],
+        }),
+      }),
+    )
+
+    const outcome = await runReview({ pullRequest: pullRequestFixture(), context }, { provider })
+
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(
+      outcome.result.findings.map(({ title, rule, sources }) => [title, rule, sources]),
+    ).toEqual([
+      ['spend has no auth', 'orm-only', ['docs/conventions.md']],
+      ['other', undefined, undefined],
+    ])
+  })
+
+  it('applies the severity of a rule after the verifier rated the finding', async () => {
+    const report: ReviewOutput = {
+      ...OUTPUT,
+      text: reviewReportJson({
+        findings: [
+          { ...findingFixture({ line: 3, severity: 'P1' }), rule: 'orm-only', sources: [] },
+        ],
+      }),
+    }
+    const verification: ReviewOutput = {
+      text: verificationJson([verdictFixture({ id: 1, severity: 'P2', confidence: 90 })]),
+      durationMs: 10,
+    }
+    const provider = new FakeProvider(inTurn(report, verification))
+
+    const outcome = await runReview(
+      { pullRequest: pullRequestFixture(), context, verify: true },
+      { provider },
+    )
+
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(outcome.result.findings[0]).toMatchObject({ severity: 'P1', rule: 'orm-only' })
+  })
+
+  it('skips without calling the provider when every changed file was ignored', async () => {
+    const provider = new FakeProvider(() => Promise.reject(new Error('should not run')))
+
+    const outcome = await runReview(
+      {
+        pullRequest: pullRequestFixture({ diff: '' }),
+        context: reviewContextFixture({ ignored: ['package-lock.json'] }),
+      },
+      { provider },
+    )
+
+    expect(outcome).toEqual({ status: 'skipped', reason: 'all-ignored' })
+    expect(provider.prompts).toEqual([])
   })
 })

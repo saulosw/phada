@@ -24,9 +24,22 @@ export function parseReviewReport(text: string): ParsedReport {
   if (envelope === undefined || !envelope.success) {
     throw new InvalidReviewReportError('missing summary, files or findings', preview(text))
   }
-  const findings = envelope.data.findings.flatMap((item) => {
+  const findings = envelope.data.findings.flatMap((item): Finding[] => {
     const parsed = ReportFindingSchema.safeParse(item)
-    return parsed.success ? [parsed.data] : []
+    if (!parsed.success) return []
+    const { rule, sources, ...finding } = parsed.data
+    const ruleKey = typeof rule === 'string' ? rule.trim() : ''
+    const texts = (Array.isArray(sources) ? sources : [])
+      .filter((source): source is string => typeof source === 'string')
+      .map((source) => source.trim())
+      .filter((source) => source !== '')
+    return [
+      {
+        ...finding,
+        ...(ruleKey === '' ? {} : { rule: ruleKey }),
+        ...(texts.length === 0 ? {} : { sources: texts }),
+      },
+    ]
   })
   const files = envelope.data.files.flatMap((item) => {
     const parsed = ReportFileSchema.safeParse(item)

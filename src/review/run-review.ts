@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import type { ReviewProvider, TokenUsage } from '../providers/types.js'
+import { withKnownReferences, withRuleSeverity } from './context-findings.js'
 import { parseDiffFiles } from './diff-lines.js'
 import { parseReviewReport } from './parse-report.js'
 import { buildReviewPrompt } from './prompt.js'
@@ -34,7 +35,10 @@ export async function runReview(
       `Invalid minConfidence ${minConfidence}: use an integer from ${CONFIDENCE_FLOOR} to ${MAX_CONFIDENCE}.`,
     )
   }
-  if (pullRequest.diff.trim() === '') return { status: 'skipped', reason: 'empty-diff' }
+  if (pullRequest.diff.trim() === '') {
+    const allIgnored = (request.context?.ignored.length ?? 0) > 0
+    return { status: 'skipped', reason: allIgnored ? 'all-ignored' : 'empty-diff' }
+  }
 
   const createNonce = deps.createNonce ?? randomNonce
   const { text, durationMs, model, additionalModels, usage } = await deps.provider.review(
@@ -43,8 +47,13 @@ export async function runReview(
   const report = parseReviewReport(text)
   const diffFiles = parseDiffFiles(pullRequest.diff)
   const verify = request.verify === true
-  const prepared = prepareCandidates(
+  const reported = withKnownReferences(
     report.findings,
+    request.context,
+    diffFiles.map((file) => file.path),
+  )
+  const prepared = prepareCandidates(
+    reported,
     diffFiles,
     minConfidence,
     verify ? VERIFY_CANDIDATE_FLOOR : CONFIDENCE_FLOOR,
@@ -57,7 +66,10 @@ export async function runReview(
         createNonce(),
       )
     : undefined
-  const selection = splitAtCut(checked?.findings ?? prepared.candidates, minConfidence)
+  const selection = splitAtCut(
+    withRuleSeverity(checked?.findings ?? prepared.candidates, request.context),
+    minConfidence,
+  )
   const totalUsage = sumUsage(usage, checked?.verification.usage)
   return {
     status: 'reviewed',

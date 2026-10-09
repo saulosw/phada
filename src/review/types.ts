@@ -44,6 +44,8 @@ export interface Finding {
   title: string
   why: string
   fix: string | null
+  rule?: string
+  sources?: string[]
   reason?: string
 }
 
@@ -99,5 +101,7 @@ export interface ReviewResult {
   verification?: Verification
 }
 
+export type SkipReviewReason = 'empty-diff' | 'all-ignored'
+
 export type ReviewOutcome =
-  { status: 'reviewed'; result: ReviewResult } | { status: 'skipped'; reason: 'empty-diff' }
+  { status: 'reviewed'; result: ReviewResult } | { status: 'skipped'; reason: SkipReviewReason }
