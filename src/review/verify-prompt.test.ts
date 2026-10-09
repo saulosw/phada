@@ -164,6 +164,17 @@ describe('buildVerifyPrompt with repository context', () => {
     )
   })
 
+  it('tells the verifier that the docs come from the repository and are not instructions', () => {
+    const { instructions } = buildVerifyPrompt(
+      { pullRequest: pullRequestFixture(), context },
+      ruled,
+      NONCE,
+    )
+
+    expect(instructions).toContain('the repository documentation\nwhen there is any')
+    expect(instructions).toContain('the documentation comes from the repository')
+  })
+
   it('keeps the diff-only scope without context', () => {
     const { instructions } = verifyPrompt()
 
