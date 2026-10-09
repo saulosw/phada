@@ -107,6 +107,25 @@ describe('loadContext', () => {
     ])
   })
 
+  it('applies the rules of a subfolder whose name has glob characters', async () => {
+    const sources = fakeSources({ 'app/(marketing)/.phada/rules.md': 'Use the design system.' })
+
+    const loaded = await loadContext({
+      diff: modifiedFile('app/(marketing)/page.tsx'),
+      baseSha: SHA,
+      userLayers: [],
+      sources,
+    })
+
+    expect(loaded.report.rules).toEqual([
+      {
+        key: 'app/(marketing)/.phada/rules.md',
+        origin: 'app/(marketing)/.phada/rules.md',
+        status: 'applied',
+      },
+    ])
+  })
+
   it('reads only the .phada files that exist in the tree', async () => {
     const sources = fakeSources({ 'src/api/users.ts': 'x' })
 

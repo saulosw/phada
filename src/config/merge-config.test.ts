@@ -143,6 +143,30 @@ describe('mergeConfig rules', () => {
     expect(merged.ignore).toEqual(['src/api/generated/**'])
   })
 
+  it('escapes glob characters in the name of the subfolder', () => {
+    const merged = mergeConfig([
+      sub(
+        'app/(marketing)',
+        {
+          rules: [{ rule: 'x', scope: ['**/*.tsx'] }],
+          ignore: ['gen/**'],
+          context: { files: [{ path: 'README.md' }, { path: 'docs/*.md' }] },
+        },
+        'y',
+      ),
+    ])
+
+    expect(merged.rules.map((rule) => rule.scope)).toEqual([
+      ['app/\\(marketing\\)/**/*.tsx'],
+      ['app/\\(marketing\\)/**'],
+    ])
+    expect(merged.ignore).toEqual(['app/\\(marketing\\)/gen/**'])
+    expect(merged.files.map((file) => file.pattern)).toEqual([
+      'app/(marketing)/README.md',
+      'app/\\(marketing\\)/docs/*.md',
+    ])
+  })
+
   it('drops paths that leave the repository or the subfolder', () => {
     const merged = mergeConfig([
       sub('src/api', { context: { files: [{ path: '../../secrets.md' }] }, ignore: ['../x'] }),

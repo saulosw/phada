@@ -43,6 +43,8 @@ const OPTION_PRECEDENCE: readonly LayerKind[] = ['user-repo', 'repo-root', 'user
 const OPTIONS = ['language', 'minConfidence', 'verify'] as const
 const USER_ONLY = ['provider', 'model', 'localFiles'] as const
 const HTML_COMMENT = /<!--[\s\S]*?-->/g
+const GLOB_SYNTAX = /[()[\]{}*?!+@\\]/g
+const GLOB_CHARS = /[*?[\]{}!]/
 
 export function mergeConfig(layers: readonly ConfigLayer[]): EffectiveConfig {
   const warnings: string[] = []
@@ -71,11 +73,11 @@ export function mergeConfig(layers: readonly ConfigLayer[]): EffectiveConfig {
   for (const layer of usable) {
     merged.rules.push(...rulesOf(layer, warnings))
     for (const file of layer.config.context?.files ?? []) {
-      const pattern = inLayer(layer, file.path, warnings)
+      const pattern = inLayer(layer, file.path, warnings, GLOB_CHARS.test(file.path))
       if (pattern !== undefined) merged.files.push({ pattern, origin: layer.configLabel })
     }
     for (const glob of layer.config.ignore ?? []) {
-      const pattern = inLayer(layer, glob, warnings)
+      const pattern = inLayer(layer, glob, warnings, true)
       if (pattern !== undefined) merged.ignore.push(pattern)
     }
     for (const path of layer.config.localFiles ?? []) {
@@ -130,14 +132,14 @@ function misplacedOption(layer: ConfigLayer, key: string): string {
 }
 
 function rulesOf(layer: ConfigLayer, warnings: string[]): ResolvedRule[] {
-  const defaultScope = layer.kind === 'repo-dir' ? [`${layer.dir}/**`] : ['**']
+  const defaultScope = layer.kind === 'repo-dir' ? [`${escapeGlob(layer.dir)}/**`] : ['**']
   const rules: ResolvedRule[] = (layer.config.rules ?? []).map((rule, index) => ({
     key: rule.id ?? `${layer.configLabel}#${index + 1}`,
     text: rule.rule,
     scope:
       rule.scope === undefined
         ? defaultScope
-        : rule.scope.flatMap((glob) => inLayer(layer, glob, warnings) ?? []),
+        : rule.scope.flatMap((glob) => inLayer(layer, glob, warnings, true) ?? []),
     ...(rule.severity === undefined ? {} : { severity: rule.severity }),
     origin: layer.configLabel,
   }))
@@ -154,7 +156,12 @@ function rulesOf(layer: ConfigLayer, warnings: string[]): ResolvedRule[] {
   return rules
 }
 
-function inLayer(layer: ConfigLayer, path: string, warnings: string[]): string | undefined {
+function inLayer(
+  layer: ConfigLayer,
+  path: string,
+  warnings: string[],
+  asGlob: boolean,
+): string | undefined {
   const relative = path.replace(/^\/+/, '')
   const inSubfolder = layer.kind === 'repo-dir'
   const joined = posix.normalize(inSubfolder ? posix.join(layer.dir, relative) : relative)
@@ -166,5 +173,11 @@ function inLayer(layer: ConfigLayer, path: string, warnings: string[]): string |
     warnings.push(`${layer.configLabel}: ${path} is outside ${where}; ignored.`)
     return undefined
   }
-  return joined
+  return inSubfolder && asGlob
+    ? `${escapeGlob(layer.dir)}${joined.slice(layer.dir.length)}`
+    : joined
+}
+
+function escapeGlob(text: string): string {
+  return text.replace(GLOB_SYNTAX, '\\$&')
 }
