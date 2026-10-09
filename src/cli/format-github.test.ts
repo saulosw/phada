@@ -355,6 +355,19 @@ describe('formatGitHubReview comments', () => {
     expect(comment?.body).toContain('<sub>Com base em: `docs/x.md` · regra `ab`</sub>')
   })
 
+  it('never publishes the path of a local file from the user config', () => {
+    const ruled = findingFixture({
+      sources: ['local:/home/ana/clients/acme/pricing.md', 'docs/conventions.md'],
+    })
+    const local = findingFixture({ sources: ['local:/home/ana/notes.md'] })
+
+    const [first, second] = formatGitHubReview(RESULT, plan([ruled, local])).comments
+
+    expect(first?.body).toContain('<sub>Based on: `docs/conventions.md`</sub>')
+    expect(first?.body).not.toContain('/home/ana')
+    expect(second?.body).not.toContain('Based on')
+  })
+
   it('leaves out a blank fix', () => {
     const blank = findingFixture({ fix: '  ' })
 

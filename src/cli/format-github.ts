@@ -188,7 +188,7 @@ function footer(result: ReviewResult, model: string, messages: Messages): string
 
 function commentBody(finding: Finding, limit: number, messages: Messages): string {
   const parts = { title: finding.title, why: finding.why, fix: finding.fix ?? '' }
-  const references = findingReferences(finding, messages)
+  const references = findingReferences(finding, messages, { withLocalFiles: false })
   const render = () => {
     const fix = githubBlock(parts.fix)
     return [
