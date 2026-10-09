@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { contextReportFixture } from '../../test/support/context-report.js'
 import { findingFixture } from '../../test/support/finding.js'
 import { pullRequestFixture } from '../../test/support/pull-request.js'
 import type { ReviewResult } from '../review/types.js'
@@ -49,11 +50,18 @@ describe('formatReviewJson', () => {
         summary: 'Adds a spend endpoint.',
         files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 1 }],
         findings: [
-          { ...findingFixture({ severity: 'P0', confidence: 95, line: 3 }), reason: null },
+          {
+            ...findingFixture({ severity: 'P0', confidence: 95, line: 3 }),
+            rule: null,
+            sources: [],
+            reason: null,
+          },
         ],
         worthChecking: [
           {
             ...findingFixture({ severity: 'P2', confidence: 60, line: 5, fix: null }),
+            rule: null,
+            sources: [],
             reason: null,
           },
         ],
@@ -66,7 +74,44 @@ describe('formatReviewJson', () => {
         usage: { inputTokens: 9700, outputTokens: 417 },
       },
       publication: null,
+      context: null,
     })
+  })
+
+  it('prints the rule and the sources of a finding', () => {
+    const finding = findingFixture({ rule: 'orm-only', sources: ['docs/a.md', 'src/shop.ts:3'] })
+    const result: ReviewResult = { ...RESULT, findings: [finding] }
+
+    const output = parse(formatReviewJson(pullRequestFixture(), { status: 'reviewed', result }))
+
+    expect(output).toMatchObject({
+      review: { findings: [{ rule: 'orm-only', sources: ['docs/a.md', 'src/shop.ts:3'] }] },
+    })
+  })
+
+  it('prints the context sent to the AI', () => {
+    const context = contextReportFixture({ warnings: ['Ignoring .phada/config.yml at b1b2c3d: x'] })
+
+    const output = parse(
+      formatReviewJson(pullRequestFixture(), { status: 'reviewed', result: RESULT }, null, context),
+    )
+
+    expect(output).toMatchObject({ context })
+  })
+
+  it('prints a review skipped because every file was ignored, with its context', () => {
+    const context = contextReportFixture()
+
+    const output = parse(
+      formatReviewJson(
+        pullRequestFixture(),
+        { status: 'skipped', reason: 'all-ignored' },
+        null,
+        context,
+      ),
+    )
+
+    expect(output).toMatchObject({ status: 'skipped', reason: 'all-ignored', context })
   })
 
   it('prints the verification with the rejected findings and why they were rejected', () => {
@@ -150,6 +195,7 @@ describe('formatReviewJson', () => {
       reason: 'empty-diff',
       pullRequest: PULL_REQUEST,
       publication: null,
+      context: null,
     })
   })
 
@@ -257,6 +303,7 @@ describe('publication', () => {
       reason: 'already-reviewed',
       pullRequest: PULL_REQUEST,
       publication: { status: 'skipped', reason: 'nothing-found', openThreads: 0 },
+      context: null,
     })
     expect(
       parse(

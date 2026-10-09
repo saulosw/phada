@@ -17,6 +17,8 @@ export const english: Messages = {
       : `${focus.count} ${focus.severity} ${focus.count === 1 ? 'finding' : 'findings'} (${focus.locations.join(', ')})`,
   confidence: 'confidence',
   fix: 'Fix',
+  basedOn: 'Based on',
+  rule: 'rule',
   summary: 'Summary',
   files: 'Files',
   fileColumns: ['File', 'Change', 'Findings'],

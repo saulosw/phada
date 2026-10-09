@@ -3,6 +3,7 @@ import { FINDING_MARKER, reviewMarker } from '../publish/markers.js'
 import type { PublicationPlan } from '../publish/types.js'
 import { scoreFocus } from '../review/score.js'
 import type { FileChange, Finding, ReviewResult, Severity } from '../review/types.js'
+import { findingReferences } from './finding-references.js'
 import { english } from './i18n/en.js'
 import type { Messages } from './i18n/messages.js'
 import { githubBlock, githubCell, githubLine } from './markdown-text.js'
@@ -187,12 +188,14 @@ function footer(result: ReviewResult, model: string, messages: Messages): string
 
 function commentBody(finding: Finding, limit: number, messages: Messages): string {
   const parts = { title: finding.title, why: finding.why, fix: finding.fix ?? '' }
+  const references = findingReferences(finding, messages)
   const render = () => {
     const fix = githubBlock(parts.fix)
     return [
       `**${finding.severity}** · ${githubLine(parts.title)} · ${messages.confidence} ${finding.confidence}`,
       githubBlock(parts.why),
       ...(fix === '' ? [] : [`**${messages.fix}:** ${fix}`]),
+      ...(references === '' ? [] : [`<sub>${references}</sub>`]),
       FINDING_MARKER,
     ].join('\n\n')
   }

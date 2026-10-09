@@ -2,6 +2,7 @@ import type { PullRequest } from '../github/pull-request.js'
 import { scoreFocus } from '../review/score.js'
 import type { FileChange, Finding, ReviewResult, Severity } from '../review/types.js'
 import { english } from './i18n/en.js'
+import { findingReferences } from './finding-references.js'
 import type { Messages } from './i18n/messages.js'
 import { blockText, cell, singleLine } from './markdown-text.js'
 import { modelLabel, shortSha } from './review-text.js'
@@ -95,6 +96,8 @@ function findingItem(number: number, finding: Finding, messages: Messages): stri
   if (finding.fix !== null && finding.fix.trim() !== '') {
     lines.push(indent(`${messages.fix}: ${blockText(finding.fix)}`))
   }
+  const references = findingReferences(finding, messages)
+  if (references !== '') lines.push(indent(singleLine(references)))
   return lines.join('\n')
 }
 

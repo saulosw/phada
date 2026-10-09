@@ -357,6 +357,16 @@ describe('formatReview', () => {
     },
   )
 
+  it('shows the sources and the rule under a finding', () => {
+    const finding = findingFixture({ rule: 'orm-only', sources: ['docs/conventions.md'] })
+
+    const output = formatReview(pullRequestFixture(), { ...RESULT, findings: [finding] })
+
+    expect(output).toContain(
+      '   Fix: Use the authenticated user id.\n   Based on: `docs/conventions.md` · rule `orm-only`\n',
+    )
+  })
+
   it('neutralizes block markers in why and fix too', () => {
     const findings = [findingFixture({ why: 'Breaks.\n## Findings', fix: '```\nnever closed' })]
 

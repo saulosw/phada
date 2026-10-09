@@ -20,6 +20,8 @@ export const portuguese: Messages = {
       : `${count(focus.count, 'problema', 'problemas')} ${focus.severity} (${focus.locations.join(', ')})`,
   confidence: 'confiança',
   fix: 'Correção sugerida',
+  basedOn: 'Com base em',
+  rule: 'regra',
   summary: 'Resumo',
   files: 'Arquivos',
   fileColumns: ['Arquivo', 'Alteração', 'Problemas'],

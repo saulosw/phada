@@ -331,6 +331,30 @@ describe('formatGitHubReview comments', () => {
     ])
   })
 
+  it('names the sources and the rule a finding is based on', () => {
+    const ruled = findingFixture({
+      rule: 'orm-only',
+      sources: ['docs/conventions.md', 'src/shop.ts:3'],
+    })
+    const [comment] = formatGitHubReview(RESULT, plan([ruled])).comments
+
+    expect(comment?.body).toContain(
+      '**Fix:** Use the authenticated user id.\n\n<sub>Based on: `docs/conventions.md` · `src/shop.ts:3` · rule `orm-only`</sub>\n\n<!-- phada:finding -->',
+    )
+  })
+
+  it('writes the sources line in the language of the review and drops backticks from it', () => {
+    const ruled = findingFixture({ rule: 'a`b', sources: ['docs/`x`.md'] })
+    const [comment] = formatGitHubReview(
+      RESULT,
+      plan([ruled]),
+      undefined,
+      messagesFor('pt-BR'),
+    ).comments
+
+    expect(comment?.body).toContain('<sub>Com base em: `docs/x.md` · regra `ab`</sub>')
+  })
+
   it('leaves out a blank fix', () => {
     const blank = findingFixture({ fix: '  ' })
 

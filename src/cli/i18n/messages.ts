@@ -8,6 +8,8 @@ export interface Messages {
   scoreReason(focus: ScoreFocus | undefined): string
   confidence: string
   fix: string
+  basedOn: string
+  rule: string
   summary: string
   files: string
   fileColumns: readonly [string, string, string]

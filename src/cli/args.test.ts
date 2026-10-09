@@ -201,7 +201,9 @@ describe('parseCliArgs', () => {
     )
     expect(REVIEW_USAGE).toContain('and publishes the')
     expect(REVIEW_USAGE).toContain('Use --dry-run to only print it.')
-    expect(REVIEW_USAGE).toContain('can read the pull request and the\n                        repository contents and write reviews')
+    expect(REVIEW_USAGE).toContain(
+      'can read the pull request and the\n                        repository contents and write reviews',
+    )
   })
 
   it('explains that the config can set the options and that flags win', () => {
