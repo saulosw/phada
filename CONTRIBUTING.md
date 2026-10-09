@@ -71,5 +71,14 @@ CI runs the same four commands.
   `Unreleased` section of [CHANGELOG.md](CHANGELOG.md), and updates the README when it changes
   how Phada is used.
 
+## Releases
+
+A maintainer bumps `version` in `package.json`, moves the `Unreleased` notes of the changelog
+under the new version and pushes the tag `vX.Y.Z`. The release workflow checks the tag against
+the version, runs the checks and puts the package in the npm stage; nothing is published yet. A
+maintainer then reviews it (`npm stage list`, `npm stage view phada@X.Y.Z`) and approves it with
+two-factor authentication (`npm stage approve <id>`, or on the npm website). Only then does the
+version go live.
+
 By contributing, you agree that your contributions are licensed under the
 [Apache License 2.0](LICENSE).

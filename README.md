@@ -6,8 +6,9 @@
 Phada reviews a GitHub pull request with the AI you already use — Claude Code, Codex or a model
 served by Ollama — and publishes the review on the pull request.
 
-It runs on your machine. Phada fetches the pull request and its diff, sends them to the AI
-provider you choose, checks that the answer is a valid review and scores it. It prints the review
+It runs on your machine. Phada fetches the pull request and its diff, reads the repository's
+own rules and docs, sends them to the AI provider you choose, checks that the answer is a valid
+review and scores it. It prints the review
 as Markdown or JSON and posts it on the pull request: one comment on the line of each finding and
 the rest in the review body (see [Publishing](#publishing)).
 
@@ -58,7 +59,9 @@ reads the pull request and its reviews and publishes a review, so the token need
 - a classic token with the `repo` scope (`public_repo` is enough for public repositories).
 
 A read-only token is enough with `--dry-run`. Without write access, Phada still prints the review
-and then stops with an error that names the missing permission.
+and then stops with an error that names the missing permission. **Contents: Read-only** lets
+Phada read the repository's rules and docs (see [Rules and repository context](#rules-and-repository-context));
+without it, the review runs on the diff alone and says so.
 
 If you use the GitHub CLI, `export GITHUB_TOKEN=$(gh auth token)` reuses its login (older `gh`
 versions without `gh auth token` show it with `gh auth status -t`).
@@ -138,32 +141,113 @@ longer than GitHub allows is shortened with a visible "(truncated)". Two runs on
 request at the same time can both publish. GitHub refuses a new review while you have a pending
 review of your own open in its interface; submit or discard it first.
 
+## Rules and repository context
+
+Besides the diff, every review gets context from the repository and from your own config. All
+of it is read from the **base commit** of the pull request, so a pull request cannot change the
+rules that review it.
+
+- **Rules** from `.phada/` in the repository and from your own config (see
+  [Configuration](#configuration)). They reach the AI as instructions: a change that breaks one
+  is a finding that names the rule, and a rule can set the lowest severity of those findings.
+- **Docs** the AI reads as reference, in this order: the files your config lists; `README.md`,
+  `AGENTS.md` and `CLAUDE.md` in the folders of the changed files and above them; `AGENTS.md`,
+  `CLAUDE.md`, `.claude/CLAUDE.md` and `.claude/rules/` at the root; `CONTRIBUTING.md` and
+  `README.md`; then the other Markdown files at the root and in `docs/` (changelogs, licenses and
+  codes of conduct are left out). Docs share a 60 KB budget; a doc over 20 KB is cut at a line
+  with a visible note, and what does not fit is left out. Nothing is cut or left out silently.
+- **Ignored files**: lockfiles, minified files and source maps never reach the AI; `ignore` in
+  the config adds more patterns.
+
+Phada prints what it sent before the review, e.g.
+`Context: 2 rules · 5 docs (21.3 KB, 1 omitted) · 1 file ignored`. With `--dry-run` the preview
+ends with the full list, and the JSON has a `context` block with every rule, doc and ignored file,
+where it came from and whether it was sent. Findings list the docs and files they rely on and the
+rule they break, in the JSON and under each comment on the pull request.
+
+## Configuration
+
+Phada reads two kinds of config, both optional:
+
+- **The repository's**, shared with everyone who reviews it: `.phada/config.yml` and
+  `.phada/rules.md` at the root. A `.phada/` folder in a subfolder adds rules, files and ignore
+  patterns for that part of the tree; review options are only read at the root.
+- **Your own**, in `~/.config/phada/` (or `$XDG_CONFIG_HOME/phada`, or `$PHADA_CONFIG_HOME`):
+  `config.yml` and `rules.md` for every repository, and `repos/<owner>/<repo>/` (in lowercase)
+  for one repository, which also works where you cannot commit.
+
+`phada init` creates commented `.phada/` files in the current repository; `phada init --global`
+creates your own config, and `phada init --global owner/repo` the one for a single repository.
+Existing files are never overwritten.
+
+```yaml
+# .phada/config.yml
+language: pt-BR
+minConfidence: 60
+verify: false
+ignore: ['src/generated/**']
+rules:
+  - id: orm-only
+    rule: Use the ORM for every query; never build SQL by hand.
+    scope: ['**/*.py']
+    severity: P1
+disabledRules: [no-console]
+context:
+  defaults: true
+  files:
+    - path: docs/architecture.md
+```
+
+| Key                | What it does                                                                                | Where       |
+| ------------------ | ------------------------------------------------------------------------------------------- | ----------- |
+| `provider`         | `claude`, `codex` or `ollama`                                                               | your config |
+| `model`            | Model for that provider                                                                     | your config |
+| `localFiles`       | Files or folders on your machine to send as docs (a folder sends every `.md` in it)         | your config |
+| `language`         | Review language, like `--language`                                                          | both (root) |
+| `minConfidence`    | Confidence cut, like `--min-confidence`                                                     | both (root) |
+| `verify`           | Verify findings, like `--verify`                                                            | both (root) |
+| `context.defaults` | `false` sends only the files listed in `context.files`, not the docs Phada picks            | both (root) |
+| `context.files`    | Files of the repository to always send (globs allowed), first in line for the budget        | both        |
+| `ignore`           | More files to leave out of the diff                                                         | both        |
+| `rules`            | Rules with `rule`, and optionally `id`, `scope` (globs) and `severity` (`P0`, `P1` or `P2`) | both        |
+| `disabledRules`    | Ids of rules from other config files to turn off                                            | both        |
+
+`rules.md` is free Markdown with more rules; HTML comments in it are not sent. Rules, files and
+ignore patterns from every config add up. For options, a flag wins over your config for that
+repository, which wins over the repository's, which wins over your global config. A `model` only
+applies with the `provider` set next to it, so `--provider ollama` never takes a model meant for
+Claude. An invalid `.phada/` in the repository is skipped with a warning; an invalid config of
+your own stops Phada with an error that names the file and the key.
+
 ## Options
 
-| Option                 | What it does                                                                                                                                                                                                                                                                                                                                                                                 |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--provider <name>`    | AI provider: `claude` (default), `codex` or `ollama`                                                                                                                                                                                                                                                                                                                                         |
-| `--model <name>`       | Model to use. Required for Ollama. Default: for Claude, the Claude Code default model, else `opus`; for Codex, the `model` in `~/.codex/config.toml` (or `$CODEX_HOME/config.toml`), else the Codex CLI default                                                                                                                                                                              |
-| `--language <tag>`     | Language of the review, e.g. `pt-BR`. The AI writes its text in it, and Phada's own headings and labels follow it in English (`en`) and Portuguese (`pt`, `pt-BR`); other languages keep those labels in English. Default: English                                                                                                                                                           |
-| `--min-confidence <n>` | Confidence cut, a whole number from 50 to 100. Findings at the cut or above are shown and scored; the ones from 50 up to the cut are listed as worth checking. Default: 60                                                                                                                                                                                                                   |
-| `--format <name>`      | Output: `markdown` (default) or `json`. The JSON (`schemaVersion: 1`) carries the same review as data: score, summary, every changed file, findings, findings worth checking, dropped counts, the verification (with `--verify`), provider, model, time and tokens, and a `publication` block (`published` with the URL, `failed`, `dry-run` with the exact body and comments, or `skipped`) |
-| `--verify`             | Checks every finding with a second call to the AI before scoring (see above). Off by default                                                                                                                                                                                                                                                                                                 |
-| `--dry-run`            | Prints exactly what would be published (the review body and every comment) and posts nothing                                                                                                                                                                                                                                                                                                 |
-| `--force`              | Reviews and publishes even when Phada already reviewed this commit (see [Publishing](#publishing))                                                                                                                                                                                                                                                                                           |
-| `--debug`              | Shows error details                                                                                                                                                                                                                                                                                                                                                                          |
+| Option                 | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--provider <name>`    | AI provider: `claude` (default, unless your config sets one), `codex` or `ollama`                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `--model <name>`       | Model to use. Required for Ollama. Default: for Claude, the Claude Code default model, else `opus`; for Codex, the `model` in `~/.codex/config.toml` (or `$CODEX_HOME/config.toml`), else the Codex CLI default                                                                                                                                                                                                                                                                    |
+| `--language <tag>`     | Language of the review, e.g. `pt-BR`. The AI writes its text in it, and Phada's own headings and labels follow it in English (`en`) and Portuguese (`pt`, `pt-BR`); other languages keep those labels in English. Default: English                                                                                                                                                                                                                                                 |
+| `--min-confidence <n>` | Confidence cut, a whole number from 50 to 100. Findings at the cut or above are shown and scored; the ones from 50 up to the cut are listed as worth checking. Default: 60                                                                                                                                                                                                                                                                                                         |
+| `--format <name>`      | Output: `markdown` (default) or `json`. The JSON (`schemaVersion: 1`) carries the same review as data: score, summary, every changed file, findings, findings worth checking, dropped counts, the verification (with `--verify`), provider, model, time and tokens, a `publication` block (`published` with the URL, `failed`, `dry-run` with the exact body and comments, or `skipped`) and a `context` block (see [Rules and repository context](#rules-and-repository-context)) |
+| `--verify`             | Checks every finding with a second call to the AI before scoring (see above). Off by default; `--no-verify` turns it off when the config turns it on                                                                                                                                                                                                                                                                                                                               |
+| `--dry-run`            | Prints exactly what would be published (the review body and every comment) and posts nothing                                                                                                                                                                                                                                                                                                                                                                                       |
+| `--force`              | Reviews and publishes even when Phada already reviewed this commit (see [Publishing](#publishing))                                                                                                                                                                                                                                                                                                                                                                                 |
+| `--debug`              | Shows error details                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 ## Exit codes
 
-| Code | Meaning                                                                                                                                          |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 0    | The review was published (or printed with `--dry-run`), Phada skipped a commit it already reviewed, or the pull request has no changes to review |
-| 1    | Something failed: GitHub, the AI provider, an answer that is not a review, or publishing (the review is printed first)                           |
-| 2    | The command line is wrong (unknown option, invalid pull request reference, …)                                                                    |
+| Code | Meaning                                                                                                                                                                  |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 0    | The review was published (or printed with `--dry-run`), Phada skipped a commit it already reviewed, or the pull request has no changes to review (or only ignored files) |
+| 1    | Something failed: GitHub, the AI provider, an answer that is not a review, or publishing (the review is printed first)                                                   |
+| 2    | The command line or your own config is wrong (unknown option, invalid pull request reference, invalid `config.yml`, …)                                                   |
 
 ## What the AI sees
 
-With Claude Code and Codex, the AI runs in an empty temporary directory and only sees the pull
-request text that Phada sends. Phada only reads the `model` from their settings. An
+With Claude Code and Codex, the AI runs in an empty temporary directory and only sees the text
+that Phada sends: the pull request, its diff, and the rules and docs described in
+[Rules and repository context](#rules-and-repository-context). Rules from `.phada/` and your
+config are instructions; the pull request, the diff and the docs are data, and instructions
+hidden in them are reported as findings. Phada only reads the `model` from their settings. An
 `AGENTS.md`/`CLAUDE.md` in or above that temporary directory is never loaded, and the GitHub
 token is removed from the environment of the AI process.
 
