@@ -212,6 +212,10 @@ context:
 | `rules`            | Rules with `rule`, and optionally `id`, `scope` (globs) and `severity` (`P0`, `P1` or `P2`) | both        |
 | `disabledRules`    | Ids of rules from other config files to turn off                                            | both        |
 
+Globs follow the usual `*`/`**` rules and are relative to the folder of the `.phada/` that
+declares them (the repository root for your own config): `*.snap` only matches at that level, so
+write `**/*.snap` for every folder; a leading `/` also means that folder.
+
 `rules.md` is free Markdown with more rules; HTML comments in it are not sent. Rules, files and
 ignore patterns from every config add up. For options, a flag wins over your config for that
 repository, which wins over the repository's, which wins over your global config. A `model` only
