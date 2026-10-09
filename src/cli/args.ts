@@ -193,9 +193,11 @@ function parseInitArgs(argv: readonly string[]): CliCommand {
     )
   }
   if (extra.length > 0) throw new UsageError('Give one repository at a time.')
-  const match = REPOSITORY_NAME.exec(name)
-  if (match === null) throw new UsageError(`Invalid repository "${name}". Use owner/repo.`)
-  return { kind: 'init', global: true, repo: { owner: match[1] ?? '', repo: match[2] ?? '' } }
+  const [, owner = '', repo = ''] = REPOSITORY_NAME.exec(name) ?? []
+  if ([owner, repo].some((part) => part === '' || part === '.' || part === '..')) {
+    throw new UsageError(`Invalid repository "${name}". Use owner/repo.`)
+  }
+  return { kind: 'init', global: true, repo: { owner, repo } }
 }
 
 function parseOptions<T extends ParseArgsOptionsConfig>(argv: readonly string[], options: T) {

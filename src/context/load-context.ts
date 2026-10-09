@@ -232,6 +232,7 @@ async function localCandidates(
   report: DocReport[],
 ): Promise<PlannedDoc[]> {
   const planned: PlannedDoc[] = []
+  const seen = new Set<string>()
   for (const ref of merged.localFiles) {
     let docs
     try {
@@ -247,6 +248,8 @@ async function localCandidates(
       continue
     }
     for (const doc of docs) {
+      if (seen.has(doc.path)) continue
+      seen.add(doc.path)
       planned.push({
         path: `local:${doc.path}`,
         category: 'declared',

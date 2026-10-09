@@ -87,6 +87,8 @@ describe('parseCliArgs', () => {
     ],
     [['init', '--global', 'a/b', 'c/d'], 'Give one repository at a time.'],
     [['init', '--global', 'not-a-repo'], 'Invalid repository "not-a-repo". Use owner/repo.'],
+    [['init', '--global', '../..'], 'Invalid repository "../..". Use owner/repo.'],
+    [['init', '--global', 'acme/.'], 'Invalid repository "acme/.". Use owner/repo.'],
     [['init', '--global', 'acme/shop#12'], 'Invalid repository "acme/shop#12". Use owner/repo.'],
   ])('rejects %j', (argv, message) => {
     expect(() => parseCliArgs(argv)).toThrow(new UsageError(message))

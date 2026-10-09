@@ -74,6 +74,44 @@ describe('repositoryDocCandidates', () => {
     ])
   })
 
+  it('leaves images and other binary files out of declared globs', () => {
+    const entries = ['docs/a.md', 'docs/diagram.png', 'docs/spec.PDF', 'docs/api.yaml'].map(
+      (path) => ({ path, size: 30_000 }),
+    )
+
+    const { candidates } = repositoryDocCandidates({
+      entries,
+      complete: true,
+      changedFiles: [],
+      declared: [{ pattern: 'docs/**', origin: '.phada/config.yml' }],
+      defaults: false,
+    })
+
+    expect(candidates.map((candidate) => candidate.path)).toEqual(['docs/a.md', 'docs/api.yaml'])
+  })
+
+  it('keeps docs whose names only start like an excluded file', () => {
+    const entries = [
+      'docs/security-model.md',
+      'docs/SECURITY.md',
+      'LICENSE.md',
+      'docs/licensing.md',
+    ].map((path) => ({ path, size: 10 }))
+
+    const { candidates } = repositoryDocCandidates({
+      entries,
+      complete: true,
+      changedFiles: [],
+      declared: [],
+      defaults: true,
+    })
+
+    expect(candidates.map((candidate) => candidate.path)).toEqual([
+      'docs/licensing.md',
+      'docs/security-model.md',
+    ])
+  })
+
   it('reports declared files and globs that match nothing', () => {
     const declared = [
       { pattern: 'docs/missing.md', origin: '.phada/config.yml' },

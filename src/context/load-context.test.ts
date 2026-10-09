@@ -275,6 +275,30 @@ describe('loadContext', () => {
     expect(loaded.report.warnings).toEqual(['user:config.yml: /missing does not exist.'])
   })
 
+  it('sends a local file once when two configs list it', async () => {
+    const doc = { path: '/home/u/notes/team.md', size: 4 }
+    const sources = fakeSources(
+      {},
+      {
+        local: { '~/notes': [doc], '~/notes/team.md': [doc] },
+        localText: { '/home/u/notes/team.md': 'Team' },
+      },
+    )
+
+    const loaded = await loadContext({
+      diff: DIFF,
+      baseSha: SHA,
+      userLayers: [
+        userLayer({ localFiles: ['~/notes'] }),
+        { ...userLayer({ localFiles: ['~/notes/team.md'] }), kind: 'user-repo' },
+      ],
+      sources,
+    })
+
+    expect(loaded.context.docs).toEqual([{ path: 'local:/home/u/notes/team.md', content: 'Team' }])
+    expect(loaded.report.docs).toHaveLength(1)
+  })
+
   it('probes known paths when the tree is too large to list', async () => {
     const sources = fakeSources(
       { 'AGENTS.md': 'Be careful.', '.phada/rules.md': 'Use the ORM.' },

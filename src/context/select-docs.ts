@@ -31,7 +31,10 @@ const CONTRIBUTING_PATHS = [
   'README.md',
 ]
 const OTHER_GLOBS = ['*.md', 'docs/**/*.md']
-const EXCLUDED = /^(changelog|history|license|notice|code_of_conduct|security|authors)/i
+const EXCLUDED =
+  /^(changelog|changes|history|license|licence|notice|code_of_conduct|security|authors)(\.[^.]+)?$/i
+const BINARY_EXTENSION =
+  /\.(png|jpe?g|gif|webp|bmp|ico|tiff?|pdf|zip|gz|tgz|tar|7z|jar|woff2?|ttf|otf|eot|mp[34]|mov|webm|wasm|exe|dll|so|dylib|class|bin)$/i
 const GLOB_CHARS = /[*?[\]{}!]/
 
 const encoder = new TextEncoder()
@@ -82,7 +85,9 @@ export function repositoryDocCandidates(input: {
 
   for (const file of input.declared) {
     if (GLOB_CHARS.test(file.pattern)) {
-      const matches = paths.filter(matcher([file.pattern]))
+      const matches = paths
+        .filter(matcher([file.pattern]))
+        .filter((path) => !BINARY_EXTENSION.test(path))
       if (matches.length === 0 && input.complete) missing.push(file)
       for (const path of matches) add(path, 'declared', file.origin)
     } else if (sizes.has(file.pattern) || !input.complete) {
