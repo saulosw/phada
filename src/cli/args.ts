@@ -5,6 +5,7 @@ import { parsePullRequestRef } from '../github/pull-request-ref.js'
 import type { PullRequestRef } from '../github/pull-request-ref.js'
 import { DEFAULT_MIN_CONFIDENCE } from '../review/run-review.js'
 import { CONFIDENCE_FLOOR, isConfidenceCut, MAX_CONFIDENCE } from '../review/select-findings.js'
+import { LANGUAGE_TAG } from '../config/schema.js'
 import { UsageError } from './errors.js'
 
 export type OutputFormat = 'markdown' | 'json'
@@ -65,8 +66,6 @@ Environment:
                         reviews, e.g. export GITHUB_TOKEN=$(gh auth token)
   GH_TOKEN              Used when GITHUB_TOKEN is not set
   OLLAMA_HOST           Ollama address (default: 127.0.0.1:11434)`
-
-const LANGUAGE_TAG = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/
 
 export function parseCliArgs(argv: readonly string[]): CliCommand {
   const [command, ...rest] = argv

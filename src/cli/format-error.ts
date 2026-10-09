@@ -1,3 +1,4 @@
+import { ConfigError } from '../config/errors.js'
 import { DiffTooLargeError, GitHubError, InvalidPullRequestRefError } from '../github/errors.js'
 import { ProviderError } from '../providers/types.js'
 import { InvalidReviewReportError } from '../review/errors.js'
@@ -47,6 +48,7 @@ function describe(error: unknown): { summary: string; exitCode: 1 | 2 } {
   if (error instanceof UsageError) {
     return { summary: `${error.message} Run with --help for usage.`, exitCode: 2 }
   }
+  if (error instanceof ConfigError) return { summary: error.message, exitCode: 2 }
   if (error instanceof InvalidPullRequestRefError) return { summary: error.message, exitCode: 2 }
   if (error instanceof MissingGitHubTokenError) return { summary: error.message, exitCode: 1 }
   if (error instanceof DiffTooLargeError) {
