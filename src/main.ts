@@ -13,6 +13,7 @@ import { messagesFor } from './cli/i18n/messages.js'
 import type { Messages } from './cli/i18n/messages.js'
 import { runInit } from './cli/init.js'
 import { withProgress } from './cli/progress.js'
+import { toTerminalText } from './cli/terminal-text.js'
 import type { TextOutput } from './cli/progress.js'
 import type { LocalFileSystem } from './config/local-files.js'
 import { resolveProvider } from './config/merge-config.js'
@@ -146,7 +147,9 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
         listLocalDocs: (path) => deps.files.listDocs(expandHome(path, deps.home)),
       },
     })
-    for (const warning of loaded.report.warnings) deps.stderr.write(`Warning: ${warning}\n`)
+    for (const warning of loaded.report.warnings) {
+      deps.stderr.write(`Warning: ${toTerminalText(warning)}\n`)
+    }
     deps.stderr.write(`${formatContextLine(loaded.report)}\n`)
     const language = command.language ?? loaded.options.language
 

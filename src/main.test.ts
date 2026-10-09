@@ -745,6 +745,15 @@ describe('run with config and repository context', () => {
     expect(h.stderr()).toContain('Context: 1 rule · 1 doc (19 B)\n')
   })
 
+  it('strips control characters from warnings about the repository config', async () => {
+    const h = harness({ repoFiles: { '.phada/config.yml': '"\\e]8;;x\\a": 1' } })
+
+    await run(['review', 'acme/shop#12', '--dry-run'], h.deps)
+
+    expect(h.stderr()).toContain('Warning: Ignoring .phada/config.yml at 0000000:')
+    expect(h.stderr()).not.toMatch(/[\u0000-\u0008\u000B-\u001F\u007F]/)
+  })
+
   it('lets --language win over the repository config', async () => {
     const h = harness({ repoFiles: { '.phada/config.yml': 'language: pt-BR' } })
 
