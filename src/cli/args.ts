@@ -10,18 +10,24 @@ import { UsageError } from './errors.js'
 
 export type OutputFormat = 'markdown' | 'json'
 
+export interface RepositoryName {
+  owner: string
+  repo: string
+}
+
 export type CliCommand =
   | { kind: 'help'; text: string }
   | { kind: 'version' }
+  | { kind: 'init'; global: boolean; repo?: RepositoryName }
   | {
       kind: 'review'
       ref: PullRequestRef
-      provider: string
+      provider?: string
       model?: string
       language?: string
       minConfidence?: number
       format: OutputFormat
-      verify: boolean
+      verify?: boolean
       dryRun: boolean
       force: boolean
       debug: boolean
@@ -33,12 +39,13 @@ Reviews GitHub pull requests with the AI provider you choose.
 
 Commands:
   review <pull request>  Review a pull request and publish the review on it
+  init                   Create config files for Phada
 
 Options:
   -h, --help             Show this help
   -v, --version          Show the version
 
-Run "phada review --help" for the review options.`
+Run "phada review --help" or "phada init --help" for their options.`
 
 export const REVIEW_USAGE = `Usage: phada review <owner/repo#N | pull request URL> [options]
 
@@ -56,20 +63,44 @@ Options:
   --format <name>       Output: markdown or json (default: markdown)
   --verify              Check every finding with a second call to the AI (about
                         twice the time and tokens)
+  --no-verify           Do not check the findings, even if your config asks to
   --dry-run             Print what would be published and post nothing
   --force               Review again even if Phada already reviewed this commit
   --debug               Show error details
   -h, --help            Show this help
 
+Config:
+  Options can also come from .phada/config.yml in the repository and from your
+  own config (see "phada init --help"); flags win.
+
 Environment:
-  GITHUB_TOKEN          GitHub token that can read the pull request and write
-                        reviews, e.g. export GITHUB_TOKEN=$(gh auth token)
+  GITHUB_TOKEN          GitHub token that can read the pull request and the
+                        repository contents and write reviews, e.g.
+                        export GITHUB_TOKEN=$(gh auth token)
   GH_TOKEN              Used when GITHUB_TOKEN is not set
-  OLLAMA_HOST           Ollama address (default: 127.0.0.1:11434)`
+  OLLAMA_HOST           Ollama address (default: 127.0.0.1:11434)
+  PHADA_CONFIG_HOME     Folder of your own config (default: ~/.config/phada)`
+
+export const INIT_USAGE = `Usage: phada init [--global [<owner/repo>]]
+
+Creates commented config files for Phada and never overwrites existing ones.
+
+  phada init                      .phada/config.yml and .phada/rules.md in this
+                                  repository, shared with everyone who clones it
+  phada init --global             your own config, for every repository
+  phada init --global owner/repo  your own config for one repository, kept on
+                                  this machine
+
+Options:
+  --global    Create your own config instead of the repository's
+  -h, --help  Show this help`
+
+const REPOSITORY_NAME = /^([\w.-]+)\/([\w.-]+)$/
 
 export function parseCliArgs(argv: readonly string[]): CliCommand {
   const [command, ...rest] = argv
   if (command === 'review') return parseReviewArgs(rest)
+  if (command === 'init') return parseInitArgs(rest)
   if (command !== undefined && !command.startsWith('-')) throw unknownCommand(command)
 
   const { values } = parseOptions(argv, {
@@ -85,7 +116,7 @@ function unknownCommand(command: string): UsageError {
   if (isPullRequestRef(command)) {
     return new UsageError(`Unknown command "${command}". Did you mean "phada review ${command}"?`)
   }
-  return new UsageError(`Unknown command "${command}". Available: review.`)
+  return new UsageError(`Unknown command "${command}". Available: review, init.`)
 }
 
 function isPullRequestRef(input: string): boolean {
@@ -114,15 +145,20 @@ function parseReviewArgs(argv: readonly string[]): CliCommand {
     throw new UsageError(`Invalid --format "${values.format}". Use markdown or json.`)
   }
 
+  if (values.verify === true && values['no-verify'] === true) {
+    throw new UsageError('Use either --verify or --no-verify.')
+  }
+  const verify = values.verify === true ? true : values['no-verify'] === true ? false : undefined
+
   return {
     kind: 'review',
     ref: parsePullRequestRef(input),
-    provider: values.provider,
+    ...(values.provider === undefined ? {} : { provider: values.provider }),
     ...(values.model === undefined ? {} : { model: values.model.trim() }),
     ...(values.language === undefined ? {} : { language: values.language }),
     ...(minConfidence === undefined ? {} : { minConfidence }),
     format: values.format,
-    verify: values.verify,
+    ...(verify === undefined ? {} : { verify }),
     dryRun: values['dry-run'],
     force: values.force,
     debug: values.debug,
@@ -130,17 +166,37 @@ function parseReviewArgs(argv: readonly string[]): CliCommand {
 }
 
 const REVIEW_OPTIONS = {
-  provider: { type: 'string', default: 'claude' },
+  provider: { type: 'string' },
   model: { type: 'string' },
   language: { type: 'string' },
   'min-confidence': { type: 'string' },
   format: { type: 'string', default: 'markdown' },
-  verify: { type: 'boolean', default: false },
+  verify: { type: 'boolean' },
+  'no-verify': { type: 'boolean' },
   'dry-run': { type: 'boolean', default: false },
   force: { type: 'boolean', default: false },
   debug: { type: 'boolean', default: false },
   help: { type: 'boolean', short: 'h', default: false },
 } as const satisfies ParseArgsOptionsConfig
+
+function parseInitArgs(argv: readonly string[]): CliCommand {
+  const { values, positionals } = parseOptions(argv, {
+    global: { type: 'boolean', default: false },
+    help: { type: 'boolean', short: 'h', default: false },
+  })
+  if (values.help) return { kind: 'help', text: INIT_USAGE }
+  const [name, ...extra] = positionals
+  if (name === undefined) return { kind: 'init', global: values.global }
+  if (!values.global) {
+    throw new UsageError(
+      `A repository is only used with --global, e.g. phada init --global ${name}.`,
+    )
+  }
+  if (extra.length > 0) throw new UsageError('Give one repository at a time.')
+  const match = REPOSITORY_NAME.exec(name)
+  if (match === null) throw new UsageError(`Invalid repository "${name}". Use owner/repo.`)
+  return { kind: 'init', global: true, repo: { owner: match[1] ?? '', repo: match[2] ?? '' } }
+}
 
 function parseOptions<T extends ParseArgsOptionsConfig>(argv: readonly string[], options: T) {
   try {

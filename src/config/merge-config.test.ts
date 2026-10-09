@@ -172,6 +172,15 @@ describe('mergeConfig rules', () => {
     expect(mergeConfig([root({}, '  \n')]).rules).toEqual([])
   })
 
+  it('leaves HTML comments of a rules.md out of the rule', () => {
+    const merged = mergeConfig([
+      root({}, '<!-- Write one rule per line. -->\n\n- Use the ORM.\n<!--\nnote\n-->'),
+      sub('src', {}, '<!-- only a comment -->\n'),
+    ])
+
+    expect(merged.rules.map((rule) => rule.text)).toEqual(['- Use the ORM.'])
+  })
+
   it('keeps local files from the user layers', () => {
     const merged = mergeConfig([
       user({ localFiles: ['~/notes'] }),

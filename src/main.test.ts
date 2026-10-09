@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { findingFixture } from '../test/support/finding.js'
+import { memoryFiles } from '../test/support/memory-files.js'
+import type { MemoryFiles } from '../test/support/memory-files.js'
 import { pullRequestFixture } from '../test/support/pull-request.js'
 import { reviewReportJson } from '../test/support/review-report.js'
 import { verdictFixture, verificationJson } from '../test/support/verification.js'
@@ -37,6 +39,7 @@ const EMPTY_STATE: PullRequestReviewState = { viewer: 'octocat', reviews: [], th
 
 interface Harness {
   deps: MainDeps
+  files: MemoryFiles
   stdout: () => string
   stderr: () => string
   fetches: FetchPullRequestOptions[]
@@ -54,8 +57,10 @@ function harness(
     review?: () => Promise<ReviewOutput>
     reviewState?: () => Promise<PullRequestReviewState>
     createReview?: () => Promise<CreatedReview>
+    files?: MemoryFiles
   } = {},
 ): Harness {
+  const files = overrides.files ?? memoryFiles()
   const out: string[] = []
   const err: string[] = []
   const fetches: FetchPullRequestOptions[] = []
@@ -65,8 +70,11 @@ function harness(
   const providers: { name: string; options: ProviderOptions }[] = []
   const prompts: ReviewPrompt[] = []
   const deps: MainDeps = {
-    env: overrides.env ?? { GITHUB_TOKEN: TOKEN },
+    env: overrides.env ?? { GITHUB_TOKEN: TOKEN, PHADA_CONFIG_HOME: '/cfg' },
     version: '1.2.3',
+    cwd: '/w/shop',
+    home: '/home/u',
+    files,
     stdout: {
       write: (text: string) => {
         events.push('stdout')
@@ -103,6 +111,7 @@ function harness(
   }
   return {
     deps,
+    files,
     stdout: () => out.join(''),
     stderr: () => err.join(''),
     fetches,
@@ -648,5 +657,25 @@ describe('run publishing', () => {
     expect(await run(REVIEW, h.deps)).toBe(1)
     expect(h.prompts).toHaveLength(0)
     expect(h.posts).toHaveLength(0)
+  })
+})
+
+describe('run init', () => {
+  it('creates the repository config without a GitHub token', async () => {
+    const h = harness({ env: {}, files: memoryFiles({}, ['/w/shop/.git']) })
+
+    const exitCode = await run(['init'], h.deps)
+
+    expect(exitCode).toBe(0)
+    expect(h.stderr()).toBe('Created .phada/config.yml\nCreated .phada/rules.md\n')
+    expect(h.files.files.has('/w/shop/.phada/config.yml')).toBe(true)
+    expect(h.fetches).toEqual([])
+  })
+
+  it('fails with a usage error outside a git repository', async () => {
+    const h = harness({ env: {} })
+
+    expect(await run(['init'], h.deps)).toBe(2)
+    expect(h.stderr()).toContain('Not inside a git repository.')
   })
 })

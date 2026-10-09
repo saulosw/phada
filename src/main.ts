@@ -10,8 +10,10 @@ import { formatPublishedMessage, formatSkipMessage } from './cli/format-publicat
 import { formatPullRequestSummary, formatReview } from './cli/format-review.js'
 import { messagesFor } from './cli/i18n/messages.js'
 import type { Messages } from './cli/i18n/messages.js'
+import { runInit } from './cli/init.js'
 import { withProgress } from './cli/progress.js'
 import type { TextOutput } from './cli/progress.js'
+import type { LocalFileSystem } from './config/local-files.js'
 import type { CreatedReview, CreateReviewOptions } from './github/create-review.js'
 import type {
   FetchReviewStateOptions,
@@ -40,6 +42,9 @@ export interface ProviderOptions {
 export interface MainDeps {
   env: NodeJS.ProcessEnv
   version: string
+  cwd: string
+  home: string
+  files: LocalFileSystem
   stdout: TextOutput
   stderr: TextOutput
   fetchPullRequest: (options: FetchPullRequestOptions) => Promise<PullRequest>
@@ -78,11 +83,16 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
       deps.stdout.write(`${deps.version}\n`)
       return 0
     }
+    if (command.kind === 'init') {
+      const lines = await runInit(command, deps)
+      deps.stderr.write(`${lines.join('\n')}\n`)
+      return 0
+    }
     debug = command.debug
 
     const token = deps.env.GITHUB_TOKEN?.trim() || deps.env.GH_TOKEN?.trim()
     if (!token) throw new MissingGitHubTokenError()
-    const provider = deps.createProvider(command.provider, { model: command.model })
+    const provider = deps.createProvider(command.provider ?? 'claude', { model: command.model })
 
     deps.stderr.write(`Fetching ${formatPullRequestRef(command.ref)}…\n`)
     const pullRequest = await deps.fetchPullRequest({ ...command.ref, token })
@@ -107,7 +117,7 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
         pullRequest,
         language: command.language,
         minConfidence: command.minConfidence,
-        verify: command.verify,
+        verify: command.verify ?? false,
       },
       {
         provider: withProgress(provider, deps.stderr),

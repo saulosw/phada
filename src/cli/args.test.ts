@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { InvalidPullRequestRefError } from '../github/errors.js'
-import { parseCliArgs, REVIEW_USAGE, USAGE } from './args.js'
+import { INIT_USAGE, parseCliArgs, REVIEW_USAGE, USAGE } from './args.js'
 import { UsageError } from './errors.js'
 
 const REF = { owner: 'acme', repo: 'shop', number: 12 }
@@ -29,23 +29,67 @@ describe('parseCliArgs', () => {
       ['https://github.com/acme/shop/pull/12', '--verify'],
       'Unknown command "https://github.com/acme/shop/pull/12". Did you mean "phada review https://github.com/acme/shop/pull/12"?',
     ],
-    [['reveiw', 'acme/shop#12'], 'Unknown command "reveiw". Available: review.'],
+    [['reveiw', 'acme/shop#12'], 'Unknown command "reveiw". Available: review, init.'],
     [['--verify'], "Unknown option '--verify'."],
   ])('rejects the command line %j with a usage error', (argv, message) => {
     expect(() => parseCliArgs(argv)).toThrow(new UsageError(message))
   })
 
-  it('reads a short pull request reference with the defaults', () => {
+  it('reads a short pull request reference and leaves the configurable options unset', () => {
     expect(parseCliArgs(['review', 'acme/shop#12'])).toEqual({
       kind: 'review',
       ref: REF,
-      provider: 'claude',
       format: 'markdown',
-      verify: false,
       dryRun: false,
       force: false,
       debug: false,
     })
+  })
+
+  it('turns verification off with --no-verify', () => {
+    expect(parseCliArgs(['review', 'acme/shop#12', '--no-verify'])).toMatchObject({
+      verify: false,
+    })
+  })
+
+  it('rejects --verify together with --no-verify', () => {
+    expect(() => parseCliArgs(['review', 'acme/shop#12', '--verify', '--no-verify'])).toThrow(
+      new UsageError('Use either --verify or --no-verify.'),
+    )
+  })
+
+  it('lists the init command in the general help', () => {
+    expect(USAGE).toContain('init')
+  })
+
+  it.each([
+    [['init'], { kind: 'init', global: false }],
+    [['init', '--global'], { kind: 'init', global: true }],
+    [
+      ['init', '--global', 'Acme/Shop'],
+      { kind: 'init', global: true, repo: { owner: 'Acme', repo: 'Shop' } },
+    ],
+  ])('reads %j', (argv, command) => {
+    expect(parseCliArgs(argv)).toEqual(command)
+  })
+
+  it.each([
+    ['init', '--help'],
+    ['init', '-h'],
+  ])('returns the init help for %j', (...argv) => {
+    expect(parseCliArgs(argv)).toEqual({ kind: 'help', text: INIT_USAGE })
+  })
+
+  it.each([
+    [
+      ['init', 'acme/shop'],
+      'A repository is only used with --global, e.g. phada init --global acme/shop.',
+    ],
+    [['init', '--global', 'a/b', 'c/d'], 'Give one repository at a time.'],
+    [['init', '--global', 'not-a-repo'], 'Invalid repository "not-a-repo". Use owner/repo.'],
+    [['init', '--global', 'acme/shop#12'], 'Invalid repository "acme/shop#12". Use owner/repo.'],
+  ])('rejects %j', (argv, message) => {
+    expect(() => parseCliArgs(argv)).toThrow(new UsageError(message))
   })
 
   it('reads a pull request URL', () => {
@@ -157,7 +201,13 @@ describe('parseCliArgs', () => {
     )
     expect(REVIEW_USAGE).toContain('and publishes the')
     expect(REVIEW_USAGE).toContain('Use --dry-run to only print it.')
-    expect(REVIEW_USAGE).toContain('can read the pull request and write')
+    expect(REVIEW_USAGE).toContain('can read the pull request and the\n                        repository contents and write reviews')
+  })
+
+  it('explains that the config can set the options and that flags win', () => {
+    expect(REVIEW_USAGE).toContain('Options can also come from .phada/config.yml')
+    expect(REVIEW_USAGE).toContain('--no-verify')
+    expect(REVIEW_USAGE).toContain('PHADA_CONFIG_HOME')
   })
 
   it('shows the default confidence cut in the review usage text', () => {

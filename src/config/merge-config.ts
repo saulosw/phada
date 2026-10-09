@@ -42,6 +42,7 @@ const DEFAULT_PROVIDER = 'claude'
 const OPTION_PRECEDENCE: readonly LayerKind[] = ['user-repo', 'repo-root', 'user']
 const OPTIONS = ['language', 'minConfidence', 'verify'] as const
 const USER_ONLY = ['provider', 'model', 'localFiles'] as const
+const HTML_COMMENT = /<!--[\s\S]*?-->/g
 
 export function mergeConfig(layers: readonly ConfigLayer[]): EffectiveConfig {
   const warnings: string[] = []
@@ -141,10 +142,11 @@ function rulesOf(layer: ConfigLayer, warnings: string[]): ResolvedRule[] {
     origin: layer.configLabel,
   }))
   const markdown = layer.rulesMarkdown
-  if (markdown !== undefined && markdown.text.trim() !== '') {
+  const text = markdown?.text.replace(HTML_COMMENT, '').trim() ?? ''
+  if (markdown !== undefined && text !== '') {
     rules.push({
       key: markdown.label,
-      text: markdown.text.trim(),
+      text,
       scope: defaultScope,
       origin: markdown.label,
     })
