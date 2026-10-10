@@ -388,6 +388,17 @@ describe('ClaudeCliProvider', () => {
       ])
     })
 
+    it('names the MCP servers of the user as they are configured', async () => {
+      const output = await provider('stream', {
+        userMcpServers: ['claude.ai Linear', 'linear'],
+      }).review(withTools)
+
+      expect(output.externalCalls).toEqual([
+        { server: 'claude.ai Linear', tool: 'get_issue' },
+        { server: 'linear', tool: 'search' },
+      ])
+    })
+
     it('leaves externalCalls out when there are none', async () => {
       const output = await provider('success').review(withTools)
 

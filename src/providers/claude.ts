@@ -70,7 +70,11 @@ export interface ClaudeCliProviderOptions {
 }
 
 export function mcpToolPrefix(server: string): string {
-  return `mcp__${server.replace(/[^A-Za-z0-9_-]/g, '_')}`
+  return `mcp__${mcpServerKey(server)}`
+}
+
+function mcpServerKey(server: string): string {
+  return server.replace(/[^A-Za-z0-9_-]/g, '_')
 }
 
 export class ClaudeCliProvider implements ReviewProvider {
@@ -133,7 +137,8 @@ export class ClaudeCliProvider implements ReviewProvider {
           env: this.#env,
           timeoutMs: this.#timeoutMs,
         })
-        return toReviewOutput(run, maxTurns, withTools)
+        const serverNames = new Map(this.#userMcpServers.map((name) => [mcpServerKey(name), name]))
+        return toReviewOutput(run, maxTurns, withTools, serverNames)
       } finally {
         await server?.close()
       }
@@ -157,7 +162,12 @@ export class ClaudeCliProvider implements ReviewProvider {
   }
 }
 
-function toReviewOutput(run: RunCommandResult, maxTurns: number, withTools: boolean): ReviewOutput {
+function toReviewOutput(
+  run: RunCommandResult,
+  maxTurns: number,
+  withTools: boolean,
+  serverNames: ReadonlyMap<string, string>,
+): ReviewOutput {
   const events = run.stdout.split('\n').map(parseJson)
   const parsed = events.findLast((event) => ClaudeResult.safeParse(event).success)
   if (parsed === undefined) throw unreadableOutputError(run)
@@ -178,7 +188,7 @@ function toReviewOutput(run: RunCommandResult, maxTurns: number, withTools: bool
   }
 
   const [model, ...additionalModels] = modelsByOutput(claude.modelUsage ?? {})
-  const externalCalls = externalCallsOf(events)
+  const externalCalls = externalCallsOf(events, serverNames)
   return {
     text: claude.result,
     durationMs: run.durationMs,
@@ -189,14 +199,18 @@ function toReviewOutput(run: RunCommandResult, maxTurns: number, withTools: bool
   }
 }
 
-function externalCallsOf(events: readonly unknown[]): ExternalToolCall[] {
+function externalCallsOf(
+  events: readonly unknown[],
+  serverNames: ReadonlyMap<string, string>,
+): ExternalToolCall[] {
   return events.flatMap((event) => {
     const parsed = ClaudeAssistant.safeParse(event)
     if (!parsed.success) return []
     return parsed.data.message.content.flatMap(({ type, name }) => {
       if (type !== 'tool_use' || name === undefined || name.startsWith(PHADA_TOOL_PREFIX)) return []
       const [, server, tool] = MCP_TOOL.exec(name) ?? []
-      return server === undefined || tool === undefined ? [] : [{ server, tool }]
+      if (server === undefined || tool === undefined) return []
+      return [{ server: serverNames.get(server) ?? server, tool }]
     })
   })
 }

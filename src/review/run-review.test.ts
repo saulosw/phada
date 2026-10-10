@@ -606,6 +606,35 @@ describe('runReview with the repository tools', () => {
     expect(outcome.result.externalCalls).toEqual([{ server: 'linear', tool: 'get_issue' }])
   })
 
+  it('keeps a source that names an MCP server as configured or as the AI CLI shows it', async () => {
+    const provider = new FakeProvider(() =>
+      Promise.resolve({
+        ...OUTPUT,
+        externalCalls: [{ server: 'claude.ai Linear', tool: 'get_issue' }],
+        text: reviewReportJson({
+          findings: [
+            {
+              ...findingFixture({ line: 3 }),
+              sources: [
+                'claude.ai Linear: ENG-12',
+                'claude_ai_Linear: ENG-13',
+                'claude.ai Notion: x',
+              ],
+            },
+          ],
+        }),
+      }),
+    )
+
+    const outcome = await runReview({ pullRequest: pullRequestFixture() }, { provider })
+
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(outcome.result.findings[0]?.sources).toEqual([
+      'claude.ai Linear: ENG-12',
+      'claude_ai_Linear: ENG-13',
+    ])
+  })
+
   it('returns the warnings of the provider', async () => {
     const provider = new FakeProvider(() =>
       Promise.resolve({ ...OUTPUT, warnings: ['model cannot call tools'] }),

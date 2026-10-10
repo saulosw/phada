@@ -24,11 +24,11 @@ export function withKnownReferences(
     ...(context?.rules.map((rule) => rule.origin) ?? []),
     ...investigated.touched,
   ])
-  const servers = new Set(investigated.servers)
+  const servers = new Set(investigated.servers.map(serverKey))
   const isKnown = (source: string) => {
     if (known.has(source.replace(LINE_SUFFIX, ''))) return true
     const server = SERVER_SOURCE.exec(source)?.[1]
-    return server !== undefined && servers.has(server)
+    return server !== undefined && servers.has(serverKey(server))
   }
   return findings.map(({ rule, sources, ...finding }) => {
     const kept = (sources ?? []).filter(isKnown).slice(0, MAX_SOURCES)
@@ -54,4 +54,8 @@ export function withRuleSeverity(
       ? { ...finding, severity: floor }
       : finding
   })
+}
+
+function serverKey(server: string): string {
+  return server.replace(/[^A-Za-z0-9_-]/g, '_').toLowerCase()
 }
