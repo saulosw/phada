@@ -448,17 +448,26 @@ describe('OllamaProvider', () => {
   })
 
   describe('with the repository tools', () => {
-    function recordingToolbox(answer = 'file contents'): { toolbox: Toolbox; calls: unknown[][] } {
+    function recordingToolbox(answer = 'file contents'): {
+      toolbox: Toolbox
+      calls: unknown[][]
+      limits: (number | undefined)[]
+    } {
       const calls: unknown[][] = []
+      const limits: (number | undefined)[] = []
       return {
         calls,
+        limits,
         toolbox: {
           definitions: [
             { name: 'read_file', description: 'Read a file.', inputSchema: { type: 'object' } },
           ],
-          call: async (name, args) => {
+          call: async (name, args, options) => {
             calls.push([name, args])
-            return { text: answer, isError: false }
+            limits.push(options?.maxBytes)
+            const text =
+              options?.maxBytes === undefined ? answer : answer.slice(0, options.maxBytes)
+            return { text, isError: false }
           },
           touchedPaths: () => [],
         },
@@ -574,8 +583,8 @@ describe('OllamaProvider', () => {
       })
     })
 
-    it('sends a notice instead of an answer that would not fit in the window', async () => {
-      const { toolbox, calls: toolCalls } = recordingToolbox('x'.repeat(20_000))
+    it('asks for an answer that fits the room left in the window', async () => {
+      const { toolbox, calls: toolCalls, limits } = recordingToolbox('x'.repeat(20_000))
       const { provider, calls } = setup({
         show: [showWithTools(16_384)],
         chat: [toolCall('read_file', { path: 'a.ts' }), chat()],
@@ -584,11 +593,11 @@ describe('OllamaProvider', () => {
       await provider.review({ ...PROMPT, tools: toolbox })
 
       expect(toolCalls).toHaveLength(1)
-      expect((bodyOf(calls[2]).messages as unknown[]).at(-1)).toEqual({
-        role: 'tool',
-        tool_name: 'read_file',
-        content: 'Context window is full: finish the review now.',
-      })
+      const limit = limits[0] ?? Number.POSITIVE_INFINITY
+      expect(limit).toBeGreaterThan(0)
+      expect(limit).toBeLessThan(16_384 - 8192)
+      const answer = (bodyOf(calls[2]).messages as { content: string }[]).at(-1)
+      expect(answer?.content).toBe('x'.repeat(limit))
     })
 
     it('gives up when the model keeps calling tools', async () => {

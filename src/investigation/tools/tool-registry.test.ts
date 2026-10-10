@@ -61,6 +61,16 @@ describe('createToolbox answer size', () => {
     expect(second.text).toBe(BUDGET_EXHAUSTED)
   })
 
+  it('cuts an answer to the size the caller can take and logs what it sent', async () => {
+    const log = new ToolLog()
+    const toolbox = createToolbox([bigTool(10_000)], log, 'review')
+
+    const result = await toolbox.call('big', { path: 'a' }, { maxBytes: 1000 })
+
+    expect(result.text).toMatch(/\n\[answer cut at 1000 of 10000 bytes: /)
+    expect(log.records[0]?.bytes).toBe(Buffer.byteLength(result.text))
+  })
+
   it('never returns more than the budget allows in one call', async () => {
     const toolbox = createToolbox([bigTool(1000)], new ToolLog(), 'review', {
       calls: 10,

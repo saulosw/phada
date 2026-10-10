@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { ToolDefinition, Toolbox, ToolResult } from '../toolbox.js'
+import type { ToolCallOptions, ToolDefinition, ToolResult, Toolbox } from '../toolbox.js'
 import { BUDGET_EXHAUSTED, DEFAULT_TOOL_BUDGET, MAX_ANSWER_BYTES } from './budget.js'
 import type { ToolBudget } from './budget.js'
 import { CheckoutError } from '../checkout/checkout.js'
@@ -42,7 +42,7 @@ export function createToolbox(
   return {
     definitions: tools.map((tool) => tool.definition),
     touchedPaths: () => [...touched],
-    async call(name: string, args: unknown): Promise<ToolResult> {
+    async call(name: string, args: unknown, options: ToolCallOptions = {}): Promise<ToolResult> {
       const startedAt = performance.now()
       const record = (fields: { paths?: string[]; bytes?: number; error?: string }) =>
         log.add({
@@ -76,7 +76,12 @@ export function createToolbox(
       }
       try {
         const output = await tool.run(parsed.data)
-        const text = cutToBytes(output.text, Math.min(MAX_ANSWER_BYTES, budget.bytes - bytes))
+        const limit = Math.min(
+          MAX_ANSWER_BYTES,
+          budget.bytes - bytes,
+          options.maxBytes ?? Number.POSITIVE_INFINITY,
+        )
+        const text = cutToBytes(output.text, limit)
         const size = Buffer.byteLength(text)
         bytes += size
         for (const path of output.touched) touched.add(path)

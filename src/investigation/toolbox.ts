@@ -11,8 +11,12 @@ export interface ToolResult {
   isError: boolean
 }
 
+export interface ToolCallOptions {
+  maxBytes?: number
+}
+
 export interface Toolbox {
   readonly definitions: readonly ToolDefinition[]
-  call(name: string, args: unknown): Promise<ToolResult>
+  call(name: string, args: unknown, options?: ToolCallOptions): Promise<ToolResult>
   touchedPaths(): readonly string[]
 }

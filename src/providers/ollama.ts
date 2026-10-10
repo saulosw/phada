@@ -15,6 +15,7 @@ const MAX_CHARS_PER_TOKEN = 6
 const OUTPUT_RESERVE = 8192
 const INVESTIGATION_RESERVE = 32_768
 const TOOL_ANSWER_RESERVE = 4096
+const CUT_NOTE_RESERVE = 256
 const MAX_TOOL_TURNS = 45
 const CONTEXT_FULL = 'Context window is full: finish the review now.'
 const CONTEXT_STEP = 1024
@@ -332,12 +333,11 @@ async function runToolCall(
   messages: readonly unknown[],
   numCtx: number,
 ): Promise<string> {
-  const used = estimateTokens(JSON.stringify(messages))
-  if (used + OUTPUT_RESERVE + TOOL_ANSWER_RESERVE > numCtx) return CONTEXT_FULL
+  const room = numCtx - estimateTokens(JSON.stringify(messages)) - OUTPUT_RESERVE
+  if (room < TOOL_ANSWER_RESERVE) return CONTEXT_FULL
   const raw = call.function.arguments
   const args = typeof raw === 'string' ? (parseJson(raw) ?? {}) : (raw ?? {})
-  const answer = (await tools.call(call.function.name, args)).text
-  return used + estimateTokens(answer) + OUTPUT_RESERVE > numCtx ? CONTEXT_FULL : answer
+  return (await tools.call(call.function.name, args, { maxBytes: room - CUT_NOTE_RESERVE })).text
 }
 
 function toReviewOutput(
