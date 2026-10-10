@@ -965,6 +965,17 @@ describe('run with the repository investigation', () => {
     expect(h.closed()).toBe(1)
   })
 
+  it('closes the checkout when the provider cannot be created', async () => {
+    const h = harness()
+    h.deps.createProvider = () => {
+      throw new ProviderError('ollama', 'failed', 'OLLAMA_HOST "x" is not a valid address.')
+    }
+
+    expect(await run(['review', 'acme/shop#12'], h.deps)).toBe(1)
+    expect(h.checkouts).toHaveLength(1)
+    expect(h.closed()).toBe(1)
+  })
+
   it('does not fetch the head when every changed file is ignored', async () => {
     const h = harness({ pullRequest: () => Promise.resolve(pullRequestFixture({ diff: '' })) })
 
