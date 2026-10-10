@@ -7,6 +7,9 @@ for await (const chunk of process.stdin) stdin += chunk
 const env = process.env
 const argv = process.argv.slice(2)
 const instructionsPath = argv[argv.indexOf('--append-system-prompt-file') + 1]
+const mcpConfigPath = argv.includes('--mcp-config')
+  ? argv[argv.indexOf('--mcp-config') + 1]
+  : undefined
 if (env.FAKE_CLAUDE_CAPTURE) {
   const captured = {
     argv,
@@ -14,6 +17,10 @@ if (env.FAKE_CLAUDE_CAPTURE) {
     instructions:
       instructionsPath !== undefined && existsSync(instructionsPath)
         ? readFileSync(instructionsPath, 'utf8')
+        : null,
+    mcpConfig:
+      mcpConfigPath !== undefined && existsSync(mcpConfigPath)
+        ? JSON.parse(readFileSync(mcpConfigPath, 'utf8'))
         : null,
     cwd: process.cwd(),
     env: { GITHUB_TOKEN: env.GITHUB_TOKEN, GH_TOKEN: env.GH_TOKEN },
@@ -40,6 +47,40 @@ switch (env.FAKE_CLAUDE_MODE ?? 'success') {
         modelUsage: { 'claude-fake-1': {} },
         usage,
       }),
+    )
+    break
+  case 'stream': {
+    const toolUse = (name) =>
+      JSON.stringify({
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'text', text: 'checking' },
+            { type: 'tool_use', name, input: {} },
+          ],
+        },
+      })
+    process.stdout.write(
+      [
+        JSON.stringify({ type: 'system', subtype: 'init', tools: [] }),
+        toolUse('mcp__phada__read_file'),
+        toolUse('mcp__claude_ai_Linear__get_issue'),
+        toolUse('mcp__linear__search'),
+        JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result' }] } }),
+        result({
+          is_error: false,
+          result: 'LGTM from fake',
+          modelUsage: { 'claude-fake-1': {} },
+          usage,
+        }),
+        '',
+      ].join('\n'),
+    )
+    break
+  }
+  case 'garbage_then_result':
+    process.stdout.write(
+      `not json\n{"type":"system"}\n${result({ is_error: false, result: 'LGTM from fake', usage })}\n`,
     )
     break
   case 'no_model':
