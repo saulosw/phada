@@ -2,7 +2,16 @@ import { z } from 'zod'
 
 export const LANGUAGE_TAG = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/
 
-const Globs = z.array(z.string().trim().min(1))
+const Pattern = z
+  .string()
+  .trim()
+  .min(1)
+  .refine(
+    (pattern) => !pattern.startsWith('!'),
+    'exceptions with ! are not supported; list only the files to match',
+  )
+
+const Globs = z.array(Pattern)
 
 const RuleSchema = z.strictObject({
   id: z
@@ -15,7 +24,7 @@ const RuleSchema = z.strictObject({
 })
 
 const ContextFileSchema = z.strictObject({
-  path: z.string().trim().min(1),
+  path: Pattern,
   description: z.string().optional(),
 })
 

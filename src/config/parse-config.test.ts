@@ -63,6 +63,17 @@ describe('parseConfigText', () => {
     ['an empty rule', 'rules:\n  - rule: "  "', 'rules.0.rule'],
     ['a rule id with spaces', 'rules:\n  - id: no console\n    rule: x', 'rules.0.id'],
     ['an unknown key inside a rule', 'rules:\n  - rule: x\n    level: high', 'rules.0.level'],
+    ['an exception in ignore', 'ignore: ["dist/**", "!dist/keep.js"]', 'ignore.1'],
+    [
+      'an exception in a rule scope',
+      'rules:\n  - rule: x\n    scope: ["!**/*.test.ts"]',
+      'rules.0.scope.0',
+    ],
+    [
+      'an exception in context files',
+      'context:\n  files:\n    - path: "!docs/**"',
+      'context.files.0.path',
+    ],
   ])('rejects %s and names the key', (_case, text, path) => {
     const parsed = parseConfigText(text)
 
@@ -75,6 +86,13 @@ describe('parseConfigText', () => {
     ['a scalar at the top', 'just text'],
   ])('rejects %s', (_case, text) => {
     expect(parseConfigText(text).ok).toBe(false)
+  })
+
+  it('explains that exceptions with ! are not supported', () => {
+    expect(parseConfigText('ignore: ["!src/keep.ts"]')).toEqual({
+      ok: false,
+      message: 'ignore.0: exceptions with ! are not supported; list only the files to match',
+    })
   })
 
   it('reports broken YAML on one line', () => {

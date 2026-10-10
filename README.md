@@ -215,7 +215,8 @@ context:
 
 Globs follow the usual `*`/`**` rules and are relative to the folder of the `.phada/` that
 declares them (the repository root for your own config): `*.snap` only matches at that level, so
-write `**/*.snap` for every folder; a leading `/` also means that folder.
+write `**/*.snap` for every folder; a leading `/` also means that folder. Exceptions with `!` are
+not supported: list only the files to match.
 
 `rules.md` is free Markdown with more rules; HTML comments in it are not sent. Rules, files and
 ignore patterns from every config add up. For options, a flag wins over your config for that
