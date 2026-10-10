@@ -1,12 +1,15 @@
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
+import { MCP_SERVER_NAME, serveMcp } from '../investigation/mcp/mcp-server.js'
+import type { McpServer } from '../investigation/mcp/mcp-server.js'
 import type { RunCommandResult } from '../process/run-command.js'
 import { runCli, snippet, withTempDir } from './cli-run.js'
 import type { CliNames } from './cli-run.js'
 import { resolveClaudeModel } from './claude-model.js'
 import { ProviderError } from './types.js'
 import type {
+  ExternalToolCall,
   ProviderErrorReason,
   ReviewOutput,
   ReviewPrompt,
@@ -17,24 +20,17 @@ import type {
 const PROVIDER_ID = 'claude-cli'
 const NAMES: CliNames = { product: 'Claude Code', short: 'Claude' }
 const DEFAULT_COMMAND = 'claude'
-const DEFAULT_TIMEOUT_MS = 600_000
+const DEFAULT_TIMEOUT_MS = 900_000
 const TEMP_DIR_PREFIX = 'phada-claude-'
 const INSTRUCTIONS_FILE = 'instructions.md'
+const MCP_CONFIG_FILE = 'mcp.json'
 const MAX_DETAIL_LENGTH = 500
 const MAX_OUTPUT_PREVIEW_LENGTH = 200
 const MAX_ATTEMPTS = 3
+export const MAX_TOOL_TURNS = 40
 const MAX_TURNS_SUBTYPE = 'error_max_turns'
-const BASE_ARGS: readonly string[] = [
-  '-p',
-  '--output-format',
-  'json',
-  '--tools',
-  '',
-  '--strict-mcp-config',
-  '--no-session-persistence',
-  '--setting-sources=',
-  '--disable-slash-commands',
-]
+const PHADA_TOOL_PREFIX = `mcp__${MCP_SERVER_NAME}__`
+const MCP_TOOL = /^mcp__(.+?)__(.+)$/
 const NOT_AUTHENTICATED = /not logged in|\/login|authenticat|api key/i
 
 const ClaudeUsage = z.object({
@@ -57,12 +53,28 @@ const ClaudeResult = z.object({
 })
 type ClaudeResult = z.infer<typeof ClaudeResult>
 
+const ClaudeAssistant = z.object({
+  type: z.literal('assistant'),
+  message: z.object({
+    content: z.array(z.object({ type: z.string(), name: z.string().optional() })),
+  }),
+})
+
 export interface ClaudeCliProviderOptions {
   command?: string
   model?: string
   timeoutMs?: number
   env?: NodeJS.ProcessEnv
   homeDir?: string
+  userMcpServers?: string[]
+}
+
+export function mcpToolPrefix(server: string): string {
+  return `mcp__${mcpServerKey(server)}`
+}
+
+function mcpServerKey(server: string): string {
+  return server.replace(/[^A-Za-z0-9_-]/g, '_')
 }
 
 export class ClaudeCliProvider implements ReviewProvider {
@@ -72,6 +84,7 @@ export class ClaudeCliProvider implements ReviewProvider {
   readonly #timeoutMs: number
   readonly #env: NodeJS.ProcessEnv
   readonly #homeDir: string | undefined
+  readonly #userMcpServers: readonly string[]
 
   constructor(options: ClaudeCliProviderOptions = {}) {
     this.#command = options.command ?? DEFAULT_COMMAND
@@ -79,6 +92,7 @@ export class ClaudeCliProvider implements ReviewProvider {
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
     this.#env = options.env ?? process.env
     this.#homeDir = options.homeDir
+    this.#userMcpServers = options.userMcpServers ?? []
   }
 
   review(prompt: ReviewPrompt): Promise<ReviewOutput> {
@@ -90,39 +104,82 @@ export class ClaudeCliProvider implements ReviewProvider {
         env: this.#env,
         homeDir: this.#homeDir,
       })
-      const run = await runCli({
-        providerId: PROVIDER_ID,
-        names: NAMES,
-        command: this.#command,
-        args: [
-          ...BASE_ARGS,
-          '--append-system-prompt-file',
-          instructionsPath,
-          '--max-turns',
-          String(MAX_ATTEMPTS),
-          `--json-schema=${JSON.stringify(prompt.outputSchema)}`,
-          `--model=${model}`,
-        ],
-        stdin: prompt.data,
-        cwd,
-        env: this.#env,
-        timeoutMs: this.#timeoutMs,
-      })
-      return toReviewOutput(run)
+      const server = prompt.tools === undefined ? undefined : await serveMcp(prompt.tools)
+      try {
+        const mcpArgs = await this.#mcpArgs(cwd, prompt, server)
+        const withTools = server !== undefined || this.#userMcpServers.length > 0
+        const maxTurns = withTools ? MAX_TOOL_TURNS + MAX_ATTEMPTS : MAX_ATTEMPTS
+        const run = await runCli({
+          providerId: PROVIDER_ID,
+          names: NAMES,
+          command: this.#command,
+          args: [
+            '-p',
+            '--output-format',
+            'stream-json',
+            '--verbose',
+            '--tools',
+            '',
+            ...(this.#userMcpServers.length === 0 ? ['--strict-mcp-config'] : []),
+            '--no-session-persistence',
+            '--setting-sources=',
+            '--disable-slash-commands',
+            '--append-system-prompt-file',
+            instructionsPath,
+            '--max-turns',
+            String(maxTurns),
+            `--json-schema=${JSON.stringify(prompt.outputSchema)}`,
+            `--model=${model}`,
+            ...mcpArgs,
+          ],
+          stdin: prompt.data,
+          cwd,
+          env: this.#env,
+          timeoutMs: this.#timeoutMs,
+        })
+        const serverNames = new Map(this.#userMcpServers.map((name) => [mcpServerKey(name), name]))
+        return toReviewOutput(run, maxTurns, withTools, serverNames)
+      } finally {
+        await server?.close()
+      }
     })
+  }
+
+  async #mcpArgs(cwd: string, prompt: ReviewPrompt, server: McpServer | undefined) {
+    const allowed = [
+      ...(prompt.tools?.definitions ?? []).map(({ name }) => `${PHADA_TOOL_PREFIX}${name}`),
+      ...this.#userMcpServers.map(mcpToolPrefix),
+    ]
+    const args: string[] = []
+    if (server !== undefined) {
+      const configPath = join(cwd, MCP_CONFIG_FILE)
+      const config = { mcpServers: { [MCP_SERVER_NAME]: { type: 'stdio', ...server.launch } } }
+      await writeFile(configPath, JSON.stringify(config))
+      args.push('--mcp-config', configPath)
+    }
+    if (allowed.length > 0) args.push('--allowedTools', allowed.join(','))
+    return args
   }
 }
 
-function toReviewOutput(run: RunCommandResult): ReviewOutput {
-  const parsed = ClaudeResult.safeParse(parseJson(run.stdout))
-  if (!parsed.success) throw unreadableOutputError(run)
+function toReviewOutput(
+  run: RunCommandResult,
+  maxTurns: number,
+  withTools: boolean,
+  serverNames: ReadonlyMap<string, string>,
+): ReviewOutput {
+  const events = run.stdout.split('\n').map(parseJson)
+  const parsed = events.findLast((event) => ClaudeResult.safeParse(event).success)
+  if (parsed === undefined) throw unreadableOutputError(run)
 
-  const claude = parsed.data
+  const claude = ClaudeResult.parse(parsed)
   if (claude.subtype === MAX_TURNS_SUBTYPE) {
     throw new ProviderError(
       PROVIDER_ID,
       'invalid-output',
-      `Claude did not return a valid review in ${MAX_ATTEMPTS} attempts.`,
+      withTools
+        ? `Claude did not finish the review within ${maxTurns} turns.`
+        : `Claude did not return a valid review in ${MAX_ATTEMPTS} attempts.`,
     )
   }
   if (claude.is_error || claude.result === undefined) throw claudeError(claude)
@@ -131,13 +188,31 @@ function toReviewOutput(run: RunCommandResult): ReviewOutput {
   }
 
   const [model, ...additionalModels] = modelsByOutput(claude.modelUsage ?? {})
+  const externalCalls = externalCallsOf(events, serverNames)
   return {
     text: claude.result,
     durationMs: run.durationMs,
     ...(model === undefined ? {} : { model }),
     ...(additionalModels.length === 0 ? {} : { additionalModels }),
     ...(claude.usage === undefined ? {} : { usage: toTokenUsage(claude.usage) }),
+    ...(externalCalls.length === 0 ? {} : { externalCalls }),
   }
+}
+
+function externalCallsOf(
+  events: readonly unknown[],
+  serverNames: ReadonlyMap<string, string>,
+): ExternalToolCall[] {
+  return events.flatMap((event) => {
+    const parsed = ClaudeAssistant.safeParse(event)
+    if (!parsed.success) return []
+    return parsed.data.message.content.flatMap(({ type, name }) => {
+      if (type !== 'tool_use' || name === undefined || name.startsWith(PHADA_TOOL_PREFIX)) return []
+      const [, server, tool] = MCP_TOOL.exec(name) ?? []
+      if (server === undefined || tool === undefined) return []
+      return [{ server: serverNames.get(server) ?? server, tool }]
+    })
+  })
 }
 
 function modelsByOutput(modelUsage: Record<string, unknown>): string[] {

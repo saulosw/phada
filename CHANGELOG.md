@@ -7,6 +7,8 @@ output can change between minor versions.
 
 ## Unreleased
 
+## 0.2.0 - 2026-10-10
+
 ### Added
 
 - Reviews now use the repository's own rules and docs, read from the base commit of the pull
@@ -21,10 +23,21 @@ output can change between minor versions.
 - Findings name the rule they break and the sources they rely on, in the JSON and on the pull
   request; the JSON has a `context` block with everything sent to the AI.
 - `--no-verify` turns verification off when the config turns it on.
+- The AI investigates the repository while it reviews: Phada fetches the head commit and gives
+  the AI read-only tools (`read_file`, `grep`, `list`) that only see that commit, with a budget
+  per pass. The verifier uses them too. `--no-investigate` or `investigate: false` turn it off;
+  without `git` the review runs as before and warns.
+- An `Investigated:` line, an `investigation` block in the JSON and an Investigation section in
+  the `--dry-run` preview list what the AI read; findings cite the files they rely on.
+- `mcp` in your own config lets Claude Code use the MCP servers you name during the review, with
+  a warning on public repositories.
 
 ### Changed
 
 - Releases go through the npm stage and wait for a maintainer's approval.
+- Claude Code and Codex get 15 minutes per call instead of 10, since the investigation adds turns.
+- Findings are verified by default: a second call to the AI checks every finding before scoring.
+  `--no-verify` or `verify: false` turn it off.
 
 ## 0.1.0 - 2026-10-08
 

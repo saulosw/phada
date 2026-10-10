@@ -1,7 +1,8 @@
 const SHARED_OPTIONS = `# Review options. Flags given on the command line win.
 # language: en                 # language of the review, e.g. pt-BR
 # minConfidence: 60            # findings below this confidence go to "worth checking"
-# verify: false                # check every finding with a second call to the AI
+# verify: true                 # check every finding with a second call to the AI
+# investigate: true            # let the AI read the rest of the repository at the head
 `
 
 const RULES = `# Rules the review enforces. Each one is sent to the AI as an instruction.
@@ -46,6 +47,10 @@ ${RULES}
 ${CONTEXT}
 # Files or folders on this machine to send as context (folders: every .md inside).
 # localFiles: ["~/notes/team-rules"]
+
+# MCP servers of your Claude Code that the AI may use during reviews, by name
+# (claude.ai connectors as "claude.ai <Name>"). Only with provider claude.
+# mcp: [linear]
 `
 
 export const RULES_TEMPLATE = `<!--

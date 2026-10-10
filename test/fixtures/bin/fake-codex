@@ -55,6 +55,18 @@ switch (env.FAKE_CODEX_MODE ?? 'success') {
     emit(...started, message, { type: 'turn.completed', usage })
     writeFileSync(outputPath, 'LGTM from fake codex')
     break
+  case 'mcp_calls': {
+    const call = (server, tool) => ({
+      type: 'item.completed',
+      item: { id: tool, type: 'mcp_tool_call', server, tool, arguments: {}, status: 'completed' },
+    })
+    emit(...started, call('phada', 'read_file'), call('linear', 'get_issue'), message, {
+      type: 'turn.completed',
+      usage,
+    })
+    writeFileSync(outputPath, 'LGTM from fake codex')
+    break
+  }
   case 'no_usage':
     emit(...started, message)
     writeFileSync(outputPath, 'LGTM from fake codex')

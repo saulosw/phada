@@ -74,9 +74,22 @@ describe('fetchPullRequest', () => {
       headRef: 'feat/spend-crystals',
       headSha: 'f41a2c3280de0d54ab06d79fa18e93e576e511e6',
       fromFork: false,
+      private: true,
       stats: { changedFiles: 2, additions: 15, deletions: 1, commits: 1 },
       diff: DIFF,
     })
+  })
+
+  it('reads whether the repository is public', async () => {
+    const json = metadata()
+    const base = json['base'] as Json
+    const repo = { ...(base['repo'] as Json), private: false }
+    const github = fakeGitHub(
+      [ok(JSON.stringify({ ...json, base: { ...base, repo } }))],
+      [ok(DIFF)],
+    )
+
+    expect((await fetchWith(github.fetch)).private).toBe(false)
   })
 
   it('asks for the metadata first and the diff second, on the same endpoint', async () => {

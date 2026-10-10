@@ -28,6 +28,7 @@ export type CliCommand =
       minConfidence?: number
       format: OutputFormat
       verify?: boolean
+      investigate?: boolean
       dryRun: boolean
       force: boolean
       debug: boolean
@@ -61,9 +62,13 @@ Options:
   --min-confidence <n>  Confidence cut from ${CONFIDENCE_FLOOR} to ${MAX_CONFIDENCE} (default: ${DEFAULT_MIN_CONFIDENCE}); findings
                         below it are listed as worth checking
   --format <name>       Output: markdown or json (default: markdown)
-  --verify              Check every finding with a second call to the AI (about
-                        twice the time and tokens)
-  --no-verify           Do not check the findings, even if your config asks to
+  --no-verify           Skip the second call to the AI that checks every finding
+                        (on by default; it adds about half the time and doubles the
+                        tokens)
+  --verify              Check the findings, even if your config turns it off
+  --no-investigate      Review the diff and the context only, without letting the AI
+                        read the rest of the repository
+  --investigate         Let the AI read the repository, even if your config turns it off
   --dry-run             Print what would be published and post nothing
   --force               Review again even if Phada already reviewed this commit
   --debug               Show error details
@@ -149,6 +154,11 @@ function parseReviewArgs(argv: readonly string[]): CliCommand {
     throw new UsageError('Use either --verify or --no-verify.')
   }
   const verify = values.verify === true ? true : values['no-verify'] === true ? false : undefined
+  if (values.investigate === true && values['no-investigate'] === true) {
+    throw new UsageError('Use either --investigate or --no-investigate.')
+  }
+  const investigate =
+    values.investigate === true ? true : values['no-investigate'] === true ? false : undefined
 
   return {
     kind: 'review',
@@ -159,6 +169,7 @@ function parseReviewArgs(argv: readonly string[]): CliCommand {
     ...(minConfidence === undefined ? {} : { minConfidence }),
     format: values.format,
     ...(verify === undefined ? {} : { verify }),
+    ...(investigate === undefined ? {} : { investigate }),
     dryRun: values['dry-run'],
     force: values.force,
     debug: values.debug,
@@ -173,6 +184,8 @@ const REVIEW_OPTIONS = {
   format: { type: 'string', default: 'markdown' },
   verify: { type: 'boolean' },
   'no-verify': { type: 'boolean' },
+  investigate: { type: 'boolean' },
+  'no-investigate': { type: 'boolean' },
   'dry-run': { type: 'boolean', default: false },
   force: { type: 'boolean', default: false },
   debug: { type: 'boolean', default: false },

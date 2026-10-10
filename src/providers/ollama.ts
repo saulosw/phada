@@ -4,6 +4,7 @@ import { resolveOllamaBaseUrl } from './ollama-host.js'
 import { redactSecrets } from './redact-secrets.js'
 import { ProviderError } from './types.js'
 import type { ReviewOutput, ReviewPrompt, ReviewProvider, TokenUsage } from './types.js'
+import type { Toolbox } from '../investigation/toolbox.js'
 
 const PROVIDER_ID = 'ollama'
 const DEFAULT_TIMEOUT_MS = 1_800_000
@@ -12,6 +13,11 @@ const TOKENS_PER_OTHER_CHAR = 2
 const MAX_ASCII = 0x7f
 const MAX_CHARS_PER_TOKEN = 6
 const OUTPUT_RESERVE = 8192
+const INVESTIGATION_RESERVE = 32_768
+const TOOL_ANSWER_RESERVE = 4096
+const CUT_NOTE_RESERVE = 256
+const MAX_TOOL_TURNS = 45
+const CONTEXT_FULL = 'Context window is full: finish the review now.'
 const CONTEXT_STEP = 1024
 const MAX_DETAIL_LENGTH = 300
 const INSTALL_URL = 'https://ollama.com/download'
@@ -21,10 +27,19 @@ const CLIENT_TIMEOUT_CODES: ReadonlySet<string> = new Set([
   'UND_ERR_BODY_TIMEOUT',
 ])
 
-const OllamaShow = z.object({ model_info: z.record(z.string(), z.unknown()).optional() })
+const OllamaShow = z.object({
+  capabilities: z.array(z.string()).optional(),
+  model_info: z.record(z.string(), z.unknown()).optional(),
+})
+const OllamaToolCall = z.object({
+  function: z.object({ name: z.string(), arguments: z.unknown() }),
+})
 const OllamaChat = z.object({
   model: z.string(),
-  message: z.object({ content: z.string() }),
+  message: z.object({
+    content: z.string(),
+    tool_calls: z.array(OllamaToolCall).optional(),
+  }),
   done_reason: z.string().optional(),
   prompt_eval_count: z.number().optional(),
   eval_count: z.number().optional(),
@@ -75,15 +90,80 @@ export class OllamaProvider implements ReviewProvider {
       )
     }
 
-    const numCtx = Math.min(contextLength, roundUp(needed, CONTEXT_STEP))
+    const tools = prompt.tools
+    const canUseTools = show.success && (show.data.capabilities ?? []).includes('tools')
+    const investigates = tools !== undefined && canUseTools
+    const numCtx = Math.min(
+      contextLength,
+      roundUp(needed + (investigates ? INVESTIGATION_RESERVE : 0), CONTEXT_STEP),
+    )
+    const messages: unknown[] = [
+      { role: 'system', content: prompt.instructions },
+      { role: 'user', content: prompt.data },
+    ]
+    const chats: OllamaChat[] = []
+    for (let turn = 0; ; turn += 1) {
+      if (turn === MAX_TOOL_TURNS) {
+        throw new ProviderError(
+          PROVIDER_ID,
+          'invalid-output',
+          `Ollama kept calling tools for ${MAX_TOOL_TURNS} turns without answering.`,
+        )
+      }
+      const chat = await this.#chat(
+        signal,
+        prompt,
+        messages,
+        numCtx,
+        investigates ? tools : undefined,
+      )
+      chats.push(chat)
+      const calls = chat.message.tool_calls ?? []
+      if (!investigates || calls.length === 0) break
+      messages.push({ role: 'assistant', ...chat.message })
+      for (const call of calls) {
+        messages.push({
+          role: 'tool',
+          tool_name: call.function.name,
+          content: await runToolCall(tools, call, messages, numCtx),
+        })
+      }
+    }
+    const last = chats.at(-1)
+    if (last === undefined)
+      throw new ProviderError(
+        PROVIDER_ID,
+        'invalid-output',
+        'Ollama returned an unexpected response.',
+      )
+    assertComplete(last, promptChars, numCtx)
+    const warnings =
+      tools !== undefined && !canUseTools
+        ? [`${this.#model} does not support tool calling: reviewing without investigation.`]
+        : []
+    return toReviewOutput(last, chats, performance.now() - startedAt, warnings)
+  }
+
+  async #chat(
+    signal: AbortSignal,
+    prompt: ReviewPrompt,
+    messages: readonly unknown[],
+    numCtx: number,
+    tools: Toolbox | undefined,
+  ): Promise<OllamaChat> {
     const chat = OllamaChat.safeParse(
       await this.#post(signal, '/api/chat', {
         model: this.#model,
         stream: false,
-        messages: [
-          { role: 'system', content: prompt.instructions },
-          { role: 'user', content: prompt.data },
-        ],
+        messages,
+        ...(tools === undefined
+          ? {}
+          : {
+              tools: tools.definitions.map(({ name, description, inputSchema }) => ({
+                type: 'function',
+                function: { name, description, parameters: inputSchema },
+              })),
+            }),
         format: prompt.outputSchema,
         options: {
           num_ctx: numCtx,
@@ -98,8 +178,7 @@ export class OllamaProvider implements ReviewProvider {
         'Ollama returned an unexpected response.',
       )
     }
-    assertComplete(chat.data, promptChars, numCtx)
-    return toReviewOutput(chat.data, performance.now() - startedAt)
+    return chat.data
   }
 
   async #post(signal: AbortSignal, path: string, body: unknown): Promise<unknown> {
@@ -248,19 +327,44 @@ function assertComplete(chat: OllamaChat, promptChars: number, numCtx: number): 
   }
 }
 
-function toReviewOutput(chat: OllamaChat, durationMs: number): ReviewOutput {
-  const usage = toTokenUsage(chat)
+async function runToolCall(
+  tools: Toolbox,
+  call: z.infer<typeof OllamaToolCall>,
+  messages: readonly unknown[],
+  numCtx: number,
+): Promise<string> {
+  const room = numCtx - estimateTokens(JSON.stringify(messages)) - OUTPUT_RESERVE
+  if (room < TOOL_ANSWER_RESERVE) return CONTEXT_FULL
+  const raw = call.function.arguments
+  const args = typeof raw === 'string' ? (parseJson(raw) ?? {}) : (raw ?? {})
+  return (await tools.call(call.function.name, args, { maxBytes: room - CUT_NOTE_RESERVE })).text
+}
+
+function toReviewOutput(
+  chat: OllamaChat,
+  chats: readonly OllamaChat[],
+  durationMs: number,
+  warnings: string[],
+): ReviewOutput {
+  const usage = toTokenUsage(chats)
   return {
     text: chat.message.content,
     durationMs,
     model: chat.model,
     ...(usage === undefined ? {} : { usage }),
+    ...(warnings.length === 0 ? {} : { warnings }),
   }
 }
 
-function toTokenUsage(chat: OllamaChat): TokenUsage | undefined {
-  if (chat.prompt_eval_count === undefined && chat.eval_count === undefined) return undefined
-  return { inputTokens: chat.prompt_eval_count ?? 0, outputTokens: chat.eval_count ?? 0 }
+function toTokenUsage(chats: readonly OllamaChat[]): TokenUsage | undefined {
+  const counted = chats.filter(
+    (chat) => chat.prompt_eval_count !== undefined || chat.eval_count !== undefined,
+  )
+  if (counted.length === 0) return undefined
+  return {
+    inputTokens: counted.reduce((sum, chat) => sum + (chat.prompt_eval_count ?? 0), 0),
+    outputTokens: counted.reduce((sum, chat) => sum + (chat.eval_count ?? 0), 0),
+  }
 }
 
 function roundUp(value: number, step: number): number {

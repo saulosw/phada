@@ -68,6 +68,7 @@ export async function loadContext(input: {
       ...(merged.language === undefined ? {} : { language: merged.language }),
       ...(merged.minConfidence === undefined ? {} : { minConfidence: merged.minConfidence }),
       ...(merged.verify === undefined ? {} : { verify: merged.verify }),
+      ...(merged.investigate === undefined ? {} : { investigate: merged.investigate }),
     },
     context: { rules: rules.applied, docs: docs.docs, ignored },
     report: {

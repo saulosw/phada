@@ -35,6 +35,15 @@ export const ConfigFileSchema = z.strictObject({
   language: z.string().regex(LANGUAGE_TAG, 'use a tag like en or pt-BR').optional(),
   minConfidence: z.number().int().min(50).max(100).optional(),
   verify: z.boolean().optional(),
+  investigate: z.boolean().optional(),
+  mcp: z
+    .array(
+      z
+        .string()
+        .trim()
+        .regex(/^[\w .-]+$/, 'use the server name as your AI CLI shows it'),
+    )
+    .optional(),
   ignore: Globs.optional(),
   rules: z.array(RuleSchema).optional(),
   disabledRules: z.array(z.string().trim().min(1)).optional(),

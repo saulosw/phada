@@ -22,5 +22,8 @@ Reports are especially welcome about:
   what Phada does, beyond being reviewed;
 - the isolation of the AI CLI process: the empty temporary directory, the disabled tools and
   settings, and the removal of token variables from its environment.
+- the repository investigation: Phada's read-only tools reading anything outside the fetched
+  pull request commit, the GitHub token reaching `git` arguments or messages, the AI using MCP
+  servers your config did not name, or temporary files left behind.
 
 Problems in the AI CLIs themselves (Claude Code, Codex) or in Ollama belong to those projects.

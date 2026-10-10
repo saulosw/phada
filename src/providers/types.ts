@@ -1,9 +1,17 @@
+import type { Toolbox } from '../investigation/toolbox.js'
+
 export type JsonSchema = Readonly<Record<string, unknown>>
 
 export interface ReviewPrompt {
   instructions: string
   data: string
   outputSchema: JsonSchema
+  tools?: Toolbox
+}
+
+export interface ExternalToolCall {
+  server: string
+  tool: string
 }
 
 export interface TokenUsage {
@@ -17,6 +25,8 @@ export interface ReviewOutput {
   model?: string
   additionalModels?: string[]
   usage?: TokenUsage
+  externalCalls?: ExternalToolCall[]
+  warnings?: string[]
 }
 
 export interface ReviewProvider {

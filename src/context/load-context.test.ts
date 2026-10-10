@@ -236,11 +236,13 @@ describe('loadContext', () => {
   })
 
   it('takes the options of the root config', async () => {
-    const sources = fakeSources({ '.phada/config.yml': 'language: pt-BR\nverify: true' })
+    const sources = fakeSources({
+      '.phada/config.yml': 'language: pt-BR\nverify: true\ninvestigate: false',
+    })
 
     const loaded = await loadContext({ diff: DIFF, baseSha: SHA, userLayers: [], sources })
 
-    expect(loaded.options).toEqual({ language: 'pt-BR', verify: true })
+    expect(loaded.options).toEqual({ language: 'pt-BR', verify: true, investigate: false })
   })
 
   it('keeps the user rules when the repository cannot be read', async () => {

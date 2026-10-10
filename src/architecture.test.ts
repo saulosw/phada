@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync } from 'node:fs'
+import { posix } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 interface Boundary {
@@ -6,12 +7,17 @@ interface Boundary {
   values: ReadonlySet<string>
   types: ReadonlySet<string>
   expected: string[]
+  globals?: string[]
 }
 
 const REVIEW: Boundary = {
   dir: 'review',
   values: new Set(['node:crypto', 'zod']),
-  types: new Set(['../providers/types.js', '../github/pull-request.js']),
+  types: new Set([
+    '../providers/types.js',
+    '../investigation/toolbox.js',
+    '../github/pull-request.js',
+  ]),
   expected: ['prompt.ts', 'run-review.ts', 'types.ts'],
 }
 const PUBLISH: Boundary = {
@@ -31,6 +37,54 @@ const CONTEXT: Boundary = {
   types: new Set(['../review/types.js', '../config/types.js', '../github/repository-files.js']),
   expected: ['ignore.ts', 'load-context.ts', 'select-docs.ts', 'split-diff.ts'],
 }
+const INVESTIGATION: Boundary = {
+  dir: 'investigation',
+  values: new Set([
+    'node:crypto',
+    'node:fs/promises',
+    'node:net',
+    'node:os',
+    'node:path',
+    'node:readline',
+    'node:url',
+    'zod',
+    '../process/errors.js',
+    '../process/run-command.js',
+    '../providers/redact-secrets.js',
+  ]),
+  types: new Set(['../providers/types.js', '../review/types.js', '../process/run-command.js']),
+  expected: [
+    'toolbox.ts',
+    'checkout/git-checkout.ts',
+    'mcp/mcp-server.ts',
+    'tools/repository-tools.ts',
+    'tools/tool-registry.ts',
+  ],
+  globals: ['console'],
+}
+const APP: Boundary = {
+  dir: 'app',
+  values: new Set([
+    '../context/load-context.js',
+    '../investigation/checkout/git-checkout.js',
+    '../investigation/open-investigation.js',
+    '../investigation/tools/report.js',
+    '../review/run-review.js',
+  ]),
+  types: new Set([
+    '../config/types.js',
+    '../context/types.js',
+    '../github/pull-request.js',
+    '../investigation/checkout/checkout.js',
+    '../investigation/checkout/git-checkout.js',
+    '../investigation/open-investigation.js',
+    '../investigation/tools/report.js',
+    '../investigation/tools/tool-log.js',
+    '../providers/types.js',
+    '../review/types.js',
+  ]),
+  expected: ['review-pull-request.ts'],
+}
 const STATIC_MODULE = /^\s*(?:import|export)\s+(type\s+)?(?:[^'"]*?\bfrom\s+)?['"]([^'"]+)['"]/gm
 const DYNAMIC_MODULE = /\bimport\(\s*['"]([^'"]+)['"]\s*\)/g
 const STRING_LITERAL = /(['"`])(?:\\.|(?!\1)[^\\])*\1/g
@@ -38,12 +92,13 @@ const FORBIDDEN_GLOBALS = ['process', 'console']
 
 function sourcesOf({ dir }: Boundary) {
   const url = new URL(`./${dir}/`, import.meta.url)
-  return readdirSync(url)
+  return readdirSync(url, { recursive: true, encoding: 'utf8' })
+    .map((name) => name.split('\\').join('/'))
     .filter((name) => name.endsWith('.ts') && !name.endsWith('.test.ts'))
     .map((name) => ({ name, code: readFileSync(new URL(name, url), 'utf8') }))
 }
 
-function boundaryViolations(code: string, boundary: Boundary = REVIEW): string[] {
+function boundaryViolations(code: string, boundary: Boundary = REVIEW, file = ''): string[] {
   const modules = [
     ...[...code.matchAll(STATIC_MODULE)].map(([, typeOnly, specifier = '']) => ({
       specifier,
@@ -55,20 +110,30 @@ function boundaryViolations(code: string, boundary: Boundary = REVIEW): string[]
     })),
   ]
   const violations = modules
-    .filter(({ specifier, typeOnly }) => !isAllowedModule(specifier, typeOnly, boundary))
+    .filter(({ specifier, typeOnly }) => !isAllowedModule(specifier, typeOnly, boundary, file))
     .map(({ specifier }) => `imports '${specifier}'`)
   const codeWithoutStrings = code.replace(STRING_LITERAL, "''")
-  for (const name of FORBIDDEN_GLOBALS) {
+  for (const name of boundary.globals ?? FORBIDDEN_GLOBALS) {
     if (new RegExp(`\\b${name}\\b`).test(codeWithoutStrings)) violations.push(`uses ${name}`)
   }
   return violations
 }
 
-function isAllowedModule(specifier: string, typeOnly: boolean, boundary: Boundary): boolean {
+function isAllowedModule(
+  specifier: string,
+  typeOnly: boolean,
+  boundary: Boundary,
+  file: string,
+): boolean {
+  const resolved = specifier.startsWith('.')
+    ? posix.normalize(posix.join(posix.dirname(file), specifier))
+    : specifier
+  const fromRoot =
+    resolved.startsWith('.') || !specifier.startsWith('.') ? resolved : `./${resolved}`
   return (
-    specifier.startsWith('./') ||
-    boundary.values.has(specifier) ||
-    (typeOnly && boundary.types.has(specifier))
+    fromRoot.startsWith('./') ||
+    boundary.values.has(fromRoot) ||
+    (typeOnly && boundary.types.has(fromRoot))
   )
 }
 
@@ -158,14 +223,64 @@ describe('context boundary rules', () => {
   })
 })
 
-describe.each([REVIEW, PUBLISH, CONTEXT])('$dir boundary', (boundary) => {
+describe('investigation boundary rules', () => {
+  it('lets a subfolder import its siblings and the tools contract, not the outside', () => {
+    const code = [
+      "import { CheckoutError } from '../checkout/checkout.js'",
+      "import type { Toolbox } from '../toolbox.js'",
+      "import { runCommand } from '../../process/run-command.js'",
+    ].join('\n')
+
+    expect(boundaryViolations(code, INVESTIGATION, 'tools/repository-tools.ts')).toEqual([])
+    expect(
+      boundaryViolations(
+        "import { formatReview } from '../../cli/format-review.js'",
+        INVESTIGATION,
+        'tools/report.ts',
+      ),
+    ).not.toEqual([])
+  })
+
+  it('accepts git through the process runner, sockets and the tool contract', () => {
+    const code = [
+      "import { createServer } from 'node:net'",
+      "import { runCommand } from '../process/run-command.js'",
+      "import type { Toolbox } from './toolbox.js'",
+      'const path = process.execPath',
+    ].join('\n')
+
+    expect(boundaryViolations(code, INVESTIGATION)).toEqual([])
+  })
+
+  it.each([
+    ['a concrete provider', "import { ClaudeCliProvider } from '../providers/claude.js'"],
+    ['the CLI', "import { formatReview } from '../cli/format-review.js'"],
+    ['the engine', "import { runReview } from '../review/run-review.js'"],
+    ['the console', "console.log('debug')"],
+  ])('flags %s', (_case, code) => {
+    expect(boundaryViolations(code, INVESTIGATION)).not.toEqual([])
+  })
+})
+
+describe('app boundary rules', () => {
+  it.each([
+    ['the CLI formatters', "import { formatContextLine } from '../cli/format-context.js'"],
+    ['a concrete provider', "import { ClaudeCliProvider } from '../providers/claude.js'"],
+    ['the GitHub client', "import { fetchPullRequest } from '../github/pull-request.js'"],
+    ['the terminal', "process.stderr.write('x')"],
+  ])('flags %s', (_case, code) => {
+    expect(boundaryViolations(code, APP)).not.toEqual([])
+  })
+})
+
+describe.each([REVIEW, PUBLISH, CONTEXT, INVESTIGATION, APP])('$dir boundary', (boundary) => {
   const sources = sourcesOf(boundary)
 
   it('has source files to check', () => {
     expect(sources.map(({ name }) => name)).toEqual(expect.arrayContaining(boundary.expected))
   })
 
-  it.each(sources)('$name stays inside the boundary', ({ code }) => {
-    expect(boundaryViolations(code, boundary)).toEqual([])
+  it.each(sources)('$name stays inside the boundary', ({ name, code }) => {
+    expect(boundaryViolations(code, boundary, name)).toEqual([])
   })
 })

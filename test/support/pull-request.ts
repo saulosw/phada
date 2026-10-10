@@ -15,6 +15,7 @@ export function pullRequestFixture(overrides: Partial<PullRequest> = {}): PullRe
     headRef: 'feature/spend',
     headSha: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
     fromFork: false,
+    private: false,
     stats: { changedFiles: 2, additions: 15, deletions: 1, commits: 1 },
     diff: [
       'diff --git a/src/shop.ts b/src/shop.ts',

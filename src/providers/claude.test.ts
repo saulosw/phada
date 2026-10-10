@@ -6,6 +6,7 @@ import { ClaudeCliProvider } from './claude.js'
 import type { ClaudeCliProviderOptions } from './claude.js'
 import { ProviderError } from './types.js'
 import type { ReviewPrompt } from './types.js'
+import type { Toolbox } from '../investigation/toolbox.js'
 
 const FAKE_CLAUDE = resolve('test/fixtures/bin/fake-claude')
 const FAKE_SECRET = `ghp_${'A1b2C3d4E5'.repeat(4)}`
@@ -17,7 +18,8 @@ const PROMPT: ReviewPrompt = {
 const EXPECTED_ARGS = [
   '-p',
   '--output-format',
-  'json',
+  'stream-json',
+  '--verbose',
   '--tools',
   '',
   '--strict-mcp-config',
@@ -30,6 +32,9 @@ interface Capture {
   argv: string[]
   stdin: string
   instructions: string | null
+  mcpConfig: {
+    mcpServers: Record<string, { type: string; command: string; args: string[] }>
+  } | null
   cwd: string
   env: { GITHUB_TOKEN?: string; GH_TOKEN?: string }
 }
@@ -316,4 +321,114 @@ describe('ClaudeCliProvider', () => {
       expect(error.message).not.toContain('ghp_')
     },
   )
+
+  describe('with the repository tools', () => {
+    const toolbox: Toolbox = {
+      definitions: ['read_file', 'grep', 'list'].map((name) => ({
+        name,
+        description: name,
+        inputSchema: { type: 'object' },
+      })),
+      call: async () => ({ text: 'ok', isError: false }),
+      touchedPaths: () => [],
+    }
+    const withTools: ReviewPrompt = { ...PROMPT, tools: toolbox }
+
+    function argAfter(argv: string[], flag: string): string | undefined {
+      return argv.includes(flag) ? argv[argv.indexOf(flag) + 1] : undefined
+    }
+
+    it('serves the tools over MCP and allows only them', async () => {
+      await provider('success').review(withTools)
+
+      const { argv, mcpConfig, cwd } = readCapture()
+      expect(argAfter(argv, '--mcp-config')).toBe(join(cwd, 'mcp.json'))
+      expect(argv).toContain('--strict-mcp-config')
+      expect(argAfter(argv, '--allowedTools')).toBe(
+        'mcp__phada__read_file,mcp__phada__grep,mcp__phada__list',
+      )
+      expect(argAfter(argv, '--max-turns')).toBe('43')
+      expect(argAfter(argv, '--tools')).toBe('')
+      const server = mcpConfig?.mcpServers.phada
+      expect(server?.type).toBe('stdio')
+      expect(server?.command).toBe(process.execPath)
+      expect(server?.args.at(-2)).toMatch(/mcp-bridge\.js$/)
+    })
+
+    it("allows the user's own MCP servers by name and loads them", async () => {
+      await provider('success', { userMcpServers: ['linear', 'claude.ai Linear'] }).review(
+        withTools,
+      )
+
+      const { argv } = readCapture()
+      expect(argv).not.toContain('--strict-mcp-config')
+      expect(argAfter(argv, '--allowedTools')).toBe(
+        'mcp__phada__read_file,mcp__phada__grep,mcp__phada__list,mcp__linear,mcp__claude_ai_Linear',
+      )
+    })
+
+    it("allows only the user's servers when there are no repository tools", async () => {
+      await provider('success', { userMcpServers: ['linear'] }).review(PROMPT)
+
+      const { argv } = readCapture()
+      expect(argv).not.toContain('--strict-mcp-config')
+      expect(argv).not.toContain('--mcp-config')
+      expect(argAfter(argv, '--allowedTools')).toBe('mcp__linear')
+      expect(argAfter(argv, '--max-turns')).toBe('43')
+    })
+
+    it('reports the calls to MCP servers other than Phada', async () => {
+      const output = await provider('stream').review(withTools)
+
+      expect(output.text).toBe('LGTM from fake')
+      expect(output.model).toBe('claude-fake-1')
+      expect(output.externalCalls).toEqual([
+        { server: 'claude_ai_Linear', tool: 'get_issue' },
+        { server: 'linear', tool: 'search' },
+      ])
+    })
+
+    it('names the MCP servers of the user as they are configured', async () => {
+      const output = await provider('stream', {
+        userMcpServers: ['claude.ai Linear', 'linear'],
+      }).review(withTools)
+
+      expect(output.externalCalls).toEqual([
+        { server: 'claude.ai Linear', tool: 'get_issue' },
+        { server: 'linear', tool: 'search' },
+      ])
+    })
+
+    it('leaves externalCalls out when there are none', async () => {
+      const output = await provider('success').review(withTools)
+
+      expect(output).not.toHaveProperty('externalCalls')
+    })
+
+    it('skips lines that are not JSON before the result', async () => {
+      expect((await provider('garbage_then_result').review(PROMPT)).text).toBe('LGTM from fake')
+    })
+
+    it('counts the investigation turns when Claude runs out of turns', async () => {
+      const error = await provider('max_turns')
+        .review(withTools)
+        .then(
+          () => undefined,
+          (reason: unknown) => reason as ProviderError,
+        )
+
+      expect(error?.reason).toBe('invalid-output')
+      expect(error?.message).toBe('Claude did not finish the review within 43 turns.')
+    })
+
+    it('closes the MCP server when Claude fails', async () => {
+      await provider('exit1')
+        .review(withTools)
+        .catch(() => undefined)
+
+      const socket = readCapture().mcpConfig?.mcpServers.phada?.args.at(-1) ?? ''
+      expect(socket).not.toBe('')
+      expect(existsSync(dirname(socket))).toBe(false)
+    })
+  })
 })

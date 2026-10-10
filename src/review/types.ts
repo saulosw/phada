@@ -1,5 +1,5 @@
 import type { PullRequest } from '../github/pull-request.js'
-import type { TokenUsage } from '../providers/types.js'
+import type { ExternalToolCall, TokenUsage } from '../providers/types.js'
 
 export interface ContextRule {
   key: string
@@ -101,6 +101,8 @@ export interface ReviewResult {
   dropped: DroppedFindings
   verification?: Verification
   ignored?: string[]
+  externalCalls?: ExternalToolCall[]
+  warnings?: string[]
 }
 
 export type SkipReviewReason = 'empty-diff' | 'all-ignored'

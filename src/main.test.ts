@@ -17,6 +17,9 @@ import type {
 } from './github/pull-request-reviews.js'
 import type { FetchPullRequestOptions, PullRequest } from './github/pull-request.js'
 import type { RepositoryTree } from './github/repository-files.js'
+import type { Checkout } from './investigation/checkout/checkout.js'
+import { CheckoutUnavailableError } from './investigation/checkout/git-checkout.js'
+import type { OpenGitCheckoutOptions } from './investigation/checkout/git-checkout.js'
 import { FINDING_MARKER, reviewMarker } from './publish/markers.js'
 import { createProvider, run } from './main.js'
 import type { MainDeps, ProviderOptions } from './main.js'
@@ -51,6 +54,18 @@ interface Harness {
   events: string[]
   providers: { name: string; options: ProviderOptions }[]
   prompts: ReviewPrompt[]
+  checkouts: OpenGitCheckoutOptions[]
+  closed: () => number
+}
+
+function memoryCheckout(onClose: () => void): Checkout {
+  return {
+    commit: HEAD_SHA,
+    readText: async (path) => `contents of ${path}\n`,
+    grep: async () => [],
+    listDir: async () => [],
+    close: async () => onClose(),
+  }
 }
 
 function harness(
@@ -63,8 +78,11 @@ function harness(
     files?: MemoryFiles
     repoFiles?: Record<string, string>
     tree?: () => Promise<RepositoryTree>
+    openCheckout?: (options: OpenGitCheckoutOptions) => Promise<Checkout>
   } = {},
 ): Harness {
+  const checkouts: OpenGitCheckoutOptions[] = []
+  let closed = 0
   const files = overrides.files ?? memoryFiles()
   const repoFiles = overrides.repoFiles ?? {}
   const treeFetches: { sha: string }[] = []
@@ -115,6 +133,17 @@ function harness(
       fileFetches.push({ path: options.path, ref: options.ref })
       return Promise.resolve(repoFiles[options.path] ?? null)
     },
+    openCheckout: (options) => {
+      checkouts.push(options)
+      return (
+        overrides.openCheckout?.(options) ??
+        Promise.resolve(
+          memoryCheckout(() => {
+            closed += 1
+          }),
+        )
+      )
+    },
     createProvider: (name, options) => {
       providers.push({ name, options })
       if (name !== 'claude') return createProvider(name, options)
@@ -136,6 +165,8 @@ function harness(
     fileFetches,
     stdout: () => out.join(''),
     stderr: () => err.join(''),
+    checkouts,
+    closed: () => closed,
     fetches,
     stateFetches,
     posts,
@@ -210,13 +241,14 @@ describe('run', () => {
   it('reviews a pull request: progress on stderr, the review on stdout', async () => {
     const h = harness()
 
-    expect(await run(['review', 'acme/shop#12'], h.deps)).toBe(0)
+    expect(await run(['review', 'acme/shop#12', '--no-verify'], h.deps)).toBe(0)
     expect(h.stderr()).toBe(
       [
         'Fetching acme/shop#12…',
         'acme/shop#12 · a1b2c3d · 2 files · +15 −1 · 523 B diff',
         'Context: no rules or docs',
         'Reviewing with fake-cli… (this can take a few minutes)',
+        'Investigated: no tool calls',
         'Publishing the review…',
         `Published the review: ${REVIEW_URL}`,
         '',
@@ -268,7 +300,9 @@ describe('run', () => {
     const text = reviewReportJson({ findings: [findingFixture({ confidence: 85 })] })
     const h = harness({ review: () => Promise.resolve({ ...OUTPUT, text }) })
 
-    expect(await run(['review', 'acme/shop#12', '--min-confidence', '90'], h.deps)).toBe(0)
+    expect(
+      await run(['review', 'acme/shop#12', '--no-verify', '--min-confidence', '90'], h.deps),
+    ).toBe(0)
     expect(h.stdout()).toContain(
       '## Worth checking (confidence below 90)\n\n- **P1** · src/shop.ts:1: spend has no auth (confidence 85)\n',
     )
@@ -497,7 +531,7 @@ describe('createProvider', () => {
 })
 
 describe('run publishing', () => {
-  const REVIEW = ['review', 'acme/shop#12']
+  const REVIEW = ['review', 'acme/shop#12', '--no-verify']
 
   it('publishes the review after printing it', async () => {
     const h = harness({ review: () => Promise.resolve(WITH_FINDING) })
@@ -762,6 +796,24 @@ describe('run with config and repository context', () => {
     expect(h.prompts[0]?.instructions).toContain('in en')
   })
 
+  it('verifies the findings by default and turns it off from the config or --no-verify', async () => {
+    const plain = harness({ review: () => Promise.resolve(WITH_FINDING) })
+    const configured = harness({
+      files: memoryFiles({ '/cfg/config.yml': 'verify: false' }),
+      review: () => Promise.resolve(WITH_FINDING),
+    })
+    const flagged = harness({ review: () => Promise.resolve(WITH_FINDING) })
+
+    await run(['review', 'acme/shop#12', '--dry-run'], plain.deps)
+    await run(['review', 'acme/shop#12', '--dry-run'], configured.deps)
+    await run(['review', 'acme/shop#12', '--dry-run', '--no-verify'], flagged.deps)
+
+    expect(plain.prompts).toHaveLength(2)
+    expect(plain.prompts[1]?.data).toContain('<<<PHADA_FINDINGS_')
+    expect(configured.prompts).toHaveLength(1)
+    expect(flagged.prompts).toHaveLength(1)
+  })
+
   it('turns verification on from the config and off with --no-verify', async () => {
     const files = () => memoryFiles({ '/cfg/config.yml': 'verify: true' })
     const on = harness({ files: files(), review: () => Promise.resolve(WITH_FINDING) })
@@ -850,5 +902,175 @@ describe('run with config and repository context', () => {
     await run(['review', 'acme/shop#12', '--dry-run'], h.deps)
 
     expect(h.prompts[0]?.data).toContain('=== local:/home/u/notes/rules.md ===\nMoney is in cents.')
+  })
+})
+
+describe('run with the repository investigation', () => {
+  it('fetches the reviewed head commit and gives the AI the tools', async () => {
+    const h = harness()
+
+    expect(await run(['review', 'acme/shop#12', '--dry-run'], h.deps)).toBe(0)
+
+    expect(h.checkouts).toEqual([
+      expect.objectContaining({ owner: 'acme', repo: 'shop', sha: HEAD_SHA, token: TOKEN }),
+    ])
+    expect(h.prompts[0]?.tools?.definitions.map((tool) => tool.name)).toEqual([
+      'read_file',
+      'grep',
+      'list',
+    ])
+    expect(h.prompts[0]?.instructions).toContain('read_file, grep, list tools')
+    expect(h.closed()).toBe(1)
+    expect(h.stderr()).toContain('Investigated: no tool calls\n')
+    expect(h.stdout()).toContain('## Investigation')
+  })
+
+  it('reports the calls of the AI', async () => {
+    const h = harness({
+      review: async () => OUTPUT,
+    })
+    h.deps.createProvider = (name, options) => {
+      h.providers.push({ name, options })
+      return {
+        id: 'fake-cli',
+        review: async (prompt) => {
+          await prompt.tools?.call('read_file', { path: 'src/shop.ts' })
+          await prompt.tools?.call('grep', { pattern: 'spend' })
+          return OUTPUT
+        },
+      }
+    }
+
+    await run(['review', 'acme/shop#12', '--dry-run', '--format', 'json'], h.deps)
+
+    expect(h.stderr()).toContain('Investigated: 1 read, 1 search (')
+    const json = JSON.parse(h.stdout()) as { investigation: { status: string; totals: unknown } }
+    expect(json.investigation.status).toBe('used')
+    expect(json.investigation.totals).toMatchObject({ calls: 2 })
+  })
+
+  it('skips the investigation with --no-investigate or investigate: false', async () => {
+    const flagged = harness()
+    await run(['review', 'acme/shop#12', '--dry-run', '--no-investigate'], flagged.deps)
+    const configured = harness({ repoFiles: { '.phada/config.yml': 'investigate: false' } })
+    await run(['review', 'acme/shop#12', '--dry-run'], configured.deps)
+
+    for (const h of [flagged, configured]) {
+      expect(h.checkouts).toHaveLength(0)
+      expect(h.prompts[0]?.tools).toBeUndefined()
+      expect(h.stderr()).toContain('Investigation: off\n')
+    }
+  })
+
+  it('reviews without the investigation when the head cannot be fetched', async () => {
+    const h = harness({
+      openCheckout: () =>
+        Promise.reject(new CheckoutUnavailableError('git-missing', 'git was not found')),
+    })
+
+    expect(await run(['review', 'acme/shop#12', '--dry-run', '--format', 'json'], h.deps)).toBe(0)
+
+    expect(h.prompts[0]?.tools).toBeUndefined()
+    expect(h.stderr()).toContain('Warning: git was not found: reviewing without investigation.\n')
+    const json = JSON.parse(h.stdout()) as { investigation: unknown }
+    expect(json.investigation).toMatchObject({ status: 'unavailable', reason: 'git was not found' })
+  })
+
+  it('closes the checkout when the AI fails', async () => {
+    const h = harness({
+      review: () => Promise.reject(new ProviderError('claude-cli', 'failed', 'boom')),
+    })
+
+    expect(await run(['review', 'acme/shop#12'], h.deps)).toBe(1)
+    expect(h.closed()).toBe(1)
+  })
+
+  it('closes the checkout when the provider cannot be created', async () => {
+    const h = harness()
+    h.deps.createProvider = () => {
+      throw new ProviderError('ollama', 'failed', 'OLLAMA_HOST "x" is not a valid address.')
+    }
+
+    expect(await run(['review', 'acme/shop#12'], h.deps)).toBe(1)
+    expect(h.checkouts).toHaveLength(1)
+    expect(h.closed()).toBe(1)
+  })
+
+  it('does not fetch the head when every changed file is ignored', async () => {
+    const h = harness({ pullRequest: () => Promise.resolve(pullRequestFixture({ diff: '' })) })
+
+    await run(['review', 'acme/shop#12'], h.deps)
+
+    expect(h.checkouts).toHaveLength(0)
+  })
+
+  it("passes the user's MCP servers to Claude", async () => {
+    const h = harness({ files: memoryFiles({ '/cfg/config.yml': 'mcp: [linear]' }) })
+
+    await run(['review', 'acme/shop#12', '--dry-run'], h.deps)
+
+    expect(h.providers[0]?.options).toEqual({ model: undefined, userMcpServers: ['linear'] })
+  })
+
+  it("leaves the user's MCP servers out when the investigation is off", async () => {
+    const h = harness({ files: memoryFiles({ '/cfg/config.yml': 'mcp: [linear]' }) })
+
+    await run(['review', 'acme/shop#12', '--dry-run', '--no-investigate'], h.deps)
+
+    expect(h.providers[0]?.options).not.toHaveProperty('userMcpServers')
+  })
+
+  it("leaves the user's MCP servers out when the head cannot be fetched", async () => {
+    const h = harness({
+      files: memoryFiles({ '/cfg/config.yml': 'mcp: [linear]' }),
+      openCheckout: () =>
+        Promise.reject(new CheckoutUnavailableError('git-missing', 'git was not found')),
+    })
+
+    await run(['review', 'acme/shop#12', '--dry-run'], h.deps)
+
+    expect(h.providers[0]?.options).not.toHaveProperty('userMcpServers')
+    expect(h.stderr()).not.toContain('is public')
+  })
+
+  it('warns that MCP servers can leak into a review on a public repository', async () => {
+    const h = harness({ files: memoryFiles({ '/cfg/config.yml': 'mcp: [linear, notion]' }) })
+
+    await run(['review', 'acme/shop#12', '--dry-run'], h.deps)
+
+    expect(h.stderr()).toContain(
+      'Warning: acme/shop is public: what the AI reads from linear, notion may end up in the published review.\n',
+    )
+  })
+
+  it('does not warn on a private repository', async () => {
+    const h = harness({
+      files: memoryFiles({ '/cfg/config.yml': 'mcp: [linear]' }),
+      pullRequest: () => Promise.resolve(pullRequestFixture({ private: true })),
+    })
+
+    await run(['review', 'acme/shop#12', '--dry-run'], h.deps)
+
+    expect(h.stderr()).not.toContain('is public')
+  })
+
+  it('refuses mcp with another provider before fetching', async () => {
+    const h = harness({ files: memoryFiles({ '/cfg/config.yml': 'mcp: [linear]' }) })
+
+    expect(await run(['review', 'acme/shop#12', '--provider', 'codex'], h.deps)).toBe(2)
+    expect(h.stderr()).toContain(
+      'phada: mcp in your config works only with --provider claude for now.',
+    )
+    expect(h.fetches).toHaveLength(0)
+  })
+
+  it('prints the warnings of the provider', async () => {
+    const h = harness({
+      review: async () => ({ ...OUTPUT, warnings: ['model x cannot call tools'] }),
+    })
+
+    await run(['review', 'acme/shop#12', '--dry-run'], h.deps)
+
+    expect(h.stderr()).toContain('Warning: model x cannot call tools\n')
   })
 })

@@ -46,6 +46,19 @@ describe('parseCliArgs', () => {
     })
   })
 
+  it('turns the investigation on and off', () => {
+    expect(parseCliArgs(['review', 'acme/shop#12', '--no-investigate'])).toMatchObject({
+      investigate: false,
+    })
+    expect(parseCliArgs(['review', 'acme/shop#12', '--investigate'])).toMatchObject({
+      investigate: true,
+    })
+    expect(parseCliArgs(['review', 'acme/shop#12'])).not.toHaveProperty('investigate')
+    expect(() =>
+      parseCliArgs(['review', 'acme/shop#12', '--investigate', '--no-investigate']),
+    ).toThrow(new UsageError('Use either --investigate or --no-investigate.'))
+  })
+
   it('turns verification off with --no-verify', () => {
     expect(parseCliArgs(['review', 'acme/shop#12', '--no-verify'])).toMatchObject({
       verify: false,
