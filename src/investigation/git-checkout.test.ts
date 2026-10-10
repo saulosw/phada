@@ -82,6 +82,12 @@ describe('openGitCheckout with a local repository', () => {
     expect(await checkout.grep('nothing-matches-this', {})).toEqual([])
   })
 
+  it('treats a glob without a folder as matching in every folder', async () => {
+    expect(await checkout.grep('needle', { path: '*.ts' })).toEqual([
+      { path: 'src/a.ts', line: 2, text: 'export const needle = 2' },
+    ])
+  })
+
   it('reports an invalid pattern', async () => {
     await expect(checkout.grep('(', {})).rejects.toMatchObject({ reason: 'invalid-pattern' })
   })
@@ -172,6 +178,41 @@ describe('openGitCheckout fetch', () => {
     expect(fetch?.options.timeoutMs).toBe(120_000)
     await opened.close()
     expect(existsSync(dir)).toBe(false)
+  })
+
+  it('drops git variables that point git at another repository or change pathspecs', async () => {
+    const { run, calls } = fakeRun(() => ok)
+    const opened = await openGitCheckout({
+      owner: 'acme',
+      repo: 'shop',
+      sha: 'abc123',
+      token: TOKEN,
+      env: {
+        ...env,
+        GIT_DIR: '/home/u/project/.git',
+        GIT_WORK_TREE: '/home/u/project',
+        GIT_INDEX_FILE: '/home/u/project/.git/index',
+        GIT_OBJECT_DIRECTORY: '/x',
+        GIT_GLOB_PATHSPECS: '1',
+        GIT_CONFIG_PARAMETERS: "'url.x.insteadof'='y'",
+        GIT_CONFIG_COUNT: '3',
+        GIT_SSH_COMMAND: 'ssh -i key',
+        GIT_SSL_CAINFO: '/etc/ca.pem',
+      },
+      run,
+      makeTempDir: async () => tempDir(),
+    })
+    for (const call of calls) {
+      const keys = Object.keys(call.options.env ?? {}).filter((key) => key.startsWith('GIT_'))
+      expect(
+        keys.filter((key) => !key.startsWith('GIT_CONFIG_') && key !== 'GIT_TERMINAL_PROMPT'),
+      ).toEqual(['GIT_SSH_COMMAND', 'GIT_SSL_CAINFO'])
+    }
+    const fetch = calls.find((call) => call.args.includes('fetch'))
+    expect(fetch?.options.env?.GIT_CONFIG_COUNT).toBe('1')
+    expect(fetch?.options.env?.GIT_CONFIG_PARAMETERS).toBeUndefined()
+    expect(fetch?.options.env?.GIT_SSH_COMMAND).toBe('ssh -i key')
+    await opened.close()
   })
 
   it('reports a failed fetch without the token and removes the folder', async () => {

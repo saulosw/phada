@@ -19,6 +19,7 @@ export const GREP_MAX_OUTPUT = 2_000_000
 
 const BINARY_PROBE_LENGTH = 8000
 const GITHUB_TOKEN_KEYS: ReadonlySet<string> = new Set(['GITHUB_TOKEN', 'GH_TOKEN'])
+const KEPT_GIT_VARIABLES = /^GIT_(SSH|ASKPASS|SSL_|HTTP_|PROXY_|CURL_)/
 const GLOB_CHARS = /[*?[\]{}]/
 const KIND_BY_MODE: Readonly<Record<string, DirEntryKind>> = {
   '040000': 'dir',
@@ -65,7 +66,7 @@ interface TreeEntry {
 export async function openGitCheckout(options: OpenGitCheckoutOptions): Promise<Checkout> {
   const run = options.run ?? runCommand
   const dir = await (options.makeTempDir ?? defaultTempDir)()
-  const env = withoutGitHubTokens(options.env)
+  const env = gitEnvironment(options.env)
   const basic = Buffer.from(`x-access-token:${options.token}`).toString('base64')
   try {
     await gitOrThrow(run, dir, ['init', '--bare', '-q', dir], env)
@@ -131,7 +132,11 @@ class GitCheckout implements Checkout {
     const pathspec =
       path === undefined || path === ''
         ? []
-        : [GLOB_CHARS.test(path) ? `:(glob)${path}` : `:(literal)${path}`]
+        : [
+            GLOB_CHARS.test(path)
+              ? `:(glob)${path.includes('/') ? '' : '**/'}${path}`
+              : `:(literal)${path}`,
+          ]
     let result: RunCommandResult
     try {
       result = await this.#run(
@@ -244,8 +249,13 @@ function unavailable(error: unknown): unknown {
   return error
 }
 
-function withoutGitHubTokens(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  return Object.fromEntries(Object.entries(env).filter(([key]) => !GITHUB_TOKEN_KEYS.has(key)))
+function gitEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    Object.entries(env).filter(
+      ([key]) =>
+        !GITHUB_TOKEN_KEYS.has(key) && (!key.startsWith('GIT_') || KEPT_GIT_VARIABLES.test(key)),
+    ),
+  )
 }
 
 function firstLine(text: string): string {
