@@ -30,17 +30,22 @@ talks to GitHub itself.
 ```
 src/
   bin.ts                 # entry point of the `phada` command: reads the package version, calls run()
-  main.ts                # run(argv, deps): PR → review state → run/skip → review → publish; createProvider()
-  architecture.test.ts   # allowed imports of src/review/ and src/publish/
+  main.ts                # run(argv, deps): user config → provider → PR → review state → run/skip →
+                         #   repository context → review → publish; createProvider()
+  architecture.test.ts   # allowed imports of src/review/, src/publish/ and src/context/
   cli/                   # terminal edge
-    args.ts              #   parseCliArgs(): `review` command (--dry-run, --force), --help, --version;
-                         #   USAGE, REVIEW_USAGE
+    args.ts              #   parseCliArgs(): `review` (--dry-run, --force, --verify/--no-verify) and
+                         #   `init` commands, --help, --version; USAGE, REVIEW_USAGE, INIT_USAGE
+    init.ts              #   runInit(): .phada/ in the repository, or the user's own config
+    init-templates.ts    #   the commented files phada init writes
     errors.ts            #   UsageError, MissingGitHubTokenError
     format-review.ts     #   pull request summary (stderr) and the Markdown review (stdout)
     format-github.ts     #   the review as GitHub Markdown: body, line comments, markers, truncation;
                          #   formatGitHubPreview() for --dry-run
     format-publication.ts #  skip and "Published" messages
-    format-json.ts       #   formatReviewJson(): schemaVersion 1, with the publication block
+    format-context.ts    #   the "Context:" line and the context section of --dry-run
+    finding-references.ts #  the "Based on" line: sources and rule of a finding
+    format-json.ts       #   formatReviewJson(): schemaVersion 1, with the publication and context blocks
     markdown-text.ts     #   escapes AI text: block markers; for GitHub also HTML and mentions
     review-text.ts       #   model label and short SHA
     i18n/                #   fixed review text per language: messages.ts (Messages, messagesFor()),
@@ -49,6 +54,21 @@ src/
     progress.ts          #   withProgress(): ReviewProvider decorator with a live timer on a TTY
     terminal-text.ts     #   toTerminalText(): strips control and bidi characters from external text
     units.ts             #   duration, tokens, bytes, counts
+  config/                # the config files: .phada/ in the repository and the user's own
+    schema.ts            #   Zod schema of config.yml; LANGUAGE_TAG
+    parse-config.ts      #   parseConfigText(): YAML → config or an error naming the key
+    merge-config.ts      #   mergeConfig(): layers → options, rules, files, ignore with origins (pure);
+                         #   resolveProvider(): provider and model as a pair
+    user-config.ts       #   the user's folder (PHADA_CONFIG_HOME › XDG › ~/.config/phada), loadUserLayers()
+    local-files.ts       #   LocalFileSystem and its node:fs implementation
+    errors.ts            #   ConfigError
+  context/               # what the review sends besides the diff, with injected readers
+    phada-paths.ts       #   .phada/ folders from the root to each changed file
+    split-diff.ts        #   a unified diff split by file
+    ignore.ts            #   DEFAULT_IGNORE (lockfiles, minified files, source maps), applyIgnore()
+    select-docs.ts       #   docs by priority, the 60 KB budget, cutting a doc at 20 KB
+    load-context.ts      #   loadContext(): config files, rules in scope, ignore, docs → ReviewContext + report
+    types.ts             #   ContextReport, ContextSources, LoadedContext
   github/                # GitHub REST and GraphQL
     pull-request-ref.ts  #   parse/format "owner/repo#N" or a pull request URL
     errors.ts            #   GitHubError and typed errors
@@ -58,6 +78,7 @@ src/
     pull-request.ts      #   fetchPullRequest()
     pull-request-reviews.ts # fetchReviewState(): viewer, reviews and threads, paginated
     create-review.ts     #   createReview(): one COMMENT review with line comments
+    repository-files.ts  #   fetchRepositoryTree(), fetchRepositoryFile(): the repository at a commit
   process/               # safe subprocess runner (stdin, timeout, typed errors)
     run-command.ts       #   runCommand(): returns the exit code, never interprets it
   providers/             # ReviewProvider and its implementations
@@ -75,7 +96,8 @@ src/
     types.ts             #   PublicationPlan, RunDecision, SkipReason
   review/                # the engine: data in, result out
     types.ts             #   ReviewRequest, Finding, ReviewResult, ReviewOutcome, …
-    prompt-parts.ts      #   text shared by the review and verification prompts
+    prompt-parts.ts      #   text shared by the review and verification prompts: rules section,
+                         #   docs block, diff scope
     prompt.ts            #   buildReviewPrompt(): instructions + nonce-delimited data + output schema
     verify-prompt.ts     #   buildVerifyPrompt(): the second, skeptical pass (--verify)
     report-schema.ts     #   Zod schemas of the AI report + the JSON schema sent to providers
@@ -85,6 +107,7 @@ src/
     parse-report.ts      #   parseReviewReport()
     parse-verification.ts #  parseVerification()
     verify-findings.ts   #   verifyCandidates(), applyVerdicts()
+    context-findings.ts  #   known rule and sources on each finding; the severity a rule sets
     select-findings.ts   #   candidate filtering, confidence cut, worth checking, ordering
     score.ts             #   scoreFindings(): the 0–5 score, computed by Phada
     errors.ts            #   InvalidReviewReportError
@@ -103,9 +126,12 @@ Tests live next to the code they test (`*.test.ts`).
 value imports from outside the folder are `node:crypto` and `zod`. It never imports a concrete
 provider (`providers/claude.ts`, `providers/codex.ts`, `providers/ollama.ts`). Only `src/main.ts`
 wires concrete implementations, and `src/bin.ts` passes it the real `process` streams and
-environment. `src/publish/` imports only types from outside the folder (`src/review/types.ts`,
+environment. `src/context/` reads nothing itself: `loadContext()` gets the readers of the
+repository and of the local disk as data, and its only value imports from outside the folder are
+`picomatch`, `node:path` and the pure config helpers (`parse-config.ts`, `merge-config.ts`).
+`src/publish/` imports only types from outside the folder (`src/review/types.ts`,
 `src/github/pull-request-reviews.ts`). `src/architecture.test.ts` enforces the allowed imports of
-both folders and forbids `process`/`console` inside them.
+these folders and forbids `process`/`console` inside them.
 
 ## Conventions
 

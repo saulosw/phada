@@ -1,3 +1,4 @@
+import type { ContextReport } from '../context/types.js'
 import type { PullRequest } from '../github/pull-request.js'
 import type { TokenUsage } from '../providers/types.js'
 import type { SkipReason } from '../publish/types.js'
@@ -17,9 +18,11 @@ export function formatReviewJson(
   pr: PullRequest,
   outcome: ReviewOutcome,
   publication: Publication | null = null,
+  context: ContextReport | null = null,
 ): string {
   const pullRequest = pullRequestJson(pr)
   const publicationBlock = publication === null ? null : publicationJson(publication)
+  const contextBlock = context === null ? null : contextJson(context)
   const body =
     outcome.status === 'skipped'
       ? {
@@ -28,6 +31,7 @@ export function formatReviewJson(
           reason: outcome.reason,
           pullRequest,
           publication: publicationBlock,
+          context: contextBlock,
         }
       : {
           schemaVersion: SCHEMA_VERSION,
@@ -35,6 +39,7 @@ export function formatReviewJson(
           pullRequest,
           review: reviewJson(outcome.result),
           publication: publicationBlock,
+          context: contextBlock,
         }
   return `${JSON.stringify(body, null, 2)}\n`
 }
@@ -46,6 +51,7 @@ export function formatAlreadyReviewedJson(pr: PullRequest, reason: SkipReason): 
     reason: 'already-reviewed',
     pullRequest: pullRequestJson(pr),
     publication: publicationJson({ status: 'skipped', reason }),
+    context: null,
   }
   return `${JSON.stringify(body, null, 2)}\n`
 }
@@ -135,6 +141,41 @@ function usageJson(usage: TokenUsage | undefined) {
     : { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens }
 }
 
-function findingJson({ severity, confidence, file, line, title, why, fix, reason }: Finding) {
-  return { severity, confidence, file, line, title, why, fix, reason: reason ?? null }
+function findingJson(finding: Finding) {
+  const { severity, confidence, file, line, title, why, fix, rule, sources, reason } = finding
+  return {
+    severity,
+    confidence,
+    file,
+    line,
+    title,
+    why,
+    fix,
+    rule: rule ?? null,
+    sources: sources ?? [],
+    reason: reason ?? null,
+  }
+}
+
+function contextJson(context: ContextReport) {
+  return {
+    configFiles: context.configFiles.map(({ path, origin, status, message }) => ({
+      path,
+      origin,
+      status,
+      ...(message === undefined ? {} : { message }),
+    })),
+    rules: context.rules.map(({ key, origin, status }) => ({ key, origin, status })),
+    docs: context.docs.map(({ path, origin, category, bytes, status, reason }) => ({
+      path,
+      origin,
+      category,
+      bytes,
+      status,
+      ...(reason === undefined ? {} : { reason }),
+    })),
+    ignored: [...context.ignored],
+    budget: { limit: context.budget.limit, used: context.budget.used },
+    warnings: [...context.warnings],
+  }
 }

@@ -2,6 +2,7 @@ import type { PullRequest } from '../github/pull-request.js'
 import { scoreFocus } from '../review/score.js'
 import type { FileChange, Finding, ReviewResult, Severity } from '../review/types.js'
 import { english } from './i18n/en.js'
+import { findingReferences, leftOutLine } from './finding-references.js'
 import type { Messages } from './i18n/messages.js'
 import { blockText, cell, singleLine } from './markdown-text.js'
 import { modelLabel, shortSha } from './review-text.js'
@@ -39,7 +40,9 @@ export function formatReview(
     filesSection(result.files, messages),
     findingsSection(result.findings, messages),
     worthCheckingSection(result, messages),
-    ['---', countsLine(result, messages), footer(result, messages)].join('\n'),
+    ['---', countsLine(result, messages), leftOut(result, messages), footer(result, messages)]
+      .filter((line) => line !== '')
+      .join('\n'),
   ]
   return `${sections.filter((section) => section !== '').join('\n\n')}\n`
 }
@@ -95,6 +98,8 @@ function findingItem(number: number, finding: Finding, messages: Messages): stri
   if (finding.fix !== null && finding.fix.trim() !== '') {
     lines.push(indent(`${messages.fix}: ${blockText(finding.fix)}`))
   }
+  const references = findingReferences(finding, messages)
+  if (references !== '') lines.push(indent(singleLine(references)))
   return lines.join('\n')
 }
 
@@ -121,6 +126,10 @@ function countsLine(
   const droppedPart = messages.dropped(dropped)
   if (droppedPart !== '') parts.push(droppedPart)
   return parts.join(' · ')
+}
+
+function leftOut(result: ReviewResult, messages: Messages): string {
+  return singleLine(leftOutLine(result.ignored ?? [], messages))
 }
 
 function footer(result: ReviewResult, messages: Messages): string {

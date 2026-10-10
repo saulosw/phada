@@ -8,6 +8,9 @@ export interface Messages {
   scoreReason(focus: ScoreFocus | undefined): string
   confidence: string
   fix: string
+  basedOn: string
+  leftOut: string
+  rule: string
   summary: string
   files: string
   fileColumns: readonly [string, string, string]
@@ -35,6 +38,8 @@ export interface Messages {
     stillOpen: string
     filesTruncated(count: number): string
     truncated: string
+    allIgnoredTitle: string
+    allIgnored(sha: string): string
     onlyStillOpenTitle: string
     onlyStillOpen(count: number, sha: string): string
     preview(index: number, total: number, place: string): string

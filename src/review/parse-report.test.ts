@@ -88,6 +88,36 @@ describe('parseReviewReport', () => {
     expect(parsed.invalid).toBe(1)
   })
 
+  it('reads the rule and the text sources of a finding', () => {
+    const text = reviewReportJson({
+      findings: [
+        {
+          ...findingFixture(),
+          rule: ' orm-only ',
+          sources: ['docs/a.md', 3, ' ', 'src/shop.ts:2'],
+        },
+      ],
+    })
+
+    expect(parseReviewReport(text).findings).toEqual([
+      findingFixture({ rule: 'orm-only', sources: ['docs/a.md', 'src/shop.ts:2'] }),
+    ])
+  })
+
+  it('leaves out a null rule and empty sources, and accepts findings without them', () => {
+    const text = reviewReportJson({
+      findings: [
+        { ...findingFixture(), rule: null, sources: [] },
+        findingFixture({ title: 'old' }),
+      ],
+    })
+
+    expect(parseReviewReport(text).findings).toEqual([
+      findingFixture(),
+      findingFixture({ title: 'old' }),
+    ])
+  })
+
   it('ignores file entries with the wrong shape', () => {
     const files = [{ path: 'a.ts', change: 'x' }, { path: '', change: 'y' }, { path: 'b.ts' }]
 

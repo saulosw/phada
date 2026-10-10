@@ -3,7 +3,12 @@ import { findingFixture } from '../../test/support/finding.js'
 import { parseReviewMarker } from '../publish/markers.js'
 import type { PublicationPlan } from '../publish/types.js'
 import type { FileChange, Finding, ReviewResult } from '../review/types.js'
-import { formatGitHubPreview, formatGitHubReview, GITHUB_BODY_LIMIT } from './format-github.js'
+import {
+  formatGitHubPreview,
+  formatGitHubReview,
+  formatIgnoredOnlyReview,
+  GITHUB_BODY_LIMIT,
+} from './format-github.js'
 import { messagesFor } from './i18n/messages.js'
 
 const SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
@@ -107,6 +112,30 @@ describe('formatGitHubReview body', () => {
         MARKER,
       ].join('\n'),
     )
+  })
+
+  it('names the files left out of the review', () => {
+    const ignored = [
+      'package-lock.json',
+      ...Array.from({ length: 11 }, (_unused, index) => `gen/${index}.min.js`),
+    ]
+    const { body } = formatGitHubReview({ ...RESULT, ignored }, PLAN)
+
+    expect(body).toContain(
+      'Left out of the review: `package-lock.json` · `gen/0.min.js` · `gen/1.min.js` · `gen/2.min.js` · `gen/3.min.js` · `gen/4.min.js` · `gen/5.min.js` · `gen/6.min.js` · `gen/7.min.js` · `gen/8.min.js` · … (+2 more)',
+    )
+    expect(formatGitHubReview(RESULT, PLAN).body).not.toContain('Left out of the review')
+  })
+
+  it('names the files left out of the review in Portuguese', () => {
+    const { body } = formatGitHubReview(
+      { ...RESULT, ignored: ['yarn.lock'] },
+      PLAN,
+      undefined,
+      messagesFor('pt-BR'),
+    )
+
+    expect(body).toContain('Fora do review: `yarn.lock`')
   })
 
   it('says when nothing was found and counts zero findings in the marker', () => {
@@ -331,6 +360,43 @@ describe('formatGitHubReview comments', () => {
     ])
   })
 
+  it('names the sources and the rule a finding is based on', () => {
+    const ruled = findingFixture({
+      rule: 'orm-only',
+      sources: ['docs/conventions.md', 'src/shop.ts:3'],
+    })
+    const [comment] = formatGitHubReview(RESULT, plan([ruled])).comments
+
+    expect(comment?.body).toContain(
+      '**Fix:** Use the authenticated user id.\n\n<sub>Based on: `docs/conventions.md` · `src/shop.ts:3` · rule `orm-only`</sub>\n\n<!-- phada:finding -->',
+    )
+  })
+
+  it('writes the sources line in the language of the review and drops backticks from it', () => {
+    const ruled = findingFixture({ rule: 'a`b', sources: ['docs/`x`.md'] })
+    const [comment] = formatGitHubReview(
+      RESULT,
+      plan([ruled]),
+      undefined,
+      messagesFor('pt-BR'),
+    ).comments
+
+    expect(comment?.body).toContain('<sub>Com base em: `docs/x.md` · regra `ab`</sub>')
+  })
+
+  it('never publishes the path of a local file from the user config', () => {
+    const ruled = findingFixture({
+      sources: ['local:/home/ana/clients/acme/pricing.md', 'docs/conventions.md'],
+    })
+    const local = findingFixture({ sources: ['local:/home/ana/notes.md'] })
+
+    const [first, second] = formatGitHubReview(RESULT, plan([ruled, local])).comments
+
+    expect(first?.body).toContain('<sub>Based on: `docs/conventions.md`</sub>')
+    expect(first?.body).not.toContain('/home/ana')
+    expect(second?.body).not.toContain('Based on')
+  })
+
   it('leaves out a blank fix', () => {
     const blank = findingFixture({ fix: '  ' })
 
@@ -375,5 +441,30 @@ describe('formatGitHubPreview', () => {
         `${review.comments[1]?.body}\n`,
       ].join('\n\n'),
     )
+  })
+})
+
+describe('formatIgnoredOnlyReview', () => {
+  const SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
+
+  it('posts a short note that names the files left out and counts zero findings', () => {
+    expect(formatIgnoredOnlyReview(SHA, ['package-lock.json', 'app.min.js'])).toEqual({
+      body: [
+        '## 🦋 Phada review: nothing to review',
+        'Every changed file in a1b2c3d was left out of the review, so the AI did not look at this commit.',
+        'Left out of the review: `package-lock.json` · `app.min.js`',
+        '---\n<sub>Generated with Phada 🦋 · a1b2c3d</sub>',
+        `<!-- phada:review sha=${SHA} findings=0 -->`,
+      ].join('\n\n'),
+      comments: [],
+    })
+  })
+
+  it('writes the note in the language of the review', () => {
+    const { body } = formatIgnoredOnlyReview(SHA, ['yarn.lock'], messagesFor('pt-BR'))
+
+    expect(body).toContain('## Revisão do Phada 🦋: nada para revisar')
+    expect(body).toContain('Todos os arquivos alterados em a1b2c3d ficaram fora do review')
+    expect(body).toContain('Fora do review: `yarn.lock`')
   })
 })

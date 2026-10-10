@@ -1,11 +1,32 @@
 import type { PullRequest } from '../github/pull-request.js'
 import type { TokenUsage } from '../providers/types.js'
 
+export interface ContextRule {
+  key: string
+  text: string
+  scope: string[]
+  except?: string[]
+  severity?: Severity
+  origin: string
+}
+
+export interface ContextDoc {
+  path: string
+  content: string
+}
+
+export interface ReviewContext {
+  rules: ContextRule[]
+  docs: ContextDoc[]
+  ignored: string[]
+}
+
 export interface ReviewRequest {
   pullRequest: PullRequest
   language?: string
   minConfidence?: number
   verify?: boolean
+  context?: ReviewContext
 }
 
 export interface ReviewTarget {
@@ -24,6 +45,8 @@ export interface Finding {
   title: string
   why: string
   fix: string | null
+  rule?: string
+  sources?: string[]
   reason?: string
 }
 
@@ -77,7 +100,10 @@ export interface ReviewResult {
   score: Score
   dropped: DroppedFindings
   verification?: Verification
+  ignored?: string[]
 }
 
+export type SkipReviewReason = 'empty-diff' | 'all-ignored'
+
 export type ReviewOutcome =
-  { status: 'reviewed'; result: ReviewResult } | { status: 'skipped'; reason: 'empty-diff' }
+  { status: 'reviewed'; result: ReviewResult } | { status: 'skipped'; reason: SkipReviewReason }

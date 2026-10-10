@@ -15,9 +15,18 @@ const FINDING_SHAPE = {
   fix: z.string().nullable(),
 }
 
+const REFERENCE_SHAPE = {
+  rule: z.string().nullable(),
+  sources: z.array(z.string()),
+}
+
 const FILE_SHAPE = { path: z.string().min(1), change: z.string() }
 
-export const ReportFindingSchema = z.object(FINDING_SHAPE)
+export const ReportFindingSchema = z.object({
+  ...FINDING_SHAPE,
+  rule: z.unknown().optional(),
+  sources: z.unknown().optional(),
+})
 
 export const ReportFileSchema = z.object(FILE_SHAPE)
 
@@ -31,7 +40,7 @@ export const REVIEW_REPORT_JSON_SCHEMA = providerSchema(
   z.strictObject({
     summary: z.string(),
     files: z.array(z.strictObject(FILE_SHAPE)),
-    findings: z.array(z.strictObject(FINDING_SHAPE)),
+    findings: z.array(z.strictObject({ ...FINDING_SHAPE, ...REFERENCE_SHAPE })),
   }),
 )
 

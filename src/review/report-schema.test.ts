@@ -17,7 +17,7 @@ describe('REVIEW_REPORT_JSON_SCHEMA', () => {
     expect(report.additionalProperties).toBe(false)
   })
 
-  it('requires every finding field and allows null only for the fix', () => {
+  it('requires every finding field and allows null only for the fix and the rule', () => {
     const finding = report.properties.findings?.items
 
     expect(finding?.required).toEqual([
@@ -28,9 +28,13 @@ describe('REVIEW_REPORT_JSON_SCHEMA', () => {
       'title',
       'why',
       'fix',
+      'rule',
+      'sources',
     ])
     expect(finding?.additionalProperties).toBe(false)
     expect(finding?.properties.fix?.type).toEqual(['string', 'null'])
+    expect(finding?.properties.rule?.type).toEqual(['string', 'null'])
+    expect(finding?.properties.sources?.type).toBe('array')
     expect(finding?.properties.why?.type).toBe('string')
   })
 

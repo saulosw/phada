@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { ConfigError } from '../config/errors.js'
 import {
   DiffTooLargeError,
   GitHubAuthError,
@@ -33,6 +34,11 @@ describe('formatError', () => {
     [
       new UsageError('Missing the pull request to review.'),
       'phada: Missing the pull request to review. Run with --help for usage.',
+      2,
+    ],
+    [
+      new ConfigError('Invalid config /home/u/.config/phada/config.yml: colour: Unrecognized key'),
+      'phada: Invalid config /home/u/.config/phada/config.yml: colour: Unrecognized key',
       2,
     ],
     [

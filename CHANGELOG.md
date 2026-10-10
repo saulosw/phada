@@ -7,6 +7,25 @@ output can change between minor versions.
 
 ## Unreleased
 
+### Added
+
+- Reviews now use the repository's own rules and docs, read from the base commit of the pull
+  request: `.phada/config.yml` and `.phada/rules.md` (at the root and in subfolders), and docs
+  such as `AGENTS.md`, `CLAUDE.md`, `.claude/rules/`, `CONTRIBUTING.md`, `README.md` and `docs/`,
+  within a 60 KB budget that never cuts silently.
+- Your own config in `~/.config/phada/` (global, or per repository in `repos/<owner>/<repo>/`)
+  sets the provider, model, review options, rules and local docs.
+- `phada init` creates the repository config; `phada init --global [owner/repo]` creates yours.
+- Lockfiles, minified files and source maps are left out of the diff, and the review names them
+  (a pull request with only ignored files gets a short note); `ignore` adds more.
+- Findings name the rule they break and the sources they rely on, in the JSON and on the pull
+  request; the JSON has a `context` block with everything sent to the AI.
+- `--no-verify` turns verification off when the config turns it on.
+
+### Changed
+
+- Releases go through the npm stage and wait for a maintainer's approval.
+
 ## 0.1.0 - 2026-10-08
 
 First public release.

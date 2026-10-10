@@ -3,6 +3,7 @@ import { FINDING_MARKER, reviewMarker } from '../publish/markers.js'
 import type { PublicationPlan } from '../publish/types.js'
 import { scoreFocus } from '../review/score.js'
 import type { FileChange, Finding, ReviewResult, Severity } from '../review/types.js'
+import { findingReferences, leftOutLine } from './finding-references.js'
 import { english } from './i18n/en.js'
 import type { Messages } from './i18n/messages.js'
 import { githubBlock, githubCell, githubLine } from './markdown-text.js'
@@ -46,6 +47,24 @@ export function formatGitHubReview(
       body: commentBody(finding, limit, messages),
     })),
   }
+}
+
+export function formatIgnoredOnlyReview(
+  headSha: string,
+  ignored: readonly string[],
+  messages: Messages = english,
+): GitHubReview {
+  const sha = shortSha(headSha)
+  const body = [
+    `## ${messages.github.heading}: ${messages.github.allIgnoredTitle}`,
+    messages.github.allIgnored(sha),
+    leftOutLine(ignored, messages),
+    `---\n<sub>${messages.github.generatedWith} · ${sha}</sub>`,
+    reviewMarker({ sha: headSha, findings: 0 }),
+  ]
+    .filter((section) => section !== '')
+    .join('\n\n')
+  return { body, comments: [] }
 }
 
 export function formatGitHubPreview(
@@ -122,6 +141,7 @@ function renderBody(
       messages,
     ),
     messages.dropped(result.dropped),
+    leftOutLine(result.ignored ?? [], messages),
     `---\n<sub>${footer(result, githubLine(parts.model), messages)}</sub>`,
     reviewMarker({ sha: result.target.headSha, findings: result.findings.length }),
   ]
@@ -187,12 +207,14 @@ function footer(result: ReviewResult, model: string, messages: Messages): string
 
 function commentBody(finding: Finding, limit: number, messages: Messages): string {
   const parts = { title: finding.title, why: finding.why, fix: finding.fix ?? '' }
+  const references = findingReferences(finding, messages, { withLocalFiles: false })
   const render = () => {
     const fix = githubBlock(parts.fix)
     return [
       `**${finding.severity}** · ${githubLine(parts.title)} · ${messages.confidence} ${finding.confidence}`,
       githubBlock(parts.why),
       ...(fix === '' ? [] : [`**${messages.fix}:** ${fix}`]),
+      ...(references === '' ? [] : [`<sub>${references}</sub>`]),
       FINDING_MARKER,
     ].join('\n\n')
   }
