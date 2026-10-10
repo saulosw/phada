@@ -4,7 +4,8 @@ import type { FakeCall, FakeResponse } from '../../test/support/fake-fetch.js'
 import { OllamaProvider } from './ollama.js'
 import type { OllamaProviderOptions } from './ollama.js'
 import { ProviderError } from './types.js'
-import type { ReviewPrompt, Toolbox } from './types.js'
+import type { ReviewPrompt } from './types.js'
+import type { Toolbox } from '../investigation/toolbox.js'
 
 const FAKE_SECRET = `ghp_${'A1b2C3d4E5'.repeat(4)}`
 const MODEL = 'qwen2.5-coder:7b'

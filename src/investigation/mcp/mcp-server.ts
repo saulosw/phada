@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
-import type { Toolbox } from '../providers/types.js'
+import type { Toolbox } from '../toolbox.js'
 
 export const MCP_SERVER_NAME = 'phada'
 

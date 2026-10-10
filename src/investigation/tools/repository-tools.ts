@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import type { Checkout, DirEntry } from './checkout.js'
-import { toRepoPath } from './repo-path.js'
+import type { Checkout, DirEntry } from '../checkout/checkout.js'
+import { toRepoPath } from '../checkout/repo-path.js'
 import { inputSchemaOf, ToolFailure } from './tool-registry.js'
 import type { RegisteredTool, ToolOutput } from './tool-registry.js'
 

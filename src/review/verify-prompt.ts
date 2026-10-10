@@ -1,4 +1,5 @@
-import type { ReviewPrompt, Toolbox } from '../providers/types.js'
+import type { ReviewPrompt } from '../providers/types.js'
+import type { Toolbox } from '../investigation/toolbox.js'
 import { annotateDiff } from './diff-lines.js'
 import {
   block,

@@ -1,5 +1,5 @@
 import type { PullRequest } from '../github/pull-request.js'
-import type { Toolbox } from '../providers/types.js'
+import type { Toolbox } from '../investigation/toolbox.js'
 import type { ContextDoc, ContextRule, ReviewContext } from './types.js'
 
 export const CONFIDENCE_SCALE = `Rate each candidate problem from 0 to 100 for how sure you are that it is

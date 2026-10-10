@@ -1,5 +1,5 @@
 import type { ContextReport } from '../context/types.js'
-import type { InvestigationReport } from '../investigation/report.js'
+import type { InvestigationReport } from '../investigation/tools/report.js'
 import type { PullRequest } from '../github/pull-request.js'
 import type { TokenUsage } from '../providers/types.js'
 import type { SkipReason } from '../publish/types.js'

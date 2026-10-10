@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { CheckoutError } from './checkout.js'
-import type { Checkout, DirEntry, GrepMatch } from './checkout.js'
+import { CheckoutError } from '../checkout/checkout.js'
+import type { Checkout, DirEntry, GrepMatch } from '../checkout/checkout.js'
 import { repositoryTools } from './repository-tools.js'
 import { ToolLog } from './tool-log.js'
 import { createToolbox } from './tool-registry.js'

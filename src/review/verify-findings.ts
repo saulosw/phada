@@ -1,4 +1,5 @@
-import type { ExternalToolCall, ReviewProvider, Toolbox } from '../providers/types.js'
+import type { ExternalToolCall, ReviewProvider } from '../providers/types.js'
+import type { Toolbox } from '../investigation/toolbox.js'
 import { parseVerification } from './parse-verification.js'
 import type { Finding, RejectedFinding, ReviewRequest, Verification } from './types.js'
 import type { Verdict } from './verification-schema.js'

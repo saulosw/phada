@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ClaudeCliProvider } from './claude.js'
 import type { ClaudeCliProviderOptions } from './claude.js'
 import { ProviderError } from './types.js'
-import type { ReviewPrompt, Toolbox } from './types.js'
+import type { ReviewPrompt } from './types.js'
+import type { Toolbox } from '../investigation/toolbox.js'
 
 const FAKE_CLAUDE = resolve('test/fixtures/bin/fake-claude')
 const FAKE_SECRET = `ghp_${'A1b2C3d4E5'.repeat(4)}`

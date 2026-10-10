@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { CodexCliProvider } from './codex.js'
 import type { CodexCliProviderOptions } from './codex.js'
 import { ProviderError } from './types.js'
-import type { ReviewPrompt, Toolbox } from './types.js'
+import type { ReviewPrompt } from './types.js'
+import type { Toolbox } from '../investigation/toolbox.js'
 
 const FAKE_CODEX = resolve('test/fixtures/bin/fake-codex')
 const FAKE_SECRET = `ghp_${'A1b2C3d4E5'.repeat(4)}`

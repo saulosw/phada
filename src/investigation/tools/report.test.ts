@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { findingFixture } from '../../test/support/finding.js'
+import { findingFixture } from '../../../test/support/finding.js'
 import { buildInvestigationReport } from './report.js'
 import { ToolLog } from './tool-log.js'
 

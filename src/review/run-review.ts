@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
-import type { ReviewProvider, TokenUsage, Toolbox } from '../providers/types.js'
+import type { ReviewProvider, TokenUsage } from '../providers/types.js'
+import type { Toolbox } from '../investigation/toolbox.js'
 import { withKnownReferences, withRuleSeverity } from './context-findings.js'
 import { parseDiffFiles } from './diff-lines.js'
 import { parseReviewReport } from './parse-report.js'

@@ -1,10 +1,10 @@
-import type { Toolbox } from '../providers/types.js'
-import type { Checkout } from './checkout.js'
-import type { OpenGitCheckoutOptions } from './git-checkout.js'
-import { repositoryTools } from './repository-tools.js'
-import { ToolLog } from './tool-log.js'
-import type { ReviewPass } from './tool-log.js'
-import { createToolbox } from './tool-registry.js'
+import type { Toolbox } from './toolbox.js'
+import type { Checkout } from './checkout/checkout.js'
+import type { OpenGitCheckoutOptions } from './checkout/git-checkout.js'
+import { repositoryTools } from './tools/repository-tools.js'
+import { ToolLog } from './tools/tool-log.js'
+import type { ReviewPass } from './tools/tool-log.js'
+import { createToolbox } from './tools/tool-registry.js'
 
 export interface Investigation {
   readonly log: ToolLog

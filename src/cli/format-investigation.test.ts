@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { InvestigationReport } from '../investigation/report.js'
+import type { InvestigationReport } from '../investigation/tools/report.js'
 import { formatInvestigationLine, formatInvestigationSection } from './format-investigation.js'
 
 const call = (

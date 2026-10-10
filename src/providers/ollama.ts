@@ -3,7 +3,8 @@ import { nodeHttpFetch } from './node-http-fetch.js'
 import { resolveOllamaBaseUrl } from './ollama-host.js'
 import { redactSecrets } from './redact-secrets.js'
 import { ProviderError } from './types.js'
-import type { ReviewOutput, ReviewPrompt, ReviewProvider, TokenUsage, Toolbox } from './types.js'
+import type { ReviewOutput, ReviewPrompt, ReviewProvider, TokenUsage } from './types.js'
+import type { Toolbox } from '../investigation/toolbox.js'
 
 const PROVIDER_ID = 'ollama'
 const DEFAULT_TIMEOUT_MS = 1_800_000

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { Toolbox } from '../providers/types.js'
+import type { Toolbox } from '../toolbox.js'
 import { handleMcpMessage, MCP_SERVER_NAME, serveMcp } from './mcp-server.js'
 import type { McpServer } from './mcp-server.js'
 

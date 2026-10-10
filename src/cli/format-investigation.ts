@@ -1,4 +1,4 @@
-import type { InvestigationCallReport, InvestigationReport } from '../investigation/report.js'
+import type { InvestigationCallReport, InvestigationReport } from '../investigation/tools/report.js'
 import { toTerminalText } from './terminal-text.js'
 import { formatBytes, formatCount } from './units.js'
 

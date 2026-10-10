@@ -22,7 +22,12 @@ try {
     .map(({ path }) => path)
     .filter((path) => !PACKAGED_FILE.test(path) || path.endsWith('.test.js'))
   check(unexpected.length === 0, `unexpected files in the package: ${unexpected.join(', ')}`)
-  for (const file of ['dist/bin.js', 'dist/investigation/mcp-bridge.js', 'README.md', 'LICENSE']) {
+  for (const file of [
+    'dist/bin.js',
+    'dist/investigation/mcp/mcp-bridge.js',
+    'README.md',
+    'LICENSE',
+  ]) {
     check(
       pack.files.some(({ path }) => path === file),
       `${file} is missing from the package`,
@@ -53,7 +58,7 @@ try {
     noToken.status === 1 && noToken.stderr.startsWith('phada: No GitHub token found.'),
     `phada review without a token: exit ${noToken.status}, ${noToken.stderr}`,
   )
-  const server = join(dir, 'node_modules', 'phada', 'dist', 'investigation', 'mcp-server.js')
+  const server = join(dir, 'node_modules', 'phada', 'dist', 'investigation', 'mcp', 'mcp-server.js')
   const mcp = spawnSync(process.execPath, ['--input-type=module', '-e', mcpRoundTrip(server)], {
     encoding: 'utf8',
     timeout: TIMEOUT_MS,

@@ -1,21 +1,6 @@
+import type { Toolbox } from '../investigation/toolbox.js'
+
 export type JsonSchema = Readonly<Record<string, unknown>>
-
-export interface ToolDefinition {
-  name: string
-  description: string
-  inputSchema: JsonSchema
-}
-
-export interface ToolResult {
-  text: string
-  isError: boolean
-}
-
-export interface Toolbox {
-  readonly definitions: readonly ToolDefinition[]
-  call(name: string, args: unknown): Promise<ToolResult>
-  touchedPaths(): readonly string[]
-}
 
 export interface ReviewPrompt {
   instructions: string

@@ -5,10 +5,10 @@ import {
   CommandNotFoundError,
   CommandOutputTooLargeError,
   CommandTimeoutError,
-} from '../process/errors.js'
-import { runCommand } from '../process/run-command.js'
-import type { RunCommandOptions, RunCommandResult } from '../process/run-command.js'
-import { redactSecrets } from '../providers/redact-secrets.js'
+} from '../../process/errors.js'
+import { runCommand } from '../../process/run-command.js'
+import type { RunCommandOptions, RunCommandResult } from '../../process/run-command.js'
+import { redactSecrets } from '../../providers/redact-secrets.js'
 import { CheckoutError } from './checkout.js'
 import type { Checkout, DirEntry, DirEntryKind, GrepMatch, GrepOptions } from './checkout.js'
 
