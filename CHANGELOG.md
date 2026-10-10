@@ -34,6 +34,8 @@ output can change between minor versions.
 
 - Releases go through the npm stage and wait for a maintainer's approval.
 - Claude Code and Codex get 15 minutes per call instead of 10, since the investigation adds turns.
+- Findings are verified by default: a second call to the AI checks every finding before scoring.
+  `--no-verify` or `verify: false` turn it off.
 
 ## 0.1.0 - 2026-10-08
 

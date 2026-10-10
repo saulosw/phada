@@ -241,7 +241,7 @@ describe('run', () => {
   it('reviews a pull request: progress on stderr, the review on stdout', async () => {
     const h = harness()
 
-    expect(await run(['review', 'acme/shop#12'], h.deps)).toBe(0)
+    expect(await run(['review', 'acme/shop#12', '--no-verify'], h.deps)).toBe(0)
     expect(h.stderr()).toBe(
       [
         'Fetching acme/shop#12…',
@@ -300,7 +300,9 @@ describe('run', () => {
     const text = reviewReportJson({ findings: [findingFixture({ confidence: 85 })] })
     const h = harness({ review: () => Promise.resolve({ ...OUTPUT, text }) })
 
-    expect(await run(['review', 'acme/shop#12', '--min-confidence', '90'], h.deps)).toBe(0)
+    expect(
+      await run(['review', 'acme/shop#12', '--no-verify', '--min-confidence', '90'], h.deps),
+    ).toBe(0)
     expect(h.stdout()).toContain(
       '## Worth checking (confidence below 90)\n\n- **P1** · src/shop.ts:1: spend has no auth (confidence 85)\n',
     )
@@ -529,7 +531,7 @@ describe('createProvider', () => {
 })
 
 describe('run publishing', () => {
-  const REVIEW = ['review', 'acme/shop#12']
+  const REVIEW = ['review', 'acme/shop#12', '--no-verify']
 
   it('publishes the review after printing it', async () => {
     const h = harness({ review: () => Promise.resolve(WITH_FINDING) })
@@ -792,6 +794,24 @@ describe('run with config and repository context', () => {
     await run(['review', 'acme/shop#12', '--dry-run', '--language', 'en'], h.deps)
 
     expect(h.prompts[0]?.instructions).toContain('in en')
+  })
+
+  it('verifies the findings by default and turns it off from the config or --no-verify', async () => {
+    const plain = harness({ review: () => Promise.resolve(WITH_FINDING) })
+    const configured = harness({
+      files: memoryFiles({ '/cfg/config.yml': 'verify: false' }),
+      review: () => Promise.resolve(WITH_FINDING),
+    })
+    const flagged = harness({ review: () => Promise.resolve(WITH_FINDING) })
+
+    await run(['review', 'acme/shop#12', '--dry-run'], plain.deps)
+    await run(['review', 'acme/shop#12', '--dry-run'], configured.deps)
+    await run(['review', 'acme/shop#12', '--dry-run', '--no-verify'], flagged.deps)
+
+    expect(plain.prompts).toHaveLength(2)
+    expect(plain.prompts[1]?.data).toContain('<<<PHADA_FINDINGS_')
+    expect(configured.prompts).toHaveLength(1)
+    expect(flagged.prompts).toHaveLength(1)
   })
 
   it('turns verification on from the config and off with --no-verify', async () => {

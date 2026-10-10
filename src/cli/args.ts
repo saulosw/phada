@@ -62,9 +62,10 @@ Options:
   --min-confidence <n>  Confidence cut from ${CONFIDENCE_FLOOR} to ${MAX_CONFIDENCE} (default: ${DEFAULT_MIN_CONFIDENCE}); findings
                         below it are listed as worth checking
   --format <name>       Output: markdown or json (default: markdown)
-  --verify              Check every finding with a second call to the AI (about
-                        twice the time and tokens)
-  --no-verify           Do not check the findings, even if your config asks to
+  --no-verify           Skip the second call to the AI that checks every finding
+                        (on by default; it adds about half the time and doubles the
+                        tokens)
+  --verify              Check the findings, even if your config turns it off
   --no-investigate      Review the diff and the context only, without letting the AI
                         read the rest of the repository
   --investigate         Let the AI read the repository, even if your config turns it off

@@ -220,7 +220,7 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
           pullRequest: { ...pullRequest, diff: loaded.diff },
           language,
           minConfidence: command.minConfidence ?? loaded.options.minConfidence,
-          verify: command.verify ?? loaded.options.verify ?? false,
+          verify: command.verify ?? loaded.options.verify ?? true,
           context: loaded.context,
         },
         {
