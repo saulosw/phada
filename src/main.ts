@@ -180,17 +180,6 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
     const language = command.language ?? loaded.options.language
     const messages = messagesFor(language)
     const investigate = command.investigate ?? loaded.options.investigate ?? true
-    const servers = investigate ? mcp : []
-    if (servers.length > 0 && !pullRequest.private) {
-      deps.stderr.write(
-        `Warning: ${pullRequest.repo} is public: what the AI reads from ${servers.join(', ')} may end up in the published review.\n`,
-      )
-    }
-    const provider = deps.createProvider(choice.provider, {
-      model: choice.model,
-      ...(servers.length === 0 ? {} : { userMcpServers: servers }),
-    })
-
     let investigation: Investigation | undefined
     let unavailable: string | undefined
     if (investigate && loaded.diff.trim() !== '') {
@@ -206,6 +195,22 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
           `Warning: ${toTerminalText(error.message)}: reviewing without investigation.\n`,
         )
       }
+    }
+    const servers = investigation === undefined ? [] : mcp
+    if (servers.length > 0 && !pullRequest.private) {
+      deps.stderr.write(
+        `Warning: ${pullRequest.repo} is public: what the AI reads from ${servers.join(', ')} may end up in the published review.\n`,
+      )
+    }
+    let provider: ReviewProvider
+    try {
+      provider = deps.createProvider(choice.provider, {
+        model: choice.model,
+        ...(servers.length === 0 ? {} : { userMcpServers: servers }),
+      })
+    } catch (error) {
+      await investigation?.close()
+      throw error
     }
 
     let outcome: ReviewOutcome

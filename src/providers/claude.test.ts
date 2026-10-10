@@ -373,7 +373,7 @@ describe('ClaudeCliProvider', () => {
       expect(argv).not.toContain('--strict-mcp-config')
       expect(argv).not.toContain('--mcp-config')
       expect(argAfter(argv, '--allowedTools')).toBe('mcp__linear')
-      expect(argAfter(argv, '--max-turns')).toBe('3')
+      expect(argAfter(argv, '--max-turns')).toBe('43')
     })
 
     it('reports the calls to MCP servers other than Phada', async () => {

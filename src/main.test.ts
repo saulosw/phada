@@ -989,6 +989,19 @@ describe('run with the repository investigation', () => {
     expect(h.providers[0]?.options).not.toHaveProperty('userMcpServers')
   })
 
+  it("leaves the user's MCP servers out when the head cannot be fetched", async () => {
+    const h = harness({
+      files: memoryFiles({ '/cfg/config.yml': 'mcp: [linear]' }),
+      openCheckout: () =>
+        Promise.reject(new CheckoutUnavailableError('git-missing', 'git was not found')),
+    })
+
+    await run(['review', 'acme/shop#12', '--dry-run'], h.deps)
+
+    expect(h.providers[0]?.options).not.toHaveProperty('userMcpServers')
+    expect(h.stderr()).not.toContain('is public')
+  })
+
   it('warns that MCP servers can leak into a review on a public repository', async () => {
     const h = harness({ files: memoryFiles({ '/cfg/config.yml': 'mcp: [linear, notion]' }) })
 

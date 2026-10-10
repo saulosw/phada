@@ -103,7 +103,8 @@ export class ClaudeCliProvider implements ReviewProvider {
       const server = prompt.tools === undefined ? undefined : await serveMcp(prompt.tools)
       try {
         const mcpArgs = await this.#mcpArgs(cwd, prompt, server)
-        const maxTurns = server === undefined ? MAX_ATTEMPTS : MAX_TOOL_TURNS + MAX_ATTEMPTS
+        const withTools = server !== undefined || this.#userMcpServers.length > 0
+        const maxTurns = withTools ? MAX_TOOL_TURNS + MAX_ATTEMPTS : MAX_ATTEMPTS
         const run = await runCli({
           providerId: PROVIDER_ID,
           names: NAMES,
@@ -132,7 +133,7 @@ export class ClaudeCliProvider implements ReviewProvider {
           env: this.#env,
           timeoutMs: this.#timeoutMs,
         })
-        return toReviewOutput(run, maxTurns, server !== undefined)
+        return toReviewOutput(run, maxTurns, withTools)
       } finally {
         await server?.close()
       }
