@@ -26,6 +26,8 @@ import type {
 
 const READ_CONCURRENCY = 4
 
+type DocContent = string | null | Error
+
 interface PlannedDoc extends DocCandidate {
   source: 'repository' | 'local'
   readPath: string
@@ -274,53 +276,48 @@ async function fillBudget(
   report: DocReport[],
   probing: boolean,
 ): Promise<{ docs: ContextDoc[]; report: DocReport[]; used: number }> {
-  const contents = new Map<PlannedDoc, string | null | Error>()
-  const unsized = planned.filter((doc) => doc.size === undefined)
-  await mapLimit(unsized, READ_CONCURRENCY, async (doc) => {
-    contents.set(doc, await readDoc(doc, sources))
-  })
-  let remaining = DOCS_BUDGET_BYTES
-  const chosen: PlannedDoc[] = []
-  for (const doc of planned) {
-    const known = contents.get(doc)
-    if (doc.size === undefined && (known === null || known === undefined)) {
-      if (doc.category === 'declared' || !probing)
-        report.push(omitted(doc.path, doc.source, 'not-found', doc))
-      continue
-    }
-    const size = doc.size ?? (typeof known === 'string' ? byteLength(known) : 0)
-    if (fitDoc(size, remaining) === 'omitted') {
-      report.push({ ...omitted(doc.path, doc.source, 'budget', doc), bytes: size })
-      continue
-    }
-    remaining -= Math.min(size, DOC_LIMIT_BYTES)
-    chosen.push(doc)
-  }
-  await mapLimit(
-    chosen.filter((doc) => !contents.has(doc)),
-    READ_CONCURRENCY,
-    async (doc) => {
+  const contents = new Map<PlannedDoc, DocContent>()
+  const read = (docs: readonly PlannedDoc[]) =>
+    mapLimit(docs, READ_CONCURRENCY, async (doc) => {
       contents.set(doc, await readDoc(doc, sources))
-    },
-  )
-  const docs: ContextDoc[] = []
-  let used = 0
-  for (const doc of chosen) {
+    })
+  await read(planned.filter((doc) => doc.size === undefined))
+  const dropped = new Set<PlannedDoc>()
+  const skipped = new Set<PlannedDoc>()
+  for (const doc of planned.filter((candidate) => candidate.size === undefined)) {
+    if (typeof contents.get(doc) === 'string') continue
+    const silent = contents.get(doc) === null && doc.category !== 'declared' && probing
+    if (silent) skipped.add(doc)
+    else dropped.add(doc)
+  }
+
+  let plan = planBudget(planned, contents, (doc) => dropped.has(doc) || skipped.has(doc))
+  for (;;) {
+    await read(plan.chosen.filter((doc) => !contents.has(doc)))
+    const failed = plan.chosen.filter((doc) => dropReason(contents.get(doc)) !== undefined)
+    if (failed.length === 0) break
+    for (const doc of failed) dropped.add(doc)
+    plan = planBudget(planned, contents, (doc) => dropped.has(doc) || skipped.has(doc))
+  }
+
+  report.push(...plan.omitted)
+  for (const doc of planned.filter((candidate) => dropped.has(candidate))) {
     const content = contents.get(doc)
     if (content instanceof Error) {
       warnings.push(`Could not read ${doc.path} at ${sha}: ${content.message}`)
-      report.push(omitted(doc.path, doc.source, 'unreadable', doc))
-      continue
     }
-    if (content === null || content === undefined) {
-      report.push(omitted(doc.path, doc.source, 'not-found', doc))
-      continue
-    }
+    const bytes = typeof content === 'string' ? byteLength(content) : (doc.size ?? 0)
+    report.push({
+      ...omitted(doc.path, doc.source, dropReason(content) ?? 'not-found', doc),
+      bytes,
+    })
+  }
+  const docs: ContextDoc[] = []
+  let used = 0
+  for (const doc of plan.chosen) {
+    const content = contents.get(doc)
+    if (typeof content !== 'string') continue
     const bytes = byteLength(content)
-    if (content.includes('\u0000')) {
-      report.push({ ...omitted(doc.path, doc.source, 'binary', doc), bytes })
-      continue
-    }
     const truncated = bytes > DOC_LIMIT_BYTES
     const shown = truncated ? truncateDoc(content) : content
     used += truncated ? byteLength(shown.slice(0, shown.lastIndexOf('\n['))) : bytes
@@ -336,7 +333,35 @@ async function fillBudget(
   return { docs, report: orderLike(report, planned), used }
 }
 
-async function readDoc(doc: PlannedDoc, sources: ContextSources): Promise<string | null | Error> {
+function planBudget(
+  planned: readonly PlannedDoc[],
+  contents: ReadonlyMap<PlannedDoc, DocContent>,
+  isOut: (doc: PlannedDoc) => boolean,
+): { chosen: PlannedDoc[]; omitted: DocReport[] } {
+  let remaining = DOCS_BUDGET_BYTES
+  const chosen: PlannedDoc[] = []
+  const omittedDocs: DocReport[] = []
+  for (const doc of planned) {
+    if (isOut(doc)) continue
+    const content = contents.get(doc)
+    const size = doc.size ?? (typeof content === 'string' ? byteLength(content) : 0)
+    if (fitDoc(size, remaining) === 'omitted') {
+      omittedDocs.push({ ...omitted(doc.path, doc.source, 'budget', doc), bytes: size })
+      continue
+    }
+    remaining -= Math.min(size, DOC_LIMIT_BYTES)
+    chosen.push(doc)
+  }
+  return { chosen, omitted: omittedDocs }
+}
+
+function dropReason(content: DocContent | undefined): DocReport['reason'] | undefined {
+  if (content instanceof Error) return 'unreadable'
+  if (content === null || content === undefined) return 'not-found'
+  return content.includes('\u0000') ? 'binary' : undefined
+}
+
+async function readDoc(doc: PlannedDoc, sources: ContextSources): Promise<DocContent> {
   try {
     return doc.source === 'local'
       ? await sources.readLocalFile(doc.readPath)

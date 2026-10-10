@@ -146,6 +146,24 @@ describe('loadContext', () => {
     expect(loaded.report.warnings).toEqual([])
   })
 
+  it('turns a rule off everywhere when the root or the user disables it', async () => {
+    const sources = fakeSources({
+      '.phada/config.yml': 'rules:\n  - id: no-console\n    rule: No console.log.',
+    })
+
+    const loaded = await loadContext({
+      diff: modifiedFile('src/web/a.ts'),
+      baseSha: SHA,
+      userLayers: [userLayer({ disabledRules: ['no-console'] })],
+      sources,
+    })
+
+    expect(loaded.context.rules).toEqual([])
+    expect(loaded.report.rules).toEqual([
+      { key: 'no-console', origin: '.phada/config.yml', status: 'disabled' },
+    ])
+  })
+
   it('turns a rule off only inside the subfolder that disables it', async () => {
     const files = {
       '.phada/config.yml': 'rules:\n  - id: no-console\n    rule: No console.log.',
@@ -273,6 +291,44 @@ describe('loadContext', () => {
     expect(loaded.context.docs[0]?.content).toMatch(/\[truncated by Phada: 19999 of 30000 bytes\]$/)
     expect(loaded.report.budget).toEqual({ limit: 60_000, used: 49_998 })
     expect(sources.repoReads).not.toContain('d.md')
+  })
+
+  it('gives back the budget of docs that turn out binary or unreadable', async () => {
+    const doc = (kilobytes: number) => `${'x'.repeat(999)}\n`.repeat(kilobytes)
+    const sources = fakeSources(
+      {
+        '.phada/config.yml': [
+          'context:',
+          '  defaults: false',
+          '  files:',
+          '    - path: a.md',
+          '    - path: bin.md',
+          '    - path: slow.md',
+          '    - path: b.md',
+          '    - path: c.md',
+        ].join('\n'),
+        'a.md': doc(30),
+        'bin.md': `a\u0000${'x'.repeat(19_998)}`,
+        'slow.md': doc(20),
+        'b.md': doc(15),
+        'c.md': doc(15),
+      },
+      { failing: ['slow.md'] },
+    )
+
+    const loaded = await loadContext({ diff: DIFF, baseSha: SHA, userLayers: [], sources })
+
+    expect(loaded.report.docs.map(({ path, status, reason }) => [path, status, reason])).toEqual([
+      ['a.md', 'truncated', undefined],
+      ['bin.md', 'omitted', 'binary'],
+      ['slow.md', 'omitted', 'unreadable'],
+      ['b.md', 'included', undefined],
+      ['c.md', 'included', undefined],
+    ])
+    expect(loaded.report.budget.used).toBe(49_999)
+    expect(loaded.report.warnings).toEqual([
+      'Could not read slow.md at b1b2c3d: GitHub did not respond within 30s',
+    ])
   })
 
   it('reports binary, unreadable and missing docs', async () => {
