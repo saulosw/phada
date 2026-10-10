@@ -126,6 +126,26 @@ describe('loadContext', () => {
     ])
   })
 
+  it('sends a file declared in a folder named like a dynamic route', async () => {
+    const sources = fakeSources({
+      'app/[id]/.phada/config.yml': 'context:\n  files:\n    - path: README.md',
+      'app/[id]/README.md': 'Pages under [id] load the record first.',
+    })
+
+    const loaded = await loadContext({
+      diff: modifiedFile('app/[id]/page.tsx'),
+      baseSha: SHA,
+      userLayers: [],
+      sources,
+    })
+
+    expect(loaded.context.docs).toContainEqual({
+      path: 'app/[id]/README.md',
+      content: 'Pages under [id] load the record first.',
+    })
+    expect(loaded.report.warnings).toEqual([])
+  })
+
   it('reads only the .phada files that exist in the tree', async () => {
     const sources = fakeSources({ 'src/api/users.ts': 'x' })
 

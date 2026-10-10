@@ -112,6 +112,19 @@ describe('repositoryDocCandidates', () => {
     ])
   })
 
+  it('finds a declared file whose folder name has brackets', () => {
+    const { candidates, missing } = repositoryDocCandidates({
+      entries: [{ path: 'app/[id]/README.md', size: 10 }],
+      complete: true,
+      changedFiles: [],
+      declared: [{ pattern: 'app/[id]/README.md', origin: 'x' }],
+      defaults: false,
+    })
+
+    expect(candidates.map((candidate) => candidate.path)).toEqual(['app/[id]/README.md'])
+    expect(missing).toEqual([])
+  })
+
   it('reports declared files and globs that match nothing', () => {
     const declared = [
       { pattern: 'docs/missing.md', origin: '.phada/config.yml' },
