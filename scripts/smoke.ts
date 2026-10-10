@@ -22,7 +22,7 @@ try {
     .map(({ path }) => path)
     .filter((path) => !PACKAGED_FILE.test(path) || path.endsWith('.test.js'))
   check(unexpected.length === 0, `unexpected files in the package: ${unexpected.join(', ')}`)
-  for (const file of ['dist/bin.js', 'README.md', 'LICENSE']) {
+  for (const file of ['dist/bin.js', 'dist/investigation/mcp-bridge.js', 'README.md', 'LICENSE']) {
     check(
       pack.files.some(({ path }) => path === file),
       `${file} is missing from the package`,
@@ -53,6 +53,15 @@ try {
     noToken.status === 1 && noToken.stderr.startsWith('phada: No GitHub token found.'),
     `phada review without a token: exit ${noToken.status}, ${noToken.stderr}`,
   )
+  const server = join(dir, 'node_modules', 'phada', 'dist', 'investigation', 'mcp-server.js')
+  const mcp = spawnSync(process.execPath, ['--input-type=module', '-e', mcpRoundTrip(server)], {
+    encoding: 'utf8',
+    timeout: TIMEOUT_MS,
+  })
+  check(
+    mcp.status === 0 && mcp.stdout.trim() === '{"jsonrpc":"2.0","id":1,"result":{}}',
+    `MCP bridge round trip: exit ${mcp.status}, ${mcp.stdout}${mcp.stderr}`,
+  )
   process.stdout.write(`smoke ok: phada ${version} (${pack.files.length} files)\n`)
 } catch (error) {
   process.stderr.write(`smoke failed: ${error instanceof Error ? error.message : String(error)}\n`)
@@ -68,6 +77,23 @@ function run(command: string, args: string[]): { stdout: string } {
     `${command} ${args.join(' ')} failed (${result.error?.message ?? `exit ${result.status}`}):\n${result.stderr}`,
   )
   return { stdout: result.stdout }
+}
+
+function mcpRoundTrip(serverModule: string): string {
+  return `
+import { spawn } from 'node:child_process'
+import { pathToFileURL } from 'node:url'
+const { serveMcp } = await import(pathToFileURL(${JSON.stringify(serverModule)}).href)
+const toolbox = { definitions: [], call: async () => ({ text: '', isError: false }), touchedPaths: () => [] }
+const server = await serveMcp(toolbox, { execArgv: [] })
+const child = spawn(server.launch.command, server.launch.args)
+child.stdout.once('data', async (data) => {
+  process.stdout.write(String(data))
+  child.kill()
+  await server.close()
+})
+child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' }) + '\\n')
+`
 }
 
 function withoutTokens(): NodeJS.ProcessEnv {

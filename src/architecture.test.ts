@@ -6,6 +6,7 @@ interface Boundary {
   values: ReadonlySet<string>
   types: ReadonlySet<string>
   expected: string[]
+  globals?: string[]
 }
 
 const REVIEW: Boundary = {
@@ -30,6 +31,25 @@ const CONTEXT: Boundary = {
   ]),
   types: new Set(['../review/types.js', '../config/types.js', '../github/repository-files.js']),
   expected: ['ignore.ts', 'load-context.ts', 'select-docs.ts', 'split-diff.ts'],
+}
+const INVESTIGATION: Boundary = {
+  dir: 'investigation',
+  values: new Set([
+    'node:crypto',
+    'node:fs/promises',
+    'node:net',
+    'node:os',
+    'node:path',
+    'node:readline',
+    'node:url',
+    'zod',
+    '../process/errors.js',
+    '../process/run-command.js',
+    '../providers/redact-secrets.js',
+  ]),
+  types: new Set(['../providers/types.js', '../review/types.js', '../process/run-command.js']),
+  expected: ['git-checkout.ts', 'mcp-server.ts', 'repository-tools.ts', 'tool-registry.ts'],
+  globals: ['console'],
 }
 const STATIC_MODULE = /^\s*(?:import|export)\s+(type\s+)?(?:[^'"]*?\bfrom\s+)?['"]([^'"]+)['"]/gm
 const DYNAMIC_MODULE = /\bimport\(\s*['"]([^'"]+)['"]\s*\)/g
@@ -58,7 +78,7 @@ function boundaryViolations(code: string, boundary: Boundary = REVIEW): string[]
     .filter(({ specifier, typeOnly }) => !isAllowedModule(specifier, typeOnly, boundary))
     .map(({ specifier }) => `imports '${specifier}'`)
   const codeWithoutStrings = code.replace(STRING_LITERAL, "''")
-  for (const name of FORBIDDEN_GLOBALS) {
+  for (const name of boundary.globals ?? FORBIDDEN_GLOBALS) {
     if (new RegExp(`\\b${name}\\b`).test(codeWithoutStrings)) violations.push(`uses ${name}`)
   }
   return violations
@@ -158,7 +178,29 @@ describe('context boundary rules', () => {
   })
 })
 
-describe.each([REVIEW, PUBLISH, CONTEXT])('$dir boundary', (boundary) => {
+describe('investigation boundary rules', () => {
+  it('accepts git through the process runner, sockets and the tool contract', () => {
+    const code = [
+      "import { createServer } from 'node:net'",
+      "import { runCommand } from '../process/run-command.js'",
+      "import type { Toolbox } from '../providers/types.js'",
+      'const path = process.execPath',
+    ].join('\n')
+
+    expect(boundaryViolations(code, INVESTIGATION)).toEqual([])
+  })
+
+  it.each([
+    ['a concrete provider', "import { ClaudeCliProvider } from '../providers/claude.js'"],
+    ['the CLI', "import { formatReview } from '../cli/format-review.js'"],
+    ['the engine', "import { runReview } from '../review/run-review.js'"],
+    ['the console', "console.log('debug')"],
+  ])('flags %s', (_case, code) => {
+    expect(boundaryViolations(code, INVESTIGATION)).not.toEqual([])
+  })
+})
+
+describe.each([REVIEW, PUBLISH, CONTEXT, INVESTIGATION])('$dir boundary', (boundary) => {
   const sources = sourcesOf(boundary)
 
   it('has source files to check', () => {
