@@ -62,6 +62,9 @@ export const english: Messages = {
     stillOpen: 'Still open from previous reviews',
     filesTruncated: (count) => `Files table truncated (${formatCount(count, 'file')}).`,
     truncated: '… (truncated)',
+    allIgnoredTitle: 'nothing to review',
+    allIgnored: (sha) =>
+      `Every changed file in ${sha} was left out of the review, so the AI did not look at this commit.`,
     onlyStillOpenTitle: 'no new findings',
     onlyStillOpen: (count, sha) =>
       count === 1

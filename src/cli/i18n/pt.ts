@@ -78,6 +78,9 @@ export const portuguese: Messages = {
     filesTruncated: (value) =>
       `Tabela de arquivos truncada (${count(value, 'arquivo', 'arquivos')}).`,
     truncated: '… (truncado)',
+    allIgnoredTitle: 'nada para revisar',
+    allIgnored: (sha) =>
+      `Todos os arquivos alterados em ${sha} ficaram fora do review, então a IA não olhou este commit.`,
     onlyStillOpenTitle: 'nenhum problema novo',
     onlyStillOpen: (value, sha) =>
       value === 1

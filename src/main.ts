@@ -2,7 +2,11 @@ import { parseCliArgs } from './cli/args.js'
 import type { OutputFormat } from './cli/args.js'
 import { MissingGitHubTokenError, UsageError } from './cli/errors.js'
 import { errorSummary, formatError } from './cli/format-error.js'
-import { formatGitHubPreview, formatGitHubReview } from './cli/format-github.js'
+import {
+  formatGitHubPreview,
+  formatGitHubReview,
+  formatIgnoredOnlyReview,
+} from './cli/format-github.js'
 import type { GitHubReview } from './cli/format-github.js'
 import { formatContextLine, formatContextSection } from './cli/format-context.js'
 import { formatAlreadyReviewedJson, formatReviewJson } from './cli/format-json.js'
@@ -40,6 +44,7 @@ import { runReview } from './review/run-review.js'
 import type { ReviewOutcome } from './review/types.js'
 
 type ReviewedOutcome = Extract<ReviewOutcome, { status: 'reviewed' }>
+type SkippedOutcome = Extract<ReviewOutcome, { status: 'skipped' }>
 type PublishTarget = PullRequestRef & { token: string }
 
 export interface ProviderOptions {
@@ -152,6 +157,7 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
     }
     deps.stderr.write(`${formatContextLine(loaded.report)}\n`)
     const language = command.language ?? loaded.options.language
+    const messages = messagesFor(language)
 
     const outcome = await runReview(
       {
@@ -166,12 +172,14 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
         verifier: withProgress(provider, deps.stderr, 'Verifying findings'),
       },
     )
+    if (outcome.status === 'skipped' && outcome.reason === 'all-ignored') {
+      deps.stderr.write('Nothing to review: every changed file is ignored.\n')
+      const note = formatIgnoredOnlyReview(pullRequest.headSha, loaded.context.ignored, messages)
+      await postNote(deps, repository, command, pullRequest, outcome, note, messages, loaded.report)
+      return 0
+    }
     if (outcome.status === 'skipped') {
-      deps.stderr.write(
-        outcome.reason === 'all-ignored'
-          ? 'Nothing to review: every changed file is ignored.\n'
-          : 'Nothing to review: the pull request has no changes.\n',
-      )
+      deps.stderr.write('Nothing to review: the pull request has no changes.\n')
       if (command.format === 'json') {
         deps.stdout.write(formatReviewJson(pullRequest, outcome, null, loaded.report))
       }
@@ -179,7 +187,6 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
     }
 
     const plan = planPublication(outcome.result.findings, state)
-    const messages = messagesFor(language)
     const review = formatGitHubReview(outcome.result, plan, undefined, messages)
     if (command.dryRun) {
       printDryRun(
@@ -277,4 +284,53 @@ async function publish(
     deps.stdout.write(formatReviewJson(pullRequest, outcome, published, context))
   }
   deps.stderr.write(`${formatPublishedMessage(created.url, comments, stillOpen)}\n`)
+}
+
+async function postNote(
+  deps: MainDeps,
+  target: PublishTarget,
+  options: { format: OutputFormat; dryRun: boolean },
+  pullRequest: PullRequest,
+  outcome: SkippedOutcome,
+  note: GitHubReview,
+  messages: Messages,
+  context: ContextReport,
+): Promise<void> {
+  const json = options.format === 'json'
+  if (options.dryRun) {
+    const preview: Publication = { status: 'dry-run', review: note, stillOpen: 0 }
+    deps.stdout.write(
+      json
+        ? formatReviewJson(pullRequest, outcome, preview, context)
+        : formatGitHubPreview(note, messages),
+    )
+    deps.stderr.write('Dry run: nothing was posted.\n')
+    return
+  }
+  deps.stderr.write('Publishing the review…\n')
+  let created: CreatedReview
+  try {
+    created = await deps.createReview({
+      ...target,
+      commitSha: pullRequest.headSha,
+      body: note.body,
+      comments: [],
+    })
+  } catch (error) {
+    if (json) {
+      const failed: Publication = { status: 'failed', error: errorSummary(error) }
+      deps.stdout.write(formatReviewJson(pullRequest, outcome, failed, context))
+    }
+    throw error
+  }
+  if (json) {
+    const published: Publication = {
+      status: 'published',
+      url: created.url,
+      comments: 0,
+      stillOpen: 0,
+    }
+    deps.stdout.write(formatReviewJson(pullRequest, outcome, published, context))
+  }
+  deps.stderr.write(`${formatPublishedMessage(created.url, 0, 0)}\n`)
 }

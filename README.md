@@ -157,8 +157,7 @@ rules that review it.
   codes of conduct are left out). Docs share a 60 KB budget; a doc over 20 KB is cut at a line
   with a visible note, and what does not fit is left out. Nothing is cut or left out silently.
 - **Ignored files**: lockfiles, minified files and source maps never reach the AI; `ignore` in
-  the config adds more patterns. The review names every file it left out, so a change hidden in
-  one of them is still visible to whoever reads it.
+  the config adds more patterns. The review names every file it left out, so a change hidden in one of them is still visible to whoever reads it; when every changed file is ignored, Phada posts a short note that names them instead of a review.
 
 Phada prints what it sent before the review, e.g.
 `Context: 2 rules · 5 docs (21.3 KB, 1 omitted) · 1 file ignored`. With `--dry-run` the preview

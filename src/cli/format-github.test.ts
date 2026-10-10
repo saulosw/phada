@@ -3,7 +3,12 @@ import { findingFixture } from '../../test/support/finding.js'
 import { parseReviewMarker } from '../publish/markers.js'
 import type { PublicationPlan } from '../publish/types.js'
 import type { FileChange, Finding, ReviewResult } from '../review/types.js'
-import { formatGitHubPreview, formatGitHubReview, GITHUB_BODY_LIMIT } from './format-github.js'
+import {
+  formatGitHubPreview,
+  formatGitHubReview,
+  formatIgnoredOnlyReview,
+  GITHUB_BODY_LIMIT,
+} from './format-github.js'
 import { messagesFor } from './i18n/messages.js'
 
 const SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
@@ -436,5 +441,30 @@ describe('formatGitHubPreview', () => {
         `${review.comments[1]?.body}\n`,
       ].join('\n\n'),
     )
+  })
+})
+
+describe('formatIgnoredOnlyReview', () => {
+  const SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
+
+  it('posts a short note that names the files left out and counts zero findings', () => {
+    expect(formatIgnoredOnlyReview(SHA, ['package-lock.json', 'app.min.js'])).toEqual({
+      body: [
+        '## 🦋 Phada review: nothing to review',
+        'Every changed file in a1b2c3d was left out of the review, so the AI did not look at this commit.',
+        'Left out of the review: `package-lock.json` · `app.min.js`',
+        '---\n<sub>Generated with Phada 🦋 · a1b2c3d</sub>',
+        `<!-- phada:review sha=${SHA} findings=0 -->`,
+      ].join('\n\n'),
+      comments: [],
+    })
+  })
+
+  it('writes the note in the language of the review', () => {
+    const { body } = formatIgnoredOnlyReview(SHA, ['yarn.lock'], messagesFor('pt-BR'))
+
+    expect(body).toContain('## Revisão do Phada 🦋: nada para revisar')
+    expect(body).toContain('Todos os arquivos alterados em a1b2c3d ficaram fora do review')
+    expect(body).toContain('Fora do review: `yarn.lock`')
   })
 })

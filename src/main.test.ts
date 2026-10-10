@@ -793,18 +793,35 @@ describe('run with config and repository context', () => {
     expect(h.prompts).toHaveLength(1)
   })
 
-  it('does not call the AI when every changed file is ignored', async () => {
+  it('posts a short note without calling the AI when every changed file is ignored', async () => {
     const diff = pullRequestFixture().diff.replaceAll('src/shop.ts', 'package-lock.json')
     const h = harness({ pullRequest: () => Promise.resolve(pullRequestFixture({ diff })) })
 
     expect(await run(['review', 'acme/shop#12', '--format', 'json'], h.deps)).toBe(0)
     expect(h.stderr()).toContain('Nothing to review: every changed file is ignored.')
+    expect(h.stderr()).toContain(`Published the review: ${REVIEW_URL}`)
     expect(h.prompts).toEqual([])
+    expect(h.posts).toHaveLength(1)
+    expect(h.posts[0]).toMatchObject({ commitSha: HEAD_SHA, comments: [] })
+    expect(h.posts[0]?.body).toContain('Left out of the review: `package-lock.json`')
+    expect(h.posts[0]?.body).toContain(reviewMarker({ sha: HEAD_SHA, findings: 0 }))
     expect(JSON.parse(h.stdout())).toMatchObject({
       status: 'skipped',
       reason: 'all-ignored',
+      publication: { status: 'published', url: REVIEW_URL, comments: 0, stillOpen: 0 },
       context: { ignored: ['package-lock.json'] },
     })
+  })
+
+  it('only previews the note with --dry-run', async () => {
+    const diff = pullRequestFixture().diff.replaceAll('src/shop.ts', 'package-lock.json')
+    const h = harness({ pullRequest: () => Promise.resolve(pullRequestFixture({ diff })) })
+
+    expect(await run(['review', 'acme/shop#12', '--dry-run'], h.deps)).toBe(0)
+    expect(h.posts).toEqual([])
+    expect(h.stdout()).toContain('## 🦋 Phada review: nothing to review')
+    expect(h.stdout()).toContain('Left out of the review: `package-lock.json`')
+    expect(h.stderr()).toContain('Dry run: nothing was posted.')
   })
 
   it('prints the context in the JSON and after the dry-run preview', async () => {

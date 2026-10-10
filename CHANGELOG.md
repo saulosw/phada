@@ -16,8 +16,8 @@ output can change between minor versions.
 - Your own config in `~/.config/phada/` (global, or per repository in `repos/<owner>/<repo>/`)
   sets the provider, model, review options, rules and local docs.
 - `phada init` creates the repository config; `phada init --global [owner/repo]` creates yours.
-- Lockfiles, minified files and source maps are left out of the diff, and the review names them;
-  `ignore` adds more.
+- Lockfiles, minified files and source maps are left out of the diff, and the review names them
+  (a pull request with only ignored files gets a short note); `ignore` adds more.
 - Findings name the rule they break and the sources they rely on, in the JSON and on the pull
   request; the JSON has a `context` block with everything sent to the AI.
 - `--no-verify` turns verification off when the config turns it on.

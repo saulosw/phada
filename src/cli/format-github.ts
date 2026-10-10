@@ -49,6 +49,24 @@ export function formatGitHubReview(
   }
 }
 
+export function formatIgnoredOnlyReview(
+  headSha: string,
+  ignored: readonly string[],
+  messages: Messages = english,
+): GitHubReview {
+  const sha = shortSha(headSha)
+  const body = [
+    `## ${messages.github.heading}: ${messages.github.allIgnoredTitle}`,
+    messages.github.allIgnored(sha),
+    leftOutLine(ignored, messages),
+    `---\n<sub>${messages.github.generatedWith} · ${sha}</sub>`,
+    reviewMarker({ sha: headSha, findings: 0 }),
+  ]
+    .filter((section) => section !== '')
+    .join('\n\n')
+  return { body, comments: [] }
+}
+
 export function formatGitHubPreview(
   { body, comments }: GitHubReview,
   messages: Messages = english,

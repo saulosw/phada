@@ -38,6 +38,8 @@ export interface Messages {
     stillOpen: string
     filesTruncated(count: number): string
     truncated: string
+    allIgnoredTitle: string
+    allIgnored(sha: string): string
     onlyStillOpenTitle: string
     onlyStillOpen(count: number, sha: string): string
     preview(index: number, total: number, place: string): string
