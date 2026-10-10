@@ -1,4 +1,4 @@
-import type { ReviewProvider } from '../providers/types.js'
+import type { ExternalToolCall, ReviewProvider, Toolbox } from '../providers/types.js'
 import { parseVerification } from './parse-verification.js'
 import type { Finding, RejectedFinding, ReviewRequest, Verification } from './types.js'
 import type { Verdict } from './verification-schema.js'
@@ -14,6 +14,8 @@ export interface AppliedVerdicts {
 export interface CheckedCandidates {
   findings: Finding[]
   verification: Verification
+  externalCalls?: ExternalToolCall[]
+  warnings?: string[]
 }
 
 export async function verifyCandidates(
@@ -21,6 +23,7 @@ export async function verifyCandidates(
   candidates: readonly Finding[],
   verifier: ReviewProvider,
   nonce: string,
+  tools?: Toolbox,
 ): Promise<CheckedCandidates> {
   if (candidates.length === 0) {
     return {
@@ -28,8 +31,8 @@ export async function verifyCandidates(
       verification: { candidates: 0, confirmed: 0, unverified: 0, rejected: [], durationMs: 0 },
     }
   }
-  const { text, durationMs, usage } = await verifier.review(
-    buildVerifyPrompt(request, candidates, nonce),
+  const { text, durationMs, usage, externalCalls, warnings } = await verifier.review(
+    buildVerifyPrompt(request, candidates, nonce, tools),
   )
   const { findings, rejected, confirmed, unverified } = applyVerdicts(
     candidates,
@@ -45,6 +48,8 @@ export async function verifyCandidates(
       durationMs,
       ...(usage === undefined ? {} : { usage }),
     },
+    ...(externalCalls === undefined ? {} : { externalCalls }),
+    ...(warnings === undefined ? {} : { warnings }),
   }
 }
 

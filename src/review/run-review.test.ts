@@ -4,7 +4,7 @@ import { pullRequestFixture } from '../../test/support/pull-request.js'
 import { reviewContextFixture } from '../../test/support/review-context.js'
 import { reviewReportJson } from '../../test/support/review-report.js'
 import { verdictFixture, verificationJson } from '../../test/support/verification.js'
-import type { ReviewOutput, ReviewPrompt, ReviewProvider } from '../providers/types.js'
+import type { ReviewOutput, ReviewPrompt, ReviewProvider, Toolbox } from '../providers/types.js'
 import { InvalidReviewReportError } from './errors.js'
 import { buildReviewPrompt } from './prompt.js'
 import { REVIEW_REPORT_JSON_SCHEMA } from './report-schema.js'
@@ -535,5 +535,85 @@ describe('runReview with repository context', () => {
 
     expect(outcome).toEqual({ status: 'skipped', reason: 'all-ignored' })
     expect(provider.prompts).toEqual([])
+  })
+})
+
+describe('runReview with the repository tools', () => {
+  function toolboxFor(touched: string[]): Toolbox {
+    return {
+      definitions: [{ name: 'read_file', description: 'r', inputSchema: { type: 'object' } }],
+      call: async () => ({ text: '', isError: false }),
+      touchedPaths: () => touched,
+    }
+  }
+
+  it('gives each pass its own toolbox', async () => {
+    const review = toolboxFor([])
+    const verify = toolboxFor([])
+    const passes: string[] = []
+    const provider = new FakeProvider(
+      inTurn(OUTPUT, {
+        ...OUTPUT,
+        text: verificationJson([verdictFixture({ id: 1 })]),
+      }),
+    )
+
+    await runReview(
+      { pullRequest: pullRequestFixture(), verify: true },
+      {
+        provider,
+        tools: (pass) => {
+          passes.push(pass)
+          return pass === 'review' ? review : verify
+        },
+      },
+    )
+
+    expect(passes).toEqual(['review', 'verify'])
+    expect(provider.prompts[0]?.tools).toBe(review)
+    expect(provider.prompts[1]?.tools).toBe(verify)
+  })
+
+  it('keeps sources the AI read and sources from MCP servers it called', async () => {
+    const provider = new FakeProvider(() =>
+      Promise.resolve({
+        ...OUTPUT,
+        externalCalls: [{ server: 'linear', tool: 'get_issue' }],
+        text: reviewReportJson({
+          findings: [
+            {
+              ...findingFixture({ line: 3 }),
+              sources: [
+                'src/other.ts:10-20',
+                'linear: ENG-12',
+                'notion: some page',
+                'src/never-read.ts',
+              ],
+            },
+          ],
+        }),
+      }),
+    )
+
+    const outcome = await runReview(
+      { pullRequest: pullRequestFixture() },
+      { provider, tools: () => toolboxFor(['src/other.ts']) },
+    )
+
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(outcome.result.findings[0]?.sources).toEqual(['src/other.ts:10-20', 'linear: ENG-12'])
+    expect(outcome.result.externalCalls).toEqual([{ server: 'linear', tool: 'get_issue' }])
+  })
+
+  it('returns the warnings of the provider', async () => {
+    const provider = new FakeProvider(() =>
+      Promise.resolve({ ...OUTPUT, warnings: ['model cannot call tools'] }),
+    )
+
+    const outcome = await runReview({ pullRequest: pullRequestFixture() }, { provider })
+
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(outcome.result.warnings).toEqual(['model cannot call tools'])
+    expect(outcome.result).not.toHaveProperty('externalCalls')
   })
 })

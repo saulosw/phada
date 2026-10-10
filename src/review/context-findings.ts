@@ -4,22 +4,34 @@ export const MAX_SOURCES = 5
 
 const SEVERITY_RANK: Readonly<Record<Severity, number>> = { P0: 0, P1: 1, P2: 2 }
 const LINE_SUFFIX = /:\d+(?:-\d+)?$/
+const SERVER_SOURCE = /^([^:\s/]+(?: [^:/]+)?):\s/
+
+export interface InvestigatedReferences {
+  touched: readonly string[]
+  servers: readonly string[]
+}
 
 export function withKnownReferences(
   findings: readonly Finding[],
   context: ReviewContext | undefined,
   diffPaths: readonly string[],
+  investigated: InvestigatedReferences = { touched: [], servers: [] },
 ): Finding[] {
   const rules = new Set(context?.rules.map((rule) => rule.key))
   const known = new Set([
     ...diffPaths,
     ...(context?.docs.map((doc) => doc.path) ?? []),
     ...(context?.rules.map((rule) => rule.origin) ?? []),
+    ...investigated.touched,
   ])
+  const servers = new Set(investigated.servers)
+  const isKnown = (source: string) => {
+    if (known.has(source.replace(LINE_SUFFIX, ''))) return true
+    const server = SERVER_SOURCE.exec(source)?.[1]
+    return server !== undefined && servers.has(server)
+  }
   return findings.map(({ rule, sources, ...finding }) => {
-    const kept = (sources ?? [])
-      .filter((source) => known.has(source.replace(LINE_SUFFIX, '')))
-      .slice(0, MAX_SOURCES)
+    const kept = (sources ?? []).filter(isKnown).slice(0, MAX_SOURCES)
     return {
       ...finding,
       ...(rule !== undefined && rules.has(rule) ? { rule } : {}),

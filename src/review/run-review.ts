@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import type { ReviewProvider, TokenUsage } from '../providers/types.js'
+import type { ReviewProvider, TokenUsage, Toolbox } from '../providers/types.js'
 import { withKnownReferences, withRuleSeverity } from './context-findings.js'
 import { parseDiffFiles } from './diff-lines.js'
 import { parseReviewReport } from './parse-report.js'
@@ -22,6 +22,7 @@ export const DEFAULT_MIN_CONFIDENCE = 60
 export interface RunReviewDeps {
   provider: ReviewProvider
   verifier?: ReviewProvider
+  tools?: (pass: 'review' | 'verify') => Toolbox
   createNonce?: () => string
 }
 
@@ -41,9 +42,11 @@ export async function runReview(
   }
 
   const createNonce = deps.createNonce ?? randomNonce
-  const { text, durationMs, model, additionalModels, usage } = await deps.provider.review(
-    buildReviewPrompt(request, createNonce()),
+  const reviewTools = deps.tools?.('review')
+  const reviewOutput = await deps.provider.review(
+    buildReviewPrompt(request, createNonce(), reviewTools),
   )
+  const { text, durationMs, model, additionalModels, usage } = reviewOutput
   const report = parseReviewReport(text)
   const diffFiles = parseDiffFiles(pullRequest.diff)
   const verify = request.verify === true
@@ -51,6 +54,10 @@ export async function runReview(
     report.findings,
     request.context,
     diffFiles.map((file) => file.path),
+    {
+      touched: reviewTools?.touchedPaths() ?? [],
+      servers: (reviewOutput.externalCalls ?? []).map((call) => call.server),
+    },
   )
   const prepared = prepareCandidates(
     reported,
@@ -64,6 +71,7 @@ export async function runReview(
         prepared.candidates,
         deps.verifier ?? deps.provider,
         createNonce(),
+        deps.tools?.('verify'),
       )
     : undefined
   const selection = splitAtCut(
@@ -72,6 +80,8 @@ export async function runReview(
   )
   const totalUsage = sumUsage(usage, checked?.verification.usage)
   const ignored = request.context?.ignored ?? []
+  const externalCalls = [...(reviewOutput.externalCalls ?? []), ...(checked?.externalCalls ?? [])]
+  const warnings = [...new Set([...(reviewOutput.warnings ?? []), ...(checked?.warnings ?? [])])]
   return {
     status: 'reviewed',
     result: {
@@ -97,6 +107,8 @@ export async function runReview(
       },
       ...(checked === undefined ? {} : { verification: checked.verification }),
       ...(ignored.length === 0 ? {} : { ignored: [...ignored] }),
+      ...(externalCalls.length === 0 ? {} : { externalCalls }),
+      ...(warnings.length === 0 ? {} : { warnings }),
     },
   }
 }
