@@ -7,6 +7,8 @@ output can change between minor versions.
 
 ## Unreleased
 
+## 0.2.0 - 2026-10-10
+
 ### Added
 
 - Reviews now use the repository's own rules and docs, read from the base commit of the pull
