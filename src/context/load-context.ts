@@ -174,14 +174,17 @@ function selectRules(
   const applied: ContextRule[] = []
   const report: RuleReport[] = []
   for (const rule of merged.rules) {
-    const inScope = matcher(rule.scope)
-    const status = merged.disabledRules.has(rule.key)
-      ? 'disabled'
-      : files.some(inScope)
-        ? 'applied'
-        : 'out-of-scope'
+    const inScope = files.filter(matcher(rule.scope))
+    const except = merged.disabledIn.get(rule.key) ?? []
+    const turnedOff = matcher(except)
+    const status =
+      merged.disabledRules.has(rule.key) || (inScope.length > 0 && inScope.every(turnedOff))
+        ? 'disabled'
+        : inScope.length > 0
+          ? 'applied'
+          : 'out-of-scope'
     report.push({ key: rule.key, origin: rule.origin, status })
-    if (status === 'applied') applied.push(rule)
+    if (status === 'applied') applied.push(except.length === 0 ? rule : { ...rule, except })
   }
   return { applied, report }
 }

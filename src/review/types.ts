@@ -5,6 +5,7 @@ export interface ContextRule {
   key: string
   text: string
   scope: string[]
+  except?: string[]
   severity?: Severity
   origin: string
 }

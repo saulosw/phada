@@ -211,7 +211,7 @@ context:
 | `context.files`    | Files of the repository to always send (globs allowed), first in line for the budget                                                         | both        |
 | `ignore`           | More files to leave out of the diff                                                                                                          | both        |
 | `rules`            | Rules with `rule`, and optionally `id`, `scope` (globs) and `severity` (`P0`, `P1` or `P2`)                                                  | both        |
-| `disabledRules`    | Ids of rules from other config files to turn off                                                                                             | both        |
+| `disabledRules`    | Ids of rules from other config files to turn off; from a subfolder's `.phada/`, only inside that folder                                      | both        |
 
 Globs follow the usual `*`/`**` rules and are relative to the folder of the `.phada/` that
 declares them (the repository root for your own config): `*.snap` only matches at that level, so

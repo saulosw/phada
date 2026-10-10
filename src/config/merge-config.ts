@@ -27,6 +27,7 @@ export interface EffectiveConfig {
   contextDefaults: boolean
   rules: ResolvedRule[]
   disabledRules: ReadonlySet<string>
+  disabledIn: ReadonlyMap<string, string[]>
   files: DeclaredFile[]
   localFiles: LocalFileRef[]
   ignore: string[]
@@ -64,7 +65,12 @@ export function mergeConfig(layers: readonly ConfigLayer[]): EffectiveConfig {
     ...(verify === undefined ? {} : { verify }),
     contextDefaults: firstSet((config) => config.context?.defaults) ?? true,
     rules: [],
-    disabledRules: new Set(usable.flatMap((layer) => layer.config.disabledRules ?? [])),
+    disabledRules: new Set(
+      usable
+        .filter((layer) => layer.kind !== 'repo-dir')
+        .flatMap((layer) => layer.config.disabledRules ?? []),
+    ),
+    disabledIn: disabledInFolders(usable),
     files: [],
     localFiles: [],
     ignore: [],
@@ -100,6 +106,17 @@ export function resolveProvider(
     (source === undefined ? configs.find((config) => config.model)?.model : source.model)
   const provider = source?.provider ?? DEFAULT_PROVIDER
   return model === undefined ? { provider } : { provider, model }
+}
+
+function disabledInFolders(layers: readonly ConfigLayer[]): Map<string, string[]> {
+  const folders = new Map<string, string[]>()
+  for (const layer of layers) {
+    if (layer.kind !== 'repo-dir') continue
+    for (const id of layer.config.disabledRules ?? []) {
+      folders.set(id, [...(folders.get(id) ?? []), `${escapeGlob(layer.dir)}/**`])
+    }
+  }
+  return folders
 }
 
 function withoutMisplacedKeys(layer: ConfigLayer, warnings: string[]): ConfigLayer {

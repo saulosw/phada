@@ -48,8 +48,9 @@ export function diffScope(context: ReviewContext | undefined): string {
 
 export function rulesSection(rules: readonly ContextRule[]): string {
   if (rules.length === 0) return ''
-  const entries = rules.map(({ key, scope, severity, text }) => {
+  const entries = rules.map(({ key, scope, except, severity, text }) => {
     const details = [`files: ${scope.join(', ')}`]
+    if (except !== undefined) details.push(`not in ${except.join(', ')}`)
     if (severity !== undefined) details.push(`at least ${severity}`)
     return `[${key}] (${details.join('; ')})\n${text}`
   })

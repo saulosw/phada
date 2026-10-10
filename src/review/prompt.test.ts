@@ -296,6 +296,28 @@ describe('buildReviewPrompt with repository context', () => {
     expect(data).not.toContain('Use the ORM')
   })
 
+  it('names the folders where a rule is turned off', () => {
+    const context = reviewContextFixture({
+      docs: [],
+      rules: [
+        {
+          key: 'no-console',
+          text: 'No console.log.',
+          scope: ['**'],
+          except: ['src/api/**'],
+          origin: 'x',
+        },
+      ],
+    })
+
+    const { instructions } = buildReviewPrompt(
+      { pullRequest: pullRequestFixture(), context },
+      NONCE,
+    )
+
+    expect(instructions).toContain('[no-console] (files: **; not in src/api/**)\nNo console.log.')
+  })
+
   it('sends the docs as data between the pull request and the diff', () => {
     const { instructions, data } = buildReviewPrompt(
       { pullRequest: pullRequestFixture(), context: reviewContextFixture({ rules: [] }) },

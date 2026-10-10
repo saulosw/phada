@@ -183,13 +183,19 @@ describe('mergeConfig rules', () => {
     ])
   })
 
-  it('collects disabled rule ids from every layer', () => {
+  it('disables rules everywhere from the root and the user, and only inside a subfolder from it', () => {
     const merged = mergeConfig([
+      user({ disabledRules: ['u'] }),
       root({ disabledRules: ['a'] }),
-      sub('src', { disabledRules: ['b'] }),
+      sub('src/(web)', { disabledRules: ['b', 'a'] }),
+      sub('src/api', { disabledRules: ['b'] }),
     ])
 
-    expect([...merged.disabledRules]).toEqual(['a', 'b'])
+    expect([...merged.disabledRules]).toEqual(['u', 'a'])
+    expect(Object.fromEntries(merged.disabledIn)).toEqual({
+      b: ['src/\\(web\\)/**', 'src/api/**'],
+      a: ['src/\\(web\\)/**'],
+    })
   })
 
   it('skips an empty rules.md', () => {

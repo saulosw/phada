@@ -146,6 +146,42 @@ describe('loadContext', () => {
     expect(loaded.report.warnings).toEqual([])
   })
 
+  it('turns a rule off only inside the subfolder that disables it', async () => {
+    const files = {
+      '.phada/config.yml': 'rules:\n  - id: no-console\n    rule: No console.log.',
+      'src/api/.phada/config.yml': 'disabledRules: [no-console]',
+    }
+
+    const both = await loadContext({
+      diff: modifiedFile('src/api/users.ts') + modifiedFile('src/web/a.ts'),
+      baseSha: SHA,
+      userLayers: [],
+      sources: fakeSources(files),
+    })
+    const onlyApi = await loadContext({
+      diff: modifiedFile('src/api/users.ts'),
+      baseSha: SHA,
+      userLayers: [],
+      sources: fakeSources(files),
+    })
+
+    expect(both.context.rules).toEqual([
+      {
+        key: 'no-console',
+        text: 'No console.log.',
+        scope: ['**'],
+        except: ['src/api/**'],
+        origin: '.phada/config.yml',
+      },
+    ])
+    expect(both.report.rules).toEqual([
+      { key: 'no-console', origin: '.phada/config.yml', status: 'applied' },
+    ])
+    expect(onlyApi.report.rules).toEqual([
+      { key: 'no-console', origin: '.phada/config.yml', status: 'disabled' },
+    ])
+  })
+
   it('reads only the .phada files that exist in the tree', async () => {
     const sources = fakeSources({ 'src/api/users.ts': 'x' })
 
