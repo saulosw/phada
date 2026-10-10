@@ -199,19 +199,19 @@ context:
     - path: docs/architecture.md
 ```
 
-| Key                | What it does                                                                                | Where       |
-| ------------------ | ------------------------------------------------------------------------------------------- | ----------- |
-| `provider`         | `claude`, `codex` or `ollama`                                                               | your config |
-| `model`            | Model for that provider                                                                     | your config |
-| `localFiles`       | Files or folders on your machine to send as docs (a folder sends every `.md` in it)         | your config |
-| `language`         | Review language, like `--language`                                                          | both (root) |
-| `minConfidence`    | Confidence cut, like `--min-confidence`                                                     | both (root) |
-| `verify`           | Verify findings, like `--verify`                                                            | both (root) |
-| `context.defaults` | `false` sends only the files listed in `context.files`, not the docs Phada picks            | both (root) |
-| `context.files`    | Files of the repository to always send (globs allowed), first in line for the budget        | both        |
-| `ignore`           | More files to leave out of the diff                                                         | both        |
-| `rules`            | Rules with `rule`, and optionally `id`, `scope` (globs) and `severity` (`P0`, `P1` or `P2`) | both        |
-| `disabledRules`    | Ids of rules from other config files to turn off                                            | both        |
+| Key                | What it does                                                                                                                                 | Where       |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| `provider`         | `claude`, `codex` or `ollama`                                                                                                                | your config |
+| `model`            | Model for that provider                                                                                                                      | your config |
+| `localFiles`       | Files or folders on your machine to send as docs (a folder sends every `.md` in it); relative paths start at the folder of that `config.yml` | your config |
+| `language`         | Review language, like `--language`                                                                                                           | both (root) |
+| `minConfidence`    | Confidence cut, like `--min-confidence`                                                                                                      | both (root) |
+| `verify`           | Verify findings, like `--verify`                                                                                                             | both (root) |
+| `context.defaults` | `false` sends only the files listed in `context.files`, not the docs Phada picks                                                             | both (root) |
+| `context.files`    | Files of the repository to always send (globs allowed), first in line for the budget                                                         | both        |
+| `ignore`           | More files to leave out of the diff                                                                                                          | both        |
+| `rules`            | Rules with `rule`, and optionally `id`, `scope` (globs) and `severity` (`P0`, `P1` or `P2`)                                                  | both        |
+| `disabledRules`    | Ids of rules from other config files to turn off                                                                                             | both        |
 
 Globs follow the usual `*`/`**` rules and are relative to the folder of the `.phada/` that
 declares them (the repository root for your own config): `*.snap` only matches at that level, so

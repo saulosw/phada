@@ -1,4 +1,4 @@
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import { ConfigError } from './errors.js'
 import type { LocalFileSystem } from './local-files.js'
 import { parseConfigText } from './parse-config.js'
@@ -58,13 +58,23 @@ async function loadLayer(
   if (configText === null && rulesText === null) return undefined
   const parsed = parseConfigText(configText ?? '')
   if (!parsed.ok) throw new ConfigError(`Invalid config ${configPath}: ${parsed.message}`)
+  const { localFiles, ...config } = parsed.config
   return {
     kind,
     dir: '',
     configLabel: `user:${labelPrefix}config.yml`,
-    config: parsed.config,
+    config: {
+      ...config,
+      ...(localFiles === undefined
+        ? {}
+        : { localFiles: localFiles.map((path) => fromConfigDir(dir, path)) }),
+    },
     ...(rulesText === null
       ? {}
       : { rulesMarkdown: { label: `user:${labelPrefix}rules.md`, text: rulesText } }),
   }
+}
+
+function fromConfigDir(dir: string, path: string): string {
+  return path === '~' || path.startsWith('~/') || isAbsolute(path) ? path : join(dir, path)
 }

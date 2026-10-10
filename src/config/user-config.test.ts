@@ -60,6 +60,20 @@ describe('loadUserLayers', () => {
     ])
   })
 
+  it('resolves relative local files against the folder of the config', async () => {
+    const files = memoryFiles({
+      '/cfg/config.yml': 'localFiles: ["notes/rules.md", "~/team", "/srv/docs"]',
+      '/cfg/repos/acme/shop/config.yml': 'localFiles: ["../../../shared.md"]',
+    })
+
+    const layers = await loadUserLayers({ ...base, files })
+
+    expect(layers.map((layer) => layer.config.localFiles)).toEqual([
+      ['/cfg/notes/rules.md', '~/team', '/srv/docs'],
+      ['/cfg/shared.md'],
+    ])
+  })
+
   it('returns no layers without config', async () => {
     expect(await loadUserLayers({ ...base, files: memoryFiles({}) })).toEqual([])
   })
