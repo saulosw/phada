@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { CodexCliProvider } from './codex.js'
 import type { CodexCliProviderOptions } from './codex.js'
 import { ProviderError } from './types.js'
-import type { ReviewPrompt } from './types.js'
+import type { ReviewPrompt, Toolbox } from './types.js'
 
 const FAKE_CODEX = resolve('test/fixtures/bin/fake-codex')
 const FAKE_SECRET = `ghp_${'A1b2C3d4E5'.repeat(4)}`
@@ -335,5 +335,58 @@ describe('CodexCliProvider', () => {
     expect(error.message).toBe(
       `Codex CLI was not found (command "${join(workDir, 'no-such-codex')}").`,
     )
+  })
+
+  describe('with the repository tools', () => {
+    const toolbox: Toolbox = {
+      definitions: [{ name: 'read_file', description: 'r', inputSchema: { type: 'object' } }],
+      call: async () => ({ text: 'ok', isError: false }),
+      touchedPaths: () => [],
+    }
+    const withTools: ReviewPrompt = { ...PROMPT, tools: toolbox }
+
+    function settings(argv: string[]): string[] {
+      return argv.flatMap((arg, index) => (argv[index - 1] === '-c' ? [arg] : []))
+    }
+
+    it('adds the Phada MCP server to the run', async () => {
+      await provider('success', { model: 'gpt-test-model' }).review(withTools)
+
+      const { argv } = readCapture()
+      const command = settings(argv).find((arg) => arg.startsWith('mcp_servers.phada.command='))
+      const args = settings(argv).find((arg) => arg.startsWith('mcp_servers.phada.args='))
+      expect(command).toBe(`mcp_servers.phada.command=${JSON.stringify(process.execPath)}`)
+      const launchArgs = JSON.parse(
+        args?.slice('mcp_servers.phada.args='.length) ?? '[]',
+      ) as string[]
+      expect(launchArgs.at(-2)).toMatch(/mcp-bridge\.js$/)
+      expect(argv.slice(-2)).toEqual(['--model=gpt-test-model', '-'])
+    })
+
+    it('leaves the MCP server out without tools', async () => {
+      await provider('success').review(PROMPT)
+
+      expect(settings(readCapture().argv).some((arg) => arg.startsWith('mcp_servers.'))).toBe(false)
+    })
+
+    it('reports calls to MCP servers other than Phada', async () => {
+      const output = await provider('mcp_calls').review(withTools)
+
+      expect(output.externalCalls).toEqual([{ server: 'linear', tool: 'get_issue' }])
+    })
+
+    it('closes the MCP server when Codex fails', async () => {
+      await provider('turn_failed')
+        .review(withTools)
+        .catch(() => undefined)
+
+      const args = settings(readCapture().argv).find((arg) =>
+        arg.startsWith('mcp_servers.phada.args='),
+      )
+      const socket =
+        (JSON.parse(args?.slice('mcp_servers.phada.args='.length) ?? '[]') as string[]).at(-1) ?? ''
+      expect(socket).not.toBe('')
+      expect(existsSync(dirname(socket))).toBe(false)
+    })
   })
 })

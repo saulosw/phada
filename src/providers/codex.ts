@@ -1,17 +1,25 @@
 import { readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
+import { MCP_SERVER_NAME, serveMcp } from '../investigation/mcp-server.js'
+import type { McpLaunch } from '../investigation/mcp-server.js'
 import type { RunCommandResult } from '../process/run-command.js'
 import { runCli, snippet, withTempDir } from './cli-run.js'
 import type { CliNames } from './cli-run.js'
 import { resolveCodexModel } from './codex-model.js'
 import { ProviderError } from './types.js'
-import type { ReviewOutput, ReviewPrompt, ReviewProvider, TokenUsage } from './types.js'
+import type {
+  ExternalToolCall,
+  ReviewOutput,
+  ReviewPrompt,
+  ReviewProvider,
+  TokenUsage,
+} from './types.js'
 
 const PROVIDER_ID = 'codex-cli'
 const NAMES: CliNames = { product: 'Codex CLI', short: 'Codex' }
 const DEFAULT_COMMAND = 'codex'
-const DEFAULT_TIMEOUT_MS = 600_000
+const DEFAULT_TIMEOUT_MS = 900_000
 const TEMP_DIR_PREFIX = 'phada-codex-'
 const INSTRUCTIONS_FILE = 'instructions.md'
 const OUTPUT_FILE = 'last-message.txt'
@@ -58,6 +66,14 @@ const CodexEvent = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('turn.failed'), error: z.object({ message: z.string() }) }),
   z.object({ type: z.literal('error'), message: z.string() }),
+  z.object({
+    type: z.literal('item.completed'),
+    item: z.object({
+      type: z.string(),
+      server: z.string().optional(),
+      tool: z.string().optional(),
+    }),
+  }),
 ])
 type CodexEvent = z.infer<typeof CodexEvent>
 
@@ -97,19 +113,24 @@ export class CodexCliProvider implements ReviewProvider {
         env: this.#env,
         homeDir: this.#homeDir,
       })
-      const run = await runCli({
-        providerId: PROVIDER_ID,
-        names: NAMES,
-        command: this.#command,
-        args: codexArgs({ instructionsPath, schemaPath, outputPath, model }),
-        stdin: prompt.data,
-        cwd,
-        env: this.#env,
-        timeoutMs: this.#timeoutMs,
-      })
-      const events = parseEvents(run.stdout)
-      if (run.exitCode !== 0) throw exitError(run, events)
-      return toReviewOutput(run, events, model, await readOutput(outputPath))
+      const server = prompt.tools === undefined ? undefined : await serveMcp(prompt.tools)
+      try {
+        const run = await runCli({
+          providerId: PROVIDER_ID,
+          names: NAMES,
+          command: this.#command,
+          args: codexArgs({ instructionsPath, schemaPath, outputPath, model, mcp: server?.launch }),
+          stdin: prompt.data,
+          cwd,
+          env: this.#env,
+          timeoutMs: this.#timeoutMs,
+        })
+        const events = parseEvents(run.stdout)
+        if (run.exitCode !== 0) throw exitError(run, events)
+        return toReviewOutput(run, events, model, await readOutput(outputPath))
+      } finally {
+        await server?.close()
+      }
     })
   }
 }
@@ -119,9 +140,11 @@ interface CodexArgsOptions {
   schemaPath: string
   outputPath: string
   model: string | undefined
+  mcp: McpLaunch | undefined
 }
 
-function codexArgs({ instructionsPath, schemaPath, outputPath, model }: CodexArgsOptions) {
+function codexArgs({ instructionsPath, schemaPath, outputPath, model, mcp }: CodexArgsOptions) {
+  const server = `mcp_servers.${MCP_SERVER_NAME}`
   return [
     ...BASE_ARGS,
     '-c',
@@ -130,6 +153,14 @@ function codexArgs({ instructionsPath, schemaPath, outputPath, model }: CodexArg
     schemaPath,
     '-o',
     outputPath,
+    ...(mcp === undefined
+      ? []
+      : [
+          '-c',
+          `${server}.command=${JSON.stringify(mcp.command)}`,
+          '-c',
+          `${server}.args=${JSON.stringify(mcp.args)}`,
+        ]),
     ...(model === undefined ? [] : [`--model=${model}`]),
     '-',
   ]
@@ -153,12 +184,23 @@ function toReviewOutput(
     throw new ProviderError(PROVIDER_ID, 'invalid-output', noOutputMessage(events))
   }
   const usage = lastTurnUsage(events)
+  const externalCalls = externalCallsOf(events)
   return {
     text,
     durationMs: run.durationMs,
     ...(model === undefined ? {} : { model }),
     ...(usage === undefined ? {} : { usage }),
+    ...(externalCalls.length === 0 ? {} : { externalCalls }),
   }
+}
+
+function externalCallsOf(events: readonly CodexEvent[]): ExternalToolCall[] {
+  return events.flatMap((event) => {
+    if (event.type !== 'item.completed' || event.item.type !== 'mcp_tool_call') return []
+    const { server, tool } = event.item
+    if (server === undefined || tool === undefined || server === MCP_SERVER_NAME) return []
+    return [{ server, tool }]
+  })
 }
 
 function noOutputMessage(events: readonly CodexEvent[]): string {
