@@ -75,6 +75,7 @@ describe('formatReviewJson', () => {
       },
       publication: null,
       context: null,
+      investigation: null,
     })
   })
 
@@ -196,6 +197,7 @@ describe('formatReviewJson', () => {
       pullRequest: PULL_REQUEST,
       publication: null,
       context: null,
+      investigation: null,
     })
   })
 
@@ -304,11 +306,42 @@ describe('publication', () => {
       pullRequest: PULL_REQUEST,
       publication: { status: 'skipped', reason: 'nothing-found', openThreads: 0 },
       context: null,
+      investigation: null,
     })
     expect(
       parse(
         formatAlreadyReviewedJson(pullRequestFixture(), { kind: 'open-threads', openThreads: 3 }),
       ),
     ).toMatchObject({ publication: { reason: 'open-threads', openThreads: 3 } })
+  })
+
+  it('adds the investigation report', () => {
+    const investigation = {
+      status: 'used' as const,
+      calls: [
+        {
+          pass: 'review' as const,
+          tool: 'read_file',
+          target: 'src/a.ts',
+          bytes: 10,
+          error: null,
+          inSources: true,
+        },
+      ],
+      external: [{ server: 'linear', tool: 'get_issue' }],
+      totals: { calls: 1, bytes: 10 },
+    }
+
+    const output = parse(
+      formatReviewJson(
+        pullRequestFixture(),
+        { status: 'reviewed', result: RESULT },
+        null,
+        null,
+        investigation,
+      ),
+    )
+
+    expect(output).toMatchObject({ investigation })
   })
 })

@@ -1,4 +1,5 @@
 import type { ContextReport } from '../context/types.js'
+import type { InvestigationReport } from '../investigation/report.js'
 import type { PullRequest } from '../github/pull-request.js'
 import type { TokenUsage } from '../providers/types.js'
 import type { SkipReason } from '../publish/types.js'
@@ -19,6 +20,7 @@ export function formatReviewJson(
   outcome: ReviewOutcome,
   publication: Publication | null = null,
   context: ContextReport | null = null,
+  investigation: InvestigationReport | null = null,
 ): string {
   const pullRequest = pullRequestJson(pr)
   const publicationBlock = publication === null ? null : publicationJson(publication)
@@ -32,6 +34,7 @@ export function formatReviewJson(
           pullRequest,
           publication: publicationBlock,
           context: contextBlock,
+          investigation,
         }
       : {
           schemaVersion: SCHEMA_VERSION,
@@ -40,6 +43,7 @@ export function formatReviewJson(
           review: reviewJson(outcome.result),
           publication: publicationBlock,
           context: contextBlock,
+          investigation,
         }
   return `${JSON.stringify(body, null, 2)}\n`
 }
@@ -52,6 +56,7 @@ export function formatAlreadyReviewedJson(pr: PullRequest, reason: SkipReason): 
     pullRequest: pullRequestJson(pr),
     publication: publicationJson({ status: 'skipped', reason }),
     context: null,
+    investigation: null,
   }
   return `${JSON.stringify(body, null, 2)}\n`
 }
