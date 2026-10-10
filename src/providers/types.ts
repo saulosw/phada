@@ -1,9 +1,32 @@
 export type JsonSchema = Readonly<Record<string, unknown>>
 
+export interface ToolDefinition {
+  name: string
+  description: string
+  inputSchema: JsonSchema
+}
+
+export interface ToolResult {
+  text: string
+  isError: boolean
+}
+
+export interface Toolbox {
+  readonly definitions: readonly ToolDefinition[]
+  call(name: string, args: unknown): Promise<ToolResult>
+  touchedPaths(): readonly string[]
+}
+
 export interface ReviewPrompt {
   instructions: string
   data: string
   outputSchema: JsonSchema
+  tools?: Toolbox
+}
+
+export interface ExternalToolCall {
+  server: string
+  tool: string
 }
 
 export interface TokenUsage {
@@ -17,6 +40,8 @@ export interface ReviewOutput {
   model?: string
   additionalModels?: string[]
   usage?: TokenUsage
+  externalCalls?: ExternalToolCall[]
+  warnings?: string[]
 }
 
 export interface ReviewProvider {
