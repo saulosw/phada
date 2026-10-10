@@ -9,6 +9,7 @@ import {
 } from './cli/format-github.js'
 import type { GitHubReview } from './cli/format-github.js'
 import { formatContextLine, formatContextSection } from './cli/format-context.js'
+import { formatInvestigationLine, formatInvestigationSection } from './cli/format-investigation.js'
 import { formatAlreadyReviewedJson, formatReviewJson } from './cli/format-json.js'
 import type { Publication } from './cli/format-json.js'
 import { formatPublishedMessage, formatSkipMessage } from './cli/format-publication.js'
@@ -20,7 +21,7 @@ import { withProgress } from './cli/progress.js'
 import { toTerminalText } from './cli/terminal-text.js'
 import type { TextOutput } from './cli/progress.js'
 import type { LocalFileSystem } from './config/local-files.js'
-import { resolveProvider } from './config/merge-config.js'
+import { resolveProvider, userMcpServers } from './config/merge-config.js'
 import { expandHome, loadUserLayers } from './config/user-config.js'
 import { loadContext } from './context/load-context.js'
 import type { ContextReport } from './context/types.js'
@@ -33,6 +34,13 @@ import { formatPullRequestRef } from './github/pull-request-ref.js'
 import type { PullRequestRef } from './github/pull-request-ref.js'
 import type { FetchPullRequestOptions, PullRequest } from './github/pull-request.js'
 import type { RepositoryFilesOptions, RepositoryTree } from './github/repository-files.js'
+import type { Checkout } from './investigation/checkout.js'
+import { CheckoutUnavailableError } from './investigation/git-checkout.js'
+import type { OpenGitCheckoutOptions } from './investigation/git-checkout.js'
+import { openInvestigation } from './investigation/open-investigation.js'
+import type { Investigation } from './investigation/open-investigation.js'
+import { buildInvestigationReport } from './investigation/report.js'
+import type { InvestigationReport } from './investigation/report.js'
 import { ClaudeCliProvider } from './providers/claude.js'
 import { CodexCliProvider } from './providers/codex.js'
 import { OllamaProvider } from './providers/ollama.js'
@@ -49,7 +57,10 @@ type PublishTarget = PullRequestRef & { token: string }
 
 export interface ProviderOptions {
   model?: string
+  userMcpServers?: string[]
 }
+
+const PROVIDERS = ['claude', 'codex', 'ollama'] as const
 
 export interface MainDeps {
   env: NodeJS.ProcessEnv
@@ -68,24 +79,30 @@ export interface MainDeps {
   fetchRepositoryFile: (
     options: RepositoryFilesOptions & { path: string; ref: string },
   ) => Promise<string | null>
+  openCheckout: (options: OpenGitCheckoutOptions) => Promise<Checkout>
   createProvider: (name: string, options: ProviderOptions) => ReviewProvider
 }
 
+export function assertProviderChoice(name: string, options: ProviderOptions): void {
+  if (!(PROVIDERS as readonly string[]).includes(name)) {
+    throw new UsageError(`Unknown provider "${name}". Available: ${PROVIDERS.join(', ')}.`)
+  }
+  if (name === 'ollama' && options.model === undefined) {
+    throw new UsageError(
+      '--provider ollama needs --model, e.g. qwen2.5-coder:7b, llama3.1:8b or gpt-oss:120b-cloud (see "ollama list").',
+    )
+  }
+}
+
 export function createProvider(name: string, options: ProviderOptions): ReviewProvider {
+  assertProviderChoice(name, options)
   switch (name) {
     case 'claude':
       return new ClaudeCliProvider(options)
     case 'codex':
       return new CodexCliProvider(options)
-    case 'ollama':
-      if (options.model === undefined) {
-        throw new UsageError(
-          '--provider ollama needs --model, e.g. qwen2.5-coder:7b, llama3.1:8b or gpt-oss:120b-cloud (see "ollama list").',
-        )
-      }
-      return new OllamaProvider({ model: options.model })
     default:
-      throw new UsageError(`Unknown provider "${name}". Available: claude, codex, ollama.`)
+      return new OllamaProvider({ model: options.model ?? '' })
   }
 }
 
@@ -119,7 +136,11 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
       files: deps.files,
     })
     const choice = resolveProvider({ provider: command.provider, model: command.model }, userLayers)
-    const provider = deps.createProvider(choice.provider, { model: choice.model })
+    const mcp = userMcpServers(userLayers)
+    if (mcp.length > 0 && choice.provider !== 'claude') {
+      throw new UsageError('mcp in your config works only with --provider claude for now.')
+    }
+    assertProviderChoice(choice.provider, { model: choice.model })
 
     deps.stderr.write(`Fetching ${formatPullRequestRef(command.ref)}…\n`)
     const pullRequest = await deps.fetchPullRequest({ ...command.ref, token })
@@ -158,20 +179,54 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
     deps.stderr.write(`${formatContextLine(loaded.report)}\n`)
     const language = command.language ?? loaded.options.language
     const messages = messagesFor(language)
+    const investigate = command.investigate ?? loaded.options.investigate ?? true
+    const servers = investigate ? mcp : []
+    if (servers.length > 0 && !pullRequest.private) {
+      deps.stderr.write(
+        `Warning: ${pullRequest.repo} is public: what the AI reads from ${servers.join(', ')} may end up in the published review.\n`,
+      )
+    }
+    const provider = deps.createProvider(choice.provider, {
+      model: choice.model,
+      ...(servers.length === 0 ? {} : { userMcpServers: servers }),
+    })
 
-    const outcome = await runReview(
-      {
-        pullRequest: { ...pullRequest, diff: loaded.diff },
-        language,
-        minConfidence: command.minConfidence ?? loaded.options.minConfidence,
-        verify: command.verify ?? loaded.options.verify ?? false,
-        context: loaded.context,
-      },
-      {
-        provider: withProgress(provider, deps.stderr),
-        verifier: withProgress(provider, deps.stderr, 'Verifying findings'),
-      },
-    )
+    let investigation: Investigation | undefined
+    let unavailable: string | undefined
+    if (investigate && loaded.diff.trim() !== '') {
+      try {
+        investigation = await openInvestigation(
+          { owner, repo, sha: pullRequest.headSha, token, env: deps.env },
+          deps.openCheckout,
+        )
+      } catch (error) {
+        if (!(error instanceof CheckoutUnavailableError)) throw error
+        unavailable = error.message
+        deps.stderr.write(
+          `Warning: ${toTerminalText(error.message)}: reviewing without investigation.\n`,
+        )
+      }
+    }
+
+    let outcome: ReviewOutcome
+    try {
+      outcome = await runReview(
+        {
+          pullRequest: { ...pullRequest, diff: loaded.diff },
+          language,
+          minConfidence: command.minConfidence ?? loaded.options.minConfidence,
+          verify: command.verify ?? loaded.options.verify ?? false,
+          context: loaded.context,
+        },
+        {
+          provider: withProgress(provider, deps.stderr),
+          verifier: withProgress(provider, deps.stderr, 'Verifying findings'),
+          ...(investigation === undefined ? {} : { tools: investigation.tools }),
+        },
+      )
+    } finally {
+      await investigation?.close()
+    }
     if (outcome.status === 'skipped' && outcome.reason === 'all-ignored') {
       deps.stderr.write('Nothing to review: every changed file is ignored.\n')
       const note = formatIgnoredOnlyReview(pullRequest.headSha, loaded.context.ignored, messages)
@@ -186,6 +241,19 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
       return 0
     }
 
+    for (const warning of outcome.result.warnings ?? []) {
+      deps.stderr.write(`Warning: ${toTerminalText(warning)}\n`)
+    }
+    const investigationReport = buildInvestigationReport({
+      status: investigation !== undefined ? 'used' : investigate ? 'unavailable' : 'off',
+      ...(unavailable === undefined ? {} : { reason: unavailable }),
+      ...(investigation === undefined ? {} : { log: investigation.log }),
+      findings: outcome.result.findings,
+      external: outcome.result.externalCalls ?? [],
+    })
+    const investigationLine = formatInvestigationLine(investigationReport)
+    if (investigationLine !== undefined) deps.stderr.write(`${investigationLine}\n`)
+
     const plan = planPublication(outcome.result.findings, state)
     const review = formatGitHubReview(outcome.result, plan, undefined, messages)
     if (command.dryRun) {
@@ -199,6 +267,7 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
         decision.wouldSkip,
         messages,
         loaded.report,
+        investigationReport,
       )
     } else {
       await publish(
@@ -211,6 +280,7 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
         plan,
         messages,
         loaded.report,
+        investigationReport,
       )
     }
     return 0
@@ -231,6 +301,7 @@ function printDryRun(
   wouldSkip: SkipReason | undefined,
   messages: Messages,
   context: ContextReport,
+  investigation: InvestigationReport,
 ): void {
   if (format === 'json') {
     const publication: Publication = {
@@ -239,9 +310,11 @@ function printDryRun(
       stillOpen: plan.stillOpen.length,
       ...(wouldSkip === undefined ? {} : { wouldSkip }),
     }
-    deps.stdout.write(formatReviewJson(pullRequest, outcome, publication, context))
+    deps.stdout.write(formatReviewJson(pullRequest, outcome, publication, context, investigation))
   } else {
-    deps.stdout.write(`${formatGitHubPreview(review, messages)}\n${formatContextSection(context)}`)
+    deps.stdout.write(
+      `${formatGitHubPreview(review, messages)}\n${formatContextSection(context)}\n${formatInvestigationSection(investigation)}`,
+    )
   }
   deps.stderr.write('Dry run: nothing was posted.\n')
   if (wouldSkip !== undefined) {
@@ -259,6 +332,7 @@ async function publish(
   plan: PublicationPlan,
   messages: Messages,
   context: ContextReport,
+  investigation: InvestigationReport,
 ): Promise<void> {
   if (format === 'markdown') deps.stdout.write(formatReview(pullRequest, outcome.result, messages))
   deps.stderr.write('Publishing the review…\n')
@@ -273,7 +347,7 @@ async function publish(
   } catch (error) {
     if (format === 'json') {
       const failed: Publication = { status: 'failed', error: errorSummary(error) }
-      deps.stdout.write(formatReviewJson(pullRequest, outcome, failed, context))
+      deps.stdout.write(formatReviewJson(pullRequest, outcome, failed, context, investigation))
     }
     throw error
   }
@@ -281,7 +355,7 @@ async function publish(
   const stillOpen = plan.stillOpen.length
   if (format === 'json') {
     const published: Publication = { status: 'published', url: created.url, comments, stillOpen }
-    deps.stdout.write(formatReviewJson(pullRequest, outcome, published, context))
+    deps.stdout.write(formatReviewJson(pullRequest, outcome, published, context, investigation))
   }
   deps.stderr.write(`${formatPublishedMessage(created.url, comments, stillOpen)}\n`)
 }

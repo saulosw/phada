@@ -6,6 +6,7 @@ import { createReview } from './github/create-review.js'
 import { fetchReviewState } from './github/pull-request-reviews.js'
 import { fetchPullRequest } from './github/pull-request.js'
 import { fetchRepositoryFile, fetchRepositoryTree } from './github/repository-files.js'
+import { openGitCheckout } from './investigation/git-checkout.js'
 import { createProvider, run } from './main.js'
 
 const packageJson = await readFile(new URL('../package.json', import.meta.url), 'utf8')
@@ -24,5 +25,6 @@ process.exitCode = await run(process.argv.slice(2), {
   createReview,
   fetchRepositoryTree,
   fetchRepositoryFile,
+  openCheckout: openGitCheckout,
   createProvider,
 })
