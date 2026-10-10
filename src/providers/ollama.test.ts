@@ -4,7 +4,7 @@ import type { FakeCall, FakeResponse } from '../../test/support/fake-fetch.js'
 import { OllamaProvider } from './ollama.js'
 import type { OllamaProviderOptions } from './ollama.js'
 import { ProviderError } from './types.js'
-import type { ReviewPrompt } from './types.js'
+import type { ReviewPrompt, Toolbox } from './types.js'
 
 const FAKE_SECRET = `ghp_${'A1b2C3d4E5'.repeat(4)}`
 const MODEL = 'qwen2.5-coder:7b'
@@ -444,5 +444,146 @@ describe('OllamaProvider', () => {
 
     expect(error.reason).toBe('invalid-output')
     expect(error.message).toBe('Ollama returned an empty review.')
+  })
+
+  describe('with the repository tools', () => {
+    function recordingToolbox(answer = 'file contents'): { toolbox: Toolbox; calls: unknown[][] } {
+      const calls: unknown[][] = []
+      return {
+        calls,
+        toolbox: {
+          definitions: [
+            { name: 'read_file', description: 'Read a file.', inputSchema: { type: 'object' } },
+          ],
+          call: async (name, args) => {
+            calls.push([name, args])
+            return { text: answer, isError: false }
+          },
+          touchedPaths: () => [],
+        },
+      }
+    }
+
+    function showWithTools(contextLength = 131072): FakeResponse {
+      return {
+        status: 200,
+        body: JSON.stringify({
+          capabilities: ['completion', 'tools'],
+          model_info: { 'general.architecture': 'gptoss', 'gptoss.context_length': contextLength },
+        }),
+      }
+    }
+
+    function toolCall(name: string, args: unknown): FakeResponse {
+      return chat({
+        message: {
+          role: 'assistant',
+          content: '',
+          tool_calls: [{ function: { name, arguments: args } }],
+        },
+        done_reason: 'stop',
+      })
+    }
+
+    it('reviews without tools and warns when the model cannot call them', async () => {
+      const { toolbox, calls: toolCalls } = recordingToolbox()
+      const { provider, calls } = setup({})
+
+      const output = await provider.review({ ...PROMPT, tools: toolbox })
+
+      expect(output.text).toBe('LGTM from fake ollama')
+      expect(output.warnings).toEqual([
+        'qwen2.5-coder:7b does not support tool calling: reviewing without investigation.',
+      ])
+      expect(bodyOf(calls[1])).not.toHaveProperty('tools')
+      expect(toolCalls).toEqual([])
+    })
+
+    it('runs the tool calls of the model and sends the answers back', async () => {
+      const { toolbox, calls: toolCalls } = recordingToolbox()
+      const { provider, calls } = setup({
+        show: [showWithTools()],
+        chat: [
+          toolCall('read_file', { path: 'src/a.ts' }),
+          chat({ prompt_eval_count: 90, eval_count: 30 }),
+        ],
+      })
+
+      const output = await provider.review({ ...PROMPT, tools: toolbox })
+
+      expect(output.text).toBe('LGTM from fake ollama')
+      expect(toolCalls).toEqual([['read_file', { path: 'src/a.ts' }]])
+      const first = bodyOf(calls[1])
+      const second = bodyOf(calls[2])
+      for (const body of [first, second]) {
+        expect(body.tools).toEqual([
+          {
+            type: 'function',
+            function: {
+              name: 'read_file',
+              description: 'Read a file.',
+              parameters: { type: 'object' },
+            },
+          },
+        ])
+        expect(body.format).toEqual(PROMPT.outputSchema)
+      }
+      expect((second.messages as unknown[]).slice(2)).toEqual([
+        {
+          role: 'assistant',
+          content: '',
+          tool_calls: [{ function: { name: 'read_file', arguments: { path: 'src/a.ts' } } }],
+        },
+        { role: 'tool', tool_name: 'read_file', content: 'file contents' },
+      ])
+      expect((first.options as { num_ctx: number }).num_ctx).toBeGreaterThanOrEqual(32768 + 8192)
+      expect(output.usage).toEqual({ inputTokens: 150, outputTokens: 42 })
+    })
+
+    it('accepts arguments sent as a JSON string', async () => {
+      const { toolbox, calls: toolCalls } = recordingToolbox()
+      const { provider } = setup({
+        show: [showWithTools()],
+        chat: [toolCall('read_file', '{"path":"b.ts"}'), chat()],
+      })
+
+      await provider.review({ ...PROMPT, tools: toolbox })
+
+      expect(toolCalls).toEqual([['read_file', { path: 'b.ts' }]])
+    })
+
+    it('stops running tools before the context window fills up', async () => {
+      const { toolbox, calls: toolCalls } = recordingToolbox('x'.repeat(20_000))
+      const { provider, calls } = setup({
+        show: [showWithTools(16_384)],
+        chat: [
+          toolCall('read_file', { path: 'a.ts' }),
+          toolCall('read_file', { path: 'b.ts' }),
+          chat({ prompt_eval_count: 60, eval_count: 12 }),
+        ],
+      })
+
+      await provider.review({ ...PROMPT, tools: toolbox })
+
+      expect(toolCalls).toEqual([['read_file', { path: 'a.ts' }]])
+      expect((bodyOf(calls[3]).messages as unknown[]).at(-1)).toEqual({
+        role: 'tool',
+        tool_name: 'read_file',
+        content: 'Context window is full: finish the review now.',
+      })
+    })
+
+    it('gives up when the model keeps calling tools', async () => {
+      const { toolbox } = recordingToolbox()
+      const { provider } = setup({
+        show: [showWithTools()],
+        chat: Array.from({ length: 45 }, () => toolCall('read_file', { path: 'a.ts' })),
+      })
+
+      const error = await reviewError(provider, { ...PROMPT, tools: toolbox })
+
+      expect(error.reason).toBe('invalid-output')
+      expect(error.message).toBe('Ollama kept calling tools for 45 turns without answering.')
+    })
   })
 })
