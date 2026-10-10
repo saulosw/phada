@@ -1,3 +1,4 @@
+import { reviewPullRequest } from './app/review-pull-request.js'
 import { parseCliArgs } from './cli/args.js'
 import type { OutputFormat } from './cli/args.js'
 import { MissingGitHubTokenError, UsageError } from './cli/errors.js'
@@ -23,7 +24,6 @@ import type { TextOutput } from './cli/progress.js'
 import type { LocalFileSystem } from './config/local-files.js'
 import { resolveProvider, userMcpServers } from './config/merge-config.js'
 import { expandHome, loadUserLayers } from './config/user-config.js'
-import { loadContext } from './context/load-context.js'
 import type { ContextReport } from './context/types.js'
 import type { CreatedReview, CreateReviewOptions } from './github/create-review.js'
 import type {
@@ -35,12 +35,9 @@ import type { PullRequestRef } from './github/pull-request-ref.js'
 import type { FetchPullRequestOptions, PullRequest } from './github/pull-request.js'
 import type { RepositoryFilesOptions, RepositoryTree } from './github/repository-files.js'
 import type { Checkout } from './investigation/checkout/checkout.js'
-import { CheckoutUnavailableError } from './investigation/checkout/git-checkout.js'
 import type { OpenGitCheckoutOptions } from './investigation/checkout/git-checkout.js'
-import { openInvestigation } from './investigation/open-investigation.js'
-import type { Investigation } from './investigation/open-investigation.js'
-import { buildInvestigationReport } from './investigation/tools/report.js'
 import type { InvestigationReport } from './investigation/tools/report.js'
+import type { ReviewPass } from './investigation/tools/tool-log.js'
 import { ClaudeCliProvider } from './providers/claude.js'
 import { CodexCliProvider } from './providers/codex.js'
 import { OllamaProvider } from './providers/ollama.js'
@@ -48,7 +45,6 @@ import type { ReviewProvider } from './providers/types.js'
 import { decideRun } from './publish/decide-run.js'
 import { planPublication } from './publish/plan-publication.js'
 import type { PublicationPlan, SkipReason } from './publish/types.js'
-import { runReview } from './review/run-review.js'
 import type { ReviewOutcome } from './review/types.js'
 
 type ReviewedOutcome = Extract<ReviewOutcome, { status: 'reviewed' }>
@@ -61,6 +57,10 @@ export interface ProviderOptions {
 }
 
 const PROVIDERS = ['claude', 'codex', 'ollama'] as const
+const PROGRESS_LABELS: Readonly<Record<ReviewPass, string>> = {
+  review: 'Reviewing',
+  verify: 'Verifying findings',
+}
 
 export interface MainDeps {
   env: NodeJS.ProcessEnv
@@ -161,77 +161,49 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
     }
 
     const repository = { ...command.ref, token }
-    const loaded = await loadContext({
-      diff: pullRequest.diff,
-      baseSha: pullRequest.baseSha,
-      userLayers,
-      sources: {
-        readTree: () => deps.fetchRepositoryTree({ ...repository, sha: pullRequest.baseSha }),
-        readRepoFile: (path) =>
-          deps.fetchRepositoryFile({ ...repository, path, ref: pullRequest.baseSha }),
-        readLocalFile: (path) => deps.files.readText(expandHome(path, deps.home)),
-        listLocalDocs: (path) => deps.files.listDocs(expandHome(path, deps.home)),
+    const reviewed = await reviewPullRequest(
+      {
+        pullRequest,
+        token,
+        userLayers,
+        userMcpServers: mcp,
+        options: {
+          language: command.language,
+          minConfidence: command.minConfidence,
+          verify: command.verify,
+          investigate: command.investigate,
+        },
       },
-    })
-    for (const warning of loaded.report.warnings) {
-      deps.stderr.write(`Warning: ${toTerminalText(warning)}\n`)
-    }
-    deps.stderr.write(`${formatContextLine(loaded.report)}\n`)
-    const language = command.language ?? loaded.options.language
-    const messages = messagesFor(language)
-    const investigate = command.investigate ?? loaded.options.investigate ?? true
-    let investigation: Investigation | undefined
-    let unavailable: string | undefined
-    if (investigate && loaded.diff.trim() !== '') {
-      try {
-        investigation = await openInvestigation(
-          { owner, repo, sha: pullRequest.headSha, token, env: deps.env },
-          deps.openCheckout,
-        )
-      } catch (error) {
-        if (!(error instanceof CheckoutUnavailableError)) throw error
-        unavailable = error.message
-        deps.stderr.write(
-          `Warning: ${toTerminalText(error.message)}: reviewing without investigation.\n`,
-        )
-      }
-    }
-    const servers = investigation === undefined ? [] : mcp
-    if (servers.length > 0 && !pullRequest.private) {
-      deps.stderr.write(
-        `Warning: ${pullRequest.repo} is public: what the AI reads from ${servers.join(', ')} may end up in the published review.\n`,
-      )
-    }
-    let provider: ReviewProvider
-    try {
-      provider = deps.createProvider(choice.provider, {
-        model: choice.model,
-        ...(servers.length === 0 ? {} : { userMcpServers: servers }),
-      })
-    } catch (error) {
-      await investigation?.close()
-      throw error
-    }
-
-    let outcome: ReviewOutcome
-    try {
-      outcome = await runReview(
-        {
-          pullRequest: { ...pullRequest, diff: loaded.diff },
-          language,
-          minConfidence: command.minConfidence ?? loaded.options.minConfidence,
-          verify: command.verify ?? loaded.options.verify ?? true,
-          context: loaded.context,
+      {
+        env: deps.env,
+        contextSources: {
+          readTree: () => deps.fetchRepositoryTree({ ...repository, sha: pullRequest.baseSha }),
+          readRepoFile: (path) =>
+            deps.fetchRepositoryFile({ ...repository, path, ref: pullRequest.baseSha }),
+          readLocalFile: (path) => deps.files.readText(expandHome(path, deps.home)),
+          listLocalDocs: (path) => deps.files.listDocs(expandHome(path, deps.home)),
         },
-        {
-          provider: withProgress(provider, deps.stderr),
-          verifier: withProgress(provider, deps.stderr, 'Verifying findings'),
-          ...(investigation === undefined ? {} : { tools: investigation.tools }),
+        openCheckout: deps.openCheckout,
+        createProvider: (servers) =>
+          deps.createProvider(choice.provider, {
+            model: choice.model,
+            ...(servers.length === 0 ? {} : { userMcpServers: [...servers] }),
+          }),
+        watchProvider: (provider, pass) =>
+          withProgress(provider, deps.stderr, PROGRESS_LABELS[pass]),
+        events: {
+          contextLoaded: (report) => {
+            for (const warning of report.warnings) {
+              deps.stderr.write(`Warning: ${toTerminalText(warning)}\n`)
+            }
+            deps.stderr.write(`${formatContextLine(report)}\n`)
+          },
+          warning: (message) => deps.stderr.write(`Warning: ${toTerminalText(message)}\n`),
         },
-      )
-    } finally {
-      await investigation?.close()
-    }
+      },
+    )
+    const { outcome, context: loaded } = reviewed
+    const messages = messagesFor(reviewed.language)
     if (outcome.status === 'skipped' && outcome.reason === 'all-ignored') {
       deps.stderr.write('Nothing to review: every changed file is ignored.\n')
       const note = formatIgnoredOnlyReview(pullRequest.headSha, loaded.context.ignored, messages)
@@ -249,13 +221,7 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
     for (const warning of outcome.result.warnings ?? []) {
       deps.stderr.write(`Warning: ${toTerminalText(warning)}\n`)
     }
-    const investigationReport = buildInvestigationReport({
-      status: investigation !== undefined ? 'used' : investigate ? 'unavailable' : 'off',
-      ...(unavailable === undefined ? {} : { reason: unavailable }),
-      ...(investigation === undefined ? {} : { log: investigation.log }),
-      findings: outcome.result.findings,
-      external: outcome.result.externalCalls ?? [],
-    })
+    const investigationReport = reviewed.investigation
     const investigationLine = formatInvestigationLine(investigationReport)
     if (investigationLine !== undefined) deps.stderr.write(`${investigationLine}\n`)
 

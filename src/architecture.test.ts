@@ -62,6 +62,29 @@ const INVESTIGATION: Boundary = {
   ],
   globals: ['console'],
 }
+const APP: Boundary = {
+  dir: 'app',
+  values: new Set([
+    '../context/load-context.js',
+    '../investigation/checkout/git-checkout.js',
+    '../investigation/open-investigation.js',
+    '../investigation/tools/report.js',
+    '../review/run-review.js',
+  ]),
+  types: new Set([
+    '../config/types.js',
+    '../context/types.js',
+    '../github/pull-request.js',
+    '../investigation/checkout/checkout.js',
+    '../investigation/checkout/git-checkout.js',
+    '../investigation/open-investigation.js',
+    '../investigation/tools/report.js',
+    '../investigation/tools/tool-log.js',
+    '../providers/types.js',
+    '../review/types.js',
+  ]),
+  expected: ['review-pull-request.ts'],
+}
 const STATIC_MODULE = /^\s*(?:import|export)\s+(type\s+)?(?:[^'"]*?\bfrom\s+)?['"]([^'"]+)['"]/gm
 const DYNAMIC_MODULE = /\bimport\(\s*['"]([^'"]+)['"]\s*\)/g
 const STRING_LITERAL = /(['"`])(?:\\.|(?!\1)[^\\])*\1/g
@@ -239,7 +262,18 @@ describe('investigation boundary rules', () => {
   })
 })
 
-describe.each([REVIEW, PUBLISH, CONTEXT, INVESTIGATION])('$dir boundary', (boundary) => {
+describe('app boundary rules', () => {
+  it.each([
+    ['the CLI formatters', "import { formatContextLine } from '../cli/format-context.js'"],
+    ['a concrete provider', "import { ClaudeCliProvider } from '../providers/claude.js'"],
+    ['the GitHub client', "import { fetchPullRequest } from '../github/pull-request.js'"],
+    ['the terminal', "process.stderr.write('x')"],
+  ])('flags %s', (_case, code) => {
+    expect(boundaryViolations(code, APP)).not.toEqual([])
+  })
+})
+
+describe.each([REVIEW, PUBLISH, CONTEXT, INVESTIGATION, APP])('$dir boundary', (boundary) => {
   const sources = sourcesOf(boundary)
 
   it('has source files to check', () => {
