@@ -99,6 +99,7 @@ export interface ReviewResult {
   score: Score
   dropped: DroppedFindings
   verification?: Verification
+  ignored?: string[]
 }
 
 export type SkipReviewReason = 'empty-diff' | 'all-ignored'

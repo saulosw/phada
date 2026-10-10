@@ -357,6 +357,12 @@ describe('formatReview', () => {
     },
   )
 
+  it('names the files left out of the review', () => {
+    const output = formatReview(pullRequestFixture(), { ...RESULT, ignored: ['package-lock.json'] })
+
+    expect(output).toContain('Left out of the review: `package-lock.json`\n')
+  })
+
   it('shows the sources and the rule under a finding', () => {
     const finding = findingFixture({ rule: 'orm-only', sources: ['docs/conventions.md'] })
 

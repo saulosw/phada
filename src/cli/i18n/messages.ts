@@ -9,6 +9,7 @@ export interface Messages {
   confidence: string
   fix: string
   basedOn: string
+  leftOut: string
   rule: string
   summary: string
   files: string

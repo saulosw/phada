@@ -18,6 +18,7 @@ export const english: Messages = {
   confidence: 'confidence',
   fix: 'Fix',
   basedOn: 'Based on',
+  leftOut: 'Left out of the review',
   rule: 'rule',
   summary: 'Summary',
   files: 'Files',

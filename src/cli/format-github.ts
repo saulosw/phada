@@ -3,7 +3,7 @@ import { FINDING_MARKER, reviewMarker } from '../publish/markers.js'
 import type { PublicationPlan } from '../publish/types.js'
 import { scoreFocus } from '../review/score.js'
 import type { FileChange, Finding, ReviewResult, Severity } from '../review/types.js'
-import { findingReferences } from './finding-references.js'
+import { findingReferences, leftOutLine } from './finding-references.js'
 import { english } from './i18n/en.js'
 import type { Messages } from './i18n/messages.js'
 import { githubBlock, githubCell, githubLine } from './markdown-text.js'
@@ -123,6 +123,7 @@ function renderBody(
       messages,
     ),
     messages.dropped(result.dropped),
+    leftOutLine(result.ignored ?? [], messages),
     `---\n<sub>${footer(result, githubLine(parts.model), messages)}</sub>`,
     reviewMarker({ sha: result.target.headSha, findings: result.findings.length }),
   ]

@@ -508,6 +508,20 @@ describe('runReview with repository context', () => {
     expect(outcome.result.findings[0]).toMatchObject({ severity: 'P1', rule: 'orm-only' })
   })
 
+  it('returns the files left out of the diff with the review', async () => {
+    const provider = new FakeProvider(() => Promise.resolve(OUTPUT))
+
+    const outcome = await runReview(
+      {
+        pullRequest: pullRequestFixture(),
+        context: reviewContextFixture({ ignored: ['package-lock.json'] }),
+      },
+      { provider },
+    )
+
+    expect(outcome).toMatchObject({ result: { ignored: ['package-lock.json'] } })
+  })
+
   it('skips without calling the provider when every changed file was ignored', async () => {
     const provider = new FakeProvider(() => Promise.reject(new Error('should not run')))
 

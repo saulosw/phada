@@ -109,6 +109,30 @@ describe('formatGitHubReview body', () => {
     )
   })
 
+  it('names the files left out of the review', () => {
+    const ignored = [
+      'package-lock.json',
+      ...Array.from({ length: 11 }, (_unused, index) => `gen/${index}.min.js`),
+    ]
+    const { body } = formatGitHubReview({ ...RESULT, ignored }, PLAN)
+
+    expect(body).toContain(
+      'Left out of the review: `package-lock.json` · `gen/0.min.js` · `gen/1.min.js` · `gen/2.min.js` · `gen/3.min.js` · `gen/4.min.js` · `gen/5.min.js` · `gen/6.min.js` · `gen/7.min.js` · `gen/8.min.js` · … (+2 more)',
+    )
+    expect(formatGitHubReview(RESULT, PLAN).body).not.toContain('Left out of the review')
+  })
+
+  it('names the files left out of the review in Portuguese', () => {
+    const { body } = formatGitHubReview(
+      { ...RESULT, ignored: ['yarn.lock'] },
+      PLAN,
+      undefined,
+      messagesFor('pt-BR'),
+    )
+
+    expect(body).toContain('Fora do review: `yarn.lock`')
+  })
+
   it('says when nothing was found and counts zero findings in the marker', () => {
     const body = formatGitHubReview(result({ findings: [] }), plan([])).body
 

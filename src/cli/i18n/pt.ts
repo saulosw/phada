@@ -21,6 +21,7 @@ export const portuguese: Messages = {
   confidence: 'confiança',
   fix: 'Correção sugerida',
   basedOn: 'Com base em',
+  leftOut: 'Fora do review',
   rule: 'regra',
   summary: 'Resumo',
   files: 'Arquivos',

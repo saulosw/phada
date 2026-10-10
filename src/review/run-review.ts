@@ -71,6 +71,7 @@ export async function runReview(
     minConfidence,
   )
   const totalUsage = sumUsage(usage, checked?.verification.usage)
+  const ignored = request.context?.ignored ?? []
   return {
     status: 'reviewed',
     result: {
@@ -95,6 +96,7 @@ export async function runReview(
         rejected: checked?.verification.rejected.length ?? 0,
       },
       ...(checked === undefined ? {} : { verification: checked.verification }),
+      ...(ignored.length === 0 ? {} : { ignored: [...ignored] }),
     },
   }
 }
