@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { ToolDefinition, Toolbox, ToolResult } from '../providers/types.js'
-import { BUDGET_EXHAUSTED, DEFAULT_TOOL_BUDGET } from './budget.js'
+import { BUDGET_EXHAUSTED, DEFAULT_TOOL_BUDGET, MAX_ANSWER_BYTES } from './budget.js'
 import type { ToolBudget } from './budget.js'
 import { CheckoutError } from './checkout.js'
 import { InvalidRepoPathError } from './repo-path.js'
@@ -76,11 +76,12 @@ export function createToolbox(
       }
       try {
         const output = await tool.run(parsed.data)
-        const size = Buffer.byteLength(output.text)
+        const text = cutToBytes(output.text, Math.min(MAX_ANSWER_BYTES, budget.bytes - bytes))
+        const size = Buffer.byteLength(text)
         bytes += size
         for (const path of output.touched) touched.add(path)
         record({ paths: output.paths, bytes: size })
-        return { text: output.text, isError: false }
+        return { text, isError: false }
       } catch (error) {
         const { code, message } = describeFailure(name, error)
         record({ error: code })
@@ -94,6 +95,16 @@ export function inputSchemaOf(schema: z.ZodType): ToolDefinition['inputSchema'] 
   return Object.fromEntries(
     Object.entries(z.toJSONSchema(schema)).filter(([key]) => key !== '$schema'),
   )
+}
+
+function cutToBytes(text: string, limit: number): string {
+  const encoded = Buffer.from(text)
+  if (encoded.length <= limit) return text
+  const kept = encoded
+    .subarray(0, limit)
+    .toString('utf8')
+    .replace(/\uFFFD+$/, '')
+  return `${kept}\n[answer cut at ${limit} of ${encoded.length} bytes: read a smaller range with from and to, or narrow the search]`
 }
 
 function describeFailure(name: string, error: unknown): { code: string; message: string } {

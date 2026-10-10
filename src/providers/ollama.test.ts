@@ -553,7 +553,7 @@ describe('OllamaProvider', () => {
     })
 
     it('stops running tools before the context window fills up', async () => {
-      const { toolbox, calls: toolCalls } = recordingToolbox('x'.repeat(20_000))
+      const { toolbox, calls: toolCalls } = recordingToolbox('x'.repeat(8_600))
       const { provider, calls } = setup({
         show: [showWithTools(16_384)],
         chat: [
@@ -567,6 +567,23 @@ describe('OllamaProvider', () => {
 
       expect(toolCalls).toEqual([['read_file', { path: 'a.ts' }]])
       expect((bodyOf(calls[3]).messages as unknown[]).at(-1)).toEqual({
+        role: 'tool',
+        tool_name: 'read_file',
+        content: 'Context window is full: finish the review now.',
+      })
+    })
+
+    it('sends a notice instead of an answer that would not fit in the window', async () => {
+      const { toolbox, calls: toolCalls } = recordingToolbox('x'.repeat(20_000))
+      const { provider, calls } = setup({
+        show: [showWithTools(16_384)],
+        chat: [toolCall('read_file', { path: 'a.ts' }), chat()],
+      })
+
+      await provider.review({ ...PROMPT, tools: toolbox })
+
+      expect(toolCalls).toHaveLength(1)
+      expect((bodyOf(calls[2]).messages as unknown[]).at(-1)).toEqual({
         role: 'tool',
         tool_name: 'read_file',
         content: 'Context window is full: finish the review now.',

@@ -23,6 +23,58 @@ function echoTool(runs: string[] = []): RegisteredTool<{ path: string }> {
   }
 }
 
+function bigTool(size: number): RegisteredTool<{ path: string }> {
+  return {
+    definition: { name: 'big', description: 'Big answer.', inputSchema: {} },
+    args: z.strictObject({ path: z.string() }),
+    run: async ({ path }) => ({ text: 'é'.repeat(size / 2), paths: [path], touched: [path] }),
+  }
+}
+
+describe('createToolbox answer size', () => {
+  it('cuts an answer over 32 KB and says how to read less', async () => {
+    const log = new ToolLog()
+    const toolbox = createToolbox([bigTool(100_000)], log, 'review')
+
+    const result = await toolbox.call('big', { path: 'dist/app.min.js' })
+
+    expect(result.isError).toBe(false)
+    expect(result.text).toMatch(
+      /\n\[answer cut at 32000 of 100000 bytes: read a smaller range with from and to, or narrow the search\]$/,
+    )
+    expect(
+      Buffer.byteLength(result.text.slice(0, result.text.lastIndexOf('\n['))),
+    ).toBeLessThanOrEqual(32_000)
+    expect(result.text).not.toContain('\uFFFD')
+    expect(log.records[0]?.bytes).toBe(Buffer.byteLength(result.text))
+  })
+
+  it('cuts an answer to what is left of the byte budget', async () => {
+    const toolbox = createToolbox([bigTool(1000)], new ToolLog(), 'review', {
+      calls: 10,
+      bytes: 600,
+    })
+
+    await toolbox.call('big', { path: 'a' })
+    const second = await toolbox.call('big', { path: 'b' })
+
+    expect(second.text).toBe(BUDGET_EXHAUSTED)
+  })
+
+  it('never returns more than the budget allows in one call', async () => {
+    const toolbox = createToolbox([bigTool(1000)], new ToolLog(), 'review', {
+      calls: 10,
+      bytes: 400,
+    })
+
+    const first = await toolbox.call('big', { path: 'a' })
+
+    expect(
+      Buffer.byteLength(first.text.slice(0, first.text.lastIndexOf('\n['))),
+    ).toBeLessThanOrEqual(400)
+  })
+})
+
 describe('createToolbox', () => {
   it('exposes the definitions and runs a tool', async () => {
     const log = new ToolLog()

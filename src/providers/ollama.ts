@@ -335,7 +335,8 @@ async function runToolCall(
   if (used + OUTPUT_RESERVE + TOOL_ANSWER_RESERVE > numCtx) return CONTEXT_FULL
   const raw = call.function.arguments
   const args = typeof raw === 'string' ? (parseJson(raw) ?? {}) : (raw ?? {})
-  return (await tools.call(call.function.name, args)).text
+  const answer = (await tools.call(call.function.name, args)).text
+  return used + estimateTokens(answer) + OUTPUT_RESERVE > numCtx ? CONTEXT_FULL : answer
 }
 
 function toReviewOutput(
