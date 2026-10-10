@@ -3,7 +3,8 @@
   "base": {
     "ref": "develop",
     "repo": {
-      "full_name": "saulosw/phada-dev-web"
+      "full_name": "saulosw/phada-dev-web",
+      "private": true
     },
     "sha": "c0d92ffe6bcf7cbe3200b67190cf1324162a66be"
   },

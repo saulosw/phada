@@ -24,6 +24,7 @@ export interface EffectiveConfig {
   language?: string
   minConfidence?: number
   verify?: boolean
+  investigate?: boolean
   contextDefaults: boolean
   rules: ResolvedRule[]
   disabledRules: ReadonlySet<string>
@@ -41,8 +42,8 @@ export interface ProviderChoice {
 
 const DEFAULT_PROVIDER = 'claude'
 const OPTION_PRECEDENCE: readonly LayerKind[] = ['user-repo', 'repo-root', 'user']
-const OPTIONS = ['language', 'minConfidence', 'verify'] as const
-const USER_ONLY = ['provider', 'model', 'localFiles'] as const
+const OPTIONS = ['language', 'minConfidence', 'verify', 'investigate'] as const
+const USER_ONLY = ['provider', 'model', 'localFiles', 'mcp'] as const
 const HTML_COMMENT = /<!--[\s\S]*?-->/g
 const GLOB_SYNTAX = /[()[\]{}*?!+@\\]/g
 const GLOB_CHARS = /[*?[\]{}!]/
@@ -59,10 +60,12 @@ export function mergeConfig(layers: readonly ConfigLayer[]): EffectiveConfig {
   const language = firstSet((config) => config.language)
   const minConfidence = firstSet((config) => config.minConfidence)
   const verify = firstSet((config) => config.verify)
+  const investigate = firstSet((config) => config.investigate)
   const merged: EffectiveConfig = {
     ...(language === undefined ? {} : { language }),
     ...(minConfidence === undefined ? {} : { minConfidence }),
     ...(verify === undefined ? {} : { verify }),
+    ...(investigate === undefined ? {} : { investigate }),
     contextDefaults: firstSet((config) => config.context?.defaults) ?? true,
     rules: [],
     disabledRules: new Set(
@@ -106,6 +109,13 @@ export function resolveProvider(
     (source === undefined ? configs.find((config) => config.model)?.model : source.model)
   const provider = source?.provider ?? DEFAULT_PROVIDER
   return model === undefined ? { provider } : { provider, model }
+}
+
+export function userMcpServers(userLayers: readonly ConfigLayer[]): string[] {
+  const servers = (['user-repo', 'user'] as const).flatMap((kind) =>
+    userLayers.filter((layer) => layer.kind === kind).flatMap((layer) => layer.config.mcp ?? []),
+  )
+  return [...new Set(servers)]
 }
 
 function disabledInFolders(layers: readonly ConfigLayer[]): Map<string, string[]> {

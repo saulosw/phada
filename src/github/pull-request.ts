@@ -34,6 +34,7 @@ export interface PullRequest {
   headRef: string
   headSha: string
   fromFork: boolean
+  private: boolean
   stats: { changedFiles: number; additions: number; deletions: number; commits: number }
   /** Unified diff, never truncated. */
   diff: string
@@ -131,6 +132,7 @@ function toPullRequestMetadata(json: unknown): PullRequestMetadata {
     headSha: stringField(json, 'head.sha'),
     // A deleted fork shows up as head.repo === null; treat it as a fork.
     fromFork: headRepo === null || headRepo !== baseRepo,
+    private: booleanField(json, 'base.repo.private'),
     stats: {
       changedFiles: numberField(json, 'changed_files'),
       additions: numberField(json, 'additions'),

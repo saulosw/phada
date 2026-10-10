@@ -101,4 +101,18 @@ describe('parseConfigText', () => {
     expect(parsed.ok).toBe(false)
     if (!parsed.ok) expect(parsed.message).not.toContain('\n')
   })
+
+  it('reads investigate and the list of MCP servers', () => {
+    expect(parseConfigText('investigate: false\nmcp: [linear, "claude.ai Linear"]')).toEqual({
+      ok: true,
+      config: { investigate: false, mcp: ['linear', 'claude.ai Linear'] },
+    })
+  })
+
+  it('refuses mcp that is not a list of server names', () => {
+    expect(parseConfigText('mcp: all').ok).toBe(false)
+    const parsed = parseConfigText('mcp: ["a/b"]')
+    expect(parsed.ok).toBe(false)
+    if (!parsed.ok) expect(parsed.message).toContain('use the server name as your AI CLI shows it')
+  })
 })

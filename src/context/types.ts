@@ -49,6 +49,7 @@ export interface ContextOptions {
   language?: string
   minConfidence?: number
   verify?: boolean
+  investigate?: boolean
 }
 
 export interface LoadedContext {

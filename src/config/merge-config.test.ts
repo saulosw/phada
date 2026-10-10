@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mergeConfig, resolveProvider } from './merge-config.js'
+import { mergeConfig, resolveProvider, userMcpServers } from './merge-config.js'
 import type { ConfigLayer } from './types.js'
 
 type Config = ConfigLayer['config']
@@ -257,5 +257,34 @@ describe('resolveProvider', () => {
 
   it('defaults to claude with the provider default model', () => {
     expect(resolveProvider({}, [])).toEqual({ provider: 'claude' })
+  })
+})
+
+describe('investigation options', () => {
+  it('takes investigate like verify, from the most specific layer', () => {
+    expect(
+      mergeConfig([user({ investigate: true }), root({ investigate: false })]).investigate,
+    ).toBe(false)
+    expect(
+      mergeConfig([root({ investigate: false }), userRepo({ investigate: true })]).investigate,
+    ).toBe(true)
+  })
+
+  it('ignores mcp in the repository with a warning', () => {
+    const merged = mergeConfig([root({ mcp: ['linear'] })])
+
+    expect(merged.warnings).toEqual([
+      '.phada/config.yml: mcp is only read from your own config; ignored.',
+    ])
+  })
+
+  it('joins the MCP servers of the user layers once', () => {
+    expect(
+      userMcpServers([
+        user({ mcp: ['linear', 'notion'] }),
+        userRepo({ mcp: ['notion', 'jira'] }),
+        root({ mcp: ['evil'] }),
+      ]),
+    ).toEqual(['notion', 'jira', 'linear'])
   })
 })
