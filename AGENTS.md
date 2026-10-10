@@ -30,11 +30,14 @@ talks to GitHub itself.
 ```
 src/
   bin.ts                 # entry point of the `phada` command: reads the package version, calls run()
-  main.ts                # run(argv, deps): user config → provider choice → PR → review state →
-                         #   run/skip → repository context → investigation → review → publish;
-                         #   createProvider()
-  architecture.test.ts   # allowed imports of src/review/, src/publish/, src/context/ and
-                         #   src/investigation/
+  main.ts                # run(argv, deps): CLI flow — flags, token, user config, provider choice,
+                         #   pull request and review state, run/skip, then the review use case,
+                         #   then print or publish; createProvider()
+  architecture.test.ts   # allowed imports of src/review/, src/publish/, src/context/,
+                         #   src/investigation/ and src/app/
+  app/                   # use cases any caller can run (CLI today), with injected readers
+    review-pull-request.ts # reviewPullRequest(): repository context → investigation → review →
+                         #   investigation report; reports progress through typed events
   cli/                   # terminal edge
     args.ts              #   parseCliArgs(): `review` (--dry-run, --force, --verify/--no-verify,
                          #   --investigate/--no-investigate) and
@@ -85,17 +88,21 @@ src/
     create-review.ts     #   createReview(): one COMMENT review with line comments
     repository-files.ts  #   fetchRepositoryTree(), fetchRepositoryFile(): the repository at a commit
   investigation/         # the AI reads the pull request head with Phada's read-only tools
-    checkout.ts          #   Checkout: the repository at one commit (read, grep, list), CheckoutError
-    git-checkout.ts      #   openGitCheckout(): a temporary bare repository, git fetch --depth 1 <sha>
-    repo-path.ts         #   toRepoPath(): paths inside the repository only
-    tool-registry.ts     #   RegisteredTool, createToolbox(): validation, budget, call log
-    repository-tools.ts  #   read_file, grep and list over a Checkout
-    budget.ts            #   calls and bytes per review pass
-    tool-log.ts          #   ToolLog: one record per tool call
-    mcp-server.ts        #   the tools as a local MCP server (JSON-RPC over a socket)
-    mcp-bridge.ts        #   what the AI CLI starts: stdio ↔ the socket of mcp-server.ts
+    toolbox.ts           #   the tools contract: ToolDefinition, ToolResult, Toolbox
     open-investigation.ts #  openInvestigation(): checkout + tools per pass + log
-    report.ts            #   buildInvestigationReport(): what the AI read, for the CLI and the JSON
+    checkout/            #   the repository at one commit
+      checkout.ts        #     Checkout (read, grep, list), CheckoutError
+      git-checkout.ts    #     openGitCheckout(): a temporary bare repository, git fetch --depth 1 <sha>
+      repo-path.ts       #     toRepoPath(): paths inside the repository only
+    tools/               #   the tools, pure over a Checkout
+      tool-registry.ts   #     RegisteredTool, createToolbox(): validation, budget, answer size, log
+      repository-tools.ts #    read_file, grep and list
+      budget.ts          #     calls and bytes per review pass, answer size
+      tool-log.ts        #     ToolLog: one record per tool call
+      report.ts          #     buildInvestigationReport(): what the AI read, for the CLI and the JSON
+    mcp/                 #   how the AI CLIs reach the tools
+      mcp-server.ts      #     the tools as a local MCP server (JSON-RPC over a socket)
+      mcp-bridge.ts      #     what the AI CLI starts: stdio ↔ the socket of mcp-server.ts
   process/               # safe subprocess runner (stdin, timeout, typed errors)
     run-command.ts       #   runCommand(): returns the exit code, never interprets it
   providers/             # ReviewProvider and its implementations
@@ -149,7 +156,10 @@ repository and of the local disk as data, and its only value imports from outsid
 `src/publish/` imports only types from outside the folder (`src/review/types.ts`,
 `src/github/pull-request-reviews.ts`). `src/investigation/` runs `git` through
 `src/process/run-command.ts` and never imports the CLI, the engine or a concrete provider; the
-engine sees its tools only as a `Toolbox` (`src/providers/types.ts`) that the caller passes in.
+engine sees its tools only as a `Toolbox` (`src/investigation/toolbox.ts`) that the caller passes
+in. `src/app/` orchestrates a review from injected readers and factories and never imports the
+CLI, a concrete provider or the GitHub client, nor prints: it reports through events, and
+`main.ts` turns them into terminal output.
 `src/architecture.test.ts` enforces the allowed imports of these folders and forbids
 `process`/`console` inside them (`console` only, in `src/investigation/`).
 
