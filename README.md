@@ -7,14 +7,15 @@ Phada reviews a GitHub pull request with the AI you already use — Claude Code,
 served by Ollama — and publishes the review on the pull request.
 
 It runs on your machine. Phada fetches the pull request and its diff, reads the repository's
-own rules and docs, sends them to the AI provider you choose, checks that the answer is a valid
-review and scores it. It prints the review
+own rules and docs, sends them to the AI provider you choose, lets the AI read the rest of the
+repository with read-only tools, checks that the answer is a valid review and scores it. It prints the review
 as Markdown or JSON and posts it on the pull request: one comment on the line of each finding and
 the rest in the review body (see [Publishing](#publishing)).
 
 ## Requirements
 
 - Node.js 22 or newer
+- `git`, for the repository investigation (without it, the AI only sees the diff and the context)
 - A GitHub token that can read the pull request and write reviews (see [GitHub token](#github-token))
 - One AI provider:
   - [Claude Code](https://code.claude.com/) (`claude`), logged in with your subscription,
@@ -165,6 +166,50 @@ ends with the full list, and the JSON has a `context` block with every rule, doc
 where it came from and whether it was sent. Findings list the docs and files they rely on and the
 rule they break, in the JSON and under each comment on the pull request.
 
+## Repository investigation
+
+The AI can also read the rest of the repository while it reviews: who calls a function the
+pull request changes, what a function it uses does, what the rest of a changed file does. Phada
+fetches the head commit of the pull request into a temporary folder (`git fetch --depth 1`, with
+the GitHub token only in the environment of `git`) and gives the AI three tools of its own:
+
+- `read_file`: up to 400 lines of a file per call, with line numbers;
+- `grep`: a regular expression over the repository, up to 100 matching lines;
+- `list`: the entries of a folder.
+
+The tools only read that commit: no path outside the repository, no symbolic link, no binary or
+file over 1 MB. Each review pass gets up to 40 calls and 512 KB of results; the verifier
+(`--verify`) investigates too, with its own budget. What the tools return comes from the pull
+request head, written by its author, so it is data for the AI, never instructions. Findings still
+point to a line of the diff, and the files the AI read to support them show up in their sources.
+The temporary folder is removed after the review.
+
+Claude Code and Codex reach the tools through a local MCP server that Phada runs for the review;
+their own tools stay off. Ollama models use tool calling; a model that does not support it
+reviews without the investigation, with a warning.
+
+After the review Phada prints what the AI read, e.g. `Investigated: 6 reads, 3 searches (41.2 KB)`.
+With `--dry-run` the preview lists every call, and the JSON has an `investigation` block with
+each call, its size and whether a finding used it. `--no-investigate` (or `investigate: false`)
+reviews the diff and the context only. Without `git`, or when the head cannot be fetched, the
+review runs without the investigation and says why.
+
+### Your AI's MCP servers
+
+With Claude Code, your own config can let the AI use some of the MCP servers you set up in Claude
+Code, for example to read the ticket a pull request refers to:
+
+```yaml
+# ~/.config/phada/config.yml
+mcp: [linear, 'claude.ai Linear']
+```
+
+Only the servers you name are allowed, and only from your own config (never from the
+repository's `.phada/`); claude.ai connectors are named as `claude.ai <Name>`. Calls to them are
+counted in the `Investigated:` line and the JSON, and a finding based on one cites it as
+`<server>: <what it read>`. On a public repository Phada warns that what the AI read there may end
+up in the published review. `mcp` does not work with Codex or Ollama yet.
+
 ## Configuration
 
 Phada reads two kinds of config, both optional:
@@ -206,6 +251,8 @@ context:
 | `language`         | Review language, like `--language`                                                                                                           | both (root) |
 | `minConfidence`    | Confidence cut, like `--min-confidence`                                                                                                      | both (root) |
 | `verify`           | Verify findings, like `--verify`                                                                                                             | both (root) |
+| `investigate`      | `false` turns the [repository investigation](#repository-investigation) off, like `--no-investigate`                                         | both (root) |
+| `mcp`              | Names of your Claude Code MCP servers the AI may use (see [Your AI's MCP servers](#your-ais-mcp-servers))                                    | your config |
 | `context.defaults` | `false` sends only the files listed in `context.files`, not the docs Phada picks                                                             | both (root) |
 | `context.files`    | Files of the repository to always send (globs allowed), first in line for the budget                                                         | both        |
 | `ignore`           | More files to leave out of the diff                                                                                                          | both        |
@@ -226,17 +273,18 @@ your own stops Phada with an error that names the file and the key.
 
 ## Options
 
-| Option                 | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--provider <name>`    | AI provider: `claude` (default, unless your config sets one), `codex` or `ollama`                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `--model <name>`       | Model to use. Required for Ollama. Default: for Claude, the Claude Code default model, else `opus`; for Codex, the `model` in `~/.codex/config.toml` (or `$CODEX_HOME/config.toml`), else the Codex CLI default                                                                                                                                                                                                                                                                    |
-| `--language <tag>`     | Language of the review, e.g. `pt-BR`. The AI writes its text in it, and Phada's own headings and labels follow it in English (`en`) and Portuguese (`pt`, `pt-BR`); other languages keep those labels in English. Default: English                                                                                                                                                                                                                                                 |
-| `--min-confidence <n>` | Confidence cut, a whole number from 50 to 100. Findings at the cut or above are shown and scored; the ones from 50 up to the cut are listed as worth checking. Default: 60                                                                                                                                                                                                                                                                                                         |
-| `--format <name>`      | Output: `markdown` (default) or `json`. The JSON (`schemaVersion: 1`) carries the same review as data: score, summary, every changed file, findings, findings worth checking, dropped counts, the verification (with `--verify`), provider, model, time and tokens, a `publication` block (`published` with the URL, `failed`, `dry-run` with the exact body and comments, or `skipped`) and a `context` block (see [Rules and repository context](#rules-and-repository-context)) |
-| `--verify`             | Checks every finding with a second call to the AI before scoring (see above). Off by default; `--no-verify` turns it off when the config turns it on                                                                                                                                                                                                                                                                                                                               |
-| `--dry-run`            | Prints exactly what would be published (the review body and every comment) and posts nothing                                                                                                                                                                                                                                                                                                                                                                                       |
-| `--force`              | Reviews and publishes even when Phada already reviewed this commit (see [Publishing](#publishing))                                                                                                                                                                                                                                                                                                                                                                                 |
-| `--debug`              | Shows error details                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Option                 | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--provider <name>`    | AI provider: `claude` (default, unless your config sets one), `codex` or `ollama`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `--model <name>`       | Model to use. Required for Ollama. Default: for Claude, the Claude Code default model, else `opus`; for Codex, the `model` in `~/.codex/config.toml` (or `$CODEX_HOME/config.toml`), else the Codex CLI default                                                                                                                                                                                                                                                                                                                                                          |
+| `--language <tag>`     | Language of the review, e.g. `pt-BR`. The AI writes its text in it, and Phada's own headings and labels follow it in English (`en`) and Portuguese (`pt`, `pt-BR`); other languages keep those labels in English. Default: English                                                                                                                                                                                                                                                                                                                                       |
+| `--min-confidence <n>` | Confidence cut, a whole number from 50 to 100. Findings at the cut or above are shown and scored; the ones from 50 up to the cut are listed as worth checking. Default: 60                                                                                                                                                                                                                                                                                                                                                                                               |
+| `--format <name>`      | Output: `markdown` (default) or `json`. The JSON (`schemaVersion: 1`) carries the same review as data: score, summary, every changed file, findings, findings worth checking, dropped counts, the verification (with `--verify`), provider, model, time and tokens, a `publication` block (`published` with the URL, `failed`, `dry-run` with the exact body and comments, or `skipped`), a `context` block (see [Rules and repository context](#rules-and-repository-context)) and an `investigation` block (see [Repository investigation](#repository-investigation)) |
+| `--no-investigate`     | Reviews without letting the AI read the rest of the repository (see [Repository investigation](#repository-investigation)); `--investigate` turns it back on when the config turns it off                                                                                                                                                                                                                                                                                                                                                                                |
+| `--verify`             | Checks every finding with a second call to the AI before scoring (see above). Off by default; `--no-verify` turns it off when the config turns it on                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `--dry-run`            | Prints exactly what would be published (the review body and every comment) and posts nothing                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `--force`              | Reviews and publishes even when Phada already reviewed this commit (see [Publishing](#publishing))                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `--debug`              | Shows error details                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 ## Exit codes
 
@@ -249,15 +297,17 @@ your own stops Phada with an error that names the file and the key.
 ## What the AI sees
 
 With Claude Code and Codex, the AI runs in an empty temporary directory and only sees the text
-that Phada sends: the pull request, its diff, and the rules and docs described in
-[Rules and repository context](#rules-and-repository-context). Rules from `.phada/` and your
+that Phada sends: the pull request, its diff, the rules and docs described in
+[Rules and repository context](#rules-and-repository-context), and what it reads with Phada's
+tools from the pull request head (see [Repository investigation](#repository-investigation)). Rules from `.phada/` and your
 config are instructions; the pull request, the diff and the docs are data, and instructions
 hidden in them are reported as findings. Phada only reads the `model` from their settings. An
 `AGENTS.md`/`CLAUDE.md` in or above that temporary directory is never loaded, and the GitHub
 token is removed from the environment of the AI process.
 
-Claude Code runs without tools, MCP servers or your personal settings (hooks, plugins, skills,
-`CLAUDE.md`).
+Claude Code runs without its own tools or your personal settings (hooks, plugins, skills,
+`CLAUDE.md`). The only MCP servers it can use are Phada's and the ones your config names in
+`mcp`.
 
 Codex keeps a few built-in tools enabled that, with Codex CLI 0.160.0, can neither read your
 files nor reach the network. Phada also turns off the apps connected to your ChatGPT account,

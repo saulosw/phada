@@ -30,11 +30,14 @@ talks to GitHub itself.
 ```
 src/
   bin.ts                 # entry point of the `phada` command: reads the package version, calls run()
-  main.ts                # run(argv, deps): user config → provider → PR → review state → run/skip →
-                         #   repository context → review → publish; createProvider()
-  architecture.test.ts   # allowed imports of src/review/, src/publish/ and src/context/
+  main.ts                # run(argv, deps): user config → provider choice → PR → review state →
+                         #   run/skip → repository context → investigation → review → publish;
+                         #   createProvider()
+  architecture.test.ts   # allowed imports of src/review/, src/publish/, src/context/ and
+                         #   src/investigation/
   cli/                   # terminal edge
-    args.ts              #   parseCliArgs(): `review` (--dry-run, --force, --verify/--no-verify) and
+    args.ts              #   parseCliArgs(): `review` (--dry-run, --force, --verify/--no-verify,
+                         #   --investigate/--no-investigate) and
                          #   `init` commands, --help, --version; USAGE, REVIEW_USAGE, INIT_USAGE
     init.ts              #   runInit(): .phada/ in the repository, or the user's own config
     init-templates.ts    #   the commented files phada init writes
@@ -44,8 +47,10 @@ src/
                          #   formatGitHubPreview() for --dry-run
     format-publication.ts #  skip and "Published" messages
     format-context.ts    #   the "Context:" line and the context section of --dry-run
+    format-investigation.ts # the "Investigated:" line and the investigation section of --dry-run
     finding-references.ts #  the "Based on" line: sources and rule of a finding
-    format-json.ts       #   formatReviewJson(): schemaVersion 1, with the publication and context blocks
+    format-json.ts       #   formatReviewJson(): schemaVersion 1, with the publication, context and
+                         #   investigation blocks
     markdown-text.ts     #   escapes AI text: block markers; for GitHub also HTML and mentions
     review-text.ts       #   model label and short SHA
     i18n/                #   fixed review text per language: messages.ts (Messages, messagesFor()),
@@ -79,6 +84,18 @@ src/
     pull-request-reviews.ts # fetchReviewState(): viewer, reviews and threads, paginated
     create-review.ts     #   createReview(): one COMMENT review with line comments
     repository-files.ts  #   fetchRepositoryTree(), fetchRepositoryFile(): the repository at a commit
+  investigation/         # the AI reads the pull request head with Phada's read-only tools
+    checkout.ts          #   Checkout: the repository at one commit (read, grep, list), CheckoutError
+    git-checkout.ts      #   openGitCheckout(): a temporary bare repository, git fetch --depth 1 <sha>
+    repo-path.ts         #   toRepoPath(): paths inside the repository only
+    tool-registry.ts     #   RegisteredTool, createToolbox(): validation, budget, call log
+    repository-tools.ts  #   read_file, grep and list over a Checkout
+    budget.ts            #   calls and bytes per review pass
+    tool-log.ts          #   ToolLog: one record per tool call
+    mcp-server.ts        #   the tools as a local MCP server (JSON-RPC over a socket)
+    mcp-bridge.ts        #   what the AI CLI starts: stdio ↔ the socket of mcp-server.ts
+    open-investigation.ts #  openInvestigation(): checkout + tools per pass + log
+    report.ts            #   buildInvestigationReport(): what the AI read, for the CLI and the JSON
   process/               # safe subprocess runner (stdin, timeout, typed errors)
     run-command.ts       #   runCommand(): returns the exit code, never interprets it
   providers/             # ReviewProvider and its implementations
@@ -130,8 +147,11 @@ environment. `src/context/` reads nothing itself: `loadContext()` gets the reade
 repository and of the local disk as data, and its only value imports from outside the folder are
 `picomatch`, `node:path` and the pure config helpers (`parse-config.ts`, `merge-config.ts`).
 `src/publish/` imports only types from outside the folder (`src/review/types.ts`,
-`src/github/pull-request-reviews.ts`). `src/architecture.test.ts` enforces the allowed imports of
-these folders and forbids `process`/`console` inside them.
+`src/github/pull-request-reviews.ts`). `src/investigation/` runs `git` through
+`src/process/run-command.ts` and never imports the CLI, the engine or a concrete provider; the
+engine sees its tools only as a `Toolbox` (`src/providers/types.ts`) that the caller passes in.
+`src/architecture.test.ts` enforces the allowed imports of these folders and forbids
+`process`/`console` inside them (`console` only, in `src/investigation/`).
 
 ## Conventions
 
