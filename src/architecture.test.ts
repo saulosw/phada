@@ -78,6 +78,18 @@ const REPOSITORY: Boundary = {
   types: new Set(['../process/run-command.js']),
   expected: ['checkout.ts', 'git-checkout.ts', 'git-mirror.ts', 'mirror-lock.ts', 'repo-path.ts'],
 }
+const REPO_MAP: Boundary = {
+  dir: 'repo-map',
+  values: new Set(['web-tree-sitter', 'node:fs/promises', 'node:module']),
+  types: new Set(),
+  expected: ['extract.ts', 'grammars.ts', 'languages.ts', 'types.ts', 'walk.ts'],
+}
+const STORE: Boundary = {
+  dir: 'store',
+  values: new Set(['node:fs/promises', 'node:path', 'node:sqlite']),
+  types: new Set(['../repo-map/types.js', '../repo-map/languages.js']),
+  expected: ['index-store.ts', 'schema.ts'],
+}
 const APP: Boundary = {
   dir: 'app',
   values: new Set([
@@ -311,7 +323,39 @@ describe('repository boundary rules', () => {
   })
 })
 
-describe.each([REVIEW, PUBLISH, CONTEXT, INVESTIGATION, REPOSITORY, APP])(
+describe('repo-map boundary rules', () => {
+  it.each([
+    ['SQLite', "import { DatabaseSync } from 'node:sqlite'"],
+    ['the process runner', "import { runCommand } from '../process/run-command.js'"],
+    ['the repository mirror', "import { openGitMirror } from '../repository/git-mirror.js'"],
+    ['process.env', 'const home = process.env.HOME'],
+  ])('flags %s', (_case, code) => {
+    expect(boundaryViolations(code, REPO_MAP)).not.toEqual([])
+  })
+})
+
+describe('store boundary rules', () => {
+  it('accepts SQLite and the types of the extracted map', () => {
+    const code = [
+      "import type { DatabaseSync } from 'node:sqlite'",
+      "import type { FileMap } from '../repo-map/types.js'",
+      "const sqlite = await import('node:sqlite')",
+    ].join('\n')
+
+    expect(boundaryViolations(code, STORE)).toEqual([])
+  })
+
+  it.each([
+    ['tree-sitter', "import { Parser } from 'web-tree-sitter'"],
+    ['a subprocess', "import { spawn } from 'node:child_process'"],
+    ['a value import of the extractor', "import { createExtractor } from '../repo-map/extract.js'"],
+    ['the console', "console.log('debug')"],
+  ])('flags %s', (_case, code) => {
+    expect(boundaryViolations(code, STORE)).not.toEqual([])
+  })
+})
+
+describe.each([REVIEW, PUBLISH, CONTEXT, INVESTIGATION, REPOSITORY, REPO_MAP, STORE, APP])(
   '$dir boundary',
   (boundary) => {
     const sources = sourcesOf(boundary)
