@@ -23,6 +23,7 @@ import { toTerminalText } from './cli/terminal-text.js'
 import type { TextOutput } from './cli/progress.js'
 import type { LocalFileSystem } from './config/local-files.js'
 import { resolveProvider, userMcpServers } from './config/merge-config.js'
+import { mirrorDir, phadaCacheDir } from './config/cache-paths.js'
 import { expandHome, loadUserLayers } from './config/user-config.js'
 import type { ContextReport } from './context/types.js'
 import type { CreatedReview, CreateReviewOptions } from './github/create-review.js'
@@ -35,7 +36,7 @@ import type { PullRequestRef } from './github/pull-request-ref.js'
 import type { FetchPullRequestOptions, PullRequest } from './github/pull-request.js'
 import type { RepositoryFilesOptions, RepositoryTree } from './github/repository-files.js'
 import type { Checkout } from './repository/checkout.js'
-import type { OpenGitCheckoutOptions } from './repository/git-checkout.js'
+import type { OpenCheckoutOptions } from './repository/git-mirror.js'
 import type { InvestigationReport } from './investigation/tools/report.js'
 import type { ReviewPass } from './investigation/tools/tool-log.js'
 import { ClaudeCliProvider } from './providers/claude.js'
@@ -79,7 +80,7 @@ export interface MainDeps {
   fetchRepositoryFile: (
     options: RepositoryFilesOptions & { path: string; ref: string },
   ) => Promise<string | null>
-  openCheckout: (options: OpenGitCheckoutOptions) => Promise<Checkout>
+  openCheckout: (options: OpenCheckoutOptions) => Promise<Checkout>
   createProvider: (name: string, options: ProviderOptions) => ReviewProvider
 }
 
@@ -183,7 +184,11 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
           readLocalFile: (path) => deps.files.readText(expandHome(path, deps.home)),
           listLocalDocs: (path) => deps.files.listDocs(expandHome(path, deps.home)),
         },
-        openCheckout: deps.openCheckout,
+        openCheckout: (options) =>
+          deps.openCheckout({
+            ...options,
+            dir: mirrorDir(phadaCacheDir(deps.env, deps.home), owner, repo),
+          }),
         createProvider: (servers) =>
           deps.createProvider(choice.provider, {
             model: choice.model,

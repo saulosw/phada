@@ -55,7 +55,7 @@ const INVESTIGATION: Boundary = {
     '../providers/types.js',
     '../review/types.js',
     '../repository/checkout.js',
-    '../repository/git-checkout.js',
+    '../repository/git-mirror.js',
   ]),
   expected: [
     'toolbox.ts',
@@ -76,7 +76,7 @@ const REPOSITORY: Boundary = {
     '../providers/redact-secrets.js',
   ]),
   types: new Set(['../process/run-command.js']),
-  expected: ['checkout.ts', 'git-checkout.ts', 'repo-path.ts'],
+  expected: ['checkout.ts', 'git-checkout.ts', 'git-mirror.ts', 'mirror-lock.ts', 'repo-path.ts'],
 }
 const APP: Boundary = {
   dir: 'app',

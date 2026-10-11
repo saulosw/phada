@@ -4,9 +4,11 @@ import type { ContextReport, ContextSources, LoadedContext } from '../context/ty
 import type { PullRequest } from '../github/pull-request.js'
 import type { Checkout } from '../repository/checkout.js'
 import { CheckoutUnavailableError } from '../repository/git-checkout.js'
-import type { OpenGitCheckoutOptions } from '../repository/git-checkout.js'
 import { openInvestigation } from '../investigation/open-investigation.js'
-import type { Investigation } from '../investigation/open-investigation.js'
+import type {
+  Investigation,
+  InvestigationCheckoutOptions,
+} from '../investigation/open-investigation.js'
 import { buildInvestigationReport } from '../investigation/tools/report.js'
 import type { InvestigationReport } from '../investigation/tools/report.js'
 import type { ReviewPass } from '../investigation/tools/tool-log.js'
@@ -37,7 +39,7 @@ export interface PullRequestReviewEvents {
 export interface PullRequestReviewDeps {
   env: NodeJS.ProcessEnv
   contextSources: ContextSources
-  openCheckout: (options: OpenGitCheckoutOptions) => Promise<Checkout>
+  openCheckout: (options: InvestigationCheckoutOptions) => Promise<Checkout>
   createProvider: (userMcpServers: readonly string[]) => ReviewProvider
   watchProvider?: (provider: ReviewProvider, pass: ReviewPass) => ReviewProvider
   events: PullRequestReviewEvents
@@ -71,7 +73,14 @@ export async function reviewPullRequest(
     const [owner = '', repo = ''] = pullRequest.repo.split('/')
     try {
       investigation = await openInvestigation(
-        { owner, repo, sha: pullRequest.headSha, token: input.token, env: deps.env },
+        {
+          owner,
+          repo,
+          sha: pullRequest.headSha,
+          keepAs: `refs/phada/pull/${pullRequest.number}`,
+          token: input.token,
+          env: deps.env,
+        },
         deps.openCheckout,
       )
     } catch (error) {

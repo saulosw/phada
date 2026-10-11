@@ -19,7 +19,7 @@ import type { FetchPullRequestOptions, PullRequest } from './github/pull-request
 import type { RepositoryTree } from './github/repository-files.js'
 import type { Checkout } from './repository/checkout.js'
 import { CheckoutUnavailableError } from './repository/git-checkout.js'
-import type { OpenGitCheckoutOptions } from './repository/git-checkout.js'
+import type { OpenCheckoutOptions } from './repository/git-mirror.js'
 import { FINDING_MARKER, reviewMarker } from './publish/markers.js'
 import { createProvider, run } from './main.js'
 import type { MainDeps, ProviderOptions } from './main.js'
@@ -54,7 +54,7 @@ interface Harness {
   events: string[]
   providers: { name: string; options: ProviderOptions }[]
   prompts: ReviewPrompt[]
-  checkouts: OpenGitCheckoutOptions[]
+  checkouts: OpenCheckoutOptions[]
   closed: () => number
 }
 
@@ -78,10 +78,10 @@ function harness(
     files?: MemoryFiles
     repoFiles?: Record<string, string>
     tree?: () => Promise<RepositoryTree>
-    openCheckout?: (options: OpenGitCheckoutOptions) => Promise<Checkout>
+    openCheckout?: (options: OpenCheckoutOptions) => Promise<Checkout>
   } = {},
 ): Harness {
-  const checkouts: OpenGitCheckoutOptions[] = []
+  const checkouts: OpenCheckoutOptions[] = []
   let closed = 0
   const files = overrides.files ?? memoryFiles()
   const repoFiles = overrides.repoFiles ?? {}
@@ -906,13 +906,29 @@ describe('run with config and repository context', () => {
 })
 
 describe('run with the repository investigation', () => {
+  it('reads the head from the mirror in the cache folder', async () => {
+    const cached = harness({ env: { GITHUB_TOKEN: TOKEN, PHADA_CACHE_HOME: '/cache' } })
+    await run(['review', 'acme/shop#12', '--dry-run'], cached.deps)
+    expect(cached.checkouts[0]?.dir).toBe('/cache/repos/acme/shop.git')
+
+    const plain = harness({ env: { GITHUB_TOKEN: TOKEN } })
+    await run(['review', 'Acme/Shop#12', '--dry-run'], plain.deps)
+    expect(plain.checkouts[0]?.dir).toBe('/home/u/.cache/phada/repos/acme/shop.git')
+  })
+
   it('fetches the reviewed head commit and gives the AI the tools', async () => {
     const h = harness()
 
     expect(await run(['review', 'acme/shop#12', '--dry-run'], h.deps)).toBe(0)
 
     expect(h.checkouts).toEqual([
-      expect.objectContaining({ owner: 'acme', repo: 'shop', sha: HEAD_SHA, token: TOKEN }),
+      expect.objectContaining({
+        owner: 'acme',
+        repo: 'shop',
+        sha: HEAD_SHA,
+        keepAs: 'refs/phada/pull/12',
+        token: TOKEN,
+      }),
     ])
     expect(h.prompts[0]?.tools?.definitions.map((tool) => tool.name)).toEqual([
       'read_file',
