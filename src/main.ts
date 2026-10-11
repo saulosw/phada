@@ -17,6 +17,7 @@ import { formatPublishedMessage, formatSkipMessage } from './cli/format-publicat
 import { formatPullRequestSummary, formatReview } from './cli/format-review.js'
 import { messagesFor } from './cli/i18n/messages.js'
 import type { Messages } from './cli/i18n/messages.js'
+import { runIndex } from './cli/index-command.js'
 import { runInit } from './cli/init.js'
 import { withProgress } from './cli/progress.js'
 import { toTerminalText } from './cli/terminal-text.js'
@@ -36,7 +37,9 @@ import type { PullRequestRef } from './github/pull-request-ref.js'
 import type { FetchPullRequestOptions, PullRequest } from './github/pull-request.js'
 import type { RepositoryFilesOptions, RepositoryTree } from './github/repository-files.js'
 import type { Checkout } from './repository/checkout.js'
-import type { OpenCheckoutOptions } from './repository/git-mirror.js'
+import type { Extractor } from './repo-map/extract.js'
+import type { GitMirror, GitMirrorOptions, OpenCheckoutOptions } from './repository/git-mirror.js'
+import type { IndexStore } from './store/index-store.js'
 import type { InvestigationReport } from './investigation/tools/report.js'
 import type { ReviewPass } from './investigation/tools/tool-log.js'
 import { ClaudeCliProvider } from './providers/claude.js'
@@ -81,6 +84,10 @@ export interface MainDeps {
     options: RepositoryFilesOptions & { path: string; ref: string },
   ) => Promise<string | null>
   openCheckout: (options: OpenCheckoutOptions) => Promise<Checkout>
+  openMirror: (options: GitMirrorOptions) => Promise<GitMirror>
+  openIndexStore: (path: string) => Promise<IndexStore>
+  createExtractor: () => Extractor
+  pathSize: (path: string) => Promise<number>
   createProvider: (name: string, options: ProviderOptions) => ReviewProvider
 }
 
@@ -125,6 +132,10 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
       return 0
     }
     debug = command.debug
+    if (command.kind === 'index') {
+      await runIndex(command, deps)
+      return 0
+    }
 
     const token = deps.env.GITHUB_TOKEN?.trim() || deps.env.GH_TOKEN?.trim()
     if (!token) throw new MissingGitHubTokenError()

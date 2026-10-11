@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { InvalidPullRequestRefError } from '../github/errors.js'
-import { INIT_USAGE, parseCliArgs, REVIEW_USAGE, USAGE } from './args.js'
+import { INDEX_USAGE, INIT_USAGE, parseCliArgs, REVIEW_USAGE, USAGE } from './args.js'
 import { UsageError } from './errors.js'
 
 const REF = { owner: 'acme', repo: 'shop', number: 12 }
@@ -29,7 +29,7 @@ describe('parseCliArgs', () => {
       ['https://github.com/acme/shop/pull/12', '--verify'],
       'Unknown command "https://github.com/acme/shop/pull/12". Did you mean "phada review https://github.com/acme/shop/pull/12"?',
     ],
-    [['reveiw', 'acme/shop#12'], 'Unknown command "reveiw". Available: review, init.'],
+    [['reveiw', 'acme/shop#12'], 'Unknown command "reveiw". Available: review, init, index.'],
     [['--verify'], "Unknown option '--verify'."],
   ])('rejects the command line %j with a usage error', (argv, message) => {
     expect(() => parseCliArgs(argv)).toThrow(new UsageError(message))
@@ -229,5 +229,43 @@ describe('parseCliArgs', () => {
 
   it('shows the default confidence cut in the review usage text', () => {
     expect(REVIEW_USAGE).toContain('(default: 60)')
+  })
+})
+
+describe('parseCliArgs index', () => {
+  it('reads the repository, the ref and the format', () => {
+    expect(parseCliArgs(['index', 'acme/shop'])).toEqual({
+      kind: 'index',
+      repo: { owner: 'acme', repo: 'shop' },
+      format: 'text',
+      debug: false,
+    })
+    expect(
+      parseCliArgs(['index', 'acme/shop', '--ref', 'release/1.0', '--format', 'json', '--debug']),
+    ).toEqual({
+      kind: 'index',
+      repo: { owner: 'acme', repo: 'shop' },
+      ref: 'release/1.0',
+      format: 'json',
+      debug: true,
+    })
+  })
+
+  it('shows its help', () => {
+    expect(parseCliArgs(['index', '--help'])).toEqual({ kind: 'help', text: INDEX_USAGE })
+    expect(INDEX_USAGE.startsWith('Usage: phada index <owner/repo>')).toBe(true)
+    expect(USAGE).toContain('index <owner/repo>')
+  })
+
+  it.each([
+    [['index'], 'Missing the repository to index, e.g. phada index owner/repo.'],
+    [['index', 'acme'], 'Invalid repository "acme". Use owner/repo.'],
+    [['index', 'a/b/c'], 'Invalid repository "a/b/c". Use owner/repo.'],
+    [['index', '../x'], 'Invalid repository "../x". Use owner/repo.'],
+    [['index', 'a/b', 'c/d'], 'Index one repository at a time.'],
+    [['index', 'a/b', '--format', 'markdown'], 'Invalid --format "markdown". Use text or json.'],
+    [['index', 'a/b', '--ref', ' '], '--ref needs a branch, tag or commit.'],
+  ])('rejects %j', (argv, message) => {
+    expect(() => parseCliArgs(argv)).toThrow(new UsageError(message))
   })
 })

@@ -6,11 +6,17 @@ import { createReview } from './github/create-review.js'
 import { fetchReviewState } from './github/pull-request-reviews.js'
 import { fetchPullRequest } from './github/pull-request.js'
 import { fetchRepositoryFile, fetchRepositoryTree } from './github/repository-files.js'
-import { openMirrorCheckout } from './repository/git-mirror.js'
+import { suppressSqliteWarning } from './cli/suppress-sqlite-warning.js'
+import { pathSize } from './config/cache-paths.js'
+import { createExtractor } from './repo-map/extract.js'
+import { openGitMirror, openMirrorCheckout } from './repository/git-mirror.js'
+import { openIndexStore } from './store/index-store.js'
 import { createProvider, run } from './main.js'
 
 const packageJson = await readFile(new URL('../package.json', import.meta.url), 'utf8')
 const { version } = JSON.parse(packageJson) as { version: string }
+
+suppressSqliteWarning(process)
 
 process.exitCode = await run(process.argv.slice(2), {
   env: process.env,
@@ -26,5 +32,9 @@ process.exitCode = await run(process.argv.slice(2), {
   fetchRepositoryTree,
   fetchRepositoryFile,
   openCheckout: openMirrorCheckout,
+  openMirror: openGitMirror,
+  openIndexStore: (path) => openIndexStore(path),
+  createExtractor: () => createExtractor(),
+  pathSize,
   createProvider,
 })

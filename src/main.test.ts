@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterAll, describe, expect, it } from 'vitest'
 import { findingFixture } from '../test/support/finding.js'
 import { memoryFiles } from '../test/support/memory-files.js'
 import type { MemoryFiles } from '../test/support/memory-files.js'
@@ -19,7 +22,9 @@ import type { FetchPullRequestOptions, PullRequest } from './github/pull-request
 import type { RepositoryTree } from './github/repository-files.js'
 import type { Checkout } from './repository/checkout.js'
 import { CheckoutUnavailableError } from './repository/git-checkout.js'
-import type { OpenCheckoutOptions } from './repository/git-mirror.js'
+import type { GitMirror, GitMirrorOptions, OpenCheckoutOptions } from './repository/git-mirror.js'
+import { createExtractor } from './repo-map/extract.js'
+import { openIndexStore } from './store/index-store.js'
 import { FINDING_MARKER, reviewMarker } from './publish/markers.js'
 import { createProvider, run } from './main.js'
 import type { MainDeps, ProviderOptions } from './main.js'
@@ -56,6 +61,36 @@ interface Harness {
   prompts: ReviewPrompt[]
   checkouts: OpenCheckoutOptions[]
   closed: () => number
+  mirrors: GitMirrorOptions[]
+  storePaths: string[]
+}
+
+const storeDir = mkdtempSync(join(tmpdir(), 'phada-main-index-'))
+afterAll(() => rmSync(storeDir, { recursive: true, force: true }))
+let storeCount = 0
+const extractor = createExtractor()
+
+function memoryMirror(files: Record<string, string>): GitMirror {
+  const entries = Object.entries(files).map(([path, text], index) => ({
+    path,
+    oid: String(index + 1).padStart(40, 'a'),
+    mode: '100644',
+    size: Buffer.byteLength(text),
+  }))
+  return {
+    dir: '/mirror',
+    fetch: async () => HEAD_SHA,
+    checkout: () => ({
+      ...memoryCheckout(() => {}),
+      readText: async (path) => files[path] ?? '',
+    }),
+    listFiles: async () => entries,
+    readBlobs: async function* (wanted) {
+      for (const file of wanted) {
+        yield { oid: file.oid, bytes: new Uint8Array(Buffer.from(files[file.path] ?? '')) }
+      }
+    },
+  }
 }
 
 function memoryCheckout(onClose: () => void): Checkout {
@@ -79,9 +114,12 @@ function harness(
     repoFiles?: Record<string, string>
     tree?: () => Promise<RepositoryTree>
     openCheckout?: (options: OpenCheckoutOptions) => Promise<Checkout>
+    openMirror?: (options: GitMirrorOptions) => Promise<GitMirror>
   } = {},
 ): Harness {
   const checkouts: OpenCheckoutOptions[] = []
+  const mirrors: GitMirrorOptions[] = []
+  const storePaths: string[] = []
   let closed = 0
   const files = overrides.files ?? memoryFiles()
   const repoFiles = overrides.repoFiles ?? {}
@@ -144,6 +182,20 @@ function harness(
         )
       )
     },
+    openMirror: (options) => {
+      mirrors.push(options)
+      return (
+        overrides.openMirror?.(options) ??
+        Promise.resolve(memoryMirror({ 'src/a.ts': 'export function a() { b() }\n' }))
+      )
+    },
+    openIndexStore: (path) => {
+      storePaths.push(path)
+      storeCount += 1
+      return openIndexStore(join(storeDir, `${storeCount}.sqlite`))
+    },
+    createExtractor: () => extractor,
+    pathSize: async () => 2048,
     createProvider: (name, options) => {
       providers.push({ name, options })
       if (name !== 'claude') return createProvider(name, options)
@@ -167,6 +219,8 @@ function harness(
     stderr: () => err.join(''),
     checkouts,
     closed: () => closed,
+    mirrors,
+    storePaths,
     fetches,
     stateFetches,
     posts,
@@ -1088,5 +1142,72 @@ describe('run with the repository investigation', () => {
     await run(['review', 'acme/shop#12', '--dry-run'], h.deps)
 
     expect(h.stderr()).toContain('Warning: model x cannot call tools\n')
+  })
+})
+
+describe('run index', () => {
+  it('asks for a token that can read the repository', async () => {
+    const h = harness({ env: {} })
+
+    expect(await run(['index', 'acme/shop'], h.deps)).toBe(1)
+    expect(h.stderr()).toMatch(
+      /^phada: No GitHub token found\. Set GITHUB_TOKEN \(or GH_TOKEN\) to a token that can read the repository contents,/,
+    )
+  })
+
+  it('indexes the repository from its mirror into the cache folder', async () => {
+    const h = harness({ env: { GITHUB_TOKEN: TOKEN, PHADA_CACHE_HOME: '/cache' } })
+
+    expect(await run(['index', 'Acme/Shop'], h.deps)).toBe(0)
+
+    expect(h.mirrors).toEqual([
+      expect.objectContaining({
+        dir: '/cache/repos/acme/shop.git',
+        owner: 'Acme',
+        repo: 'Shop',
+        token: TOKEN,
+      }),
+    ])
+    expect(h.storePaths).toEqual(['/cache/index/acme/shop.sqlite'])
+    expect(h.stderr()).toContain('Fetching Acme/Shop (default branch)…\n')
+    expect(h.stderr()).toContain('Indexing 1 file…\n')
+    expect(h.stdout()).toMatch(/^Indexed Acme\/Shop at [0-9a-f]{7} \(default branch\) in /)
+    expect(h.stdout()).toContain('Symbols: 1 function\n')
+  })
+
+  it('prints JSON and fetches the ref asked for', async () => {
+    const h = harness({ env: { GITHUB_TOKEN: TOKEN, PHADA_CACHE_HOME: '/cache' } })
+
+    expect(await run(['index', 'acme/shop', '--ref', 'main', '--format', 'json'], h.deps)).toBe(0)
+
+    const json = JSON.parse(h.stdout())
+    expect(json).toMatchObject({ schemaVersion: 1, repository: 'acme/shop', ref: 'main' })
+    expect(json.mirror).toEqual({ path: '/cache/repos/acme/shop.git', bytes: 2048 })
+    expect(h.stderr()).toContain('Fetching acme/shop (main)…\n')
+  })
+
+  it('reports a fetch that fails', async () => {
+    const h = harness({
+      openMirror: () =>
+        Promise.reject(
+          new CheckoutUnavailableError(
+            'fetch-failed',
+            'Could not fetch main from acme/shop: fatal: x',
+          ),
+        ),
+    })
+
+    expect(await run(['index', 'acme/shop'], h.deps)).toBe(1)
+    expect(h.stderr()).toContain('phada: Could not fetch main from acme/shop: fatal: x\n')
+  })
+
+  it('prints the warnings about the repository config', async () => {
+    const h = harness({
+      openMirror: async () =>
+        memoryMirror({ '.phada/config.yml': 'ignore: [x\n', 'src/a.ts': 'export const a = 1\n' }),
+    })
+
+    expect(await run(['index', 'acme/shop'], h.deps)).toBe(0)
+    expect(h.stderr()).toMatch(/Warning: Ignoring \.phada\/config\.yml: /)
   })
 })
