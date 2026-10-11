@@ -1,4 +1,5 @@
-import { existsSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { existsSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
@@ -54,6 +55,23 @@ describe('withMirrorLock', () => {
     utimesSync(lock, old, old)
 
     expect(await withMirrorLock(lock, OPTIONS, async () => 'ran')).toBe('ran')
+  })
+
+  it('records which process holds the lock', async () => {
+    const lock = join(dir, 'f.lock')
+    const content = await withMirrorLock(lock, OPTIONS, async () => readFileSync(lock, 'utf8'))
+
+    expect(content.split(' ')[0]).toBe(String(process.pid))
+  })
+
+  it('takes over a fresh lock whose process is gone', async () => {
+    const lock = join(dir, 'g.lock')
+    const gone = spawnSync(process.execPath, ['-e', '']).pid
+    writeFileSync(lock, `${gone} ${new Date().toISOString()}`)
+
+    expect(await withMirrorLock(lock, { timeoutMs: 50, staleMs: 60_000 }, async () => 'ran')).toBe(
+      'ran',
+    )
   })
 
   it('gives up with MirrorLockTimeoutError when a fresh lock is held past the timeout', async () => {

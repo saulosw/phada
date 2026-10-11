@@ -71,6 +71,7 @@ const REPOSITORY: Boundary = {
     'node:fs/promises',
     'node:os',
     'node:path',
+    'node:process',
     '../process/errors.js',
     '../process/run-command.js',
     '../providers/redact-secrets.js',
