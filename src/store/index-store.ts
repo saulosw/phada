@@ -7,7 +7,7 @@ import { SCHEMA, SCHEMA_VERSION } from './schema.js'
 
 export { SCHEMA_VERSION } from './schema.js'
 
-export type BlobStatus = 'indexed' | 'binary' | 'parse-timeout'
+export type BlobStatus = 'indexed' | 'binary' | 'parse-timeout' | 'parse-failed'
 export type FileStatus =
   | 'indexed'
   | 'ignored'
@@ -15,6 +15,7 @@ export type FileStatus =
   | 'too-large'
   | 'binary'
   | 'parse-timeout'
+  | 'parse-failed'
   | 'symlink'
   | 'submodule'
 
@@ -25,6 +26,7 @@ export const FILE_STATUSES: readonly FileStatus[] = [
   'too-large',
   'binary',
   'parse-timeout',
+  'parse-failed',
   'symlink',
   'submodule',
 ]

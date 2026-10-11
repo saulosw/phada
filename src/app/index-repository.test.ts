@@ -273,14 +273,35 @@ describe('indexRepository', () => {
     ])
   })
 
-  it('closes the index when extraction fails', async () => {
+  it('leaves out a file the parser cannot walk and keeps indexing the rest', async () => {
+    const path = storePath()
+    const deep =
+      'package p\nvar s = ' + Array.from({ length: 5_000 }, () => '"a"').join(' +\n') + '\n'
+    const files = {
+      'gen/strings.go': { content: deep },
+      'src/a.ts': { content: 'export const a = 1\n' },
+    }
+
+    const first = await indexRepository(INPUT, deps(fakeMirror(files).mirror, path).deps)
+    const again = fakeMirror(files)
+    const second = await indexRepository(INPUT, deps(again.mirror, path).deps)
+
+    expect(first.leftOut).toEqual([{ path: 'gen/strings.go', reason: 'parse-failed' }])
+    expect(first.files.indexed).toBe(1)
+    expect(second.leftOut).toEqual([{ path: 'gen/strings.go', reason: 'parse-failed' }])
+    expect(again.read).toEqual([[]])
+  })
+
+  it('closes the index when reading the files fails', async () => {
     const { mirror } = fakeMirror({ 'src/a.ts': { content: 'export const a = 1\n' } })
-    const failing: Extractor = {
-      extract: async () => {
+    const failing: IndexRepositoryDeps['mirror'] = {
+      ...mirror,
+      readBlobs: async function* () {
+        yield* []
         throw new Error('boom')
       },
     }
-    const h = deps(mirror, storePath(), { extractor: failing })
+    const h = deps(failing, storePath())
 
     await expect(indexRepository(INPUT, h.deps)).rejects.toThrow('boom')
     expect(h.closed).toHaveLength(1)

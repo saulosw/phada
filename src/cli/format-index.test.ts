@@ -16,6 +16,7 @@ const REPORT: IndexReport = {
       'too-large': 3,
       binary: 1,
       'parse-timeout': 0,
+      'parse-failed': 0,
       symlink: 1,
       submodule: 0,
     },

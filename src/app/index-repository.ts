@@ -179,7 +179,13 @@ async function extractBlob(
     store.saveBlob({ ...base, status: 'binary' })
     return 'binary'
   }
-  const map = await extractor.extract(language, new TextDecoder().decode(blob.bytes))
+  let map: Awaited<ReturnType<Extractor['extract']>>
+  try {
+    map = await extractor.extract(language, new TextDecoder().decode(blob.bytes))
+  } catch {
+    store.saveBlob({ ...base, status: 'parse-failed' })
+    return 'parse-failed'
+  }
   if (map === 'timeout') {
     store.saveBlob({ ...base, status: 'parse-timeout' })
     return 'parse-timeout'
