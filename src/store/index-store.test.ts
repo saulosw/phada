@@ -132,6 +132,25 @@ describe('openIndexStore', () => {
     ])
   })
 
+  it('refers to blobs by a small integer id instead of repeating their SHA in every row', async () => {
+    const path = freshPath()
+    const store = await storeWithBlob(path)
+    store.close()
+    const db = new DatabaseSync(path)
+    const columns = (table: string) =>
+      db
+        .prepare(`select name, type from pragma_table_info('${table}')`)
+        .all()
+        .map((row) => `${row.name} ${String(row.type).toLowerCase()}`)
+
+    for (const table of ['symbol', 'import_item', 'export_item', 'call_site']) {
+      expect(columns(table)).toContain('blob_id integer')
+      expect(columns(table).join()).not.toContain('blob_oid')
+    }
+    expect(columns('snapshot_file')).toContain('blob_id integer')
+    db.close()
+  })
+
   it('knows which blobs it has and their status', async () => {
     const store = await storeWithBlob()
     store.saveBlob({ oid: 'd'.repeat(40), language: 'go', bytes: 9, status: 'binary' })

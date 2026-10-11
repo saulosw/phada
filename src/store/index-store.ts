@@ -188,20 +188,35 @@ class SqliteIndexStore implements IndexStore {
 
   saveBlob(blob: StoredBlob): void {
     this.#transaction(() => {
-      this.#db.prepare('delete from blob where oid = ?').run(blob.oid)
-      this.#db
-        .prepare(
-          'insert into blob (oid, language, bytes, status, parse_errors, indexed_at) values (?, ?, ?, ?, ?, ?)',
+      const values = [
+        blob.language,
+        blob.bytes,
+        blob.status,
+        blob.map?.parseErrors ?? 0,
+        this.#now().toISOString(),
+      ] as const
+      const existing = this.#db.prepare('select id from blob where oid = ?').get(blob.oid)
+      let id: number
+      if (existing === undefined) {
+        id = Number(
+          this.#db
+            .prepare(
+              'insert into blob (language, bytes, status, parse_errors, indexed_at, oid) values (?, ?, ?, ?, ?, ?)',
+            )
+            .run(...values, blob.oid).lastInsertRowid,
         )
-        .run(
-          blob.oid,
-          blob.language,
-          blob.bytes,
-          blob.status,
-          blob.map?.parseErrors ?? 0,
-          this.#now().toISOString(),
-        )
-      if (blob.map !== undefined) this.#saveMap(blob.oid, blob.map)
+      } else {
+        id = Number(existing.id)
+        this.#db
+          .prepare(
+            'update blob set language = ?, bytes = ?, status = ?, parse_errors = ?, indexed_at = ? where id = ?',
+          )
+          .run(...values, id)
+        for (const table of ['symbol', 'import_item', 'export_item', 'call_site']) {
+          this.#db.prepare(`delete from ${table} where blob_id = ?`).run(id)
+        }
+      }
+      if (blob.map !== undefined) this.#saveMap(id, blob.map)
     })
   }
 
@@ -221,10 +236,18 @@ class SqliteIndexStore implements IndexStore {
           Number(next?.seq),
         )
       const insert = this.#db.prepare(
-        'insert into snapshot_file (commit_sha, path, blob_oid, language, status) values (?, ?, ?, ?, ?)',
+        'insert into snapshot_file (commit_sha, path, blob_id, language, status) values (?, ?, ?, ?, ?)',
       )
+      const blobId = this.#db.prepare('select id from blob where oid = ?')
       for (const file of commit.files) {
-        insert.run(commit.sha, file.path, file.oid ?? null, file.language ?? null, file.status)
+        const blob = file.oid === undefined ? undefined : blobId.get(file.oid)
+        insert.run(
+          commit.sha,
+          file.path,
+          blob === undefined ? null : Number(blob.id),
+          file.language ?? null,
+          file.status,
+        )
       }
     })
   }
@@ -241,7 +264,7 @@ class SqliteIndexStore implements IndexStore {
       )
       this.#db
         .prepare(
-          'delete from blob where oid not in (select blob_oid from snapshot_file where blob_oid is not null)',
+          'delete from blob where id not in (select blob_id from snapshot_file where blob_id is not null)',
         )
         .run()
     })
@@ -261,7 +284,7 @@ class SqliteIndexStore implements IndexStore {
       files[row.status as FileStatus] = Number(row.n)
     }
     const indexed =
-      "from snapshot_file f join %s on %s.blob_oid = f.blob_oid where f.commit_sha = ? and f.status = 'indexed'"
+      "from snapshot_file f join %s on %s.blob_id = f.blob_id where f.commit_sha = ? and f.status = 'indexed'"
     const grouped = (table: string, column: string) =>
       Object.fromEntries(
         this.#db
@@ -286,7 +309,7 @@ class SqliteIndexStore implements IndexStore {
     )
     const parseErrors = this.#db
       .prepare(
-        "select coalesce(sum(b.parse_errors), 0) as n from snapshot_file f join blob b on b.oid = f.blob_oid where f.commit_sha = ? and f.status = 'indexed'",
+        "select coalesce(sum(b.parse_errors), 0) as n from snapshot_file f join blob b on b.id = f.blob_id where f.commit_sha = ? and f.status = 'indexed'",
       )
       .get(sha)
     return {
@@ -304,14 +327,14 @@ class SqliteIndexStore implements IndexStore {
     this.#db.close()
   }
 
-  #saveMap(oid: string, map: FileMap): void {
+  #saveMap(blobId: number, map: FileMap): void {
     const ids: number[] = []
     const insertSymbol = this.#db.prepare(
-      'insert into symbol (blob_oid, kind, name, container, start_line, end_line, exported, signature) values (?, ?, ?, ?, ?, ?, ?, ?)',
+      'insert into symbol (blob_id, kind, name, container, start_line, end_line, exported, signature) values (?, ?, ?, ?, ?, ?, ?, ?)',
     )
     for (const symbol of map.symbols) {
       const result = insertSymbol.run(
-        oid,
+        blobId,
         symbol.kind,
         symbol.name,
         symbol.container ?? null,
@@ -328,11 +351,11 @@ class SqliteIndexStore implements IndexStore {
       if (parent !== undefined) setParent.run(parent, ids[symbol.key] ?? null)
     }
     const insertImport = this.#db.prepare(
-      'insert into import_item (blob_oid, module, name, alias, kind, line) values (?, ?, ?, ?, ?, ?)',
+      'insert into import_item (blob_id, module, name, alias, kind, line) values (?, ?, ?, ?, ?, ?)',
     )
     for (const item of map.imports) {
       insertImport.run(
-        oid,
+        blobId,
         item.module,
         item.name ?? null,
         item.alias ?? null,
@@ -341,18 +364,18 @@ class SqliteIndexStore implements IndexStore {
       )
     }
     const insertExport = this.#db.prepare(
-      'insert into export_item (blob_oid, name, local_name, module, line) values (?, ?, ?, ?, ?)',
+      'insert into export_item (blob_id, name, local_name, module, line) values (?, ?, ?, ?, ?)',
     )
     for (const item of map.exports) {
-      insertExport.run(oid, item.name, item.local ?? null, item.module ?? null, item.line)
+      insertExport.run(blobId, item.name, item.local ?? null, item.module ?? null, item.line)
     }
     const insertCall = this.#db.prepare(
-      'insert into call_site (blob_oid, caller_id, name, qualifier, line, constructs) values (?, ?, ?, ?, ?, ?)',
+      'insert into call_site (blob_id, caller_id, name, qualifier, line, constructs) values (?, ?, ?, ?, ?, ?)',
     )
     for (const call of map.calls) {
       const caller = call.caller === undefined ? null : (ids[call.caller] ?? null)
       insertCall.run(
-        oid,
+        blobId,
         caller,
         call.name,
         call.qualifier ?? null,
