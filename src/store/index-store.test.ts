@@ -255,6 +255,23 @@ describe('openIndexStore', () => {
     second.close()
   })
 
+  it('syncs to disk once per checkpoint, not once per blob', async () => {
+    const sqlite = await import('node:sqlite')
+    const executed: string[] = []
+    class RecordingDatabase extends sqlite.DatabaseSync {
+      override exec(sql: string): void {
+        executed.push(sql)
+        super.exec(sql)
+      }
+    }
+    const store = await openIndexStore(freshPath(), {
+      loadSqlite: async () => ({ ...sqlite, DatabaseSync: RecordingDatabase }),
+    })
+    store.close()
+
+    expect(executed).toContain('pragma synchronous = normal')
+  })
+
   it('says which Node.js version it needs when SQLite is missing', async () => {
     await expect(
       openIndexStore(freshPath(), {

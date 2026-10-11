@@ -118,6 +118,7 @@ function openDatabase(sqlite: Sqlite, path: string): Opened {
   try {
     db.exec('pragma busy_timeout = 5000')
     db.exec('pragma journal_mode = wal')
+    db.exec('pragma synchronous = normal')
     db.exec('pragma foreign_keys = on')
     const hasMeta = db
       .prepare("select 1 from sqlite_master where type = 'table' and name = 'meta'")
