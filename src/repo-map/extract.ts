@@ -1,7 +1,9 @@
 import { Language as Grammar, Parser } from 'web-tree-sitter'
 import type { Node } from 'web-tree-sitter'
 import { readGrammar } from './grammars.js'
+import { walkGo } from './languages/go.js'
 import { walkJavaScriptLike } from './languages/javascript-like.js'
+import { walkPython } from './languages/python.js'
 import type { Language } from './languages.js'
 import type { FileMap } from './types.js'
 import { Collector } from './walk.js'
@@ -24,8 +26,8 @@ const WALKERS: Readonly<Record<Language, Walker>> = {
   typescript: walkJavaScriptLike,
   tsx: walkJavaScriptLike,
   javascript: walkJavaScriptLike,
-  python: walkJavaScriptLike,
-  go: walkJavaScriptLike,
+  python: walkPython,
+  go: walkGo,
 }
 
 let initialized: Promise<void> | undefined
