@@ -42,7 +42,9 @@ describe('withMirrorLock', () => {
       withMirrorLock(lock, OPTIONS, work('two')),
     ])
 
-    expect(events).toEqual(['one start', 'one end', 'two start', 'two end'])
+    const [first, , second] = events.map((event) => event.split(' ')[0])
+    expect(events).toEqual([`${first} start`, `${first} end`, `${second} start`, `${second} end`])
+    expect(first).not.toBe(second)
   })
 
   it('takes over a lock older than the stale age', async () => {

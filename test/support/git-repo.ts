@@ -7,6 +7,7 @@ export interface LocalRepository {
   dir: string
   url: string
   sha: string
+  commit(files: RepositoryFiles): string
   remove(): void
 }
 
@@ -31,10 +32,7 @@ export function createLocalRepository(
     execFileSync('git', ['-C', dir, ...args], { env: GIT_ENV, encoding: 'utf8' })
   git('init', '-q')
   git('config', 'uploadpack.allowAnySHA1InWant', 'true')
-  for (const [path, content] of Object.entries(files)) {
-    mkdirSync(dirname(join(dir, path)), { recursive: true })
-    writeFileSync(join(dir, path), content)
-  }
+  writeFiles(dir, files)
   for (const [path, target] of Object.entries(options.symlinks ?? {})) {
     mkdirSync(dirname(join(dir, path)), { recursive: true })
     symlinkSync(target, join(dir, path))
@@ -48,6 +46,19 @@ export function createLocalRepository(
     dir,
     url: `file://${dir}`,
     sha: git('rev-parse', 'HEAD').trim(),
+    commit: (changed) => {
+      writeFiles(dir, changed)
+      git('add', '-A')
+      git('commit', '-q', '--no-gpg-sign', '-m', 'change')
+      return git('rev-parse', 'HEAD').trim()
+    },
     remove: () => rmSync(dir, { recursive: true, force: true }),
+  }
+}
+
+function writeFiles(dir: string, files: RepositoryFiles): void {
+  for (const [path, content] of Object.entries(files)) {
+    mkdirSync(dirname(join(dir, path)), { recursive: true })
+    writeFileSync(join(dir, path), content)
   }
 }
