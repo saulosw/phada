@@ -82,8 +82,12 @@ const APP: Boundary = {
   dir: 'app',
   values: new Set([
     '../context/load-context.js',
+    '../config/merge-config.js',
+    '../config/parse-config.js',
+    '../context/ignore.js',
     '../investigation/open-investigation.js',
     '../investigation/tools/report.js',
+    '../repo-map/languages.js',
     '../repository/git-checkout.js',
     '../review/run-review.js',
   ]),
@@ -95,11 +99,15 @@ const APP: Boundary = {
     '../investigation/tools/report.js',
     '../investigation/tools/tool-log.js',
     '../providers/types.js',
+    '../repo-map/extract.js',
+    '../repo-map/languages.js',
     '../repository/checkout.js',
     '../repository/git-checkout.js',
+    '../repository/git-mirror.js',
     '../review/types.js',
+    '../store/index-store.js',
   ]),
-  expected: ['review-pull-request.ts'],
+  expected: ['index-repository.ts', 'review-pull-request.ts'],
 }
 const STATIC_MODULE = /^\s*(?:import|export)\s+(type\s+)?(?:[^'"]*?\bfrom\s+)?['"]([^'"]+)['"]/gm
 const DYNAMIC_MODULE = /\bimport\(\s*['"]([^'"]+)['"]\s*\)/g
