@@ -7,6 +7,20 @@ output can change between minor versions.
 
 ## Unreleased
 
+### Added
+
+- `phada index <owner/repo>` builds a map of the repository's code on your machine: files,
+  functions, classes, methods, parameters, variables, imports, exports and calls for TypeScript,
+  JavaScript, Python and Go, parsed with tree-sitter. Running it again reads only the files that
+  changed. `--ref` picks a branch, tag or commit and `--format json` prints the report as JSON,
+  with every file left out and why.
+
+### Changed
+
+- Reviews keep a mirror of each repository in `~/.cache/phada` (`PHADA_CACHE_HOME` to move it)
+  and fetch only what changed since the last review, instead of a temporary folder each time.
+- Phada needs Node.js 22.13 or newer.
+
 ## 0.2.0 - 2026-10-10
 
 ### Added

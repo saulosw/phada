@@ -14,8 +14,8 @@ the rest in the review body (see [Publishing](#publishing)).
 
 ## Requirements
 
-- Node.js 22 or newer
-- `git`, for the repository investigation (without it, the AI only sees the diff and the context)
+- Node.js 22.13 or newer
+- `git`, for the repository investigation and `phada index` (without it, the AI only sees the diff and the context)
 - A GitHub token that can read the pull request and write reviews (see [GitHub token](#github-token))
 - One AI provider:
   - [Claude Code](https://code.claude.com/) (`claude`), logged in with your subscription,
@@ -48,7 +48,8 @@ saves only the review, and `--format json` prints it as JSON for scripts. A revi
 request can take a few minutes. `phada review owner/repo#123 --dry-run` prints exactly what would
 be posted and posts nothing.
 
-`phada --help` lists the commands and `phada review --help` lists the review options.
+`phada --help` lists the commands, and `phada review --help`, `phada init --help` and
+`phada index --help` list their options.
 
 ### GitHub token
 
@@ -171,8 +172,9 @@ rule they break, in the JSON and under each comment on the pull request.
 
 The AI can also read the rest of the repository while it reviews: who calls a function the
 pull request changes, what a function it uses does, what the rest of a changed file does. Phada
-fetches the head commit of the pull request into a temporary folder (`git fetch --depth 1`, with
-the GitHub token only in the environment of `git`) and gives the AI three tools of its own:
+fetches the head commit of the pull request into a local mirror of the repository (`git fetch
+--depth 1`, with the GitHub token only in the environment of `git`; see [Cache](#cache)) and
+gives the AI three tools of its own:
 
 - `read_file`: up to 400 lines of a file per call, with line numbers;
 - `grep`: a regular expression over the repository, up to 100 matching lines;
@@ -182,8 +184,8 @@ The tools only read that commit: no path outside the repository, no symbolic lin
 over 1 MB. Each review pass gets up to 40 calls and 512 KB of results; the verifier investigates
 too, with its own budget. What the tools return comes from the pull request head, written by its
 author, so it is data for the AI, never instructions. Findings still point to a line of the diff,
-and the files the AI read to support them show up in their sources. The temporary folder is removed
-after the review.
+and the files the AI read to support them show up in their sources. The mirror stays for the
+next review of the repository, which then fetches only what changed.
 
 Claude Code and Codex reach the tools through a local MCP server that Phada runs for the review;
 their own tools stay off. Ollama models use tool calling; a model that does not support it
@@ -210,6 +212,42 @@ repository's `.phada/`); claude.ai connectors are named as `claude.ai <Name>`. C
 counted in the `Investigated:` line and the JSON, and a finding based on one cites it as
 `<server>: <what it read>`. On a public repository Phada warns that what the AI read there may end
 up in the published review. `mcp` does not work with Codex or Ollama yet.
+
+## Repository map
+
+`phada index owner/repo` builds a map of the repository's code on your machine: its files,
+functions, classes, methods, parameters, variables, imports, exports and calls, for TypeScript,
+JavaScript, Python and Go. It fetches the default branch (or `--ref <branch, tag or commit>`) into
+the local mirror and parses each file with [tree-sitter](https://tree-sitter.github.io/). Files are
+kept by their git blob, so running it again reads only the files that changed.
+
+```text
+$ phada index owner/repo
+Indexed owner/repo at 8ff3f28 (default branch) in 3.7s
+Files: 170 indexed (170 read, 0 unchanged) · 27 left out
+Languages: TypeScript 170
+Symbols: 483 functions · 83 methods · 31 classes · 136 interfaces · 45 types · 1,581 variables · 963 parameters
+Imports 1,297 · exports 388 · calls 9,830
+Left out: 26 no grammar (.json 11, .md 6, (none) 5, other 4) · 1 ignored
+Index: ~/.cache/phada/index/owner/repo.sqlite (2.4 MB) · mirror 301.2 KB
+```
+
+Files in other languages, binary files, files over 1 MB, symbolic links, submodules and the files
+your `ignore` patterns and the defaults leave out of reviews stay out of the map, and the output
+says how many and why (`--format json` lists each one). A file that takes more than 2 seconds to
+parse is left out too. Reviews do not read the map.
+
+## Cache
+
+Phada keeps a mirror of each repository it reviews or indexes, and the map, in
+`~/.cache/phada` (`$XDG_CACHE_HOME/phada` when set; `PHADA_CACHE_HOME` to choose another folder):
+
+- `repos/<owner>/<repo>.git`: a bare git repository with only the commits Phada fetched, without
+  their history and without your token;
+- `index/<owner>/<repo>.sqlite`: the map of `phada index`, with its 10 most recent commits.
+
+Everything there can be deleted at any time (`rm -rf ~/.cache/phada`); Phada fetches what it
+needs again.
 
 ## Configuration
 
@@ -294,6 +332,8 @@ your own stops Phada with an error that names the file and the key.
 | 0    | The review was published (or printed with `--dry-run`), Phada skipped a commit it already reviewed, or the pull request has no changes to review (or only ignored files) |
 | 1    | Something failed: GitHub, the AI provider, an answer that is not a review, or publishing (the review is printed first)                                                   |
 | 2    | The command line or your own config is wrong (unknown option, invalid pull request reference, invalid `config.yml`, …)                                                   |
+
+`phada index` exits with 0 when the map was built and 1 when fetching or writing it failed.
 
 ## What the AI sees
 
