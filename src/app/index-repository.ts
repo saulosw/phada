@@ -18,6 +18,15 @@ export const INDEX_MAX_FILE_BYTES = 1_000_000
 export const KEEP_COMMITS = 10
 export const INDEX_REF = 'refs/phada/index'
 
+export const DEPENDENCY_FOLDERS: readonly string[] = [
+  '**/node_modules/**',
+  '**/bower_components/**',
+  '**/.venv/**',
+  '**/venv/**',
+  '**/site-packages/**',
+  '**/vendor/**',
+]
+
 const BINARY_PROBE_LENGTH = 8000
 const PHADA_CONFIG = /(^|\/)\.phada\/config\.yml$/
 const MODE_STATUS: Readonly<Record<string, FileStatus>> = {
@@ -216,5 +225,5 @@ async function ignoreMatcher(
     ...userLayers.filter((layer) => layer.kind === 'user-repo'),
   ])
   warnings.push(...merged.warnings)
-  return matcher([...DEFAULT_IGNORE, ...merged.ignore])
+  return matcher([...DEFAULT_IGNORE, ...DEPENDENCY_FOLDERS, ...merged.ignore])
 }

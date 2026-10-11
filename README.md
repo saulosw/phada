@@ -232,8 +232,10 @@ Left out: 26 no grammar (.json 11, .md 6, (none) 5, other 4) · 1 ignored
 Index: ~/.cache/phada/index/owner/repo.sqlite (2.4 MB) · mirror 301.2 KB
 ```
 
-Files in other languages, binary files, files over 1 MB, symbolic links, submodules and the files
-your `ignore` patterns and the defaults leave out of reviews stay out of the map, and the output
+Files in other languages, binary files, files over 1 MB, symbolic links, submodules, dependency
+folders committed to the repository (`node_modules`, `bower_components`, `.venv`, `venv`,
+`site-packages`, `vendor`) and the files your `ignore` patterns and the defaults leave out of
+reviews stay out of the map, and the output
 says how many and why (`--format json` lists each one). A file that takes more than 2 seconds to
 parse is left out too. Reviews do not read the map.
 

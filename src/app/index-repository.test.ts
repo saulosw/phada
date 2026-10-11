@@ -251,6 +251,28 @@ describe('indexRepository', () => {
     expect(report.leftOut).toEqual([{ path: 'tools/b.ts', reason: 'ignored' }])
   })
 
+  it('leaves dependency folders committed to the repository out of the map', async () => {
+    const { mirror, read } = fakeMirror({
+      'src/a.ts': { content: 'export const a = 1\n' },
+      'backend/node_modules/lib/index.js': { content: 'module.exports = 1\n' },
+      'web/bower_components/x/x.js': { content: 'var x = 1\n' },
+      '.venv/lib/python3.12/site-packages/pkg/mod.py': { content: 'x = 1\n' },
+      'venv/lib/mod.py': { content: 'y = 1\n' },
+      'vendor/github.com/pkg/errors/errors.go': { content: 'package errors\n' },
+    })
+
+    const report = await indexRepository(INPUT, deps(mirror, storePath()).deps)
+
+    expect(read).toEqual([['src/a.ts']])
+    expect(report.leftOut.map((file) => file.reason)).toEqual([
+      'ignored',
+      'ignored',
+      'ignored',
+      'ignored',
+      'ignored',
+    ])
+  })
+
   it('closes the index when extraction fails', async () => {
     const { mirror } = fakeMirror({ 'src/a.ts': { content: 'export const a = 1\n' } })
     const failing: Extractor = {
