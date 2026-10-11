@@ -1,6 +1,6 @@
 import type { Toolbox } from './toolbox.js'
-import type { Checkout } from './checkout/checkout.js'
-import type { OpenGitCheckoutOptions } from './checkout/git-checkout.js'
+import type { Checkout } from '../repository/checkout.js'
+import type { OpenGitCheckoutOptions } from '../repository/git-checkout.js'
 import { repositoryTools } from './tools/repository-tools.js'
 import { ToolLog } from './tools/tool-log.js'
 import type { ReviewPass } from './tools/tool-log.js'

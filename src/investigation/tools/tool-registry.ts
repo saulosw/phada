@@ -2,8 +2,8 @@ import { z } from 'zod'
 import type { ToolCallOptions, ToolDefinition, ToolResult, Toolbox } from '../toolbox.js'
 import { BUDGET_EXHAUSTED, DEFAULT_TOOL_BUDGET, MAX_ANSWER_BYTES } from './budget.js'
 import type { ToolBudget } from './budget.js'
-import { CheckoutError } from '../checkout/checkout.js'
-import { InvalidRepoPathError } from '../checkout/repo-path.js'
+import { CheckoutError } from '../../repository/checkout.js'
+import { InvalidRepoPathError } from '../../repository/repo-path.js'
 import type { ReviewPass, ToolLog } from './tool-log.js'
 
 export interface ToolOutput {

@@ -48,39 +48,55 @@ const INVESTIGATION: Boundary = {
     'node:readline',
     'node:url',
     'zod',
-    '../process/errors.js',
-    '../process/run-command.js',
-    '../providers/redact-secrets.js',
+    '../repository/checkout.js',
+    '../repository/repo-path.js',
   ]),
-  types: new Set(['../providers/types.js', '../review/types.js', '../process/run-command.js']),
+  types: new Set([
+    '../providers/types.js',
+    '../review/types.js',
+    '../repository/checkout.js',
+    '../repository/git-checkout.js',
+  ]),
   expected: [
     'toolbox.ts',
-    'checkout/git-checkout.ts',
     'mcp/mcp-server.ts',
     'tools/repository-tools.ts',
     'tools/tool-registry.ts',
   ],
   globals: ['console'],
 }
+const REPOSITORY: Boundary = {
+  dir: 'repository',
+  values: new Set([
+    'node:fs/promises',
+    'node:os',
+    'node:path',
+    '../process/errors.js',
+    '../process/run-command.js',
+    '../providers/redact-secrets.js',
+  ]),
+  types: new Set(['../process/run-command.js']),
+  expected: ['checkout.ts', 'git-checkout.ts', 'repo-path.ts'],
+}
 const APP: Boundary = {
   dir: 'app',
   values: new Set([
     '../context/load-context.js',
-    '../investigation/checkout/git-checkout.js',
     '../investigation/open-investigation.js',
     '../investigation/tools/report.js',
+    '../repository/git-checkout.js',
     '../review/run-review.js',
   ]),
   types: new Set([
     '../config/types.js',
     '../context/types.js',
     '../github/pull-request.js',
-    '../investigation/checkout/checkout.js',
-    '../investigation/checkout/git-checkout.js',
     '../investigation/open-investigation.js',
     '../investigation/tools/report.js',
     '../investigation/tools/tool-log.js',
     '../providers/types.js',
+    '../repository/checkout.js',
+    '../repository/git-checkout.js',
     '../review/types.js',
   ]),
   expected: ['review-pull-request.ts'],
@@ -226,9 +242,8 @@ describe('context boundary rules', () => {
 describe('investigation boundary rules', () => {
   it('lets a subfolder import its siblings and the tools contract, not the outside', () => {
     const code = [
-      "import { CheckoutError } from '../checkout/checkout.js'",
+      "import { CheckoutError } from '../../repository/checkout.js'",
       "import type { Toolbox } from '../toolbox.js'",
-      "import { runCommand } from '../../process/run-command.js'",
     ].join('\n')
 
     expect(boundaryViolations(code, INVESTIGATION, 'tools/repository-tools.ts')).toEqual([])
@@ -241,10 +256,10 @@ describe('investigation boundary rules', () => {
     ).not.toEqual([])
   })
 
-  it('accepts git through the process runner, sockets and the tool contract', () => {
+  it('accepts sockets, the checkout and the tool contract', () => {
     const code = [
       "import { createServer } from 'node:net'",
-      "import { runCommand } from '../process/run-command.js'",
+      "import { CheckoutError } from '../repository/checkout.js'",
       "import type { Toolbox } from './toolbox.js'",
       'const path = process.execPath',
     ].join('\n')
@@ -256,6 +271,7 @@ describe('investigation boundary rules', () => {
     ['a concrete provider', "import { ClaudeCliProvider } from '../providers/claude.js'"],
     ['the CLI', "import { formatReview } from '../cli/format-review.js'"],
     ['the engine', "import { runReview } from '../review/run-review.js'"],
+    ['git through the process runner', "import { runCommand } from '../process/run-command.js'"],
     ['the console', "console.log('debug')"],
   ])('flags %s', (_case, code) => {
     expect(boundaryViolations(code, INVESTIGATION)).not.toEqual([])
@@ -273,14 +289,31 @@ describe('app boundary rules', () => {
   })
 })
 
-describe.each([REVIEW, PUBLISH, CONTEXT, INVESTIGATION, APP])('$dir boundary', (boundary) => {
-  const sources = sourcesOf(boundary)
-
-  it('has source files to check', () => {
-    expect(sources.map(({ name }) => name)).toEqual(expect.arrayContaining(boundary.expected))
-  })
-
-  it.each(sources)('$name stays inside the boundary', ({ name, code }) => {
-    expect(boundaryViolations(code, boundary, name)).toEqual([])
+describe('repository boundary rules', () => {
+  it.each([
+    [
+      'the investigation',
+      "import { openInvestigation } from '../investigation/open-investigation.js'",
+    ],
+    ['a concrete provider', "import { ClaudeCliProvider } from '../providers/claude.js'"],
+    ['process.env', 'const token = process.env.GITHUB_TOKEN'],
+    ['the console', "console.log('debug')"],
+  ])('flags %s', (_case, code) => {
+    expect(boundaryViolations(code, REPOSITORY)).not.toEqual([])
   })
 })
+
+describe.each([REVIEW, PUBLISH, CONTEXT, INVESTIGATION, REPOSITORY, APP])(
+  '$dir boundary',
+  (boundary) => {
+    const sources = sourcesOf(boundary)
+
+    it('has source files to check', () => {
+      expect(sources.map(({ name }) => name)).toEqual(expect.arrayContaining(boundary.expected))
+    })
+
+    it.each(sources)('$name stays inside the boundary', ({ name, code }) => {
+      expect(boundaryViolations(code, boundary, name)).toEqual([])
+    })
+  },
+)

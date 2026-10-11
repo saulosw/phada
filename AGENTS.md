@@ -34,7 +34,7 @@ src/
                          #   pull request and review state, run/skip, then the review use case,
                          #   then print or publish; createProvider()
   architecture.test.ts   # allowed imports of src/review/, src/publish/, src/context/,
-                         #   src/investigation/ and src/app/
+                         #   src/investigation/, src/repository/ and src/app/
   app/                   # use cases any caller can run (CLI today), with injected readers
     review-pull-request.ts # reviewPullRequest(): repository context → investigation → review →
                          #   investigation report; reports progress through typed events
@@ -90,10 +90,6 @@ src/
   investigation/         # the AI reads the pull request head with Phada's read-only tools
     toolbox.ts           #   the tools contract: ToolDefinition, ToolResult, Toolbox
     open-investigation.ts #  openInvestigation(): checkout + tools per pass + log
-    checkout/            #   the repository at one commit
-      checkout.ts        #     Checkout (read, grep, list), CheckoutError
-      git-checkout.ts    #     openGitCheckout(): a temporary bare repository, git fetch --depth 1 <sha>
-      repo-path.ts       #     toRepoPath(): paths inside the repository only
     tools/               #   the tools, pure over a Checkout
       tool-registry.ts   #     RegisteredTool, createToolbox(): validation, budget, answer size, log
       repository-tools.ts #    read_file, grep and list
@@ -118,6 +114,10 @@ src/
     decide-run.ts        #   decideRun(): review, or skip a commit Phada already reviewed
     plan-publication.ts  #   planPublication(): new comments vs findings still open in a thread
     types.ts             #   PublicationPlan, RunDecision, SkipReason
+  repository/            # the repository at one commit, read through git objects
+    checkout.ts          #   Checkout (read, grep, list), CheckoutError
+    git-checkout.ts      #   openGitCheckout(): a temporary bare repository, git fetch --depth 1 <sha>
+    repo-path.ts         #   toRepoPath(): paths inside the repository only
   review/                # the engine: data in, result out
     types.ts             #   ReviewRequest, Finding, ReviewResult, ReviewOutcome, …
     prompt-parts.ts      #   text shared by the review and verification prompts: rules section,
@@ -154,8 +154,9 @@ environment. `src/context/` reads nothing itself: `loadContext()` gets the reade
 repository and of the local disk as data, and its only value imports from outside the folder are
 `picomatch`, `node:path` and the pure config helpers (`parse-config.ts`, `merge-config.ts`).
 `src/publish/` imports only types from outside the folder (`src/review/types.ts`,
-`src/github/pull-request-reviews.ts`). `src/investigation/` runs `git` through
-`src/process/run-command.ts` and never imports the CLI, the engine or a concrete provider; the
+`src/github/pull-request-reviews.ts`). `src/repository/` runs `git` through
+`src/process/run-command.ts`. `src/investigation/` reads the repository only through a `Checkout`
+and never imports the CLI, the engine or a concrete provider; the
 engine sees its tools only as a `Toolbox` (`src/investigation/toolbox.ts`) that the caller passes
 in. `src/app/` orchestrates a review from injected readers and factories and never imports the
 CLI, a concrete provider or the GitHub client, nor prints: it reports through events, and
