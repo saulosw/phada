@@ -34,9 +34,12 @@ const EXTENSIONS_SHOWN = 3
 
 export function formatIndexText(report: IndexReport, sizes: IndexSizes, home: string): string {
   const { files, summary } = report
-  const ref = report.ref === 'HEAD' ? 'default branch' : report.ref
+  const ref =
+    report.ref === report.commit
+      ? ''
+      : ` (${report.ref === 'HEAD' ? 'default branch' : report.ref})`
   const lines = [
-    `Indexed ${report.repository} at ${report.commit.slice(0, 7)} (${ref}) in ${formatDuration(report.durationMs)}`,
+    `Indexed ${report.repository} at ${report.commit.slice(0, 7)}${ref} in ${formatDuration(report.durationMs)}`,
   ]
   if (report.rebuilt) lines.push('Index rebuilt: the format changed.')
   const leftOut = report.leftOut.length === 0 ? '' : ` · ${number(report.leftOut.length)} left out`

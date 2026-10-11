@@ -217,7 +217,7 @@ up in the published review. `mcp` does not work with Codex or Ollama yet.
 
 `phada index owner/repo` builds a map of the repository's code on your machine: its files,
 functions, classes, methods, parameters, variables, imports, exports and calls, for TypeScript,
-JavaScript, Python and Go. It fetches the default branch (or `--ref <branch, tag or commit>`) into
+JavaScript, Python and Go. It fetches the default branch (or `--ref <branch, tag or full commit SHA>`) into
 the local mirror and parses each file with [tree-sitter](https://tree-sitter.github.io/). Files are
 kept by their git blob, so running it again reads only the files that changed.
 

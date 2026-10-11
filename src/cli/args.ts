@@ -112,7 +112,8 @@ for TypeScript, JavaScript, Python and Go. Only files that changed since the
 last run are read again.
 
 Options:
-  --ref <ref>        Branch, tag or commit to index (default: the default branch)
+  --ref <ref>        Branch, tag or full commit SHA to index (default: the
+                     default branch)
   --format <name>    Output: text or json (default: text)
   --debug            Show error details
   -h, --help         Show this help

@@ -84,6 +84,12 @@ describe('formatIndexText', () => {
     expect(text).not.toContain('Left out')
     expect(text).toContain('Index: /home/u/.cache/phada/index/acme/shop.sqlite (2.4 MB)')
   })
+
+  it('does not repeat a commit given as the ref', () => {
+    const text = formatIndexText({ ...REPORT, ref: REPORT.commit }, SIZES, '/home/u')
+
+    expect(text.split('\n')[0]).toBe('Indexed acme/shop at 1a2b3c4 in 3.1s')
+  })
 })
 
 describe('formatIndexJson', () => {
