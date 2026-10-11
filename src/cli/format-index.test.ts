@@ -86,6 +86,17 @@ describe('formatIndexText', () => {
     expect(text).toContain('Index: /home/u/.cache/phada/index/acme/shop.sqlite (2.4 MB)')
   })
 
+  it('strips terminal control characters from file names of the repository', () => {
+    const text = formatIndexText(
+      { ...REPORT, leftOut: [{ path: 'evil.\u001b]52;c;ZXZpbA==\u0007x', reason: 'no-grammar' }] },
+      SIZES,
+      '/home/u',
+    )
+
+    expect(text).not.toMatch(/[\u001b\u0007]/)
+    expect(text).toContain('1 no grammar (.]52;c;zxzpba==x 1)')
+  })
+
   it('does not repeat a commit given as the ref', () => {
     const text = formatIndexText({ ...REPORT, ref: REPORT.commit }, SIZES, '/home/u')
 

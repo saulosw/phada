@@ -2,6 +2,7 @@ import type { IndexReport, LeftOutFile } from '../app/index-repository.js'
 import { LANGUAGE_LABELS } from '../repo-map/languages.js'
 import type { Language } from '../repo-map/languages.js'
 import type { SymbolKind } from '../repo-map/types.js'
+import { toTerminalText } from './terminal-text.js'
 import { formatBytes, formatDuration } from './units.js'
 
 export interface IndexSizes {
@@ -67,7 +68,7 @@ export function formatIndexText(report: IndexReport, sizes: IndexSizes, home: st
   lines.push(
     `Index: ${shortPath(report.indexPath, home)} (${formatBytes(sizes.index)}) · mirror ${formatBytes(sizes.mirror)}`,
   )
-  return `${lines.join('\n')}\n`
+  return `${toTerminalText(lines.join('\n'))}\n`
 }
 
 export function formatIndexJson(report: IndexReport, sizes: IndexSizes): string {
