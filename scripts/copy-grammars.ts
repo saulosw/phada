@@ -9,4 +9,3 @@ mkdirSync(target, { recursive: true })
 for (const { packageName, file } of Object.values(GRAMMAR_FILES)) {
   copyFileSync(require.resolve(`${packageName}/${file}`), join(target, file))
 }
-process.stdout.write(`Copied ${Object.keys(GRAMMAR_FILES).length} grammars to ${target}\n`)
