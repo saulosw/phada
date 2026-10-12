@@ -29,7 +29,8 @@ talks to GitHub itself.
 
 ```
 src/
-  bin.ts                 # entry point of the `phada` command: reads the package version, calls run()
+  bin.ts                 # entry point of the `phada` command: reads the package version, drops the
+                         #   SQLite ExperimentalWarning (suppressSqliteWarning), calls run()
   main.ts                # run(argv, deps): CLI flow — flags, token, user config, provider choice,
                          #   pull request and review state, run/skip, then the review use case,
                          #   then print or publish; createProvider()
@@ -75,8 +76,8 @@ src/
                          #   resolveProvider(): provider and model as a pair
     user-config.ts       #   the user's folder (PHADA_CONFIG_HOME › XDG › ~/.config/phada), loadUserLayers()
     local-files.ts       #   LocalFileSystem and its node:fs implementation
-    cache-paths.ts       #   the cache folder (PHADA_CACHE_HOME › XDG › ~/.cache/phada), mirror and
-                         #   index paths, pathSize()
+    cache-paths.ts       #   the cache folder (PHADA_CACHE_HOME › XDG › ~/.cache/phada),
+                         #   repositoryCache(): mirror and index paths; pathSize()
     errors.ts            #   ConfigError
   context/               # what the review sends besides the diff, with injected readers
     phada-paths.ts       #   .phada/ folders from the root to each changed file
@@ -123,7 +124,7 @@ src/
     plan-publication.ts  #   planPublication(): new comments vs findings still open in a thread
     types.ts             #   PublicationPlan, RunDecision, SkipReason
   repository/            # the repository through git objects, in a persistent mirror
-    checkout.ts          #   Checkout (read, grep, list), CheckoutError
+    checkout.ts          #   Checkout (read, grep, list), CheckoutError, OpenCheckoutOptions
     git-checkout.ts      #   GitCheckout: one commit of the mirror; the git environment without tokens
     git-mirror.ts        #   openGitMirror(): bare repository in the cache, fetch --depth 1 into
                          #   refs/phada/*, ls-tree -r, cat-file --batch; openMirrorCheckout()
@@ -178,7 +179,8 @@ repository and of the local disk as data, and its only value imports from outsid
 `src/publish/` imports only types from outside the folder (`src/review/types.ts`,
 `src/github/pull-request-reviews.ts`). `src/repository/` runs `git` through
 `src/process/run-command.ts`. `src/investigation/` reads the repository only through a `Checkout`
-and never imports the CLI, the engine or a concrete provider; the
+(`src/repository/checkout.ts`), opened by a function the caller passes in, and never imports the
+mirror, the CLI, the engine or a concrete provider; the
 engine sees its tools only as a `Toolbox` (`src/investigation/toolbox.ts`) that the caller passes
 in. `src/app/` orchestrates a review from injected readers and factories and never imports the
 CLI, a concrete provider or the GitHub client, nor prints: it reports through events, and
