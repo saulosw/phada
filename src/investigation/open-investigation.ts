@@ -1,6 +1,6 @@
 import type { Toolbox } from './toolbox.js'
 import type { Checkout } from '../repository/checkout.js'
-import type { OpenCheckoutOptions } from '../repository/git-mirror.js'
+import type { OpenCheckoutOptions } from '../repository/checkout.js'
 import { repositoryTools } from './tools/repository-tools.js'
 import { ToolLog } from './tools/tool-log.js'
 import type { ReviewPass } from './tools/tool-log.js'

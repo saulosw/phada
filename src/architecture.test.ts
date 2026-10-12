@@ -51,12 +51,7 @@ const INVESTIGATION: Boundary = {
     '../repository/checkout.js',
     '../repository/repo-path.js',
   ]),
-  types: new Set([
-    '../providers/types.js',
-    '../review/types.js',
-    '../repository/checkout.js',
-    '../repository/git-mirror.js',
-  ]),
+  types: new Set(['../providers/types.js', '../review/types.js', '../repository/checkout.js']),
   expected: [
     'toolbox.ts',
     'mcp/mcp-server.ts',
