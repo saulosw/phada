@@ -92,6 +92,7 @@ describe('openIndexStore', () => {
         binary: 0,
         'parse-timeout': 0,
         'parse-failed': 0,
+        missing: 0,
         symlink: 0,
         submodule: 0,
       },

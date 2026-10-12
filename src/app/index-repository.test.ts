@@ -292,6 +292,30 @@ describe('indexRepository', () => {
     expect(again.read).toEqual([[]])
   })
 
+  it('leaves out a file git does not return and still finishes the progress', async () => {
+    const { mirror } = fakeMirror({
+      'src/a.ts': { content: 'export const a = 1\n' },
+      'src/b.ts': { content: 'export const b = 1\n' },
+    })
+    const missing: IndexRepositoryDeps['mirror'] = {
+      ...mirror,
+      readBlobs: async function* (wanted) {
+        for await (const blob of mirror.readBlobs(
+          wanted.filter((file) => file.path !== 'src/b.ts'),
+        )) {
+          yield blob
+        }
+      },
+    }
+    const h = deps(missing, storePath())
+
+    const report = await indexRepository(INPUT, h.deps)
+
+    expect(report.leftOut).toEqual([{ path: 'src/b.ts', reason: 'missing' }])
+    expect(report.files.indexed).toBe(1)
+    expect(h.events.at(-1)).toBe('extracted 2/2')
+  })
+
   it('closes the index when reading the files fails', async () => {
     const { mirror } = fakeMirror({ 'src/a.ts': { content: 'export const a = 1\n' } })
     const failing: IndexRepositoryDeps['mirror'] = {

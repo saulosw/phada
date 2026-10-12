@@ -115,9 +115,10 @@ export async function indexRepository(
       done += 1
       deps.events.extracted(done, total)
     }
+    if (done < total) deps.events.extracted(total, total)
 
     const commitFiles: CommitFile[] = planned.map(({ file, language, status }) => {
-      const blobStatus = status ?? fresh.get(file.oid) ?? known.get(file.oid) ?? 'indexed'
+      const blobStatus = status ?? fresh.get(file.oid) ?? known.get(file.oid) ?? 'missing'
       return {
         path: file.path,
         oid: file.oid,

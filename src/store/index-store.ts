@@ -16,6 +16,7 @@ export type FileStatus =
   | 'binary'
   | 'parse-timeout'
   | 'parse-failed'
+  | 'missing'
   | 'symlink'
   | 'submodule'
 
@@ -27,6 +28,7 @@ export const FILE_STATUSES: readonly FileStatus[] = [
   'binary',
   'parse-timeout',
   'parse-failed',
+  'missing',
   'symlink',
   'submodule',
 ]

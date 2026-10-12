@@ -29,6 +29,7 @@ const LEFT_OUT_LABELS: readonly [LeftOutFile['reason'], string, string][] = [
   ['binary', 'binary', 'binary'],
   ['parse-timeout', 'timed out', 'timed out'],
   ['parse-failed', 'unreadable by the parser', 'unreadable by the parser'],
+  ['missing', 'not returned by git', 'not returned by git'],
   ['symlink', 'symbolic link', 'symbolic links'],
   ['submodule', 'submodule', 'submodules'],
 ]
