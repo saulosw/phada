@@ -1,5 +1,13 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -72,6 +80,15 @@ describe('GitMirror with a local repository', () => {
     expect(await reopened.checkout(repository.sha).readText('src/a.ts')).toBe(
       'export const a = 1\n',
     )
+  })
+
+  it('creates the cache folders readable only by you', async () => {
+    const root = join(parent, `private-${count}`)
+    await openGitMirror(options({ dir: join(root, 'repos', 'acme', 'shop.git') }))
+
+    for (const dir of [root, join(root, 'repos'), join(root, 'repos', 'acme', 'shop.git')]) {
+      expect(statSync(dir).mode & 0o777).toBe(0o700)
+    }
   })
 
   it('fetches a branch name such as HEAD', async () => {

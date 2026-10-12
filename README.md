@@ -248,8 +248,9 @@ Phada keeps a mirror of each repository it reviews or indexes, and the map, in
   their history and without your token;
 - `index/<owner>/<repo>.sqlite`: the map of `phada index`, with its 10 most recent commits.
 
-Everything there can be deleted at any time (`rm -rf ~/.cache/phada`); Phada fetches what it
-needs again.
+The mirror holds the source code of the repositories you review, private ones included, so
+Phada creates these folders readable only by you. Everything there can be deleted at any time
+(`rm -rf ~/.cache/phada`); Phada fetches what it needs again.
 
 ## Configuration
 

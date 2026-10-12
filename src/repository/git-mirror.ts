@@ -77,7 +77,7 @@ export async function openGitMirror(options: GitMirrorOptions): Promise<GitMirro
   const env = gitEnvironment(options.env)
   if (!(await isBareRepository(options.dir))) {
     try {
-      await mkdir(options.dir, { recursive: true })
+      await mkdir(options.dir, { recursive: true, mode: 0o700 })
       const init = await run('git', ['init', '--bare', '-q', options.dir], {
         env,
         timeoutMs: GIT_READ_TIMEOUT_MS,

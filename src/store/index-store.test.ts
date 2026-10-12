@@ -1,6 +1,6 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterAll, describe, expect, it } from 'vitest'
 import type { FileMap } from '../repo-map/types.js'
@@ -150,6 +150,15 @@ describe('openIndexStore', () => {
     }
     expect(columns('snapshot_file')).toContain('blob_id integer')
     db.close()
+  })
+
+  it('creates its folder readable only by you', async () => {
+    const path = freshPath()
+    const store = await openIndexStore(path)
+    store.close()
+
+    expect(statSync(dirname(path)).mode & 0o777).toBe(0o700)
+    expect(statSync(dirname(dirname(path))).mode & 0o777).toBe(0o700)
   })
 
   it('knows which blobs it has and their status', async () => {

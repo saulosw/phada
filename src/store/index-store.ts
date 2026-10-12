@@ -98,7 +98,7 @@ export async function openIndexStore(
     throw new IndexStoreError('phada index needs Node.js 22.13 or newer')
   }
   try {
-    await mkdir(dirname(path), { recursive: true })
+    await mkdir(dirname(path), { recursive: true, mode: 0o700 })
   } catch (error) {
     throw new IndexStoreError(`Cannot write the index at ${path}: ${(error as Error).message}`)
   }

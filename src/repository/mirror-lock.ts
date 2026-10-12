@@ -37,7 +37,7 @@ export async function withMirrorLock<T>(
 async function acquire(lockPath: string, options: MirrorLockOptions): Promise<void> {
   const now = options.now ?? Date.now
   const sleep = options.sleep ?? ((ms: number) => new Promise((done) => setTimeout(done, ms)))
-  await mkdir(dirname(lockPath), { recursive: true })
+  await mkdir(dirname(lockPath), { recursive: true, mode: 0o700 })
   const deadline = now() + options.timeoutMs
   for (;;) {
     try {
