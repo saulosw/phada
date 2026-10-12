@@ -112,6 +112,26 @@ describe('GitMirror with a local repository', () => {
     }
   })
 
+  it('keeps the refs of the most recent pull requests only', async () => {
+    const opts = options({ keepPullRefs: 2 })
+    const mirror = await openGitMirror(opts)
+    for (const number of [1, 2, 3]) {
+      await mirror.fetch(repository.sha, `refs/phada/pull/${number}`)
+    }
+    await mirror.fetch('HEAD', 'refs/phada/index')
+
+    const refs = execFileSync(
+      'git',
+      ['-C', opts.dir, 'for-each-ref', '--format=%(refname)', 'refs/phada/'],
+      { encoding: 'utf8' },
+    )
+      .trim()
+      .split('\n')
+    expect(refs.filter((ref) => ref.startsWith('refs/phada/pull/'))).toHaveLength(2)
+    expect(refs).toContain('refs/phada/pull/3')
+    expect(refs).toContain('refs/phada/index')
+  })
+
   it('lists every file of a commit with its exact path, mode, blob and size', async () => {
     const mirror = await openGitMirror(options())
     await mirror.fetch(repository.sha, 'refs/phada/pull/1')

@@ -18,8 +18,10 @@ import { MirrorLockTimeoutError, withMirrorLock } from './mirror-lock.js'
 
 export const BLOB_BATCH_BYTES = 32_000_000
 export const LIST_MAX_OUTPUT = 64_000_000
+export const KEEP_PULL_REFS = 20
 
 const SHA = /^[0-9a-f]{40}$/
+const PULL_REFS = 'refs/phada/pull/'
 const NEWLINE = 0x0a
 
 export type RunBytes = (
@@ -46,6 +48,7 @@ export interface GitMirrorOptions {
   runBytes?: RunBytes
   lockTimeoutMs?: number
   batchBytes?: number
+  keepPullRefs?: number
 }
 
 export interface GitMirror {
@@ -110,7 +113,9 @@ class GitMirrorRepository implements GitMirror {
         },
         async () => {
           await this.#fetchLocked(ref, keepAs)
-          return this.#resolve(keepAs)
+          const sha = await this.#resolve(keepAs)
+          if (keepAs.startsWith(PULL_REFS)) await this.#dropOldPullRefs(keepAs)
+          return sha
         },
       )
     } catch (error) {
@@ -192,6 +197,23 @@ class GitMirrorRepository implements GitMirror {
         `Could not fetch ${SHA.test(ref) ? ref.slice(0, 7) : ref} from ${owner}/${repo}: ${redactSecrets(detail) || `git exited with code ${fetched.exitCode}`}`,
       )
     }
+  }
+
+  async #dropOldPullRefs(kept: string): Promise<void> {
+    const listed = await this.#run(
+      'git',
+      ['-C', this.dir, 'for-each-ref', '--sort=-committerdate', '--format=%(refname)', PULL_REFS],
+      { env: this.#env, timeoutMs: GIT_READ_TIMEOUT_MS },
+    )
+    if (listed.exitCode !== 0) return
+    const others = listed.stdout.split('\n').filter((ref) => ref !== '' && ref !== kept)
+    const old = others.slice(Math.max((this.#options.keepPullRefs ?? KEEP_PULL_REFS) - 1, 0))
+    if (old.length === 0) return
+    await this.#run('git', ['-C', this.dir, 'update-ref', '--stdin'], {
+      env: this.#env,
+      stdin: old.map((ref) => `delete ${ref}\n`).join(''),
+      timeoutMs: GIT_READ_TIMEOUT_MS,
+    })
   }
 
   async #resolve(keepAs: string): Promise<string> {

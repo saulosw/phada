@@ -244,8 +244,9 @@ too.
 Phada keeps a mirror of each repository it reviews or indexes, and the map, in
 `~/.cache/phada` (`$XDG_CACHE_HOME/phada` when set; `PHADA_CACHE_HOME` to choose another folder):
 
-- `repos/<owner>/<repo>.git`: a bare git repository with only the commits Phada fetched, without
-  their history and without your token;
+- `repos/<owner>/<repo>.git`: a bare git repository with only the commits Phada fetched (the 20
+  most recently reviewed pull requests and the last indexed commit), without their history and
+  without your token;
 - `index/<owner>/<repo>.sqlite`: the map of `phada index`, with its 10 most recent commits; a
   new version of Phada builds it again from scratch.
 
