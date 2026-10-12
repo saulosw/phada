@@ -9,6 +9,7 @@ import { LANGUAGE_TAG } from '../config/schema.js'
 import { UsageError } from './errors.js'
 
 export type OutputFormat = 'markdown' | 'json'
+export type IndexFormat = 'text' | 'json'
 
 export interface RepositoryName {
   owner: string
@@ -19,6 +20,7 @@ export type CliCommand =
   | { kind: 'help'; text: string }
   | { kind: 'version' }
   | { kind: 'init'; global: boolean; repo?: RepositoryName }
+  | { kind: 'index'; repo: RepositoryName; ref?: string; format: IndexFormat; debug: boolean }
   | {
       kind: 'review'
       ref: PullRequestRef
@@ -41,12 +43,14 @@ Reviews GitHub pull requests with the AI provider you choose.
 Commands:
   review <pull request>  Review a pull request and publish the review on it
   init                   Create config files for Phada
+  index <owner/repo>     Build a map of a repository's code on this machine
 
 Options:
   -h, --help             Show this help
   -v, --version          Show the version
 
-Run "phada review --help" or "phada init --help" for their options.`
+Run "phada review --help", "phada init --help" or "phada index --help" for their
+options.`
 
 export const REVIEW_USAGE = `Usage: phada review <owner/repo#N | pull request URL> [options]
 
@@ -100,12 +104,32 @@ Options:
   --global    Create your own config instead of the repository's
   -h, --help  Show this help`
 
+export const INDEX_USAGE = `Usage: phada index <owner/repo> [options]
+
+Builds or updates a map of the repository's code on this machine: files,
+functions, classes, methods, parameters, variables, imports, exports and calls,
+for TypeScript, JavaScript, Python and Go. Only files that changed since the
+last run are read again.
+
+Options:
+  --ref <ref>        Branch, tag or full commit SHA to index (default: the
+                     default branch)
+  --format <name>    Output: text or json (default: text)
+  --debug            Show error details
+  -h, --help         Show this help
+
+Environment:
+  GITHUB_TOKEN       GitHub token that can read the repository contents
+  GH_TOKEN           Used when GITHUB_TOKEN is not set
+  PHADA_CACHE_HOME   Folder of the mirror and the index (default: ~/.cache/phada)`
+
 const REPOSITORY_NAME = /^([\w.-]+)\/([\w.-]+)$/
 
 export function parseCliArgs(argv: readonly string[]): CliCommand {
   const [command, ...rest] = argv
   if (command === 'review') return parseReviewArgs(rest)
   if (command === 'init') return parseInitArgs(rest)
+  if (command === 'index') return parseIndexArgs(rest)
   if (command !== undefined && !command.startsWith('-')) throw unknownCommand(command)
 
   const { values } = parseOptions(argv, {
@@ -121,7 +145,7 @@ function unknownCommand(command: string): UsageError {
   if (isPullRequestRef(command)) {
     return new UsageError(`Unknown command "${command}". Did you mean "phada review ${command}"?`)
   }
-  return new UsageError(`Unknown command "${command}". Available: review, init.`)
+  return new UsageError(`Unknown command "${command}". Available: review, init, index.`)
 }
 
 function isPullRequestRef(input: string): boolean {
@@ -206,11 +230,43 @@ function parseInitArgs(argv: readonly string[]): CliCommand {
     )
   }
   if (extra.length > 0) throw new UsageError('Give one repository at a time.')
+  return { kind: 'init', global: true, repo: parseRepositoryName(name) }
+}
+
+function parseIndexArgs(argv: readonly string[]): CliCommand {
+  const { values, positionals } = parseOptions(argv, {
+    ref: { type: 'string' },
+    format: { type: 'string', default: 'text' },
+    debug: { type: 'boolean', default: false },
+    help: { type: 'boolean', short: 'h', default: false },
+  })
+  if (values.help) return { kind: 'help', text: INDEX_USAGE }
+  const [name, ...extra] = positionals
+  if (name === undefined) {
+    throw new UsageError('Missing the repository to index, e.g. phada index owner/repo.')
+  }
+  if (extra.length > 0) throw new UsageError('Index one repository at a time.')
+  const repo = parseRepositoryName(name)
+  if (values.format !== 'text' && values.format !== 'json') {
+    throw new UsageError(`Invalid --format "${values.format}". Use text or json.`)
+  }
+  const ref = values.ref?.trim()
+  if (ref === '') throw new UsageError('--ref needs a branch, tag or commit.')
+  return {
+    kind: 'index',
+    repo,
+    ...(ref === undefined ? {} : { ref }),
+    format: values.format,
+    debug: values.debug,
+  }
+}
+
+function parseRepositoryName(name: string): RepositoryName {
   const [, owner = '', repo = ''] = REPOSITORY_NAME.exec(name) ?? []
   if ([owner, repo].some((part) => part === '' || part === '.' || part === '..')) {
     throw new UsageError(`Invalid repository "${name}". Use owner/repo.`)
   }
-  return { kind: 'init', global: true, repo: { owner, repo } }
+  return { owner, repo }
 }
 
 function parseOptions<T extends ParseArgsOptionsConfig>(argv: readonly string[], options: T) {

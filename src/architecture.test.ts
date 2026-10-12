@@ -48,42 +48,76 @@ const INVESTIGATION: Boundary = {
     'node:readline',
     'node:url',
     'zod',
-    '../process/errors.js',
-    '../process/run-command.js',
-    '../providers/redact-secrets.js',
+    '../repository/checkout.js',
+    '../repository/repo-path.js',
   ]),
-  types: new Set(['../providers/types.js', '../review/types.js', '../process/run-command.js']),
+  types: new Set(['../providers/types.js', '../review/types.js', '../repository/checkout.js']),
   expected: [
     'toolbox.ts',
-    'checkout/git-checkout.ts',
     'mcp/mcp-server.ts',
     'tools/repository-tools.ts',
     'tools/tool-registry.ts',
   ],
   globals: ['console'],
 }
+const REPOSITORY: Boundary = {
+  dir: 'repository',
+  values: new Set([
+    'node:crypto',
+    'node:fs/promises',
+    'node:os',
+    'node:path',
+    'node:process',
+    '../process/errors.js',
+    '../process/run-command.js',
+    '../providers/redact-secrets.js',
+  ]),
+  types: new Set(['../process/run-command.js']),
+  expected: ['checkout.ts', 'git-checkout.ts', 'git-mirror.ts', 'mirror-lock.ts', 'repo-path.ts'],
+}
+const REPO_MAP: Boundary = {
+  dir: 'repo-map',
+  values: new Set(['web-tree-sitter', 'node:fs/promises', 'node:module']),
+  types: new Set(),
+  expected: ['extract.ts', 'grammars.ts', 'languages.ts', 'types.ts', 'walk.ts'],
+}
+const STORE: Boundary = {
+  dir: 'store',
+  values: new Set(['node:fs/promises', 'node:path', 'node:sqlite']),
+  types: new Set(['../repo-map/types.js', '../repo-map/languages.js']),
+  expected: ['index-store.ts', 'schema.ts'],
+}
 const APP: Boundary = {
   dir: 'app',
   values: new Set([
     '../context/load-context.js',
-    '../investigation/checkout/git-checkout.js',
+    '../config/merge-config.js',
+    '../config/parse-config.js',
+    '../context/ignore.js',
     '../investigation/open-investigation.js',
     '../investigation/tools/report.js',
+    '../repo-map/languages.js',
+    '../repository/git-checkout.js',
     '../review/run-review.js',
+    '../store/index-store.js',
   ]),
   types: new Set([
     '../config/types.js',
     '../context/types.js',
     '../github/pull-request.js',
-    '../investigation/checkout/checkout.js',
-    '../investigation/checkout/git-checkout.js',
     '../investigation/open-investigation.js',
     '../investigation/tools/report.js',
     '../investigation/tools/tool-log.js',
     '../providers/types.js',
+    '../repo-map/extract.js',
+    '../repo-map/languages.js',
+    '../repository/checkout.js',
+    '../repository/git-checkout.js',
+    '../repository/git-mirror.js',
     '../review/types.js',
+    '../store/index-store.js',
   ]),
-  expected: ['review-pull-request.ts'],
+  expected: ['index-repository.ts', 'review-pull-request.ts'],
 }
 const STATIC_MODULE = /^\s*(?:import|export)\s+(type\s+)?(?:[^'"]*?\bfrom\s+)?['"]([^'"]+)['"]/gm
 const DYNAMIC_MODULE = /\bimport\(\s*['"]([^'"]+)['"]\s*\)/g
@@ -226,9 +260,8 @@ describe('context boundary rules', () => {
 describe('investigation boundary rules', () => {
   it('lets a subfolder import its siblings and the tools contract, not the outside', () => {
     const code = [
-      "import { CheckoutError } from '../checkout/checkout.js'",
+      "import { CheckoutError } from '../../repository/checkout.js'",
       "import type { Toolbox } from '../toolbox.js'",
-      "import { runCommand } from '../../process/run-command.js'",
     ].join('\n')
 
     expect(boundaryViolations(code, INVESTIGATION, 'tools/repository-tools.ts')).toEqual([])
@@ -241,10 +274,10 @@ describe('investigation boundary rules', () => {
     ).not.toEqual([])
   })
 
-  it('accepts git through the process runner, sockets and the tool contract', () => {
+  it('accepts sockets, the checkout and the tool contract', () => {
     const code = [
       "import { createServer } from 'node:net'",
-      "import { runCommand } from '../process/run-command.js'",
+      "import { CheckoutError } from '../repository/checkout.js'",
       "import type { Toolbox } from './toolbox.js'",
       'const path = process.execPath',
     ].join('\n')
@@ -256,6 +289,7 @@ describe('investigation boundary rules', () => {
     ['a concrete provider', "import { ClaudeCliProvider } from '../providers/claude.js'"],
     ['the CLI', "import { formatReview } from '../cli/format-review.js'"],
     ['the engine', "import { runReview } from '../review/run-review.js'"],
+    ['git through the process runner', "import { runCommand } from '../process/run-command.js'"],
     ['the console', "console.log('debug')"],
   ])('flags %s', (_case, code) => {
     expect(boundaryViolations(code, INVESTIGATION)).not.toEqual([])
@@ -273,14 +307,63 @@ describe('app boundary rules', () => {
   })
 })
 
-describe.each([REVIEW, PUBLISH, CONTEXT, INVESTIGATION, APP])('$dir boundary', (boundary) => {
-  const sources = sourcesOf(boundary)
-
-  it('has source files to check', () => {
-    expect(sources.map(({ name }) => name)).toEqual(expect.arrayContaining(boundary.expected))
-  })
-
-  it.each(sources)('$name stays inside the boundary', ({ name, code }) => {
-    expect(boundaryViolations(code, boundary, name)).toEqual([])
+describe('repository boundary rules', () => {
+  it.each([
+    [
+      'the investigation',
+      "import { openInvestigation } from '../investigation/open-investigation.js'",
+    ],
+    ['a concrete provider', "import { ClaudeCliProvider } from '../providers/claude.js'"],
+    ['process.env', 'const token = process.env.GITHUB_TOKEN'],
+    ['the console', "console.log('debug')"],
+  ])('flags %s', (_case, code) => {
+    expect(boundaryViolations(code, REPOSITORY)).not.toEqual([])
   })
 })
+
+describe('repo-map boundary rules', () => {
+  it.each([
+    ['SQLite', "import { DatabaseSync } from 'node:sqlite'"],
+    ['the process runner', "import { runCommand } from '../process/run-command.js'"],
+    ['the repository mirror', "import { openGitMirror } from '../repository/git-mirror.js'"],
+    ['process.env', 'const home = process.env.HOME'],
+  ])('flags %s', (_case, code) => {
+    expect(boundaryViolations(code, REPO_MAP)).not.toEqual([])
+  })
+})
+
+describe('store boundary rules', () => {
+  it('accepts SQLite and the types of the extracted map', () => {
+    const code = [
+      "import type { DatabaseSync } from 'node:sqlite'",
+      "import type { FileMap } from '../repo-map/types.js'",
+      "const sqlite = await import('node:sqlite')",
+    ].join('\n')
+
+    expect(boundaryViolations(code, STORE)).toEqual([])
+  })
+
+  it.each([
+    ['tree-sitter', "import { Parser } from 'web-tree-sitter'"],
+    ['a subprocess', "import { spawn } from 'node:child_process'"],
+    ['a value import of the extractor', "import { createExtractor } from '../repo-map/extract.js'"],
+    ['the console', "console.log('debug')"],
+  ])('flags %s', (_case, code) => {
+    expect(boundaryViolations(code, STORE)).not.toEqual([])
+  })
+})
+
+describe.each([REVIEW, PUBLISH, CONTEXT, INVESTIGATION, REPOSITORY, REPO_MAP, STORE, APP])(
+  '$dir boundary',
+  (boundary) => {
+    const sources = sourcesOf(boundary)
+
+    it('has source files to check', () => {
+      expect(sources.map(({ name }) => name)).toEqual(expect.arrayContaining(boundary.expected))
+    })
+
+    it.each(sources)('$name stays inside the boundary', ({ name, code }) => {
+      expect(boundaryViolations(code, boundary, name)).toEqual([])
+    })
+  },
+)

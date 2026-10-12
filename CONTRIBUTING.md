@@ -5,7 +5,7 @@ and how to send it. [AGENTS.md](AGENTS.md) describes the code layout and the arc
 
 ## Run from source
 
-You need Node.js 22 or newer and one AI provider set up as described in the
+You need Node.js 22.13 or newer and one AI provider set up as described in the
 [README](README.md#requirements).
 
 ```bash
@@ -53,7 +53,7 @@ CI runs the same four commands.
 
 ## Code conventions
 
-- TypeScript `strict`, ESM, Node 22. Relative imports use the `.js` extension
+- TypeScript `strict`, ESM, Node 22.13. Relative imports use the `.js` extension
   (`import { x } from './y.js'`), and type-only imports use `import type`.
 - One responsibility per file; file names in `kebab-case`.
 - Typed errors (classes extending `Error`) at the boundaries: GitHub, subprocess, provider.

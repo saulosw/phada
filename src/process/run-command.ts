@@ -24,11 +24,42 @@ export interface RunCommandResult {
   durationMs: number
 }
 
+export interface RunCommandBytesResult {
+  stdout: Uint8Array
+  stderr: string
+  exitCode: number
+  durationMs: number
+}
+
 export async function runCommand(
   command: string,
   args: readonly string[],
   options: RunCommandOptions = {},
 ): Promise<RunCommandResult> {
+  const result = await execute(command, args, options, 'utf8')
+  return { ...result, stdout: String(result.stdout), stderr: String(result.stderr) }
+}
+
+export async function runCommandBytes(
+  command: string,
+  args: readonly string[],
+  options: RunCommandOptions = {},
+): Promise<RunCommandBytesResult> {
+  const result = await execute(command, args, options, 'buffer')
+  const stderr = result.stderr instanceof Uint8Array ? result.stderr : new Uint8Array()
+  return {
+    ...result,
+    stdout: result.stdout instanceof Uint8Array ? result.stdout : new Uint8Array(),
+    stderr: Buffer.from(stderr).toString('utf8'),
+  }
+}
+
+async function execute(
+  command: string,
+  args: readonly string[],
+  options: RunCommandOptions,
+  encoding: 'utf8' | 'buffer',
+) {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const maxOutputLength = options.maxOutputLength ?? DEFAULT_MAX_OUTPUT_LENGTH
   const startedAt = performance.now()
@@ -41,6 +72,7 @@ export async function runCommand(
     maxBuffer: maxOutputLength,
     reject: false,
     stripFinalNewline: false,
+    encoding,
   })
   const durationMs = performance.now() - startedAt
 

@@ -1,7 +1,9 @@
 import { ConfigError } from '../config/errors.js'
 import { DiffTooLargeError, GitHubError, InvalidPullRequestRefError } from '../github/errors.js'
 import { ProviderError } from '../providers/types.js'
+import { CheckoutUnavailableError } from '../repository/git-checkout.js'
 import { InvalidReviewReportError } from '../review/errors.js'
+import { IndexStoreError } from '../store/index-store.js'
 import { MissingGitHubTokenError, UsageError } from './errors.js'
 import { toTerminalText } from './terminal-text.js'
 
@@ -55,6 +57,9 @@ function describe(error: unknown): { summary: string; exitCode: 1 | 2 } {
     return { summary: `${error.message} Phada never truncates a diff.`, exitCode: 1 }
   }
   if (error instanceof GitHubError) return { summary: error.message, exitCode: 1 }
+  if (error instanceof CheckoutUnavailableError || error instanceof IndexStoreError) {
+    return { summary: error.message, exitCode: 1 }
+  }
   if (error instanceof ProviderError) return { summary: describeProviderError(error), exitCode: 1 }
   if (error instanceof InvalidReviewReportError) {
     return { summary: `${error.message} Run with --debug to see its answer.`, exitCode: 1 }

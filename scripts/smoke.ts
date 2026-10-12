@@ -9,7 +9,11 @@ interface PackResult {
 }
 
 const TIMEOUT_MS = 120_000
-const PACKAGED_FILE = /^(dist\/.+\.js|package\.json|README\.md|LICENSE)$/
+const GRAMMARS = ['typescript', 'tsx', 'javascript', 'python', 'go'].map(
+  (name) => `dist/grammars/tree-sitter-${name}.wasm`,
+)
+const PACKAGED_FILE =
+  /^(dist\/.+\.js|dist\/grammars\/tree-sitter-(typescript|tsx|javascript|python|go)\.wasm|package\.json|README\.md|LICENSE)$/
 
 const { version } = JSON.parse(readFileSync('package.json', 'utf8')) as { version: string }
 const dir = mkdtempSync(join(tmpdir(), 'phada-smoke-'))
@@ -27,6 +31,7 @@ try {
     'dist/investigation/mcp/mcp-bridge.js',
     'README.md',
     'LICENSE',
+    ...GRAMMARS,
   ]) {
     check(
       pack.files.some(({ path }) => path === file),
@@ -48,6 +53,9 @@ try {
   check(run(phada, ['--version']).stdout === `${version}\n`, `phada --version is not ${version}`)
   check(run(phada, ['--help']).stdout.startsWith('Usage: phada <command>'), 'phada --help')
   check(run(phada, ['review', '--help']).stdout.includes('--min-confidence'), 'review --help')
+  const indexHelp = spawnSync(phada, ['index', '--help'], { encoding: 'utf8', timeout: TIMEOUT_MS })
+  check(indexHelp.status === 0 && indexHelp.stdout.startsWith('Usage: phada index'), 'index --help')
+  check(!indexHelp.stderr.includes('ExperimentalWarning'), 'index --help prints a warning')
 
   const noToken = spawnSync(phada, ['review', 'acme/shop#1'], {
     encoding: 'utf8',
@@ -66,6 +74,16 @@ try {
   check(
     mcp.status === 0 && mcp.stdout.trim() === '{"jsonrpc":"2.0","id":1,"result":{}}',
     `MCP bridge round trip: exit ${mcp.status}, ${mcp.stdout}${mcp.stderr}`,
+  )
+  const extractor = join(dir, 'node_modules', 'phada', 'dist', 'repo-map', 'extract.js')
+  const extracted = spawnSync(
+    process.execPath,
+    ['--input-type=module', '-e', extraction(extractor)],
+    { encoding: 'utf8', timeout: TIMEOUT_MS },
+  )
+  check(
+    extracted.status === 0 && extracted.stdout.trim() === 'f,a,F',
+    `extraction with the packaged grammars: exit ${extracted.status}, ${extracted.stdout}${extracted.stderr}`,
   )
   process.stdout.write(`smoke ok: phada ${version} (${pack.files.length} files)\n`)
 } catch (error) {
@@ -98,6 +116,17 @@ child.stdout.once('data', async (data) => {
   await server.close()
 })
 child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' }) + '\\n')
+`
+}
+
+function extraction(extractorModule: string): string {
+  return `
+import { pathToFileURL } from 'node:url'
+const { createExtractor } = await import(pathToFileURL(${JSON.stringify(extractorModule)}).href)
+const extractor = createExtractor()
+const ts = await extractor.extract('typescript', 'export function f(a) { g(a) }')
+const go = await extractor.extract('go', 'package p\\nfunc F() {}')
+process.stdout.write([...ts.symbols, ...go.symbols].map((symbol) => symbol.name).join(','))
 `
 }
 

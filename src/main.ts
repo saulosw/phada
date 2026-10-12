@@ -17,12 +17,14 @@ import { formatPublishedMessage, formatSkipMessage } from './cli/format-publicat
 import { formatPullRequestSummary, formatReview } from './cli/format-review.js'
 import { messagesFor } from './cli/i18n/messages.js'
 import type { Messages } from './cli/i18n/messages.js'
+import { runIndex } from './cli/index-command.js'
 import { runInit } from './cli/init.js'
 import { withProgress } from './cli/progress.js'
 import { toTerminalText } from './cli/terminal-text.js'
 import type { TextOutput } from './cli/progress.js'
 import type { LocalFileSystem } from './config/local-files.js'
 import { resolveProvider, userMcpServers } from './config/merge-config.js'
+import { repositoryCache } from './config/cache-paths.js'
 import { expandHome, loadUserLayers } from './config/user-config.js'
 import type { ContextReport } from './context/types.js'
 import type { CreatedReview, CreateReviewOptions } from './github/create-review.js'
@@ -34,8 +36,10 @@ import { formatPullRequestRef } from './github/pull-request-ref.js'
 import type { PullRequestRef } from './github/pull-request-ref.js'
 import type { FetchPullRequestOptions, PullRequest } from './github/pull-request.js'
 import type { RepositoryFilesOptions, RepositoryTree } from './github/repository-files.js'
-import type { Checkout } from './investigation/checkout/checkout.js'
-import type { OpenGitCheckoutOptions } from './investigation/checkout/git-checkout.js'
+import type { Checkout, OpenCheckoutOptions } from './repository/checkout.js'
+import type { Extractor } from './repo-map/extract.js'
+import type { GitMirror, GitMirrorOptions } from './repository/git-mirror.js'
+import type { IndexStore } from './store/index-store.js'
 import type { InvestigationReport } from './investigation/tools/report.js'
 import type { ReviewPass } from './investigation/tools/tool-log.js'
 import { ClaudeCliProvider } from './providers/claude.js'
@@ -79,7 +83,11 @@ export interface MainDeps {
   fetchRepositoryFile: (
     options: RepositoryFilesOptions & { path: string; ref: string },
   ) => Promise<string | null>
-  openCheckout: (options: OpenGitCheckoutOptions) => Promise<Checkout>
+  openCheckout: (options: OpenCheckoutOptions) => Promise<Checkout>
+  openMirror: (options: GitMirrorOptions) => Promise<GitMirror>
+  openIndexStore: (path: string, version: string) => Promise<IndexStore>
+  createExtractor: () => Extractor
+  pathSize: (path: string) => Promise<number>
   createProvider: (name: string, options: ProviderOptions) => ReviewProvider
 }
 
@@ -124,6 +132,10 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
       return 0
     }
     debug = command.debug
+    if (command.kind === 'index') {
+      await runIndex(command, deps)
+      return 0
+    }
 
     const token = deps.env.GITHUB_TOKEN?.trim() || deps.env.GH_TOKEN?.trim()
     if (!token) throw new MissingGitHubTokenError()
@@ -183,7 +195,11 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
           readLocalFile: (path) => deps.files.readText(expandHome(path, deps.home)),
           listLocalDocs: (path) => deps.files.listDocs(expandHome(path, deps.home)),
         },
-        openCheckout: deps.openCheckout,
+        openCheckout: (options) =>
+          deps.openCheckout({
+            ...options,
+            dir: repositoryCache(deps.env, deps.home, owner, repo).mirror,
+          }),
         createProvider: (servers) =>
           deps.createProvider(choice.provider, {
             model: choice.model,

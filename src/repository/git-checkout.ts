@@ -1,14 +1,5 @@
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import {
-  CommandNotFoundError,
-  CommandOutputTooLargeError,
-  CommandTimeoutError,
-} from '../../process/errors.js'
-import { runCommand } from '../../process/run-command.js'
-import type { RunCommandOptions, RunCommandResult } from '../../process/run-command.js'
-import { redactSecrets } from '../../providers/redact-secrets.js'
+import { CommandOutputTooLargeError } from '../process/errors.js'
+import type { RunCommandOptions, RunCommandResult } from '../process/run-command.js'
 import { CheckoutError } from './checkout.js'
 import type { Checkout, DirEntry, DirEntryKind, GrepMatch, GrepOptions } from './checkout.js'
 
@@ -27,7 +18,7 @@ const KIND_BY_MODE: Readonly<Record<string, DirEntryKind>> = {
   '160000': 'submodule',
 }
 
-type Run = (
+export type Run = (
   command: string,
   args: readonly string[],
   options?: RunCommandOptions,
@@ -45,17 +36,6 @@ export class CheckoutUnavailableError extends Error {
   }
 }
 
-export interface OpenGitCheckoutOptions {
-  owner: string
-  repo: string
-  sha: string
-  token: string
-  env: NodeJS.ProcessEnv
-  remoteUrl?: string
-  run?: Run
-  makeTempDir?: () => Promise<string>
-}
-
 interface TreeEntry {
   mode: string
   type: string
@@ -63,43 +43,7 @@ interface TreeEntry {
   name: string
 }
 
-export async function openGitCheckout(options: OpenGitCheckoutOptions): Promise<Checkout> {
-  const run = options.run ?? runCommand
-  const dir = await (options.makeTempDir ?? defaultTempDir)()
-  const env = gitEnvironment(options.env)
-  const basic = Buffer.from(`x-access-token:${options.token}`).toString('base64')
-  try {
-    await gitOrThrow(run, dir, ['init', '--bare', '-q', dir], env)
-    const url = options.remoteUrl ?? `https://github.com/${options.owner}/${options.repo}`
-    const fetched = await run(
-      'git',
-      ['-C', dir, 'fetch', '--depth', '1', '--no-tags', '-q', url, options.sha],
-      {
-        env: {
-          ...env,
-          GIT_TERMINAL_PROMPT: '0',
-          GIT_CONFIG_COUNT: '1',
-          GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
-          GIT_CONFIG_VALUE_0: `Authorization: Basic ${basic}`,
-        },
-        timeoutMs: FETCH_TIMEOUT_MS,
-      },
-    )
-    if (fetched.exitCode !== 0) {
-      const detail = firstLine(fetched.stderr).replaceAll(options.token, '').replaceAll(basic, '')
-      throw new CheckoutUnavailableError(
-        'fetch-failed',
-        `Could not fetch the pull request head: ${redactSecrets(detail) || `git exited with code ${fetched.exitCode}`}`,
-      )
-    }
-  } catch (error) {
-    await rm(dir, { recursive: true, force: true })
-    throw unavailable(error)
-  }
-  return new GitCheckout(run, dir, options.sha, env)
-}
-
-class GitCheckout implements Checkout {
+export class GitCheckout implements Checkout {
   readonly commit: string
   readonly #run: Run
   readonly #dir: string
@@ -191,9 +135,7 @@ class GitCheckout implements Checkout {
     return entries.map(({ mode, name }) => ({ name, kind: KIND_BY_MODE[mode] ?? 'file' }))
   }
 
-  async close(): Promise<void> {
-    await rm(this.#dir, { recursive: true, force: true })
-  }
+  async close(): Promise<void> {}
 
   async #entry(path: string): Promise<TreeEntry> {
     const [entry] = parseTree(
@@ -226,30 +168,7 @@ function parseTree(output: string): TreeEntry[] {
   })
 }
 
-async function gitOrThrow(run: Run, dir: string, args: string[], env: NodeJS.ProcessEnv) {
-  const result = await run('git', args, { env, timeoutMs: GIT_READ_TIMEOUT_MS, cwd: dir })
-  if (result.exitCode !== 0) {
-    throw new CheckoutUnavailableError(
-      'fetch-failed',
-      `Could not prepare the pull request head: ${firstLine(result.stderr)}`,
-    )
-  }
-}
-
-function unavailable(error: unknown): unknown {
-  if (error instanceof CommandNotFoundError) {
-    return new CheckoutUnavailableError('git-missing', 'git was not found')
-  }
-  if (error instanceof CommandTimeoutError) {
-    return new CheckoutUnavailableError(
-      'timeout',
-      `Fetching the pull request head took more than ${error.timeoutMs / 1000}s`,
-    )
-  }
-  return error
-}
-
-function gitEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+export function gitEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return Object.fromEntries(
     Object.entries(env).filter(
       ([key]) =>
@@ -258,15 +177,11 @@ function gitEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   )
 }
 
-function firstLine(text: string): string {
+export function firstLine(text: string): string {
   return (
     text
       .split('\n')
       .find((line) => line.trim() !== '')
       ?.trim() ?? ''
   )
-}
-
-function defaultTempDir(): Promise<string> {
-  return mkdtemp(join(tmpdir(), 'phada-checkout-'))
 }

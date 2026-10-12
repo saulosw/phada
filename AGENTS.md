@@ -29,21 +29,28 @@ talks to GitHub itself.
 
 ```
 src/
-  bin.ts                 # entry point of the `phada` command: reads the package version, calls run()
+  bin.ts                 # entry point of the `phada` command: reads the package version, drops the
+                         #   SQLite ExperimentalWarning (suppressSqliteWarning), calls run()
   main.ts                # run(argv, deps): CLI flow — flags, token, user config, provider choice,
                          #   pull request and review state, run/skip, then the review use case,
                          #   then print or publish; createProvider()
   architecture.test.ts   # allowed imports of src/review/, src/publish/, src/context/,
-                         #   src/investigation/ and src/app/
+                         #   src/investigation/, src/repository/, src/repo-map/, src/store/ and src/app/
   app/                   # use cases any caller can run (CLI today), with injected readers
     review-pull-request.ts # reviewPullRequest(): repository context → investigation → review →
                          #   investigation report; reports progress through typed events
+    index-repository.ts  #   indexRepository(): mirror → files left out and why → extract new blobs →
+                         #   store the commit; reports progress through typed events
   cli/                   # terminal edge
     args.ts              #   parseCliArgs(): `review` (--dry-run, --force, --verify/--no-verify,
                          #   --investigate/--no-investigate) and
-                         #   `init` commands, --help, --version; USAGE, REVIEW_USAGE, INIT_USAGE
+                         #   `init` and `index` (--ref, --format text|json) commands, --help,
+                         #   --version; USAGE, REVIEW_USAGE, INIT_USAGE, INDEX_USAGE
     init.ts              #   runInit(): .phada/ in the repository, or the user's own config
     init-templates.ts    #   the commented files phada init writes
+    index-command.ts     #   runIndex(): token, cache folder, mirror, progress, the map's report
+    format-index.ts      #   formatIndexText(), formatIndexJson() (schemaVersion 1)
+    suppress-sqlite-warning.ts # drops Node's ExperimentalWarning for the built-in SQLite
     errors.ts            #   UsageError, MissingGitHubTokenError
     format-review.ts     #   pull request summary (stderr) and the Markdown review (stdout)
     format-github.ts     #   the review as GitHub Markdown: body, line comments, markers, truncation;
@@ -69,6 +76,8 @@ src/
                          #   resolveProvider(): provider and model as a pair
     user-config.ts       #   the user's folder (PHADA_CONFIG_HOME › XDG › ~/.config/phada), loadUserLayers()
     local-files.ts       #   LocalFileSystem and its node:fs implementation
+    cache-paths.ts       #   the cache folder (PHADA_CACHE_HOME › XDG › ~/.cache/phada),
+                         #   repositoryCache(): mirror and index paths; pathSize()
     errors.ts            #   ConfigError
   context/               # what the review sends besides the diff, with injected readers
     phada-paths.ts       #   .phada/ folders from the root to each changed file
@@ -90,10 +99,6 @@ src/
   investigation/         # the AI reads the pull request head with Phada's read-only tools
     toolbox.ts           #   the tools contract: ToolDefinition, ToolResult, Toolbox
     open-investigation.ts #  openInvestigation(): checkout + tools per pass + log
-    checkout/            #   the repository at one commit
-      checkout.ts        #     Checkout (read, grep, list), CheckoutError
-      git-checkout.ts    #     openGitCheckout(): a temporary bare repository, git fetch --depth 1 <sha>
-      repo-path.ts       #     toRepoPath(): paths inside the repository only
     tools/               #   the tools, pure over a Checkout
       tool-registry.ts   #     RegisteredTool, createToolbox(): validation, budget, answer size, log
       repository-tools.ts #    read_file, grep and list
@@ -104,7 +109,7 @@ src/
       mcp-server.ts      #     the tools as a local MCP server (JSON-RPC over a socket)
       mcp-bridge.ts      #     what the AI CLI starts: stdio ↔ the socket of mcp-server.ts
   process/               # safe subprocess runner (stdin, timeout, typed errors)
-    run-command.ts       #   runCommand(): returns the exit code, never interprets it
+    run-command.ts       #   runCommand(), runCommandBytes(): return the exit code, never interpret it
   providers/             # ReviewProvider and its implementations
     types.ts             #   ReviewProvider, ReviewPrompt, ReviewOutput, ProviderError
     cli-run.ts           #   shared by AI CLIs: temp dir, env without GitHub tokens, typed errors
@@ -118,6 +123,23 @@ src/
     decide-run.ts        #   decideRun(): review, or skip a commit Phada already reviewed
     plan-publication.ts  #   planPublication(): new comments vs findings still open in a thread
     types.ts             #   PublicationPlan, RunDecision, SkipReason
+  repository/            # the repository through git objects, in a persistent mirror
+    checkout.ts          #   Checkout (read, grep, list), CheckoutError, OpenCheckoutOptions
+    git-checkout.ts      #   GitCheckout: one commit of the mirror; the git environment without tokens
+    git-mirror.ts        #   openGitMirror(): bare repository in the cache, fetch --depth 1 into
+                         #   refs/phada/*, ls-tree -r, cat-file --batch; openMirrorCheckout()
+    mirror-lock.ts       #   withMirrorLock(): one fetch at a time per mirror, stale locks taken over
+    repo-path.ts         #   toRepoPath(): paths inside the repository only
+  repo-map/              # the code elements of a file, with tree-sitter (WASM)
+    languages.ts         #   languageOf(): extension → TypeScript, TSX, JavaScript, Python, Go
+    grammars.ts          #   readGrammar(): dist/grammars/ in the package, node_modules in development
+    extract.ts           #   createExtractor(): parse with a timeout → FileMap or 'timeout'
+    walk.ts              #   Collector: symbols with their owner, imports, exports, calls, heritage
+    languages/           #   one walker per language: javascript-like.ts, python.ts, go.ts
+    types.ts             #   FileMap, ExtractedSymbol, SymbolKind, …
+  store/                 # the map in SQLite (node:sqlite), one file per repository
+    schema.ts            #   tables and SCHEMA_VERSION (another version is rebuilt)
+    index-store.ts       #   openIndexStore(): blobs, commits, summary, prune
   review/                # the engine: data in, result out
     types.ts             #   ReviewRequest, Finding, ReviewResult, ReviewOutcome, …
     prompt-parts.ts      #   text shared by the review and verification prompts: rules section,
@@ -137,6 +159,7 @@ src/
     errors.ts            #   InvalidReviewReportError
     run-review.ts        #   runReview(): prompt → provider → parse → [verify] → select → score
 scripts/smoke.ts         # packs the package, installs the tarball, runs the installed `phada`
+scripts/copy-grammars.ts # build step: the tree-sitter grammars into dist/grammars/
 test/fixtures/bin/       # fake AI CLIs used by the provider tests
 test/fixtures/github/    # trimmed GitHub API responses (REST and GraphQL) and a synthetic diff
 test/support/            # shared test helpers (fake fetch, fixtures for pull requests, findings, …)
@@ -154,18 +177,22 @@ environment. `src/context/` reads nothing itself: `loadContext()` gets the reade
 repository and of the local disk as data, and its only value imports from outside the folder are
 `picomatch`, `node:path` and the pure config helpers (`parse-config.ts`, `merge-config.ts`).
 `src/publish/` imports only types from outside the folder (`src/review/types.ts`,
-`src/github/pull-request-reviews.ts`). `src/investigation/` runs `git` through
-`src/process/run-command.ts` and never imports the CLI, the engine or a concrete provider; the
+`src/github/pull-request-reviews.ts`). `src/repository/` runs `git` through
+`src/process/run-command.ts`. `src/investigation/` reads the repository only through a `Checkout`
+(`src/repository/checkout.ts`), opened by a function the caller passes in, and never imports the
+mirror, the CLI, the engine or a concrete provider; the
 engine sees its tools only as a `Toolbox` (`src/investigation/toolbox.ts`) that the caller passes
 in. `src/app/` orchestrates a review from injected readers and factories and never imports the
 CLI, a concrete provider or the GitHub client, nor prints: it reports through events, and
 `main.ts` turns them into terminal output.
 `src/architecture.test.ts` enforces the allowed imports of these folders and forbids
-`process`/`console` inside them (`console` only, in `src/investigation/`).
+`process`/`console` inside them (`console` only, in `src/investigation/`). `src/repo-map/` parses
+text it is given (`web-tree-sitter`, reading only its grammars) and `src/store/` only talks to
+SQLite; neither runs `git`.
 
 ## Conventions
 
-- TypeScript strict, ESM, Node >= 22. Relative imports use the `.js` extension
+- TypeScript strict, ESM, Node >= 22.13. Relative imports use the `.js` extension
   (`import { x } from './y.js'`) because of `module: NodeNext`.
 - Use `import type` for type-only imports (`verbatimModuleSyntax` is on).
 - One responsibility per file; file names in `kebab-case`.
@@ -185,6 +212,7 @@ npm test
 npm run format
 npm run smoke                          # pack, install and run the package
 npm run dev -- review owner/repo#N     # needs GITHUB_TOKEN or GH_TOKEN
+npm run dev -- index owner/repo        # the repository map; PHADA_CACHE_HOME to keep it apart
 ```
 
 ## Workflow

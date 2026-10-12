@@ -7,7 +7,7 @@ import {
   CommandOutputTooLargeError,
   CommandTimeoutError,
 } from './errors.js'
-import { runCommand } from './run-command.js'
+import { runCommand, runCommandBytes } from './run-command.js'
 
 const NODE = process.execPath
 
@@ -152,5 +152,39 @@ describe('runCommand', () => {
       expect(error.message).not.toContain(secret)
       expect(error.cause).toBeUndefined()
     }
+  })
+})
+
+describe('runCommandBytes', () => {
+  it('returns the exact bytes the child writes, with stderr as text', async () => {
+    const result = await runCommandBytes(
+      ...node(
+        'process.stdout.write(Buffer.from([0xc3, 0xa9, 0, 0xff])); process.stderr.write("olá")',
+      ),
+    )
+
+    expect(result.stdout).toEqual(new Uint8Array([0xc3, 0xa9, 0, 0xff]))
+    expect(result.stderr).toBe('olá')
+    expect(result.exitCode).toBe(0)
+  })
+
+  it('writes stdin to the child', async () => {
+    const result = await runCommandBytes(...node('process.stdin.pipe(process.stdout)'), {
+      stdin: 'abc\n',
+    })
+
+    expect(Buffer.from(result.stdout).toString('utf8')).toBe('abc\n')
+  })
+
+  it('throws the same typed errors as runCommand', async () => {
+    await expect(runCommandBytes('phada-command-that-does-not-exist', [])).rejects.toBeInstanceOf(
+      CommandNotFoundError,
+    )
+    await expect(
+      runCommandBytes(...node('setTimeout(() => {}, 10_000)'), { timeoutMs: 100 }),
+    ).rejects.toBeInstanceOf(CommandTimeoutError)
+    await expect(
+      runCommandBytes(...node('process.stdout.write("x".repeat(100))'), { maxOutputLength: 10 }),
+    ).rejects.toBeInstanceOf(CommandOutputTooLargeError)
   })
 })
