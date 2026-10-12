@@ -89,6 +89,7 @@ export interface OpenIndexStoreOptions {
 }
 
 const LOOKUP_CHUNK = 500
+export const UNUSED_BLOB_GRACE_MS = 24 * 60 * 60 * 1000
 
 export async function openIndexStore(
   path: string,
@@ -277,11 +278,12 @@ class SqliteIndexStore implements IndexStore {
           )
           .run(keep).changes,
       )
+      const cutoff = new Date(this.#now().getTime() - UNUSED_BLOB_GRACE_MS).toISOString()
       this.#db
         .prepare(
-          'delete from blob where id not in (select blob_id from snapshot_file where blob_id is not null)',
+          'delete from blob where indexed_at < ? and id not in (select blob_id from snapshot_file where blob_id is not null)',
         )
-        .run()
+        .run(cutoff)
     })
     return removed
   }

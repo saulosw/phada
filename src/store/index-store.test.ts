@@ -190,8 +190,16 @@ describe('openIndexStore', () => {
     store.close()
   })
 
-  it('keeps the most recent commits and drops blobs no kept commit uses', async () => {
-    const store = await storeWithBlob()
+  it('keeps the most recent commits and drops blobs no kept commit uses after a day', async () => {
+    let clock = Date.parse('2026-10-01T00:00:00Z')
+    const store = await openIndexStore(freshPath(), { now: () => new Date(clock) })
+    store.saveBlob({
+      oid: 'a'.repeat(40),
+      language: 'typescript',
+      bytes: 120,
+      status: 'indexed',
+      map: MAP,
+    })
     const shared = 'a'.repeat(40)
     for (let i = 0; i < 12; i += 1) {
       const own = String(i).padStart(40, 'f')
@@ -213,6 +221,7 @@ describe('openIndexStore', () => {
       })
     }
 
+    clock += 25 * 60 * 60 * 1000
     expect(store.prune(10)).toBe(2)
     const known = store.knownBlobs([
       shared,
@@ -222,6 +231,20 @@ describe('openIndexStore', () => {
     expect([...known.keys()]).toEqual([shared, String(2).padStart(40, 'f')])
     expect(store.summary(String(0).padStart(40, '0')).files.indexed).toBe(0)
     store.close()
+  })
+
+  it('keeps a blob another run saved and has not attached to a commit yet', async () => {
+    const path = freshPath()
+    const running = await openIndexStore(path)
+    const other = await openIndexStore(path)
+    running.saveBlob({ oid: '9'.repeat(40), language: 'go', bytes: 1, status: 'indexed', map: MAP })
+
+    other.saveCommit({ sha: '1'.repeat(40), ref: 'HEAD', durationMs: 1, files: [] })
+    other.prune(10)
+
+    expect(running.knownBlobs(['9'.repeat(40)]).size).toBe(1)
+    running.close()
+    other.close()
   })
 
   it('rebuilds a file that is not an index', async () => {
