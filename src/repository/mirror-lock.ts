@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { mkdir, open, readFile, rm, stat } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { kill, pid } from 'node:process'
@@ -26,15 +27,15 @@ export async function withMirrorLock<T>(
   options: MirrorLockOptions,
   work: () => Promise<T>,
 ): Promise<T> {
-  await acquire(lockPath, options)
+  const content = await acquire(lockPath, options)
   try {
     return await work()
   } finally {
-    await rm(lockPath, { force: true })
+    await removeIfHeld(lockPath, content)
   }
 }
 
-async function acquire(lockPath: string, options: MirrorLockOptions): Promise<void> {
+async function acquire(lockPath: string, options: MirrorLockOptions): Promise<string> {
   const now = options.now ?? Date.now
   const sleep = options.sleep ?? ((ms: number) => new Promise((done) => setTimeout(done, ms)))
   await mkdir(dirname(lockPath), { recursive: true, mode: 0o700 })
@@ -42,9 +43,10 @@ async function acquire(lockPath: string, options: MirrorLockOptions): Promise<vo
   for (;;) {
     try {
       const handle = await open(lockPath, 'wx')
-      await handle.writeFile(`${pid} ${new Date(now()).toISOString()}`)
+      const content = `${pid} ${new Date(now()).toISOString()} ${randomUUID()}`
+      await handle.writeFile(content)
       await handle.close()
-      return
+      return content
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
     }
@@ -54,7 +56,7 @@ async function acquire(lockPath: string, options: MirrorLockOptions): Promise<vo
       held !== undefined &&
       (now() - held.mtimeMs > options.staleMs || !isAlive(Number(holder.split(' ')[0])))
     ) {
-      await rm(lockPath, { force: true })
+      await removeIfHeld(lockPath, holder)
       continue
     }
     if (now() >= deadline) throw new MirrorLockTimeoutError(lockPath)
@@ -70,4 +72,9 @@ function isAlive(holder: number): boolean {
   } catch (error) {
     return (error as NodeJS.ErrnoException).code !== 'ESRCH'
   }
+}
+
+async function removeIfHeld(lockPath: string, content: string): Promise<void> {
+  const current = await readFile(lockPath, 'utf8').catch(() => undefined)
+  if (current === content) await rm(lockPath, { force: true })
 }

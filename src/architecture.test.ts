@@ -63,6 +63,7 @@ const INVESTIGATION: Boundary = {
 const REPOSITORY: Boundary = {
   dir: 'repository',
   values: new Set([
+    'node:crypto',
     'node:fs/promises',
     'node:os',
     'node:path',

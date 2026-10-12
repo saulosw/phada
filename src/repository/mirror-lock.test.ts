@@ -74,6 +74,26 @@ describe('withMirrorLock', () => {
     )
   })
 
+  it('leaves the lock alone when another process took it over meanwhile', async () => {
+    const lock = join(dir, 'h.lock')
+
+    await withMirrorLock(lock, OPTIONS, async () => {
+      writeFileSync(lock, `${process.pid} 2026-10-12T00:00:00.000Z someone-else`)
+    })
+
+    expect(readFileSync(lock, 'utf8')).toBe(`${process.pid} 2026-10-12T00:00:00.000Z someone-else`)
+    rmSync(lock)
+  })
+
+  it('gives each holder its own token', async () => {
+    const lock = join(dir, 'i.lock')
+    const first = await withMirrorLock(lock, OPTIONS, async () => readFileSync(lock, 'utf8'))
+    const second = await withMirrorLock(lock, OPTIONS, async () => readFileSync(lock, 'utf8'))
+
+    expect(first.split(' ')).toHaveLength(3)
+    expect(first.split(' ')[2]).not.toBe(second.split(' ')[2])
+  })
+
   it('gives up with MirrorLockTimeoutError when a fresh lock is held past the timeout', async () => {
     const lock = join(dir, 'e.lock')
     writeFileSync(lock, 'busy')
