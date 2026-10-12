@@ -55,7 +55,6 @@ export async function runIndex(command: IndexCommand, deps: IndexCommandDeps): P
       extractor: deps.createExtractor(),
       now: deps.now ?? (() => performance.now()),
       events: {
-        fetched: () => {},
         extracting: (total) => {
           if (total === 0) return
           const files = `${total.toLocaleString('en-US')} file${total === 1 ? '' : 's'}`

@@ -60,7 +60,6 @@ export interface IndexRepositoryInput {
 }
 
 export interface IndexRepositoryEvents {
-  fetched(sha: string): void
   extracting(total: number): void
   extracted(done: number, total: number): void
 }
@@ -86,7 +85,6 @@ export async function indexRepository(
   const started = deps.now()
   const ref = input.ref ?? 'HEAD'
   const sha = await deps.mirror.fetch(ref, INDEX_REF)
-  deps.events.fetched(sha)
   const files = await deps.mirror.listFiles(sha)
   const warnings: string[] = []
   const isIgnored = await ignoreMatcher(input.userLayers, files, deps, sha, warnings)

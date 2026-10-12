@@ -102,7 +102,6 @@ function deps(
     extractor,
     now: () => 1_000,
     events: {
-      fetched: (sha) => events.push(`fetched ${sha.slice(0, 7)}`),
       extracting: (total) => events.push(`extracting ${total}`),
       extracted: (done, total) => events.push(`extracted ${done}/${total}`),
     },
@@ -151,7 +150,7 @@ describe('indexRepository', () => {
       { path: 'package-lock.json', reason: 'ignored' },
       { path: 'vendor/lib', reason: 'submodule' },
     ])
-    expect(h.events).toEqual(['fetched 1111111', 'extracting 2', 'extracted 1/2', 'extracted 2/2'])
+    expect(h.events).toEqual(['extracting 2', 'extracted 1/2', 'extracted 2/2'])
     expect(h.closed).toHaveLength(1)
   })
 
