@@ -6,6 +6,7 @@ import type { Extractor } from '../repo-map/extract.js'
 import { languageOf } from '../repo-map/languages.js'
 import type { Language } from '../repo-map/languages.js'
 import type { GitMirror, TreeFile } from '../repository/git-mirror.js'
+import { blobKey } from '../store/index-store.js'
 import type {
   BlobStatus,
   CommitFile,
@@ -93,30 +94,39 @@ export async function indexRepository(
   try {
     const planned: Planned[] = files.map((file) => plan(file, isIgnored))
     const candidates = planned.filter((item) => item.status === undefined)
-    const known = store.knownBlobs([...new Set(candidates.map((item) => item.file.oid))])
-    const wanted = new Map<string, TreeFile>()
-    for (const item of candidates) {
-      if (!known.has(item.file.oid) && !wanted.has(item.file.oid)) {
-        wanted.set(item.file.oid, item.file)
-      }
+    const known = store.knownBlobs(
+      candidates.flatMap(({ file, language }) =>
+        language === undefined ? [] : [{ oid: file.oid, language }],
+      ),
+    )
+    const keyOf = (file: TreeFile, language: Language | undefined) =>
+      language === undefined ? '' : blobKey(file.oid, language)
+    const wanted = new Map<string, { file: TreeFile; languages: Set<Language> }>()
+    for (const { file, language } of candidates) {
+      if (language === undefined || known.has(keyOf(file, language))) continue
+      const entry = wanted.get(file.oid) ?? { file, languages: new Set<Language>() }
+      entry.languages.add(language)
+      wanted.set(file.oid, entry)
     }
 
     const fresh = new Map<string, BlobStatus>()
-    const total = wanted.size
+    const total = [...wanted.values()].reduce((sum, entry) => sum + entry.languages.size, 0)
     deps.events.extracting(total)
     let done = 0
-    for await (const blob of deps.mirror.readBlobs([...wanted.values()])) {
-      const language = languageOf(wanted.get(blob.oid)?.path ?? '')
-      if (language === undefined) continue
-      const status = await extractBlob(blob, language, store, deps.extractor)
-      fresh.set(blob.oid, status)
-      done += 1
-      deps.events.extracted(done, total)
+    const toRead = [...wanted.values()].map((entry) => entry.file)
+    for await (const blob of deps.mirror.readBlobs(toRead)) {
+      for (const language of wanted.get(blob.oid)?.languages ?? []) {
+        const status = await extractBlob(blob, language, store, deps.extractor)
+        fresh.set(blobKey(blob.oid, language), status)
+        done += 1
+        deps.events.extracted(done, total)
+      }
     }
     if (done < total) deps.events.extracted(total, total)
 
     const commitFiles: CommitFile[] = planned.map(({ file, language, status }) => {
-      const blobStatus = status ?? fresh.get(file.oid) ?? known.get(file.oid) ?? 'missing'
+      const key = keyOf(file, language)
+      const blobStatus = status ?? fresh.get(key) ?? known.get(key) ?? 'missing'
       return {
         path: file.path,
         oid: file.oid,
@@ -144,7 +154,7 @@ export async function indexRepository(
         total: files.length,
         indexed,
         extracted: fresh.size,
-        reused: candidates.filter((item) => known.has(item.file.oid)).length,
+        reused: candidates.filter(({ file, language }) => known.has(keyOf(file, language))).length,
       },
       summary: store.summary(sha),
       leftOut,

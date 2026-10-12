@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterAll, describe, expect, it } from 'vitest'
 import type { FileMap } from '../repo-map/types.js'
-import { IndexStoreError, openIndexStore, SCHEMA_VERSION } from './index-store.js'
+import { blobKey, IndexStoreError, openIndexStore, SCHEMA_VERSION } from './index-store.js'
 import type { CommitFile, IndexStore } from './index-store.js'
 
 const dir = mkdtempSync(join(tmpdir(), 'phada-store-'))
@@ -166,12 +166,47 @@ describe('openIndexStore', () => {
     const store = await storeWithBlob()
     store.saveBlob({ oid: 'd'.repeat(40), language: 'go', bytes: 9, status: 'binary' })
 
-    expect(store.knownBlobs(['a'.repeat(40), 'd'.repeat(40), 'e'.repeat(40)])).toEqual(
+    expect(
+      store.knownBlobs([
+        { oid: 'a'.repeat(40), language: 'typescript' },
+        { oid: 'd'.repeat(40), language: 'go' },
+        { oid: 'e'.repeat(40), language: 'go' },
+      ]),
+    ).toEqual(
       new Map([
-        ['a'.repeat(40), 'indexed'],
-        ['d'.repeat(40), 'binary'],
+        [blobKey('a'.repeat(40), 'typescript'), 'indexed'],
+        [blobKey('d'.repeat(40), 'go'), 'binary'],
       ]),
     )
+    store.close()
+  })
+
+  it('keeps one blob per language for the same content', async () => {
+    const store = await storeWithBlob()
+    store.saveBlob({ oid: 'a'.repeat(40), language: 'tsx', bytes: 120, status: 'parse-failed' })
+
+    expect(
+      store.knownBlobs([
+        { oid: 'a'.repeat(40), language: 'typescript' },
+        { oid: 'a'.repeat(40), language: 'tsx' },
+        { oid: 'a'.repeat(40), language: 'javascript' },
+      ]),
+    ).toEqual(
+      new Map([
+        [blobKey('a'.repeat(40), 'typescript'), 'indexed'],
+        [blobKey('a'.repeat(40), 'tsx'), 'parse-failed'],
+      ]),
+    )
+    store.saveCommit({
+      sha: '1'.repeat(40),
+      ref: 'HEAD',
+      durationMs: 1,
+      files: [
+        { path: 'a.ts', oid: 'a'.repeat(40), language: 'typescript', status: 'indexed' },
+        { path: 'a.tsx', oid: 'a'.repeat(40), language: 'tsx', status: 'parse-failed' },
+      ],
+    })
+    expect(store.summary('1'.repeat(40)).symbols).toEqual({ method: 1, class: 1, parameter: 1 })
     store.close()
   })
 
@@ -224,11 +259,14 @@ describe('openIndexStore', () => {
     clock += 25 * 60 * 60 * 1000
     expect(store.prune(10)).toBe(2)
     const known = store.knownBlobs([
-      shared,
-      String(0).padStart(40, 'f'),
-      String(2).padStart(40, 'f'),
+      { oid: shared, language: 'typescript' },
+      { oid: String(0).padStart(40, 'f'), language: 'go' },
+      { oid: String(2).padStart(40, 'f'), language: 'go' },
     ])
-    expect([...known.keys()]).toEqual([shared, String(2).padStart(40, 'f')])
+    expect([...known.keys()]).toEqual([
+      blobKey(shared, 'typescript'),
+      blobKey(String(2).padStart(40, 'f'), 'go'),
+    ])
     expect(store.summary(String(0).padStart(40, '0')).files.indexed).toBe(0)
     store.close()
   })
@@ -242,7 +280,7 @@ describe('openIndexStore', () => {
     other.saveCommit({ sha: '1'.repeat(40), ref: 'HEAD', durationMs: 1, files: [] })
     other.prune(10)
 
-    expect(running.knownBlobs(['9'.repeat(40)]).size).toBe(1)
+    expect(running.knownBlobs([{ oid: '9'.repeat(40), language: 'go' }]).size).toBe(1)
     running.close()
     other.close()
   })
@@ -256,7 +294,7 @@ describe('openIndexStore', () => {
     const reopened = await openIndexStore(path)
 
     expect(reopened.rebuilt).toBe(true)
-    expect(reopened.knownBlobs(['a'.repeat(40)]).size).toBe(0)
+    expect(reopened.knownBlobs([{ oid: 'a'.repeat(40), language: 'typescript' }]).size).toBe(0)
     reopened.close()
   })
 
@@ -270,9 +308,9 @@ describe('openIndexStore', () => {
 
     const reopened = await openIndexStore(path)
 
-    expect(SCHEMA_VERSION).toBe(1)
+    expect(SCHEMA_VERSION).toBe(2)
     expect(reopened.rebuilt).toBe(true)
-    expect(reopened.knownBlobs(['a'.repeat(40)]).size).toBe(0)
+    expect(reopened.knownBlobs([{ oid: 'a'.repeat(40), language: 'typescript' }]).size).toBe(0)
     reopened.close()
   })
 
@@ -284,12 +322,12 @@ describe('openIndexStore', () => {
 
     const same = await openIndexStore(path, { version: '1.0.0' })
     expect(same.rebuilt).toBe(false)
-    expect(same.knownBlobs(['a'.repeat(40)]).size).toBe(1)
+    expect(same.knownBlobs([{ oid: 'a'.repeat(40), language: 'go' }]).size).toBe(1)
     same.close()
 
     const upgraded = await openIndexStore(path, { version: '1.1.0' })
     expect(upgraded.rebuilt).toBe(true)
-    expect(upgraded.knownBlobs(['a'.repeat(40)]).size).toBe(0)
+    expect(upgraded.knownBlobs([{ oid: 'a'.repeat(40), language: 'go' }]).size).toBe(0)
     upgraded.close()
   })
 
@@ -300,7 +338,12 @@ describe('openIndexStore', () => {
     first.saveBlob({ oid: '1'.repeat(40), language: 'go', bytes: 1, status: 'binary' })
     second.saveBlob({ oid: '2'.repeat(40), language: 'go', bytes: 1, status: 'binary' })
 
-    expect(first.knownBlobs(['1'.repeat(40), '2'.repeat(40)]).size).toBe(2)
+    expect(
+      first.knownBlobs([
+        { oid: '1'.repeat(40), language: 'go' },
+        { oid: '2'.repeat(40), language: 'go' },
+      ]).size,
+    ).toBe(2)
     first.close()
     second.close()
   })

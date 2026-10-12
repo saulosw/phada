@@ -98,6 +98,7 @@ const APP: Boundary = {
     '../repo-map/languages.js',
     '../repository/git-checkout.js',
     '../review/run-review.js',
+    '../store/index-store.js',
   ]),
   types: new Set([
     '../config/types.js',

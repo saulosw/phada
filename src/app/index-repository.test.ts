@@ -192,6 +192,33 @@ describe('indexRepository', () => {
     expect(report.summary.symbols).toEqual({ function: 2 })
   })
 
+  it('parses a blob once for each language it appears in', async () => {
+    const path = storePath()
+    const parsed: string[] = []
+    const recording: Extractor = {
+      extract: async (language, text) => {
+        parsed.push(language)
+        return extractor.extract(language, text)
+      },
+    }
+    const files = {
+      'src/id.ts': { content: 'export const id = <T>(v: T) => v\n' },
+      'src/id.tsx': { content: 'export const id = <T>(v: T) => v\n' },
+    }
+
+    const first = await indexRepository(
+      INPUT,
+      deps(fakeMirror(files).mirror, path, { extractor: recording }).deps,
+    )
+    await indexRepository(
+      INPUT,
+      deps(fakeMirror(files).mirror, path, { extractor: recording }).deps,
+    )
+
+    expect(parsed.sort()).toEqual(['tsx', 'typescript'])
+    expect(first.files).toEqual({ total: 2, indexed: 2, extracted: 2, reused: 0 })
+  })
+
   it('leaves out a file that takes too long to parse, also on the next run', async () => {
     const path = storePath()
     const calls: string[] = []

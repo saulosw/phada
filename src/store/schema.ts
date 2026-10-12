@@ -1,15 +1,16 @@
-export const SCHEMA_VERSION = 1
+export const SCHEMA_VERSION = 2
 
 export const SCHEMA = `
 create table meta (key text primary key, value text not null);
 create table blob (
   id integer primary key,
-  oid text not null unique,
+  oid text not null,
   language text not null,
   bytes integer not null,
   status text not null,
   parse_errors integer not null,
-  indexed_at text not null
+  indexed_at text not null,
+  unique (oid, language)
 );
 create table symbol (
   id integer primary key,

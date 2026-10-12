@@ -41,6 +41,15 @@ export interface StoredBlob {
   map?: FileMap
 }
 
+export interface BlobKey {
+  oid: string
+  language: Language
+}
+
+export function blobKey(oid: string, language: Language): string {
+  return `${oid}:${language}`
+}
+
 export interface CommitFile {
   path: string
   oid?: string
@@ -68,7 +77,7 @@ export interface IndexSummary {
 export interface IndexStore {
   readonly path: string
   readonly rebuilt: boolean
-  knownBlobs(oids: readonly string[]): Map<string, BlobStatus>
+  knownBlobs(blobs: readonly BlobKey[]): Map<string, BlobStatus>
   saveBlob(blob: StoredBlob): void
   saveCommit(commit: StoredCommit): void
   prune(keep: number): number
@@ -190,16 +199,27 @@ class SqliteIndexStore implements IndexStore {
     this.#now = now
   }
 
-  knownBlobs(oids: readonly string[]): Map<string, BlobStatus> {
-    const known = new Map<string, BlobStatus>()
+  knownBlobs(blobs: readonly BlobKey[]): Map<string, BlobStatus> {
+    const oids = [...new Set(blobs.map((blob) => blob.oid))]
+    const stored = new Map<string, BlobStatus>()
     for (let start = 0; start < oids.length; start += LOOKUP_CHUNK) {
       const chunk = oids.slice(start, start + LOOKUP_CHUNK)
       const rows = this.#db
-        .prepare(`select oid, status from blob where oid in (${chunk.map(() => '?').join(',')})`)
+        .prepare(
+          `select oid, language, status from blob where oid in (${chunk.map(() => '?').join(',')})`,
+        )
         .all(...chunk)
-      for (const row of rows) known.set(String(row.oid), row.status as BlobStatus)
+      for (const row of rows) {
+        stored.set(blobKey(String(row.oid), row.language as Language), row.status as BlobStatus)
+      }
     }
-    return new Map(oids.filter((oid) => known.has(oid)).map((oid) => [oid, known.get(oid)!]))
+    const known = new Map<string, BlobStatus>()
+    for (const blob of blobs) {
+      const key = blobKey(blob.oid, blob.language)
+      const status = stored.get(key)
+      if (status !== undefined) known.set(key, status)
+    }
+    return known
   }
 
   saveBlob(blob: StoredBlob): void {
@@ -211,7 +231,9 @@ class SqliteIndexStore implements IndexStore {
         blob.map?.parseErrors ?? 0,
         this.#now().toISOString(),
       ] as const
-      const existing = this.#db.prepare('select id from blob where oid = ?').get(blob.oid)
+      const existing = this.#db
+        .prepare('select id from blob where oid = ? and language = ?')
+        .get(blob.oid, blob.language)
       let id: number
       if (existing === undefined) {
         id = Number(
@@ -254,9 +276,12 @@ class SqliteIndexStore implements IndexStore {
       const insert = this.#db.prepare(
         'insert into snapshot_file (commit_sha, path, blob_id, language, status) values (?, ?, ?, ?, ?)',
       )
-      const blobId = this.#db.prepare('select id from blob where oid = ?')
+      const blobId = this.#db.prepare('select id from blob where oid = ? and language = ?')
       for (const file of commit.files) {
-        const blob = file.oid === undefined ? undefined : blobId.get(file.oid)
+        const blob =
+          file.oid === undefined || file.language === undefined
+            ? undefined
+            : blobId.get(file.oid, file.language)
         insert.run(
           commit.sha,
           file.path,
