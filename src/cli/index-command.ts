@@ -1,5 +1,5 @@
 import { indexRepository } from '../app/index-repository.js'
-import { indexFile, mirrorDir, phadaCacheDir } from '../config/cache-paths.js'
+import { repositoryCache } from '../config/cache-paths.js'
 import type { LocalFileSystem } from '../config/local-files.js'
 import { loadUserLayers } from '../config/user-config.js'
 import type { Extractor } from '../repo-map/extract.js'
@@ -42,8 +42,8 @@ export async function runIndex(command: IndexCommand, deps: IndexCommandDeps): P
     repo,
     files: deps.files,
   })
-  const cache = phadaCacheDir(deps.env, deps.home)
-  const mirrorPath = mirrorDir(cache, owner, repo)
+  const paths = repositoryCache(deps.env, deps.home, owner, repo)
+  const mirrorPath = paths.mirror
   deps.stderr.write(`Fetching ${owner}/${repo} (${command.ref ?? 'default branch'})…\n`)
   const mirror = await deps.openMirror({ dir: mirrorPath, owner, repo, token, env: deps.env })
   const live = deps.stderr.isTTY === true
@@ -51,7 +51,7 @@ export async function runIndex(command: IndexCommand, deps: IndexCommandDeps): P
     { owner, repo, ...(command.ref === undefined ? {} : { ref: command.ref }), userLayers },
     {
       mirror,
-      openStore: () => deps.openIndexStore(indexFile(cache, owner, repo), deps.version),
+      openStore: () => deps.openIndexStore(paths.index, deps.version),
       extractor: deps.createExtractor(),
       now: deps.now ?? (() => performance.now()),
       events: {

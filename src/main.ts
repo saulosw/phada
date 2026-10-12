@@ -24,7 +24,7 @@ import { toTerminalText } from './cli/terminal-text.js'
 import type { TextOutput } from './cli/progress.js'
 import type { LocalFileSystem } from './config/local-files.js'
 import { resolveProvider, userMcpServers } from './config/merge-config.js'
-import { mirrorDir, phadaCacheDir } from './config/cache-paths.js'
+import { repositoryCache } from './config/cache-paths.js'
 import { expandHome, loadUserLayers } from './config/user-config.js'
 import type { ContextReport } from './context/types.js'
 import type { CreatedReview, CreateReviewOptions } from './github/create-review.js'
@@ -198,7 +198,7 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
         openCheckout: (options) =>
           deps.openCheckout({
             ...options,
-            dir: mirrorDir(phadaCacheDir(deps.env, deps.home), owner, repo),
+            dir: repositoryCache(deps.env, deps.home, owner, repo).mirror,
           }),
         createProvider: (servers) =>
           deps.createProvider(choice.provider, {

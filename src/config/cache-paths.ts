@@ -16,6 +16,16 @@ export function indexFile(cacheDir: string, owner: string, repo: string): string
   return join(cacheDir, 'index', owner.toLowerCase(), `${repo.toLowerCase()}.sqlite`)
 }
 
+export function repositoryCache(
+  env: NodeJS.ProcessEnv,
+  home: string,
+  owner: string,
+  repo: string,
+): { mirror: string; index: string } {
+  const cache = phadaCacheDir(env, home)
+  return { mirror: mirrorDir(cache, owner, repo), index: indexFile(cache, owner, repo) }
+}
+
 export async function pathSize(path: string): Promise<number> {
   const stats = await lstat(path).catch(() => undefined)
   if (stats === undefined) return 0

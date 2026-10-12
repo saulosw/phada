@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { indexFile, mirrorDir, pathSize, phadaCacheDir } from './cache-paths.js'
+import { indexFile, mirrorDir, pathSize, phadaCacheDir, repositoryCache } from './cache-paths.js'
 
 describe('phadaCacheDir', () => {
   it('prefers PHADA_CACHE_HOME, then XDG_CACHE_HOME, then ~/.cache', () => {
@@ -40,5 +40,17 @@ describe('pathSize', () => {
   it('returns the size of a single file and 0 for a missing path', async () => {
     expect(await pathSize(join(dir, 'a'))).toBe(3)
     expect(await pathSize(join(dir, 'missing'))).toBe(0)
+  })
+})
+
+describe('repositoryCache', () => {
+  it('gives the mirror and the index of a repository in the cache folder', () => {
+    expect(repositoryCache({ PHADA_CACHE_HOME: '/c' }, '/home/u', 'Acme', 'Shop')).toEqual({
+      mirror: '/c/repos/acme/shop.git',
+      index: '/c/index/acme/shop.sqlite',
+    })
+    expect(repositoryCache({}, '/home/u', 'acme', 'shop').mirror).toBe(
+      '/home/u/.cache/phada/repos/acme/shop.git',
+    )
   })
 })
