@@ -51,7 +51,7 @@ describe('formatIndexText', () => {
     expect(formatIndexText(REPORT, SIZES, '/home/u')).toBe(
       [
         'Indexed acme/shop at 1a2b3c4 (default branch) in 3.1s',
-        'Index rebuilt: the format changed.',
+        'Index rebuilt from scratch: it was made by another version of Phada or could not be read.',
         'Files: 412 indexed (37 read, 375 unchanged) · 11 left out',
         'Languages: TypeScript 301 · JavaScript 64 · Python 47',
         'Symbols: 1,204 functions · 388 methods · 1 class · 2,310 parameters',

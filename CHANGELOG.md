@@ -13,7 +13,7 @@ output can change between minor versions.
   functions, classes, methods, parameters, variables, imports, exports and calls for TypeScript,
   JavaScript, Python and Go, parsed with tree-sitter. Running it again reads only the files that
   changed. `--ref` picks a branch, tag or commit and `--format json` prints the report as JSON,
-  with every file left out and why.
+  with every file left out and why. A new version of Phada builds the map again from scratch.
 
 ### Changed
 

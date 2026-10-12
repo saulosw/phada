@@ -19,12 +19,13 @@ export interface IndexCommand {
 
 export interface IndexCommandDeps {
   env: NodeJS.ProcessEnv
+  version: string
   home: string
   files: LocalFileSystem
   stdout: TextOutput
   stderr: TextOutput
   openMirror: (options: GitMirrorOptions) => Promise<GitMirror>
-  openIndexStore: (path: string) => Promise<IndexStore>
+  openIndexStore: (path: string, version: string) => Promise<IndexStore>
   createExtractor: () => Extractor
   pathSize: (path: string) => Promise<number>
   now?: () => number
@@ -50,7 +51,7 @@ export async function runIndex(command: IndexCommand, deps: IndexCommandDeps): P
     { owner, repo, ...(command.ref === undefined ? {} : { ref: command.ref }), userLayers },
     {
       mirror,
-      openStore: () => deps.openIndexStore(indexFile(cache, owner, repo)),
+      openStore: () => deps.openIndexStore(indexFile(cache, owner, repo), deps.version),
       extractor: deps.createExtractor(),
       now: deps.now ?? (() => performance.now()),
       events: {

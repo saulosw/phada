@@ -246,7 +246,8 @@ Phada keeps a mirror of each repository it reviews or indexes, and the map, in
 
 - `repos/<owner>/<repo>.git`: a bare git repository with only the commits Phada fetched, without
   their history and without your token;
-- `index/<owner>/<repo>.sqlite`: the map of `phada index`, with its 10 most recent commits.
+- `index/<owner>/<repo>.sqlite`: the map of `phada index`, with its 10 most recent commits; a
+  new version of Phada builds it again from scratch.
 
 The mirror holds the source code of the repositories you review, private ones included, so
 Phada creates these folders readable only by you. Everything there can be deleted at any time

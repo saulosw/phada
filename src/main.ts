@@ -85,7 +85,7 @@ export interface MainDeps {
   ) => Promise<string | null>
   openCheckout: (options: OpenCheckoutOptions) => Promise<Checkout>
   openMirror: (options: GitMirrorOptions) => Promise<GitMirror>
-  openIndexStore: (path: string) => Promise<IndexStore>
+  openIndexStore: (path: string, version: string) => Promise<IndexStore>
   createExtractor: () => Extractor
   pathSize: (path: string) => Promise<number>
   createProvider: (name: string, options: ProviderOptions) => ReviewProvider

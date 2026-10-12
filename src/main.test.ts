@@ -189,8 +189,8 @@ function harness(
         Promise.resolve(memoryMirror({ 'src/a.ts': 'export function a() { b() }\n' }))
       )
     },
-    openIndexStore: (path) => {
-      storePaths.push(path)
+    openIndexStore: (path, version) => {
+      storePaths.push(`${path} @${version}`)
       storeCount += 1
       return openIndexStore(join(storeDir, `${storeCount}.sqlite`))
     },
@@ -1168,7 +1168,7 @@ describe('run index', () => {
         token: TOKEN,
       }),
     ])
-    expect(h.storePaths).toEqual(['/cache/index/acme/shop.sqlite'])
+    expect(h.storePaths).toEqual(['/cache/index/acme/shop.sqlite @1.2.3'])
     expect(h.stderr()).toContain('Fetching Acme/Shop (default branch)…\n')
     expect(h.stderr()).toContain('Indexing 1 file…\n')
     expect(h.stdout()).toMatch(/^Indexed Acme\/Shop at [0-9a-f]{7} \(default branch\) in /)

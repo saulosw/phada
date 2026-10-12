@@ -33,7 +33,7 @@ process.exitCode = await run(process.argv.slice(2), {
   fetchRepositoryFile,
   openCheckout: openMirrorCheckout,
   openMirror: openGitMirror,
-  openIndexStore: (path) => openIndexStore(path),
+  openIndexStore: (path, version) => openIndexStore(path, { version }),
   createExtractor: () => createExtractor(),
   pathSize,
   createProvider,

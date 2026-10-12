@@ -43,7 +43,11 @@ export function formatIndexText(report: IndexReport, sizes: IndexSizes, home: st
   const lines = [
     `Indexed ${report.repository} at ${report.commit.slice(0, 7)}${ref} in ${formatDuration(report.durationMs)}`,
   ]
-  if (report.rebuilt) lines.push('Index rebuilt: the format changed.')
+  if (report.rebuilt) {
+    lines.push(
+      'Index rebuilt from scratch: it was made by another version of Phada or could not be read.',
+    )
+  }
   const leftOut = report.leftOut.length === 0 ? '' : ` · ${number(report.leftOut.length)} left out`
   lines.push(
     `Files: ${number(files.indexed)} indexed (${number(files.extracted)} read, ${number(files.reused)} unchanged)${leftOut}`,

@@ -81,6 +81,7 @@ export class IndexStoreError extends Error {
 type Sqlite = typeof import('node:sqlite')
 
 export interface OpenIndexStoreOptions {
+  version?: string
   now?: () => Date
   loadSqlite?: () => Promise<Sqlite>
 }
@@ -103,17 +104,18 @@ export async function openIndexStore(
     throw new IndexStoreError(`Cannot write the index at ${path}: ${(error as Error).message}`)
   }
   const now = options.now ?? (() => new Date())
-  const opened = openDatabase(sqlite, path)
+  const version = options.version ?? ''
+  const opened = openDatabase(sqlite, path, version)
   if (opened.ok) return new SqliteIndexStore(path, opened.db, false, now)
   await removeDatabase(path)
-  const recreated = openDatabase(sqlite, path)
+  const recreated = openDatabase(sqlite, path, version)
   if (!recreated.ok) throw recreated.error
   return new SqliteIndexStore(path, recreated.db, opened.existed, now)
 }
 
 type Opened = { ok: true; db: DatabaseSync } | { ok: false; existed: boolean; error: Error }
 
-function openDatabase(sqlite: Sqlite, path: string): Opened {
+function openDatabase(sqlite: Sqlite, path: string, phadaVersion: string): Opened {
   const db = new sqlite.DatabaseSync(path)
   try {
     db.exec('pragma busy_timeout = 5000')
@@ -133,16 +135,24 @@ function openDatabase(sqlite: Sqlite, path: string): Opened {
       }
       db.exec('begin')
       db.exec(SCHEMA)
-      db.prepare("insert into meta (key, value) values ('schema_version', ?)").run(
-        String(SCHEMA_VERSION),
-      )
+      const insert = db.prepare('insert into meta (key, value) values (?, ?)')
+      insert.run('schema_version', String(SCHEMA_VERSION))
+      insert.run('phada_version', phadaVersion)
       db.exec('commit')
       return { ok: true, db }
     }
-    const version = db.prepare("select value from meta where key = 'schema_version'").get()
-    if (version?.value !== String(SCHEMA_VERSION)) {
+    const meta = new Map(
+      db
+        .prepare('select key, value from meta')
+        .all()
+        .map((row) => [String(row.key), String(row.value)]),
+    )
+    if (
+      meta.get('schema_version') !== String(SCHEMA_VERSION) ||
+      meta.get('phada_version') !== phadaVersion
+    ) {
       db.close()
-      return { ok: false, existed: true, error: new Error('other schema version') }
+      return { ok: false, existed: true, error: new Error('made by another version') }
     }
     return { ok: true, db }
   } catch (error) {

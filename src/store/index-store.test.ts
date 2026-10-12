@@ -252,6 +252,23 @@ describe('openIndexStore', () => {
     reopened.close()
   })
 
+  it('rebuilds an index made by another version of Phada and keeps one made by the same', async () => {
+    const path = freshPath()
+    const store = await openIndexStore(path, { version: '1.0.0' })
+    store.saveBlob({ oid: 'a'.repeat(40), language: 'go', bytes: 1, status: 'binary' })
+    store.close()
+
+    const same = await openIndexStore(path, { version: '1.0.0' })
+    expect(same.rebuilt).toBe(false)
+    expect(same.knownBlobs(['a'.repeat(40)]).size).toBe(1)
+    same.close()
+
+    const upgraded = await openIndexStore(path, { version: '1.1.0' })
+    expect(upgraded.rebuilt).toBe(true)
+    expect(upgraded.knownBlobs(['a'.repeat(40)]).size).toBe(0)
+    upgraded.close()
+  })
+
   it('lets two stores write to the same index', async () => {
     const path = freshPath()
     const first = await openIndexStore(path)
