@@ -4,6 +4,8 @@ export interface DiffFile {
   path: string
   status: DiffFileStatus
   lines: ReadonlySet<number>
+  added: ReadonlySet<number>
+  removedAt: ReadonlySet<number>
 }
 
 type DiffLine =
@@ -18,6 +20,8 @@ interface FileDraft {
   renamedTo: string | undefined
   status: DiffFileStatus
   lines: Set<number>
+  added: Set<number>
+  removedAt: Set<number>
 }
 
 interface WalkState {
@@ -44,6 +48,8 @@ export function parseDiffFiles(diff: string): DiffFile[] {
     path: draft.renamedTo ?? draft.newPath ?? draft.oldPath ?? draft.gitPath ?? '',
     status: draft.status,
     lines: draft.lines,
+    added: draft.added,
+    removedAt: draft.removedAt,
   }))
 }
 
@@ -78,6 +84,7 @@ function hunkLine(state: WalkState, text: string): DiffLine | undefined {
   if (marker === '\\') return { kind: 'unnumbered', text }
   if (marker === '-' && state.oldLeft > 0) {
     state.oldLeft--
+    state.file?.removedAt.add(state.next)
     return { kind: 'unnumbered', text }
   }
   const added = marker === '+' && state.newLeft > 0
@@ -90,6 +97,7 @@ function hunkLine(state: WalkState, text: string): DiffLine | undefined {
   if (context) state.oldLeft--
   state.newLeft--
   state.file?.lines.add(state.next)
+  if (added) state.file?.added.add(state.next)
   return { kind: 'numbered', text, number: state.next++ }
 }
 
@@ -123,6 +131,8 @@ function newDraft(paths: string): FileDraft {
     renamedTo: undefined,
     status: 'modified',
     lines: new Set(),
+    added: new Set(),
+    removedAt: new Set(),
   }
 }
 

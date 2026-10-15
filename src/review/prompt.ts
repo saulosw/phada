@@ -8,6 +8,9 @@ import {
   DIFF_LINE_NUMBERS,
   diffScope,
   docsBlock,
+  hasImpact,
+  IMPACT,
+  impactBlocks,
   pullRequestDetails,
   rulesSection,
   SEVERITY,
@@ -68,6 +71,7 @@ export function buildReviewPrompt(
     data: [
       block('PHADA_PR', nonce, pullRequestDetails(pullRequest, context?.ignored)),
       ...(docs.length === 0 ? [] : [block('PHADA_DOCS', nonce, docsBlock(docs))]),
+      ...impactBlocks(request.impact, nonce),
       block('PHADA_DIFF', nonce, annotateDiff(pullRequest.diff)),
     ].join('\n\n'),
     outputSchema: REVIEW_REPORT_JSON_SCHEMA,
@@ -75,7 +79,10 @@ export function buildReviewPrompt(
   }
 }
 
-function instructionsFor({ language, verify, context }: ReviewRequest, tools?: Toolbox): string {
+function instructionsFor(
+  { language, verify, context, impact }: ReviewRequest,
+  tools?: Toolbox,
+): string {
   const floor = verify === true ? VERIFY_CANDIDATE_FLOOR : CONFIDENCE_FLOOR
   const sections = [
     ROLE,
@@ -83,6 +90,7 @@ function instructionsFor({ language, verify, context }: ReviewRequest, tools?: T
     FALSE_POSITIVES,
     rulesSection(context?.rules ?? []),
     (context?.docs.length ?? 0) > 0 ? CONTEXT_DOCS : '',
+    hasImpact(impact) ? IMPACT : '',
     `${CONFIDENCE_SCALE}\nReport every candidate rated ${floor} or higher.`,
     SEVERITY,
     diffScope(context, tools),

@@ -78,6 +78,13 @@ describe('parseDiffFiles', () => {
     expect(linesOf(file)).toEqual([1, 2, 3, 4, 5, 21, 22, 23])
   })
 
+  it('tells which lines were added and where lines were removed', () => {
+    const [file] = parseDiffFiles(MODIFIED)
+
+    expect([...(file?.added ?? [])]).toEqual([2, 3, 22])
+    expect([...(file?.removedAt ?? [])]).toEqual([2, 22])
+  })
+
   it('reads added, deleted, renamed and binary files', () => {
     const files = parseDiffFiles(MODIFIED + ADDED + DELETED + RENAMED + BINARY)
 
@@ -104,7 +111,9 @@ describe('parseDiffFiles', () => {
       ),
     )
 
-    expect(files).toEqual([{ path: 'b.ts', status: 'renamed', lines: new Set() }])
+    expect(files).toEqual([
+      { path: 'b.ts', status: 'renamed', lines: new Set(), added: new Set(), removedAt: new Set() },
+    ])
   })
 
   it('takes a deleted file path from its old side when the folder name has " b/"', () => {

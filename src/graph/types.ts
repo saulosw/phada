@@ -1,5 +1,6 @@
 import type { SymbolKind } from '../repo-map/types.js'
 import type { IndexReader } from '../store/index-reader.js'
+import type { ObservedEdge } from '../store/observed-store.js'
 
 export type EdgeHow = 'resolved' | 'inferred' | 'observed'
 export type EdgeKind = 'calls' | 'uses' | 'inherits' | 'related'
@@ -74,9 +75,11 @@ export interface RepositoryGraph {
   similar(target: SymbolTarget | GraphSymbol): SimilarResult
   symbolAt(path: string, line: number): GraphSymbol | undefined
   lineText(path: string, line: number): Promise<string | undefined>
+  staleObserved(): number[]
 }
 
 export interface OpenGraphInput {
   reader: IndexReader
   readText: (path: string) => Promise<string>
+  observed?: readonly ObservedEdge[]
 }

@@ -48,6 +48,7 @@ describe('repositoryCache', () => {
     expect(repositoryCache({ PHADA_CACHE_HOME: '/c' }, '/home/u', 'Acme', 'Shop')).toEqual({
       mirror: '/c/repos/acme/shop.git',
       index: '/c/index/acme/shop.sqlite',
+      observed: '/c/observed/acme/shop.sqlite',
     })
     expect(repositoryCache({}, '/home/u', 'acme', 'shop').mirror).toBe(
       '/home/u/.cache/phada/repos/acme/shop.git',

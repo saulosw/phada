@@ -219,7 +219,9 @@ export function tagOf(site: { how: string; pullRequest?: number }): string {
 function dependencyLine(item: Dependency): string {
   const where =
     item.target === undefined
-      ? `external${item.module === undefined ? '' : ` (${item.module})`}`
+      ? item.how === 'observed'
+        ? `${item.module ?? ''} (file)`
+        : `external${item.module === undefined ? '' : ` (${item.module})`}`
       : `${item.target.path}:${item.target.startLine} ${item.target.kind} ${item.target.name}`
   return `${item.name} (${item.kind}, line ${item.line}) → ${where}${tagOf(item)}`
 }

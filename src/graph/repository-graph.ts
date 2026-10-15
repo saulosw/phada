@@ -1,5 +1,6 @@
 import type { SymbolKind } from '../repo-map/types.js'
 import type { CallRow, IndexReader, ReferenceRow, SymbolRow } from '../store/index-reader.js'
+import type { ObservedEdge, ObservedEndpoint } from '../store/observed-store.js'
 import { loadProjectConfig } from './project-config.js'
 import { NameResolver } from './resolve-name.js'
 import { nameTokens, scoreSimilar, SIMILAR_MAX, SIMILAR_MIN_SCORE } from './similar.js'
@@ -45,7 +46,23 @@ const HOW_RANK: Readonly<Record<EdgeHow, number>> = { resolved: 0, inferred: 1, 
 
 export async function openRepositoryGraph(input: OpenGraphInput): Promise<RepositoryGraph> {
   const config = await loadProjectConfig(input.reader.paths(), input.readText)
-  return new IndexGraph(input.reader, new NameResolver(input.reader, config), input.readText)
+  return new IndexGraph(
+    input.reader,
+    new NameResolver(input.reader, config),
+    input.readText,
+    input.observed ?? [],
+  )
+}
+
+interface ObservedEnd {
+  path: string
+  symbol?: GraphSymbol
+}
+
+interface ValidObserved {
+  from: ObservedEnd
+  to: ObservedEnd
+  pullRequest: number
 }
 
 class IndexGraph implements RepositoryGraph {
@@ -54,16 +71,32 @@ class IndexGraph implements RepositoryGraph {
   readonly #resolver: NameResolver
   readonly #readText: (path: string) => Promise<string>
   readonly #lines = new Map<string, Promise<string[] | undefined>>()
+  readonly #observed: ValidObserved[] = []
+  readonly #stale: number[] = []
 
   constructor(
     reader: IndexReader,
     resolver: NameResolver,
     readText: (path: string) => Promise<string>,
+    observed: readonly ObservedEdge[],
   ) {
     this.commit = reader.commit
     this.#reader = reader
     this.#resolver = resolver
     this.#readText = readText
+    for (const edge of observed) {
+      const from = this.#observedEnd(edge.from)
+      const to = this.#observedEnd(edge.to)
+      if (from === undefined || to === undefined) {
+        if (edge.id !== undefined) this.#stale.push(edge.id)
+        continue
+      }
+      this.#observed.push({ from, to, pullRequest: edge.pullRequest })
+    }
+  }
+
+  staleObserved(): number[] {
+    return [...this.#stale]
   }
 
   findSymbol(name: string, kind?: SymbolKind): GraphSymbol[] {
@@ -129,6 +162,19 @@ class IndexGraph implements RepositoryGraph {
         }
       }
     }
+    for (const symbol of targets.symbols) {
+      for (const { other, pullRequest } of this.#observedOf(symbol)) {
+        sites.push({
+          path: other.path,
+          line: other.symbol?.startLine ?? 1,
+          target: symbol,
+          ...(other.symbol === undefined ? {} : { in: other.symbol }),
+          kind: 'related',
+          how: 'observed',
+          pullRequest,
+        })
+      }
+    }
     return { ...targets, sites: sortSites(dedupeSites(sites)), capped }
   }
 
@@ -162,6 +208,18 @@ class IndexGraph implements RepositoryGraph {
         dependencies.push(
           ...[toDependency(item.name, symbol.startLine, 'inherits', resolution)].flat(),
         )
+      }
+    }
+    for (const symbol of targets.symbols) {
+      for (const { other, pullRequest } of this.#observedOf(symbol)) {
+        dependencies.push({
+          name: other.symbol?.name ?? other.path,
+          line: symbol.startLine,
+          kind: 'related',
+          how: 'observed',
+          ...(other.symbol === undefined ? { module: other.path } : { target: other.symbol }),
+          pullRequest,
+        })
       }
     }
     return { ...targets, dependencies: dedupeDependencies(dependencies) }
@@ -206,7 +264,11 @@ class IndexGraph implements RepositoryGraph {
     const context = this.#resolver.context(path)
     if (context === undefined) return undefined
     const containing = context.symbols.filter(
-      (symbol) => symbol.kind !== 'parameter' && symbol.startLine <= line && line <= symbol.endLine,
+      (symbol) =>
+        symbol.kind !== 'parameter' &&
+        !(symbol.kind === 'variable' && symbol.parentId !== undefined) &&
+        symbol.startLine <= line &&
+        line <= symbol.endLine,
     )
     const innermost = containing.sort(
       (a, b) => a.endLine - a.startLine - (b.endLine - b.startLine) || b.startLine - a.startLine,
@@ -276,6 +338,31 @@ class IndexGraph implements RepositoryGraph {
       }
     }
     return (ownerId) => ownerId !== undefined && inside.has(ownerId)
+  }
+
+  #observedOf(symbol: GraphSymbol): { other: ObservedEnd; pullRequest: number }[] {
+    const same = (end: ObservedEnd) =>
+      end.symbol !== undefined && end.symbol.path === symbol.path && end.symbol.id === symbol.id
+    return this.#observed.flatMap((edge) =>
+      same(edge.from)
+        ? [{ other: edge.to, pullRequest: edge.pullRequest }]
+        : same(edge.to)
+          ? [{ other: edge.from, pullRequest: edge.pullRequest }]
+          : [],
+    )
+  }
+
+  #observedEnd(point: ObservedEndpoint): ObservedEnd | undefined {
+    if (!this.#reader.paths().has(point.path)) return undefined
+    if (point.name === undefined) return { path: point.path }
+    const context = this.#resolver.context(point.path)
+    const row = context?.symbols.find((candidate) => {
+      if (candidate.name !== point.name || candidate.kind !== point.kind) return false
+      return this.#resolver.graphSymbol(point.path, candidate, context).owner === point.owner
+    })
+    return row === undefined
+      ? undefined
+      : { path: point.path, symbol: this.#resolver.graphSymbol(point.path, row, context) }
   }
 
   #features(context: FileContext, row: SymbolRow): Features {

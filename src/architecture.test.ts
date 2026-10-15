@@ -97,15 +97,19 @@ const STORE: Boundary = {
 }
 const GRAPH: Boundary = {
   dir: 'graph',
-  values: new Set(['node:path']),
+  values: new Set(['node:path', '../review/diff-lines.js']),
   types: new Set([
     '../repo-map/languages.js',
     '../repo-map/types.js',
     '../store/index-reader.js',
+    '../store/observed-store.js',
     '../review/types.js',
   ]),
   expected: [
+    'impact.ts',
+    'observe.ts',
     'project-config.ts',
+    'report.ts',
     'repository-graph.ts',
     'resolve-module.ts',
     'resolve-name.ts',
