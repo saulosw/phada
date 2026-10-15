@@ -37,9 +37,12 @@ export function walkJavaScriptLike(root: Node, c: Collector): void {
         return declareClass(node, exported)
       case 'interface_declaration':
         return declareInterface(node, exported)
-      case 'type_alias_declaration':
-        c.symbol('type', nameOf(node), node, { exported })
+      case 'type_alias_declaration': {
+        const key = c.symbol('type', nameOf(node), node, { exported })
+        const value = node.childForFieldName('value')
+        if (value) c.within(key, () => visit(value))
         return
+      }
       case 'enum_declaration':
         c.symbol('enum', nameOf(node), node, { exported })
         return
@@ -61,6 +64,15 @@ export function walkJavaScriptLike(root: Node, c: Collector): void {
         return call(node)
       case 'new_expression':
         return construct(node)
+      case 'identifier':
+      case 'type_identifier':
+      case 'shorthand_property_identifier':
+        c.reference(node.text, node)
+        return
+      case 'member_expression':
+        return member(node)
+      case 'nested_type_identifier':
+        return nestedType(node)
       default:
         return visitChildren(node)
     }
@@ -71,6 +83,7 @@ export function walkJavaScriptLike(root: Node, c: Collector): void {
     const key = c.symbol('function', nameOf(node), node, { exported, body })
     c.within(key, () => {
       parameters(node)
+      returnType(node)
       if (body) visit(body)
     })
   }
@@ -128,6 +141,7 @@ export function walkJavaScriptLike(root: Node, c: Collector): void {
     const key = c.symbol('method', nameOf(node), node, { exported: ownerExported(), body })
     c.within(key, () => {
       parameters(node)
+      returnType(node)
       if (body) visit(body)
     })
   }
@@ -136,6 +150,8 @@ export function walkJavaScriptLike(root: Node, c: Collector): void {
     if (c.ownerKind() === 'class') {
       c.symbol('variable', nameOf(node), node, { exported: ownerExported() })
     }
+    const type = node.childForFieldName('type')
+    if (type) visit(type)
     const value = node.childForFieldName('value')
     if (value) visit(value)
   }
@@ -149,12 +165,20 @@ export function walkJavaScriptLike(root: Node, c: Collector): void {
       const key = c.symbol('function', name.text, node, { exported, body })
       c.within(key, () => {
         parameters(value)
+        returnType(value)
         if (body) visit(body)
       })
       return
     }
     for (const variable of patternNames(name)) c.symbol('variable', variable, node, { exported })
+    const type = node.childForFieldName('type')
+    if (type) visit(type)
     if (value) visit(value)
+  }
+
+  function returnType(fn: Node): void {
+    const type = fn.childForFieldName('return_type')
+    if (type) visit(type)
   }
 
   function parameters(fn: Node): void {
@@ -242,13 +266,39 @@ export function walkJavaScriptLike(root: Node, c: Collector): void {
     const fn = node.childForFieldName('function')
     const { name, qualifier } = callee(fn)
     c.call(name, node, qualifier)
-    visitChildren(node)
+    visitCallee(fn)
+    for (const child of node.namedChildren) if (child && child.id !== fn?.id) visit(child)
   }
 
   function construct(node: Node): void {
-    const { name, qualifier } = callee(node.childForFieldName('constructor'))
+    const fn = node.childForFieldName('constructor')
+    const { name, qualifier } = callee(fn)
     c.call(name, node, qualifier, true)
-    visitChildren(node)
+    visitCallee(fn)
+    for (const child of node.namedChildren) if (child && child.id !== fn?.id) visit(child)
+  }
+
+  function visitCallee(fn: Node | null): void {
+    if (fn === null || fn.type === 'identifier') return
+    if (fn.type !== 'member_expression') return visit(fn)
+    const object = fn.childForFieldName('object')
+    if (object && object.type !== 'identifier') visit(object)
+  }
+
+  function member(node: Node): void {
+    const object = node.childForFieldName('object')
+    const property = node.childForFieldName('property')
+    if (object?.type === 'identifier' && property) {
+      c.reference(property.text, node, object.text)
+      return
+    }
+    if (object) visit(object)
+  }
+
+  function nestedType(node: Node): void {
+    const module = node.childForFieldName('module')
+    const name = node.childForFieldName('name')
+    if (module?.type === 'identifier' && name) c.reference(name.text, node, module.text)
   }
 
   function requireImport(node: Node, binding?: Node | null): void {

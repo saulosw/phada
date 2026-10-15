@@ -10,6 +10,7 @@ const OWNER_KINDS: ReadonlySet<SymbolKind> = new Set([
   'class',
   'struct',
   'interface',
+  'type',
 ])
 
 export interface SymbolOptions {
@@ -26,6 +27,7 @@ export class Collector {
     exports: [],
     calls: [],
     heritage: [],
+    references: [],
     parseErrors: 0,
   }
   readonly #owners: number[] = []
@@ -101,6 +103,32 @@ export class Collector {
 
   heritage(symbol: number, name: string, relation: HeritageRelation): void {
     this.map.heritage.push({ symbol, name, relation })
+  }
+
+  reference(name: string, node: Node, qualifier?: string): void {
+    const owner = this.owner()
+    this.map.references.push({
+      ...(owner === undefined ? {} : { owner }),
+      name,
+      ...(qualifier === undefined ? {} : { qualifier }),
+      line: node.startPosition.row + 1,
+    })
+  }
+
+  keepImportedReferences(): void {
+    const bindings = new Set<string>()
+    const namespaces = new Set<string>()
+    for (const item of this.map.imports) {
+      const local = item.alias ?? item.name
+      if (local === undefined || local === '*') continue
+      if (item.kind === 'namespace' || item.kind === 'require') namespaces.add(local)
+      if (item.kind !== 'namespace' && item.kind !== 'side-effect') bindings.add(local)
+    }
+    this.map.references = this.map.references.filter((reference) =>
+      reference.qualifier === undefined
+        ? bindings.has(reference.name) || namespaces.has(reference.name)
+        : namespaces.has(reference.qualifier),
+    )
   }
 }
 

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { callLines, heritageLines, symbolLines, symbolNamed } from '../../test/support/file-map.js'
+import {
+  callLines,
+  heritageLines,
+  referenceLines,
+  symbolLines,
+  symbolNamed,
+} from '../../test/support/file-map.js'
 import { createExtractor } from './extract.js'
 
 const extractor = createExtractor()
@@ -73,5 +79,18 @@ describe('extract Go', () => {
 
     expect(map.imports).toEqual([{ module: 'strings', name: '.', kind: 'namespace', line: 2 }])
     expect(symbolLines(map)).toEqual(['function Join exported', 'parameter parts < Join'])
+  })
+
+  it('records uses of imported packages that are not calls', async () => {
+    const map = await mapOf(`package app
+import "example.com/m/store"
+var s store.Store
+func f() {
+  x := store.Default
+  store.Open(x)
+}
+`)
+
+    expect(referenceLines(map)).toEqual(['Store on store in (module):3', 'Default on store in f:5'])
   })
 })
