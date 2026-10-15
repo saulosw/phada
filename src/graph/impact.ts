@@ -7,6 +7,7 @@ export const IMPACT_SITES_PER_FILE = 3
 export const IMPACT_SITES_PER_SYMBOL = 30
 export const IMPACT_DEPENDENCIES = 5
 export const IMPACT_LINE_CHARS = 200
+export const IMPACT_TIME_LIMIT_MS = 10_000
 
 const HOW_RANK: Readonly<Record<Site['how'], number>> = { resolved: 0, inferred: 1, observed: 2 }
 
@@ -25,10 +26,17 @@ export function changedLines(diff: string): ChangedLines[] {
     .filter((file) => file.lines.length > 0)
 }
 
+export interface ImpactOptions {
+  now?: () => number
+}
+
 export async function computeImpact(
   graph: RepositoryGraph,
   changed: readonly ChangedLines[],
+  options: ImpactOptions = {},
 ): Promise<DiffImpact> {
+  const now = options.now ?? (() => performance.now())
+  const deadline = now() + IMPACT_TIME_LIMIT_MS
   const changedByPath = new Map(changed.map((file) => [file.path, new Set(file.lines)]))
   const touched = new Map<string, { symbol: GraphSymbol; lines: number }>()
   for (const { path, lines } of changed) {
@@ -51,6 +59,7 @@ export async function computeImpact(
   const symbols: ImpactedSymbol[] = []
   const callerFiles = new Set<string>()
   for (const { symbol } of ordered.slice(0, IMPACT_MAX_SYMBOLS)) {
+    if (symbols.length > 0 && now() > deadline) break
     const { impacted, files } = await impactOf(graph, symbol, changedByPath)
     symbols.push(impacted)
     for (const file of files) callerFiles.add(file)
@@ -60,7 +69,7 @@ export async function computeImpact(
       ...symbols.filter((symbol) => symbol.callers > 0),
       ...symbols.filter((symbol) => symbol.callers === 0),
     ],
-    omittedSymbols: Math.max(ordered.length - IMPACT_MAX_SYMBOLS, 0),
+    omittedSymbols: ordered.length - symbols.length,
     callerFiles: callerFiles.size,
   }
 }

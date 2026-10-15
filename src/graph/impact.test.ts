@@ -151,6 +151,21 @@ describe('computeImpact', () => {
     expect(impact.symbols.slice(0, 5).every((symbol) => symbol.exported)).toBe(true)
   })
 
+  it('stops adding symbols when it runs out of time and counts the rest as left out', async () => {
+    const graph = await graphOf()
+    let clock = 0
+
+    const impact = await computeImpact(graph, [{ path: 'src/users.ts', lines: [3, 5, 9] }], {
+      now: () => {
+        clock += 6_000
+        return clock
+      },
+    })
+
+    expect(impact.symbols.length).toBeLessThan(3)
+    expect(impact.symbols.length + impact.omittedSymbols).toBe(3)
+  })
+
   it('returns nothing when no indexed symbol changed', async () => {
     const graph = await graphOf()
 

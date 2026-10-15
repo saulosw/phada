@@ -45,6 +45,8 @@ export class NameResolver {
   readonly #contexts = new Map<string, FileContext | undefined>()
   readonly #modules = new Map<string, ModuleTarget>()
   readonly #packages = new Map<string, string[]>()
+  readonly #inferredByName = new Map<string, Resolution>()
+  readonly #resolved = new Map<string, Resolution>()
 
   constructor(reader: IndexReader, config: ProjectConfig) {
     this.#reader = reader
@@ -103,6 +105,15 @@ export class NameResolver {
   }
 
   resolve(context: FileContext, site: NameSite): Resolution {
+    const key = `${context.path}\0${site.ownerId ?? ''}\0${site.qualifier ?? ''}\0${site.name}`
+    const known = this.#resolved.get(key)
+    if (known !== undefined) return known
+    const resolution = this.#resolveUncached(context, site)
+    this.#resolved.set(key, resolution)
+    return resolution
+  }
+
+  #resolveUncached(context: FileContext, site: NameSite): Resolution {
     const found =
       site.qualifier === undefined
         ? this.#unqualified(context, site, new Set())
@@ -394,6 +405,15 @@ export class NameResolver {
   }
 
   #inferred(name: string): Resolution {
+    let resolution = this.#inferredByName.get(name)
+    if (resolution === undefined) {
+      resolution = this.#inferredUncached(name)
+      this.#inferredByName.set(name, resolution)
+    }
+    return resolution
+  }
+
+  #inferredUncached(name: string): Resolution {
     const definitions = this.#reader
       .symbolsNamed(name)
       .filter((symbol) => CALLABLE_KINDS.has(symbol.kind))

@@ -25,6 +25,7 @@ import type {
 export const CALLER_CANDIDATES_MAX = 2_000
 export const MAX_TARGETS = 3
 export const SIMILAR_CANDIDATES_MAX = 500
+export const QUERY_TIME_LIMIT_MS = 3_000
 
 const OWNER_KINDS: ReadonlySet<SymbolKind> = new Set([
   'function',
@@ -51,6 +52,7 @@ export async function openRepositoryGraph(input: OpenGraphInput): Promise<Reposi
     new NameResolver(input.reader, config),
     input.readText,
     input.observed ?? [],
+    input.now ?? (() => performance.now()),
   )
 }
 
@@ -73,14 +75,17 @@ class IndexGraph implements RepositoryGraph {
   readonly #lines = new Map<string, Promise<string[] | undefined>>()
   readonly #observed: ValidObserved[] = []
   readonly #stale: number[] = []
+  readonly #now: () => number
 
   constructor(
     reader: IndexReader,
     resolver: NameResolver,
     readText: (path: string) => Promise<string>,
     observed: readonly ObservedEdge[],
+    now: () => number,
   ) {
     this.commit = reader.commit
+    this.#now = now
     this.#reader = reader
     this.#resolver = resolver
     this.#readText = readText
@@ -125,6 +130,12 @@ class IndexGraph implements RepositoryGraph {
     const targets = this.targets(target)
     const sites: Site[] = []
     let capped = false
+    const deadline = this.#now() + QUERY_TIME_LIMIT_MS
+    const outOfTime = () => {
+      if (this.#now() <= deadline) return false
+      capped = true
+      return true
+    }
     for (const symbol of targets.symbols) {
       const names = new Set([symbol.name])
       for (const item of this.#reader.importsNamed(symbol.name)) {
@@ -136,8 +147,14 @@ class IndexGraph implements RepositoryGraph {
         budget -= calls.length
         const references = this.#reader.referencesNamed(name, Math.max(budget, 0))
         budget -= references.length
-        for (const row of calls) sites.push(...this.#sitesTo(symbol, row, 'calls', row.callerId))
-        for (const row of references) sites.push(...this.#sitesTo(symbol, row, 'uses', row.ownerId))
+        for (const row of calls) {
+          if (outOfTime()) break
+          sites.push(...this.#sitesTo(symbol, row, 'calls', row.callerId))
+        }
+        for (const row of references) {
+          if (outOfTime()) break
+          sites.push(...this.#sitesTo(symbol, row, 'uses', row.ownerId))
+        }
         if (budget <= 0) {
           capped = true
           break

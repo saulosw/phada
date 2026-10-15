@@ -106,3 +106,21 @@ describe('graph.callers with a very common name', () => {
     expect(result.sites.length).toBe(2_000)
   })
 })
+
+describe('graph.callers of a name defined everywhere', () => {
+  it('guesses each name once and answers quickly', async () => {
+    const files: Record<string, string> = {}
+    for (let file = 0; file < 600; file += 1) {
+      const calls = Array.from({ length: 4 }, () => '    this.inner.dispose()').join('\n')
+      files[`src/part${file}.ts`] = `export class Part${file} {\n  dispose() {\n${calls}\n  }\n}\n`
+    }
+    const { reader, readText } = await indexFixture(files)
+    const graph = await openRepositoryGraph({ reader, readText })
+
+    const started = performance.now()
+    const result = graph.callers({ name: 'dispose', path: 'src/part0.ts' })
+
+    expect(performance.now() - started).toBeLessThan(1_000)
+    expect(result.sites).toEqual([])
+  })
+})

@@ -311,3 +311,27 @@ func main() {
     expect(sites(graph.callers({ name: 'Store' }))).toEqual(['cmd/main.go:7 in main uses'])
   })
 })
+
+describe('repository graph time limits', () => {
+  it('stops checking call sites when a query runs out of time and says it was capped', async () => {
+    const calls = Array.from({ length: 30 }, () => '  f()').join('\n')
+    const { reader, readText } = await indexFixture({
+      'a.ts': 'export function f() {}\n',
+      'b.ts': `import { f } from './a'\nexport function g() {\n${calls}\n}\n`,
+    })
+    let clock = 0
+    const graph = await openRepositoryGraph({
+      reader,
+      readText,
+      now: () => {
+        clock += 500
+        return clock
+      },
+    })
+
+    const result = graph.callers({ name: 'f' })
+
+    expect(result.capped).toBe(true)
+    expect(result.sites.length).toBeLessThan(30)
+  })
+})

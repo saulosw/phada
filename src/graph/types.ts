@@ -82,4 +82,5 @@ export interface OpenGraphInput {
   reader: IndexReader
   readText: (path: string) => Promise<string>
   observed?: readonly ObservedEdge[]
+  now?: () => number
 }
