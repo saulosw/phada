@@ -990,6 +990,7 @@ describe('run with the repository investigation', () => {
       'read_file',
       'grep',
       'list',
+      'history',
     ])
     expect(h.prompts[0]?.instructions).toContain('read_file, grep, list tools')
     expect(h.closed()).toBe(1)

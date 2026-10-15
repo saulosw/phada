@@ -121,6 +121,7 @@ class IndexGraph implements RepositoryGraph {
           sites.push({
             path,
             line: child.startLine,
+            target: symbol,
             in: this.#resolver.graphSymbol(path, child, context),
             kind: 'inherits',
             how: resolution.how === 'inferred' ? 'inferred' : 'resolved',
@@ -243,6 +244,7 @@ class IndexGraph implements RepositoryGraph {
       found.push({
         path,
         line: row.line,
+        target,
         ...(owner === undefined ? {} : { in: this.#resolver.graphSymbol(path, owner, context) }),
         kind,
         how: resolution.how === 'inferred' ? 'inferred' : 'resolved',
@@ -350,7 +352,7 @@ function dedupeDependencies(items: readonly Dependency[]): Dependency[] {
 function dedupeSites(sites: readonly Site[]): Site[] {
   const seen = new Set<string>()
   return sites.filter((site) => {
-    const key = `${site.path}:${site.line}:${site.kind}`
+    const key = `${site.path}:${site.line}:${site.kind}:${site.target.path}:${site.target.id}`
     if (seen.has(key)) return false
     seen.add(key)
     return true

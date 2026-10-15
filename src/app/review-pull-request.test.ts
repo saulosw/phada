@@ -88,6 +88,7 @@ describe('reviewPullRequest', () => {
       'read_file',
       'grep',
       'list',
+      'history',
     ])
     expect(h.servers).toEqual([['linear']])
     expect(h.closed()).toBe(1)

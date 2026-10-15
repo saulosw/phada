@@ -20,6 +20,70 @@ const toolbox: Toolbox = {
 }
 const digest = (text: string) => createHash('sha256').update(text).digest('hex')
 
+describe('review prompt with the graph tools', () => {
+  const withGraph: Toolbox = {
+    ...toolbox,
+    definitions: [
+      'read_file',
+      'grep',
+      'list',
+      'history',
+      'find_symbol',
+      'callers',
+      'dependencies',
+      'similar',
+    ].map((name) => ({ name, description: name, inputSchema: { type: 'object' } })),
+  }
+
+  it('explains the graph and history tools when they are there', () => {
+    const { instructions } = buildReviewPrompt(
+      { pullRequest: pullRequestFixture() },
+      NONCE,
+      withGraph,
+    )
+
+    expect(instructions).toContain(
+      'With find_symbol, callers, dependencies and similar you can query the repository\ngraph',
+    )
+    expect(instructions).toContain(
+      'history\nshows who changed a file or lines and in which pull request.',
+    )
+  })
+
+  it('explains history alone when the graph is missing', () => {
+    const withHistory: Toolbox = {
+      ...toolbox,
+      definitions: ['read_file', 'grep', 'list', 'history'].map((name) => ({
+        name,
+        description: name,
+        inputSchema: { type: 'object' },
+      })),
+    }
+
+    const { instructions } = buildReviewPrompt(
+      { pullRequest: pullRequestFixture() },
+      NONCE,
+      withHistory,
+    )
+
+    expect(instructions).toContain(
+      'read_file, grep, list tools.\nhistory shows who changed a file or lines and in which pull request.',
+    )
+    expect(instructions).not.toContain('find_symbol')
+  })
+
+  it('leaves them out when only the reading tools are there', () => {
+    const { instructions } = buildReviewPrompt(
+      { pullRequest: pullRequestFixture() },
+      NONCE,
+      toolbox,
+    )
+
+    expect(instructions).not.toContain('find_symbol')
+    expect(instructions).not.toContain('history')
+  })
+})
+
 describe('review prompt with the repository tools', () => {
   it('asks the reviewer to investigate what the diff affects', () => {
     const prompt = buildReviewPrompt({ pullRequest: pullRequestFixture() }, NONCE, toolbox)

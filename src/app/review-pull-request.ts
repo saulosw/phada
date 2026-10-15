@@ -2,19 +2,18 @@ import type { ConfigLayer } from '../config/types.js'
 import { loadContext } from '../context/load-context.js'
 import type { ContextReport, ContextSources, LoadedContext } from '../context/types.js'
 import type { PullRequest } from '../github/pull-request.js'
-import type { Checkout } from '../repository/checkout.js'
+import type { Checkout, OpenCheckoutOptions } from '../repository/checkout.js'
 import { CheckoutUnavailableError } from '../repository/git-checkout.js'
-import { openInvestigation } from '../investigation/open-investigation.js'
-import type {
-  Investigation,
-  InvestigationCheckoutOptions,
-} from '../investigation/open-investigation.js'
+import { createInvestigation } from '../investigation/create-investigation.js'
+import type { Investigation } from '../investigation/create-investigation.js'
 import { buildInvestigationReport } from '../investigation/tools/report.js'
 import type { InvestigationReport } from '../investigation/tools/report.js'
 import type { ReviewPass } from '../investigation/tools/tool-log.js'
 import type { ReviewProvider } from '../providers/types.js'
 import { runReview } from '../review/run-review.js'
 import type { ReviewOutcome } from '../review/types.js'
+
+export type InvestigationCheckoutOptions = Omit<OpenCheckoutOptions, 'dir'>
 
 export interface ReviewOptions {
   language?: string
@@ -72,16 +71,15 @@ export async function reviewPullRequest(
   if (investigate && loaded.diff.trim() !== '') {
     const [owner = '', repo = ''] = pullRequest.repo.split('/')
     try {
-      investigation = await openInvestigation(
-        {
+      investigation = createInvestigation(
+        await deps.openCheckout({
           owner,
           repo,
           sha: pullRequest.headSha,
           keepAs: `refs/phada/pull/${pullRequest.number}`,
           token: input.token,
           env: deps.env,
-        },
-        deps.openCheckout,
+        }),
       )
     } catch (error) {
       if (!(error instanceof CheckoutUnavailableError)) throw error

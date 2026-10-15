@@ -47,6 +47,22 @@ describe('formatInvestigationLine', () => {
     ).toBe('Investigated: 3 reads, 1 search, 1 list (8.0 KB) · 3 MCP calls (linear, notion)')
   })
 
+  it('counts graph queries and history lookups', () => {
+    expect(
+      formatInvestigationLine({
+        ...used,
+        calls: [
+          call('read_file', 'src/a.ts'),
+          call('callers', 'getUser'),
+          call('find_symbol', 'getUser'),
+          call('similar', 'f'),
+          call('history', 'src/a.ts'),
+        ],
+        totals: { calls: 5, bytes: 10240 },
+      }),
+    ).toBe('Investigated: 1 read, 3 graph queries, 1 history lookup (10.0 KB)')
+  })
+
   it('says when the AI read nothing', () => {
     expect(formatInvestigationLine({ ...used, calls: [], totals: { calls: 0, bytes: 0 } })).toBe(
       'Investigated: no tool calls',

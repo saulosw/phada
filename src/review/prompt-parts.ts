@@ -48,9 +48,30 @@ export function diffScope(context: ReviewContext | undefined, tools?: Toolbox): 
   return hasContext(context) ? DIFF_WITH_CONTEXT : DIFF_ONLY
 }
 
+const GRAPH_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'find_symbol',
+  'callers',
+  'dependencies',
+  'similar',
+  'history',
+])
+
+const HISTORY_TOOL = 'history shows who changed a file or lines and in which pull request.'
+
+export const GRAPH_TOOLS = `With find_symbol, callers, dependencies and similar you can query the repository
+graph: where a symbol is defined, who calls or uses it, what it depends on, and
+functions built like it (to check the change follows the same pattern). history
+shows who changed a file or lines and in which pull request.`
+
 export function investigation(toolNames: readonly string[]): string {
+  const reading = toolNames.filter((name) => !GRAPH_TOOL_NAMES.has(name))
+  const graph = toolNames.includes('callers')
+    ? `\n${GRAPH_TOOLS}`
+    : toolNames.includes('history')
+      ? `\n${HISTORY_TOOL}`
+      : ''
   return `You can read the whole repository at the head of the pull request with the
-${toolNames.join(', ')} tools. Before you report, check what the diff affects: the
+${reading.join(', ')} tools.${graph} Before you report, check what the diff affects: the
 callers of the functions it changes, the definitions it uses and the rest of each
 changed file. Still review every file of the diff. Read only what helps you judge
 the change.

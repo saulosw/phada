@@ -70,7 +70,18 @@ function targetOf({ tool, args }: ToolCallRecord): string {
     return path === undefined || path === '' ? pattern : `${pattern} in ${path}`
   }
   if (tool === 'list') return path === undefined || path === '' ? '.' : path
-  return ''
+  if (tool === 'history') {
+    const from = numberArg(args, 'from')
+    const to = numberArg(args, 'to')
+    return from === undefined ? (path ?? '') : `${path ?? ''}:${from}-${to ?? from}`
+  }
+  const name = stringArg(args, 'name')
+  if (name === undefined) return ''
+  if (tool === 'find_symbol') {
+    const kind = stringArg(args, 'kind')
+    return kind === undefined ? name : `${name} (${kind})`
+  }
+  return path === undefined ? name : `${name} in ${path}`
 }
 
 function stringArg(args: unknown, key: string): string | undefined {

@@ -6,6 +6,11 @@ const NOUNS: Readonly<Record<string, string>> = {
   read_file: 'read',
   grep: 'search',
   list: 'list',
+  find_symbol: 'graph query',
+  callers: 'graph query',
+  dependencies: 'graph query',
+  similar: 'graph query',
+  history: 'history lookup',
 }
 
 export function formatInvestigationLine(report: InvestigationReport): string | undefined {
@@ -19,7 +24,9 @@ export function formatInvestigationLine(report: InvestigationReport): string | u
     counts.set(noun, (counts.get(noun) ?? 0) + 1)
   }
   const parts = [...counts].map(([noun, count]) =>
-    formatCount(count, noun).replace(/searchs$/, 'searches'),
+    formatCount(count, noun)
+      .replace(/searchs$/, 'searches')
+      .replace(/querys$/, 'queries'),
   )
   const calls =
     parts.length === 0

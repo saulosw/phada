@@ -19,6 +19,7 @@ export interface GraphSymbol {
 export interface Site {
   path: string
   line: number
+  target: GraphSymbol
   in?: GraphSymbol
   kind: EdgeKind
   how: EdgeHow
