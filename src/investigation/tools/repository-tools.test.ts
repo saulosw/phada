@@ -25,6 +25,7 @@ function memoryCheckout(
       if (list === undefined) throw new CheckoutError('not-found', `${path} does not exist`)
       return list
     },
+    history: async () => ({ commits: [], truncated: false }),
     close: async () => {},
   }
 }

@@ -84,6 +84,7 @@ function memoryMirror(files: Record<string, string>): GitMirror {
       ...memoryCheckout(() => {}),
       readText: async (path) => files[path] ?? '',
     }),
+    deepen: async () => false,
     listFiles: async () => entries,
     readBlobs: async function* (wanted) {
       for (const file of wanted) {
@@ -99,6 +100,7 @@ function memoryCheckout(onClose: () => void): Checkout {
     readText: async (path) => `contents of ${path}\n`,
     grep: async () => [],
     listDir: async () => [],
+    history: async () => ({ commits: [], truncated: false }),
     close: async () => onClose(),
   }
 }

@@ -19,6 +19,8 @@ import { MirrorLockTimeoutError, withMirrorLock } from './mirror-lock.js'
 export const BLOB_BATCH_BYTES = 32_000_000
 export const LIST_MAX_OUTPUT = 64_000_000
 export const KEEP_PULL_REFS = 20
+export const HISTORY_DEPTH = 200
+export const DEEPEN_TIMEOUT_MS = 30_000
 
 const SHA = /^[0-9a-f]{40}$/
 const PULL_REFS = 'refs/phada/pull/'
@@ -51,10 +53,15 @@ export interface GitMirrorOptions {
   keepPullRefs?: number
 }
 
+export interface CheckoutOptions {
+  deepenAs?: string
+}
+
 export interface GitMirror {
   readonly dir: string
   fetch(ref: string, keepAs: string): Promise<string>
-  checkout(sha: string): Checkout
+  checkout(sha: string, options?: CheckoutOptions): Checkout
+  deepen(sha: string, keepAs: string): Promise<boolean>
   listFiles(sha: string): Promise<TreeFile[]>
   readBlobs(files: readonly TreeFile[]): AsyncIterable<{ oid: string; bytes: Uint8Array }>
 }
@@ -129,8 +136,28 @@ class GitMirrorRepository implements GitMirror {
     }
   }
 
-  checkout(sha: string): Checkout {
-    return new GitCheckout(this.#run, this.dir, sha, this.#env)
+  checkout(sha: string, options: CheckoutOptions = {}): Checkout {
+    const keepAs = options.deepenAs
+    return new GitCheckout(
+      this.#run,
+      this.dir,
+      sha,
+      this.#env,
+      keepAs === undefined ? undefined : () => this.deepen(sha, keepAs),
+    )
+  }
+
+  async deepen(sha: string, keepAs: string): Promise<boolean> {
+    try {
+      await withMirrorLock(
+        `${this.dir}.lock`,
+        { timeoutMs: DEEPEN_TIMEOUT_MS, staleMs: FETCH_TIMEOUT_MS + 30_000 },
+        () => this.#fetchLocked(sha, keepAs, HISTORY_DEPTH, DEEPEN_TIMEOUT_MS),
+      )
+      return true
+    } catch {
+      return false
+    }
   }
 
   async listFiles(sha: string): Promise<TreeFile[]> {
@@ -172,13 +199,28 @@ class GitMirrorRepository implements GitMirror {
     }
   }
 
-  async #fetchLocked(ref: string, keepAs: string): Promise<void> {
+  async #fetchLocked(
+    ref: string,
+    keepAs: string,
+    depth = 1,
+    timeoutMs = FETCH_TIMEOUT_MS,
+  ): Promise<void> {
     const { owner, repo, token } = this.#options
     const basic = Buffer.from(`x-access-token:${token}`).toString('base64')
     const url = this.#options.remoteUrl ?? `https://github.com/${owner}/${repo}`
     const fetched = await this.#run(
       'git',
-      ['-C', this.dir, 'fetch', '--depth', '1', '--no-tags', '-q', url, `+${ref}:${keepAs}`],
+      [
+        '-C',
+        this.dir,
+        'fetch',
+        '--depth',
+        String(depth),
+        '--no-tags',
+        '-q',
+        url,
+        `+${ref}:${keepAs}`,
+      ],
       {
         env: {
           ...this.#env,
@@ -187,7 +229,7 @@ class GitMirrorRepository implements GitMirror {
           GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
           GIT_CONFIG_VALUE_0: `Authorization: Basic ${basic}`,
         },
-        timeoutMs: FETCH_TIMEOUT_MS,
+        timeoutMs,
       },
     )
     if (fetched.exitCode !== 0) {

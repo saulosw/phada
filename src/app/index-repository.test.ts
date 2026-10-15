@@ -53,6 +53,7 @@ function fakeMirror(files: Record<string, FakeFile>) {
     },
     grep: async () => [],
     listDir: async () => [],
+    history: async () => ({ commits: [], truncated: false }),
     close: async () => {},
   }
   const mirror: IndexRepositoryDeps['mirror'] = {

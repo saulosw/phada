@@ -27,6 +27,7 @@ function checkout(onClose: () => void): Checkout {
     readText: async () => 'text\n',
     grep: async () => [],
     listDir: async () => [],
+    history: async () => ({ commits: [], truncated: false }),
     close: async () => onClose(),
   }
 }

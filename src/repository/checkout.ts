@@ -38,11 +38,36 @@ export interface DirEntry {
   kind: DirEntryKind
 }
 
+export interface HistoryCommit {
+  sha: string
+  date: string
+  author: string
+  subject: string
+}
+
+export interface BlameRange {
+  from: number
+  to: number
+  sha: string
+}
+
+export interface FileHistory {
+  commits: HistoryCommit[]
+  blame?: BlameRange[]
+  truncated: boolean
+}
+
+export interface LineRange {
+  from: number
+  to: number
+}
+
 export interface Checkout {
   readonly commit: string
   readText(path: string): Promise<string>
   grep(pattern: string, options: GrepOptions): Promise<GrepMatch[]>
   listDir(path: string): Promise<DirEntry[]>
+  history(path: string, range?: LineRange): Promise<FileHistory>
   close(): Promise<void>
 }
 
