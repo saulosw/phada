@@ -2,6 +2,8 @@ import type { SymbolKind } from '../repo-map/types.js'
 import type { CallRow, IndexReader, ReferenceRow, SymbolRow } from '../store/index-reader.js'
 import { loadProjectConfig } from './project-config.js'
 import { NameResolver } from './resolve-name.js'
+import { nameTokens, scoreSimilar, SIMILAR_MAX, SIMILAR_MIN_SCORE } from './similar.js'
+import type { Features } from './similar.js'
 import type { FileContext, NameSite, Resolution } from './resolve-name.js'
 import type {
   CallersResult,
@@ -12,6 +14,8 @@ import type {
   GraphSymbol,
   OpenGraphInput,
   RepositoryGraph,
+  SimilarResult,
+  SimilarSymbol,
   Site,
   SymbolTarget,
   Targets,
@@ -19,6 +23,7 @@ import type {
 
 export const CALLER_CANDIDATES_MAX = 2_000
 export const MAX_TARGETS = 3
+export const SIMILAR_CANDIDATES_MAX = 500
 
 const OWNER_KINDS: ReadonlySet<SymbolKind> = new Set([
   'function',
@@ -161,6 +166,41 @@ class IndexGraph implements RepositoryGraph {
     return { ...targets, dependencies: dedupeDependencies(dependencies) }
   }
 
+  similar(target: SymbolTarget | GraphSymbol): SimilarResult {
+    const targets = this.targets(target)
+    const similar: SimilarSymbol[] = []
+    for (const symbol of targets.symbols) {
+      if (symbol.kind !== 'function' && symbol.kind !== 'method') continue
+      const context = this.#resolver.context(symbol.path)
+      const row = context?.byId.get(symbol.id)
+      if (context === undefined || row === undefined) continue
+      const wanted = this.#features(context, row)
+      const candidates = new Map<string, { path: string; row: SymbolRow }>()
+      const add = (path: string, candidate: SymbolRow) => {
+        if (candidate.kind !== symbol.kind || (candidate.id === symbol.id && path === symbol.path))
+          return
+        candidates.set(`${path}:${candidate.id}`, { path, row: candidate })
+      }
+      for (const id of this.#reader.callersOfNames([...wanted.calls], SIMILAR_CANDIDATES_MAX)) {
+        const candidate = this.#reader.symbol(id)
+        if (candidate === undefined) continue
+        for (const path of this.#reader.pathsOfBlob(candidate.blobId)) add(path, candidate)
+      }
+      for (const sibling of context.symbols) {
+        if (sibling.parentId === row.parentId) add(symbol.path, sibling)
+      }
+      for (const { path, row: candidate } of candidates.values()) {
+        const other = this.#resolver.context(path)
+        if (other === undefined) continue
+        const { score, shared } = scoreSimilar(wanted, this.#features(other, candidate))
+        if (score < SIMILAR_MIN_SCORE) continue
+        similar.push({ symbol: this.#resolver.graphSymbol(path, candidate, other), score, shared })
+      }
+    }
+    similar.sort((a, b) => b.score - a.score || (a.symbol.path < b.symbol.path ? -1 : 1))
+    return { ...targets, similar: similar.slice(0, SIMILAR_MAX) }
+  }
+
   symbolAt(path: string, line: number): GraphSymbol | undefined {
     const context = this.#resolver.context(path)
     if (context === undefined) return undefined
@@ -234,6 +274,24 @@ class IndexGraph implements RepositoryGraph {
       }
     }
     return (ownerId) => ownerId !== undefined && inside.has(ownerId)
+  }
+
+  #features(context: FileContext, row: SymbolRow): Features {
+    const parent = row.parentId === undefined ? undefined : context.byId.get(row.parentId)
+    return {
+      kind: row.kind,
+      calls: new Set(
+        this.#reader
+          .callsOfBlob(context.blobId)
+          .filter((call) => call.callerId === row.id)
+          .map((call) => call.name),
+      ),
+      parameters: context.symbols.filter(
+        (symbol) => symbol.parentId === row.id && symbol.kind === 'parameter',
+      ).length,
+      nameTokens: nameTokens(row.name),
+      ...(parent === undefined ? {} : { ownerKind: parent.kind }),
+    }
   }
 
   #expand(rows: readonly SymbolRow[]): GraphSymbol[] {

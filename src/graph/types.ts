@@ -70,6 +70,7 @@ export interface RepositoryGraph {
   targets(target: SymbolTarget | GraphSymbol): Targets
   callers(target: SymbolTarget | GraphSymbol): CallersResult
   dependencies(target: SymbolTarget | GraphSymbol): DependenciesResult
+  similar(target: SymbolTarget | GraphSymbol): SimilarResult
   symbolAt(path: string, line: number): GraphSymbol | undefined
   lineText(path: string, line: number): Promise<string | undefined>
 }
