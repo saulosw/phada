@@ -123,6 +123,25 @@ describe('computeImpact', () => {
     ])
   })
 
+  it('lists callers in test files after the ones in the code', async () => {
+    const graph = await graphOf({
+      ...FILES,
+      'src/__tests__/api.test.ts': "import { getUser } from '../users'\ngetUser('1')\n",
+      'tests/users_test.ts': "import { getUser } from '../src/users'\ngetUser('2')\n",
+    })
+
+    const [getUser] = (await computeImpact(graph, [{ path: 'src/users.ts', lines: [9] }])).symbols
+
+    expect(getUser?.sites.map((site) => site.path)).toEqual([
+      'src/api.ts',
+      'src/api.ts',
+      'src/api.ts',
+      'src/jobs.ts',
+      'src/__tests__/api.test.ts',
+      'tests/users_test.ts',
+    ])
+  })
+
   it('leaves out call sites on the changed lines themselves', async () => {
     const graph = await graphOf()
 

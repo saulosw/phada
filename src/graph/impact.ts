@@ -10,6 +10,8 @@ export const IMPACT_LINE_CHARS = 200
 export const IMPACT_TIME_LIMIT_MS = 10_000
 
 const HOW_RANK: Readonly<Record<Site['how'], number>> = { resolved: 0, inferred: 1, observed: 2 }
+const TEST_PATH =
+  /(^|\/)(tests?|__tests__|spec|testdata)\/|[._-](test|spec)\.[^/]+$|_test\.go$|(^|\/)test_[^/]+\.py$/
 
 export interface ChangedLines {
   path: string
@@ -84,6 +86,7 @@ async function impactOf(
     .sites.filter((site) => changedByPath.get(site.path)?.has(site.line) !== true)
     .sort(
       (a, b) =>
+        Number(TEST_PATH.test(a.path)) - Number(TEST_PATH.test(b.path)) ||
         HOW_RANK[a.how] - HOW_RANK[b.how] ||
         Number(changedByPath.has(a.path)) - Number(changedByPath.has(b.path)) ||
         (a.path < b.path ? -1 : a.path > b.path ? 1 : 0) ||
