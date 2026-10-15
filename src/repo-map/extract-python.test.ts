@@ -117,4 +117,3 @@ urlpatterns = [path('', views.recipes, name='recipes')]
     expect(referenceLines(map)).toEqual(['recipes on views in (module):3'])
   })
 })
-
