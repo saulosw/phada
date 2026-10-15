@@ -3,6 +3,8 @@ import { dirname } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import type { Language } from '../repo-map/languages.js'
 import type { FileMap, SymbolKind } from '../repo-map/types.js'
+import { SqliteIndexReader } from './index-reader.js'
+import type { IndexReader } from './index-reader.js'
 import { SCHEMA, SCHEMA_VERSION } from './schema.js'
 
 export { SCHEMA_VERSION } from './schema.js'
@@ -71,6 +73,7 @@ export interface IndexSummary {
   imports: number
   exports: number
   calls: number
+  references: number
   parseErrors: number
 }
 
@@ -82,6 +85,7 @@ export interface IndexStore {
   saveCommit(commit: StoredCommit): void
   prune(keep: number): number
   summary(sha: string): IndexSummary
+  reader(sha: string): IndexReader
   close(): void
 }
 
@@ -250,7 +254,7 @@ class SqliteIndexStore implements IndexStore {
             'update blob set language = ?, bytes = ?, status = ?, parse_errors = ?, indexed_at = ? where id = ?',
           )
           .run(...values, id)
-        for (const table of ['symbol', 'import_item', 'export_item', 'call_site']) {
+        for (const table of ['symbol', 'import_item', 'export_item', 'call_site', 'reference']) {
           this.#db.prepare(`delete from ${table} where blob_id = ?`).run(id)
         }
       }
@@ -361,8 +365,13 @@ class SqliteIndexStore implements IndexStore {
       imports: counted('import_item'),
       exports: counted('export_item'),
       calls: counted('call_site'),
+      references: counted('reference'),
       parseErrors: Number(parseErrors?.n ?? 0),
     }
+  }
+
+  reader(sha: string): IndexReader {
+    return new SqliteIndexReader(this.#db, sha)
   }
 
   close(): void {
@@ -423,6 +432,19 @@ class SqliteIndexStore implements IndexStore {
         call.qualifier ?? null,
         call.line,
         call.constructs ? 1 : 0,
+      )
+    }
+    const insertReference = this.#db.prepare(
+      'insert into reference (blob_id, owner_id, name, qualifier, line) values (?, ?, ?, ?, ?)',
+    )
+    for (const reference of map.references) {
+      const owner = reference.owner === undefined ? null : (ids[reference.owner] ?? null)
+      insertReference.run(
+        blobId,
+        owner,
+        reference.name,
+        reference.qualifier ?? null,
+        reference.line,
       )
     }
     const insertHeritage = this.#db.prepare(

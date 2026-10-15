@@ -1,4 +1,4 @@
-export const SCHEMA_VERSION = 2
+export const SCHEMA_VERSION = 3
 
 export const SCHEMA = `
 create table meta (key text primary key, value text not null);
@@ -52,6 +52,13 @@ create table heritage (
   name text not null,
   relation text not null
 );
+create table reference (
+  blob_id integer not null references blob(id) on delete cascade,
+  owner_id integer,
+  name text not null,
+  qualifier text,
+  line integer not null
+);
 create table snapshot (
   sha text primary key,
   ref text not null,
@@ -74,5 +81,9 @@ create index call_blob on call_site(blob_id);
 create index import_blob on import_item(blob_id);
 create index export_blob on export_item(blob_id);
 create index heritage_symbol on heritage(symbol_id);
+create index heritage_name on heritage(name);
+create index reference_name on reference(name);
+create index reference_blob on reference(blob_id);
+create index import_name on import_item(name);
 create index snapshot_file_blob on snapshot_file(blob_id);
 `

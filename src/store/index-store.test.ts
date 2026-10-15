@@ -55,6 +55,7 @@ const MAP: FileMap = {
     { name: 'init', line: 10, constructs: false },
   ],
   heritage: [{ symbol: 1, name: 'Base', relation: 'extends' }],
+  references: [{ owner: 0, name: 'Row', line: 3 }],
   parseErrors: 1,
 }
 
@@ -101,6 +102,7 @@ describe('openIndexStore', () => {
       imports: 2,
       exports: 2,
       calls: 4,
+      references: 2,
       parseErrors: 2,
     })
     store.close()
@@ -243,7 +245,7 @@ describe('openIndexStore', () => {
         language: 'go',
         bytes: 1,
         status: 'indexed',
-        map: { ...MAP, symbols: [], calls: [], heritage: [] },
+        map: { ...MAP, symbols: [], calls: [], heritage: [], references: [] },
       })
       store.saveCommit({
         sha: String(i).padStart(40, '0'),
@@ -308,7 +310,7 @@ describe('openIndexStore', () => {
 
     const reopened = await openIndexStore(path)
 
-    expect(SCHEMA_VERSION).toBe(2)
+    expect(SCHEMA_VERSION).toBe(3)
     expect(reopened.rebuilt).toBe(true)
     expect(reopened.knownBlobs([{ oid: 'a'.repeat(40), language: 'typescript' }]).size).toBe(0)
     reopened.close()
