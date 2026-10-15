@@ -1,0 +1,319 @@
+import type { SymbolKind } from '../repo-map/types.js'
+import type { CallRow, IndexReader, ReferenceRow, SymbolRow } from '../store/index-reader.js'
+import { loadProjectConfig } from './project-config.js'
+import { NameResolver } from './resolve-name.js'
+import type { FileContext, NameSite, Resolution } from './resolve-name.js'
+import type {
+  CallersResult,
+  DependenciesResult,
+  Dependency,
+  EdgeHow,
+  EdgeKind,
+  GraphSymbol,
+  OpenGraphInput,
+  RepositoryGraph,
+  Site,
+  SymbolTarget,
+  Targets,
+} from './types.js'
+
+export const CALLER_CANDIDATES_MAX = 2_000
+export const MAX_TARGETS = 3
+
+const OWNER_KINDS: ReadonlySet<SymbolKind> = new Set([
+  'function',
+  'method',
+  'class',
+  'struct',
+  'interface',
+  'type',
+])
+const KIND_RANK: Readonly<Record<string, number>> = {
+  function: 0,
+  method: 0,
+  class: 0,
+  struct: 0,
+  interface: 1,
+  type: 1,
+}
+const HOW_RANK: Readonly<Record<EdgeHow, number>> = { resolved: 0, inferred: 1, observed: 2 }
+
+export async function openRepositoryGraph(input: OpenGraphInput): Promise<RepositoryGraph> {
+  const config = await loadProjectConfig(input.reader.paths(), input.readText)
+  return new IndexGraph(input.reader, new NameResolver(input.reader, config), input.readText)
+}
+
+class IndexGraph implements RepositoryGraph {
+  readonly commit: string
+  readonly #reader: IndexReader
+  readonly #resolver: NameResolver
+  readonly #readText: (path: string) => Promise<string>
+  readonly #lines = new Map<string, Promise<string[] | undefined>>()
+
+  constructor(
+    reader: IndexReader,
+    resolver: NameResolver,
+    readText: (path: string) => Promise<string>,
+  ) {
+    this.commit = reader.commit
+    this.#reader = reader
+    this.#resolver = resolver
+    this.#readText = readText
+  }
+
+  findSymbol(name: string, kind?: SymbolKind): GraphSymbol[] {
+    const byName = (ignoreCase: boolean) =>
+      this.#expand(this.#reader.symbolsNamed(name, { ignoreCase })).filter(
+        (symbol) => symbol.kind !== 'parameter' && (kind === undefined || symbol.kind === kind),
+      )
+    const exact = byName(false)
+    return sortDefinitions(exact.length > 0 ? exact : byName(true))
+  }
+
+  targets(target: SymbolTarget | GraphSymbol): Targets {
+    if ('id' in target) return { symbols: [target], others: 0 }
+    const found =
+      target.path === undefined
+        ? this.findSymbol(target.name)
+        : sortDefinitions(
+            (this.#resolver.context(target.path)?.symbols ?? [])
+              .filter((symbol) => symbol.name === target.name && symbol.kind !== 'parameter')
+              .map((symbol) => this.#resolver.graphSymbol(target.path ?? '', symbol)),
+          )
+    return { symbols: found.slice(0, MAX_TARGETS), others: Math.max(found.length - MAX_TARGETS, 0) }
+  }
+
+  callers(target: SymbolTarget | GraphSymbol): CallersResult {
+    const targets = this.targets(target)
+    const sites: Site[] = []
+    let capped = false
+    for (const symbol of targets.symbols) {
+      const names = new Set([symbol.name])
+      for (const item of this.#reader.importsNamed(symbol.name)) {
+        if (item.alias !== undefined) names.add(item.alias)
+      }
+      let budget = CALLER_CANDIDATES_MAX
+      for (const name of names) {
+        const calls = this.#reader.callsNamed(name, budget)
+        budget -= calls.length
+        const references = this.#reader.referencesNamed(name, Math.max(budget, 0))
+        budget -= references.length
+        for (const row of calls) sites.push(...this.#sitesTo(symbol, row, 'calls', row.callerId))
+        for (const row of references) sites.push(...this.#sitesTo(symbol, row, 'uses', row.ownerId))
+        if (budget <= 0) {
+          capped = true
+          break
+        }
+      }
+      for (const item of this.#reader.heritageNamed(symbol.name)) {
+        const child = this.#reader.symbol(item.symbolId)
+        if (child === undefined) continue
+        for (const path of this.#reader.pathsOfBlob(child.blobId)) {
+          const context = this.#resolver.context(path)
+          if (context === undefined) continue
+          const resolution = this.#resolver.resolveHeritage(context, item.name, child.startLine)
+          if (!reaches(resolution, symbol)) continue
+          sites.push({
+            path,
+            line: child.startLine,
+            in: this.#resolver.graphSymbol(path, child, context),
+            kind: 'inherits',
+            how: resolution.how === 'inferred' ? 'inferred' : 'resolved',
+          })
+        }
+      }
+    }
+    return { ...targets, sites: sortSites(dedupeSites(sites)), capped }
+  }
+
+  dependencies(target: SymbolTarget | GraphSymbol): DependenciesResult {
+    const targets = this.targets(target)
+    const dependencies: Dependency[] = []
+    for (const symbol of targets.symbols) {
+      const context = this.#resolver.context(symbol.path)
+      if (context === undefined) continue
+      const inside = this.#within(context, symbol)
+      const sites: { site: NameSite; kind: EdgeKind }[] = [
+        ...this.#reader
+          .callsOfBlob(context.blobId)
+          .filter((row) => inside(row.callerId, row.line))
+          .map((row) => ({ site: siteOf(row, row.callerId), kind: 'calls' as const })),
+        ...this.#reader
+          .referencesOfBlob(context.blobId)
+          .filter((row) => inside(row.ownerId, row.line))
+          .map((row) => ({ site: siteOf(row, row.ownerId), kind: 'uses' as const })),
+      ]
+      for (const { site, kind } of sites) {
+        dependencies.push(
+          ...[
+            toDependency(site.name, site.line, kind, this.#resolver.resolve(context, site)),
+          ].flat(),
+        )
+      }
+      for (const item of this.#reader.heritageOfBlob(context.blobId)) {
+        if (item.symbolId !== symbol.id) continue
+        const resolution = this.#resolver.resolveHeritage(context, item.name, symbol.startLine)
+        dependencies.push(
+          ...[toDependency(item.name, symbol.startLine, 'inherits', resolution)].flat(),
+        )
+      }
+    }
+    return { ...targets, dependencies: dedupeDependencies(dependencies) }
+  }
+
+  symbolAt(path: string, line: number): GraphSymbol | undefined {
+    const context = this.#resolver.context(path)
+    if (context === undefined) return undefined
+    const containing = context.symbols.filter(
+      (symbol) => symbol.kind !== 'parameter' && symbol.startLine <= line && line <= symbol.endLine,
+    )
+    const innermost = containing.sort(
+      (a, b) => a.endLine - a.startLine - (b.endLine - b.startLine) || b.startLine - a.startLine,
+    )[0]
+    return innermost === undefined
+      ? undefined
+      : this.#resolver.graphSymbol(path, innermost, context)
+  }
+
+  async lineText(path: string, line: number): Promise<string | undefined> {
+    let lines = this.#lines.get(path)
+    if (lines === undefined) {
+      lines = this.#readText(path).then(
+        (text) => text.split('\n'),
+        () => undefined,
+      )
+      this.#lines.set(path, lines)
+    }
+    return (await lines)?.[line - 1]
+  }
+
+  #sitesTo(
+    target: GraphSymbol,
+    row: CallRow | ReferenceRow,
+    kind: EdgeKind,
+    ownerId: number | undefined,
+  ): Site[] {
+    const found: Site[] = []
+    for (const path of this.#reader.pathsOfBlob(row.blobId)) {
+      const context = this.#resolver.context(path)
+      if (context === undefined) continue
+      const resolution = this.#resolver.resolve(context, siteOf(row, ownerId))
+      if (!reaches(resolution, target)) continue
+      const owner = ownerId === undefined ? undefined : context.byId.get(ownerId)
+      found.push({
+        path,
+        line: row.line,
+        ...(owner === undefined ? {} : { in: this.#resolver.graphSymbol(path, owner, context) }),
+        kind,
+        how: resolution.how === 'inferred' ? 'inferred' : 'resolved',
+      })
+    }
+    return found
+  }
+
+  #within(
+    context: FileContext,
+    symbol: GraphSymbol,
+  ): (ownerId: number | undefined, line: number) => boolean {
+    if (!OWNER_KINDS.has(symbol.kind)) {
+      const row = context.byId.get(symbol.id)
+      return (ownerId, line) =>
+        ownerId === row?.parentId && symbol.startLine <= line && line <= symbol.endLine
+    }
+    const inside = new Set([symbol.id])
+    let grew = true
+    while (grew) {
+      grew = false
+      for (const row of context.symbols) {
+        if (row.parentId !== undefined && inside.has(row.parentId) && !inside.has(row.id)) {
+          if (row.kind === 'method' && symbol.kind !== 'method' && symbol.kind !== 'function')
+            continue
+          inside.add(row.id)
+          grew = true
+        }
+      }
+    }
+    return (ownerId) => ownerId !== undefined && inside.has(ownerId)
+  }
+
+  #expand(rows: readonly SymbolRow[]): GraphSymbol[] {
+    return rows.flatMap((row) =>
+      this.#reader.pathsOfBlob(row.blobId).map((path) => this.#resolver.graphSymbol(path, row)),
+    )
+  }
+}
+
+function siteOf(row: CallRow | ReferenceRow, ownerId: number | undefined): NameSite {
+  return {
+    name: row.name,
+    ...(row.qualifier === undefined ? {} : { qualifier: row.qualifier }),
+    ...(ownerId === undefined ? {} : { ownerId }),
+    line: row.line,
+  }
+}
+
+function reaches(resolution: Resolution, target: GraphSymbol): boolean {
+  return (
+    resolution.how !== 'external' &&
+    resolution.symbols.some((symbol) => symbol.id === target.id && symbol.path === target.path)
+  )
+}
+
+function toDependency(
+  name: string,
+  line: number,
+  kind: EdgeKind,
+  resolution: Resolution,
+): Dependency[] | Dependency {
+  if (resolution.how === 'external') {
+    return {
+      name,
+      line,
+      kind,
+      how: 'resolved',
+      ...(resolution.module === undefined ? {} : { module: resolution.module }),
+    }
+  }
+  return resolution.symbols.map((target) => ({ name, line, kind, how: resolution.how, target }))
+}
+
+function dedupeDependencies(items: readonly Dependency[]): Dependency[] {
+  const seen = new Set<string>()
+  const result: Dependency[] = []
+  for (const item of items) {
+    const key = `${item.name}\0${item.kind}\0${item.target?.path ?? ''}:${item.target?.id ?? item.module ?? ''}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    result.push(item)
+  }
+  return result.sort((a, b) => a.line - b.line)
+}
+
+function dedupeSites(sites: readonly Site[]): Site[] {
+  const seen = new Set<string>()
+  return sites.filter((site) => {
+    const key = `${site.path}:${site.line}:${site.kind}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+export function sortSites(sites: readonly Site[]): Site[] {
+  return [...sites].sort(
+    (a, b) =>
+      HOW_RANK[a.how] - HOW_RANK[b.how] ||
+      (a.path < b.path ? -1 : a.path > b.path ? 1 : 0) ||
+      a.line - b.line,
+  )
+}
+
+function sortDefinitions(symbols: readonly GraphSymbol[]): GraphSymbol[] {
+  return [...symbols].sort(
+    (a, b) =>
+      Number(b.exported) - Number(a.exported) ||
+      (KIND_RANK[a.kind] ?? 2) - (KIND_RANK[b.kind] ?? 2) ||
+      (a.path < b.path ? -1 : a.path > b.path ? 1 : 0) ||
+      a.startLine - b.startLine,
+  )
+}
