@@ -79,9 +79,9 @@ describe('computeImpact', () => {
     const impact = await computeImpact(graph, [{ path: 'src/users.ts', lines: [3, 5, 9] }])
 
     expect(impact.symbols.map((symbol) => `${symbol.kind} ${symbol.name}`)).toEqual([
+      'function getUser',
       'class UserService',
       'method load',
-      'function getUser',
     ])
   })
 
@@ -109,6 +109,17 @@ describe('computeImpact', () => {
     ])
     expect(getUser?.dependencies).toEqual([
       { name: 'query', path: 'src/db.ts', line: 1, kind: 'function' },
+    ])
+  })
+
+  it('puts the symbols that have callers before the ones nobody calls', async () => {
+    const graph = await graphOf()
+
+    const impact = await computeImpact(graph, [{ path: 'src/users.ts', lines: [5, 9] }])
+
+    expect(impact.symbols.map((symbol) => `${symbol.name} ${symbol.callers}`)).toEqual([
+      'getUser 7',
+      'load 0',
     ])
   })
 

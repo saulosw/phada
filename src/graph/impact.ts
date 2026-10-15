@@ -56,7 +56,10 @@ export async function computeImpact(
     for (const file of files) callerFiles.add(file)
   }
   return {
-    symbols,
+    symbols: [
+      ...symbols.filter((symbol) => symbol.callers > 0),
+      ...symbols.filter((symbol) => symbol.callers === 0),
+    ],
     omittedSymbols: Math.max(ordered.length - IMPACT_MAX_SYMBOLS, 0),
     callerFiles: callerFiles.size,
   }

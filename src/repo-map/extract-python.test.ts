@@ -107,4 +107,14 @@ def f(path):
       'path on os in f:6',
     ])
   })
+
+  it('records a function of a module imported from its package', async () => {
+    const map = await mapOf(`from django.urls import path
+from . import views
+urlpatterns = [path('', views.recipes, name='recipes')]
+`)
+
+    expect(referenceLines(map)).toEqual(['recipes on views in (module):3'])
+  })
 })
+

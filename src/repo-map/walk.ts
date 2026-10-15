@@ -127,7 +127,7 @@ export class Collector {
     this.map.references = this.map.references.filter((reference) =>
       reference.qualifier === undefined
         ? bindings.has(reference.name) || namespaces.has(reference.name)
-        : namespaces.has(reference.qualifier),
+        : namespaces.has(reference.qualifier) || bindings.has(reference.qualifier),
     )
   }
 }
