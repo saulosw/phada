@@ -62,6 +62,22 @@ describe('loadProjectConfig', () => {
     expect(config.tsconfigs.has('web')).toBe(false)
   })
 
+  it('reads the paths of tsconfig.app.json when tsconfig.json only references it', async () => {
+    const { paths, readText } = reader({
+      'tsconfig.json': '{ "files": [], "references": [{ "path": "./tsconfig.app.json" }] }',
+      'tsconfig.app.json':
+        '{ "compilerOptions": { "baseUrl": ".", "paths": { "@/*": ["./src/*"] } } }',
+      'tsconfig.node.json': '{ "compilerOptions": { "types": ["node"] } }',
+    })
+
+    const config = await loadProjectConfig(paths, readText)
+
+    expect(config.tsconfigs.get('')).toEqual({
+      baseUrl: '',
+      paths: [{ pattern: '@/*', targets: ['src/*'] }],
+    })
+  })
+
   it('reads the module of each go.mod', async () => {
     const { paths, readText } = reader({
       'go.mod': 'module github.com/spf13/cobra\n\ngo 1.21\n',

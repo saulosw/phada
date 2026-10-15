@@ -16,7 +16,8 @@ export interface ProjectConfig {
   pythonRoots: readonly string[]
 }
 
-const TS_CONFIG = /(^|\/)(tsconfig|jsconfig)\.json$/
+const TS_CONFIG = /(^|\/)(tsconfig|jsconfig)(\.[\w-]+)?\.json$/
+const MAIN_TS_CONFIG = /(^|\/)(tsconfig|jsconfig)\.json$/
 const GO_MOD = /(^|\/)go\.mod$/
 const PYTHON_PROJECT = /(^|\/)(pyproject\.toml|setup\.py|setup\.cfg)$/
 const MAX_EXTENDS = 5
@@ -29,11 +30,26 @@ export async function loadProjectConfig(
 ): Promise<ProjectConfig> {
   const all = [...paths].sort()
   const tsconfigs = new Map<string, TsPaths>()
-  for (const path of all.filter((item) => TS_CONFIG.test(item))) {
-    const dir = dirOf(path)
-    if (tsconfigs.has(dir) && path.endsWith('jsconfig.json')) continue
+  const configFiles = all
+    .filter((item) => TS_CONFIG.test(item))
+    .sort(
+      (a, b) => Number(MAIN_TS_CONFIG.test(b)) - Number(MAIN_TS_CONFIG.test(a)) || (a < b ? -1 : 1),
+    )
+  for (const path of configFiles) {
     const loaded = await loadTsConfig(path, paths, readText, 0)
-    if (loaded !== undefined) tsconfigs.set(dir, loaded)
+    if (loaded === undefined) continue
+    const dir = dirOf(path)
+    const known = tsconfigs.get(dir)
+    if (known === undefined) {
+      tsconfigs.set(dir, loaded)
+      continue
+    }
+    const patterns = new Set(known.paths.map((entry) => entry.pattern))
+    const baseUrl = known.baseUrl ?? loaded.baseUrl
+    tsconfigs.set(dir, {
+      ...(baseUrl === undefined ? {} : { baseUrl }),
+      paths: [...known.paths, ...loaded.paths.filter((entry) => !patterns.has(entry.pattern))],
+    })
   }
   const goModules: GoModule[] = []
   for (const path of all.filter((item) => GO_MOD.test(item))) {
