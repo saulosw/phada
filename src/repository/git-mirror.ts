@@ -4,7 +4,7 @@ import { CommandNotFoundError, CommandTimeoutError } from '../process/errors.js'
 import { runCommand, runCommandBytes } from '../process/run-command.js'
 import type { RunCommandBytesResult, RunCommandOptions } from '../process/run-command.js'
 import { redactSecrets } from '../providers/redact-secrets.js'
-import type { Checkout, OpenCheckoutOptions } from './checkout.js'
+import type { Checkout } from './checkout.js'
 import {
   CheckoutUnavailableError,
   FETCH_TIMEOUT_MS,
@@ -64,11 +64,6 @@ export interface GitMirror {
   deepen(sha: string, keepAs: string): Promise<boolean>
   listFiles(sha: string): Promise<TreeFile[]>
   readBlobs(files: readonly TreeFile[]): AsyncIterable<{ oid: string; bytes: Uint8Array }>
-}
-
-export async function openMirrorCheckout(options: OpenCheckoutOptions): Promise<Checkout> {
-  const mirror = await openGitMirror(options)
-  return mirror.checkout(await mirror.fetch(options.sha, options.keepAs))
 }
 
 export async function openGitMirror(options: GitMirrorOptions): Promise<GitMirror> {

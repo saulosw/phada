@@ -76,6 +76,7 @@ describe('formatReviewJson', () => {
       publication: null,
       context: null,
       investigation: null,
+      impact: null,
     })
   })
 
@@ -198,6 +199,7 @@ describe('formatReviewJson', () => {
       publication: null,
       context: null,
       investigation: null,
+      impact: null,
     })
   })
 
@@ -307,6 +309,7 @@ describe('publication', () => {
       publication: { status: 'skipped', reason: 'nothing-found', openThreads: 0 },
       context: null,
       investigation: null,
+      impact: null,
     })
     expect(
       parse(
@@ -343,5 +346,40 @@ describe('publication', () => {
     )
 
     expect(output).toMatchObject({ investigation })
+  })
+
+  it('adds the impact of the diff', () => {
+    const impact = {
+      status: 'used' as const,
+      index: { files: 12, extracted: 2, durationMs: 300 },
+      changed: [
+        {
+          kind: 'function',
+          name: 'getUser',
+          path: 'src/users.ts',
+          lines: [1, 3] as [number, number],
+          callers: 2,
+          files: 1,
+          shown: 2,
+          dependencies: 0,
+        },
+      ],
+      totals: { symbols: 1, callers: 2, files: 1 },
+      learned: [],
+    }
+
+    const output = parse(
+      formatReviewJson(
+        pullRequestFixture(),
+        { status: 'reviewed', result: RESULT },
+        null,
+        null,
+        null,
+        impact,
+      ),
+    )
+
+    expect(output).toMatchObject({ impact })
+    expect(Object.keys(output as object).at(-1)).toBe('impact')
   })
 })

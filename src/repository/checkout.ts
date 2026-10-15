@@ -70,14 +70,3 @@ export interface Checkout {
   history(path: string, range?: LineRange): Promise<FileHistory>
   close(): Promise<void>
 }
-
-export interface OpenCheckoutOptions {
-  dir: string
-  owner: string
-  repo: string
-  sha: string
-  keepAs: string
-  token: string
-  env: NodeJS.ProcessEnv
-  remoteUrl?: string
-}

@@ -44,3 +44,21 @@ function showProgress(label: string, output: TextOutput): () => void {
     output.write(CLEAR_LINE)
   }
 }
+
+export function indexProgress(output: TextOutput): {
+  extracting(total: number): void
+  extracted(done: number, total: number): void
+} {
+  const live = output.isTTY === true
+  return {
+    extracting: (total) => {
+      if (total === 0) return
+      const files = `${total.toLocaleString('en-US')} file${total === 1 ? '' : 's'}`
+      output.write(live ? `Indexing 0/${files}…` : `Indexing ${files}…\n`)
+    },
+    extracted: (done, total) => {
+      if (!live) return
+      output.write(`\rIndexing ${done}/${total} files…${done === total ? '\n' : ''}`)
+    },
+  }
+}

@@ -79,6 +79,33 @@ interface Planned {
   status?: FileStatus
 }
 
+export type IndexCommitResult =
+  | {
+      complete: true
+      files: number
+      extracted: number
+      reused: number
+      commitFiles: CommitFile[]
+      durationMs: number
+    }
+  | { complete: false; extracted: number; total: number }
+
+export interface IndexCommitInput {
+  sha: string
+  ref: string
+  files: readonly TreeFile[]
+  ignore: (path: string) => boolean
+  deadline?: number
+}
+
+export interface IndexCommitDeps {
+  mirror: Pick<GitMirror, 'readBlobs'>
+  store: IndexStore
+  extractor: Extractor
+  now: () => number
+  events: IndexRepositoryEvents
+}
+
 export async function indexRepository(
   input: IndexRepositoryInput,
   deps: IndexRepositoryDeps,
@@ -92,69 +119,29 @@ export async function indexRepository(
 
   const store = await deps.openStore()
   try {
-    const planned: Planned[] = files.map((file) => plan(file, isIgnored))
-    const candidates = planned.filter((item) => item.status === undefined)
-    const known = store.knownBlobs(
-      candidates.flatMap(({ file, language }) =>
-        language === undefined ? [] : [{ oid: file.oid, language }],
-      ),
+    const result = await indexCommit(
+      { sha, ref, files, ignore: isIgnored },
+      { mirror: deps.mirror, store, extractor: deps.extractor, now: deps.now, events: deps.events },
     )
-    const keyOf = (file: TreeFile, language: Language | undefined) =>
-      language === undefined ? '' : blobKey(file.oid, language)
-    const wanted = new Map<string, { file: TreeFile; languages: Set<Language> }>()
-    for (const { file, language } of candidates) {
-      if (language === undefined || known.has(keyOf(file, language))) continue
-      const entry = wanted.get(file.oid) ?? { file, languages: new Set<Language>() }
-      entry.languages.add(language)
-      wanted.set(file.oid, entry)
-    }
-
-    const fresh = new Map<string, BlobStatus>()
-    const total = [...wanted.values()].reduce((sum, entry) => sum + entry.languages.size, 0)
-    deps.events.extracting(total)
-    let done = 0
-    const toRead = [...wanted.values()].map((entry) => entry.file)
-    for await (const blob of deps.mirror.readBlobs(toRead)) {
-      for (const language of wanted.get(blob.oid)?.languages ?? []) {
-        const status = await extractBlob(blob, language, store, deps.extractor)
-        fresh.set(blobKey(blob.oid, language), status)
-        done += 1
-        deps.events.extracted(done, total)
-      }
-    }
-    if (done < total) deps.events.extracted(total, total)
-
-    const commitFiles: CommitFile[] = planned.map(({ file, language, status }) => {
-      const key = keyOf(file, language)
-      const blobStatus = status ?? fresh.get(key) ?? known.get(key) ?? 'missing'
-      return {
-        path: file.path,
-        oid: file.oid,
-        ...(language === undefined ? {} : { language }),
-        status: blobStatus,
-      }
-    })
-    const durationMs = Math.round(deps.now() - started)
-    store.saveCommit({ sha, ref, durationMs, files: commitFiles })
+    if (!result.complete) throw new Error('indexing stopped without a deadline')
     store.prune(KEEP_COMMITS)
-
-    const leftOut = commitFiles
+    const leftOut = result.commitFiles
       .filter(
         (file): file is CommitFile & { status: LeftOutFile['reason'] } => file.status !== 'indexed',
       )
       .map(({ path, status }) => ({ path, reason: status }))
       .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
-    const indexed = commitFiles.filter((file) => file.status === 'indexed').length
+    const indexed = result.commitFiles.filter((file) => file.status === 'indexed').length
     return {
       repository: `${input.owner}/${input.repo}`,
       commit: sha,
       ref,
-      durationMs,
+      durationMs: Math.round(deps.now() - started),
       files: {
         total: files.length,
         indexed,
-        extracted: fresh.size,
-        reused: candidates.filter(({ file, language }) => known.has(keyOf(file, language))).length,
+        extracted: result.extracted,
+        reused: result.reused,
       },
       summary: store.summary(sha),
       leftOut,
@@ -164,6 +151,69 @@ export async function indexRepository(
     }
   } finally {
     store.close()
+  }
+}
+
+export async function indexCommit(
+  input: IndexCommitInput,
+  deps: IndexCommitDeps,
+): Promise<IndexCommitResult> {
+  const started = deps.now()
+  const { store } = deps
+  const planned: Planned[] = input.files.map((file) => plan(file, input.ignore))
+  const candidates = planned.filter((item) => item.status === undefined)
+  const known = store.knownBlobs(
+    candidates.flatMap(({ file, language }) =>
+      language === undefined ? [] : [{ oid: file.oid, language }],
+    ),
+  )
+  const keyOf = (file: TreeFile, language: Language | undefined) =>
+    language === undefined ? '' : blobKey(file.oid, language)
+  const wanted = new Map<string, { file: TreeFile; languages: Set<Language> }>()
+  for (const { file, language } of candidates) {
+    if (language === undefined || known.has(keyOf(file, language))) continue
+    const entry = wanted.get(file.oid) ?? { file, languages: new Set<Language>() }
+    entry.languages.add(language)
+    wanted.set(file.oid, entry)
+  }
+
+  const fresh = new Map<string, BlobStatus>()
+  const total = [...wanted.values()].reduce((sum, entry) => sum + entry.languages.size, 0)
+  deps.events.extracting(total)
+  let done = 0
+  const toRead = [...wanted.values()].map((entry) => entry.file)
+  for await (const blob of deps.mirror.readBlobs(toRead)) {
+    for (const language of wanted.get(blob.oid)?.languages ?? []) {
+      const status = await extractBlob(blob, language, store, deps.extractor)
+      fresh.set(blobKey(blob.oid, language), status)
+      done += 1
+      deps.events.extracted(done, total)
+    }
+    if (input.deadline !== undefined && done < total && deps.now() > input.deadline) {
+      return { complete: false, extracted: done, total }
+    }
+  }
+  if (done < total) deps.events.extracted(total, total)
+
+  const commitFiles: CommitFile[] = planned.map(({ file, language, status }) => {
+    const key = keyOf(file, language)
+    const blobStatus = status ?? fresh.get(key) ?? known.get(key) ?? 'missing'
+    return {
+      path: file.path,
+      oid: file.oid,
+      ...(language === undefined ? {} : { language }),
+      status: blobStatus,
+    }
+  })
+  const durationMs = Math.round(deps.now() - started)
+  store.saveCommit({ sha: input.sha, ref: input.ref, durationMs, files: commitFiles })
+  return {
+    complete: true,
+    files: input.files.length,
+    extracted: fresh.size,
+    reused: candidates.filter(({ file, language }) => known.has(keyOf(file, language))).length,
+    commitFiles,
+    durationMs,
   }
 }
 

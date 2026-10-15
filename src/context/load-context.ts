@@ -71,6 +71,7 @@ export async function loadContext(input: {
       ...(merged.investigate === undefined ? {} : { investigate: merged.investigate }),
     },
     context: { rules: rules.applied, docs: docs.docs, ignored },
+    ignore: [...merged.ignore],
     report: {
       configFiles: [
         ...userLayers.map((layer): ConfigFileReport => ({

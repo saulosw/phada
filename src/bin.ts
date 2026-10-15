@@ -9,8 +9,9 @@ import { fetchRepositoryFile, fetchRepositoryTree } from './github/repository-fi
 import { suppressSqliteWarning } from './cli/suppress-sqlite-warning.js'
 import { pathSize } from './config/cache-paths.js'
 import { createExtractor } from './repo-map/extract.js'
-import { openGitMirror, openMirrorCheckout } from './repository/git-mirror.js'
+import { openGitMirror } from './repository/git-mirror.js'
 import { openIndexStore } from './store/index-store.js'
+import { openObservedStore } from './store/observed-store.js'
 import { createProvider, run } from './main.js'
 
 const packageJson = await readFile(new URL('../package.json', import.meta.url), 'utf8')
@@ -31,9 +32,9 @@ process.exitCode = await run(process.argv.slice(2), {
   createReview,
   fetchRepositoryTree,
   fetchRepositoryFile,
-  openCheckout: openMirrorCheckout,
   openMirror: openGitMirror,
   openIndexStore: (path, version) => openIndexStore(path, { version }),
+  openObservedStore: (path) => openObservedStore(path),
   createExtractor: () => createExtractor(),
   pathSize,
   createProvider,
