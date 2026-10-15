@@ -85,6 +85,20 @@ try {
     extracted.status === 0 && extracted.stdout.trim() === 'f,a,F',
     `extraction with the packaged grammars: exit ${extracted.status}, ${extracted.stdout}${extracted.stderr}`,
   )
+  const graph = spawnSync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '--no-warnings',
+      '-e',
+      graphQuery(join(dir, 'node_modules', 'phada', 'dist'), dir),
+    ],
+    { encoding: 'utf8', timeout: TIMEOUT_MS },
+  )
+  check(
+    graph.status === 0 && graph.stdout.trim() === 'b.ts:2 calls',
+    `repository graph from the package: exit ${graph.status}, ${graph.stdout}${graph.stderr}`,
+  )
   process.stdout.write(`smoke ok: phada ${version} (${pack.files.length} files)\n`)
 } catch (error) {
   process.stderr.write(`smoke failed: ${error instanceof Error ? error.message : String(error)}\n`)
@@ -127,6 +141,30 @@ const extractor = createExtractor()
 const ts = await extractor.extract('typescript', 'export function f(a) { g(a) }')
 const go = await extractor.extract('go', 'package p\\nfunc F() {}')
 process.stdout.write([...ts.symbols, ...go.symbols].map((symbol) => symbol.name).join(','))
+`
+}
+
+function graphQuery(distDir: string, workDir: string): string {
+  const module = (path: string) => JSON.stringify(join(distDir, path))
+  return `
+import { pathToFileURL } from 'node:url'
+const load = (path) => import(pathToFileURL(path).href)
+const { createExtractor } = await load(${module('repo-map/extract.js')})
+const { openIndexStore } = await load(${module('store/index-store.js')})
+const { openRepositoryGraph } = await load(${module('graph/repository-graph.js')})
+const files = { 'a.ts': 'export function f() {}\\n', 'b.ts': "import { f } from './a'\\nf()\\n" }
+const extractor = createExtractor()
+const store = await openIndexStore(${JSON.stringify(join(workDir, 'graph.sqlite'))})
+const commitFiles = []
+for (const [path, text] of Object.entries(files)) {
+  const oid = path.padEnd(40, '0')
+  store.saveBlob({ oid, language: 'typescript', bytes: text.length, status: 'indexed', map: await extractor.extract('typescript', text) })
+  commitFiles.push({ path, oid, language: 'typescript', status: 'indexed' })
+}
+store.saveCommit({ sha: 'c'.repeat(40), ref: 'HEAD', durationMs: 1, files: commitFiles })
+const graph = await openRepositoryGraph({ reader: store.reader('c'.repeat(40)), readText: async (path) => files[path] })
+process.stdout.write(graph.callers({ name: 'f' }).sites.map((site) => site.path + ':' + site.line + ' ' + site.kind).join(','))
+store.close()
 `
 }
 

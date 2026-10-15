@@ -7,9 +7,23 @@ output can change between minor versions.
 
 ## Unreleased
 
+## 0.3.0 - 2026-10-15
+
 ### Added
 
-- `phada index <owner/repo>` builds a map of the repository's code on your machine: files,
+- Reviews use a graph of the repository's code. Before the AI starts, Phada indexes the pull
+  request head (only the files it has not read before, for at most 60 seconds), resolves names to
+  their definitions (relative imports, `tsconfig` paths, Python packages, Go modules) and sends
+  the impact of the diff: the symbols it changes, the code that calls or uses them, with each
+  line, and what they depend on. `Impact: 3 changed symbols · 12 callers in 7 files` on stderr, an
+  `Impact` section in `--dry-run` and an `impact` block in the JSON.
+- New tools for the AI: `find_symbol`, `callers`, `dependencies`, `similar` (functions built like
+  a given one) and `history` (the commits and pull requests that changed a file or lines).
+- Phada learns from reviews: a confirmed finding that relied on a file the AI read, with no link
+  in the graph, becomes an observed relation shown in later reviews of the repository.
+- The map records uses of imported names that are not calls (callbacks, constants, types);
+  `phada index` counts them as `uses`.
+- `phada index <owner/repo> <owner/repo>` builds a map of the repository's code on your machine: files,
   functions, classes, methods, parameters, variables, imports, exports and calls for TypeScript,
   JavaScript, Python and Go, parsed with tree-sitter. Running it again reads only the files that
   changed. `--ref` picks a branch, tag or commit and `--format json` prints the report as JSON,
