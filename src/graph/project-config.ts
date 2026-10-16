@@ -21,6 +21,8 @@ const MAIN_TS_CONFIG = /(^|\/)(tsconfig|jsconfig)\.json$/
 const GO_MOD = /(^|\/)go\.mod$/
 const PYTHON_PROJECT = /(^|\/)(pyproject\.toml|setup\.py|setup\.cfg)$/
 const MAX_EXTENDS = 5
+const DEPENDENCY_FOLDER = /(^|\/)(node_modules|bower_components|\.venv|venv|site-packages|vendor)\//
+export const MAX_CONFIG_FILES = 300
 
 type ReadText = (path: string) => Promise<string>
 
@@ -28,15 +30,27 @@ export async function loadProjectConfig(
   paths: ReadonlySet<string>,
   readText: ReadText,
 ): Promise<ProjectConfig> {
-  const all = [...paths].sort()
+  const all = [...paths]
+    .filter((path) => !DEPENDENCY_FOLDER.test(path))
+    .sort((a, b) => a.split('/').length - b.split('/').length || (a < b ? -1 : 1))
+  let reads = 0
+  const read: ReadText = async (path) => {
+    reads += 1
+    if (reads > MAX_CONFIG_FILES) throw new Error('too many config files')
+    return readText(path)
+  }
   const tsconfigs = new Map<string, TsPaths>()
   const configFiles = all
     .filter((item) => TS_CONFIG.test(item))
     .sort(
-      (a, b) => Number(MAIN_TS_CONFIG.test(b)) - Number(MAIN_TS_CONFIG.test(a)) || (a < b ? -1 : 1),
+      (a, b) =>
+        a.split('/').length - b.split('/').length ||
+        Number(MAIN_TS_CONFIG.test(b)) - Number(MAIN_TS_CONFIG.test(a)) ||
+        (a < b ? -1 : 1),
     )
   for (const path of configFiles) {
-    const loaded = await loadTsConfig(path, paths, readText, 0)
+    if (reads >= MAX_CONFIG_FILES) break
+    const loaded = await loadTsConfig(path, paths, read, 0)
     if (loaded === undefined) continue
     const dir = dirOf(path)
     const known = tsconfigs.get(dir)
@@ -53,7 +67,8 @@ export async function loadProjectConfig(
   }
   const goModules: GoModule[] = []
   for (const path of all.filter((item) => GO_MOD.test(item))) {
-    const text = await readText(path).catch(() => '')
+    if (reads >= MAX_CONFIG_FILES) break
+    const text = await read(path).catch(() => '')
     const match = /^\s*module\s+"?([^\s"]+)"?/m.exec(text)
     if (match?.[1] !== undefined) goModules.push({ dir: dirOf(path), module: match[1] })
   }

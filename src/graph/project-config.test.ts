@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { loadProjectConfig } from './project-config.js'
+import { loadProjectConfig, MAX_CONFIG_FILES } from './project-config.js'
 
 function reader(files: Record<string, string>) {
   return {
@@ -76,6 +76,28 @@ describe('loadProjectConfig', () => {
       baseUrl: '',
       paths: [{ pattern: '@/*', targets: ['src/*'] }],
     })
+  })
+
+  it('skips config files inside dependency folders and reads at most the limit', async () => {
+    const files: Record<string, string> = {
+      'node_modules/lib/tsconfig.json': '{}',
+      'vendor/x/go.mod': 'module x\n',
+      'tsconfig.json': '{ "compilerOptions": { "paths": { "@/*": ["src/*"] } } }',
+    }
+    for (let index = 0; index < 400; index += 1) files[`packages/p${index}/tsconfig.json`] = '{}'
+    const read: string[] = []
+    const { paths } = reader(files)
+
+    const config = await loadProjectConfig(paths, async (path) => {
+      read.push(path)
+      return files[path] ?? ''
+    })
+
+    expect(read).not.toContain('node_modules/lib/tsconfig.json')
+    expect(read).not.toContain('vendor/x/go.mod')
+    expect(read.length).toBeLessThanOrEqual(MAX_CONFIG_FILES)
+    expect(read[0]).toBe('tsconfig.json')
+    expect(config.tsconfigs.get('')?.paths).toEqual([{ pattern: '@/*', targets: ['src/*'] }])
   })
 
   it('reads the module of each go.mod', async () => {
