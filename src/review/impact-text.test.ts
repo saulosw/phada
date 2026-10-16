@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { renderImpact } from './impact-text.js'
+import { IMPACT_BUDGET_BYTES, renderImpact } from './impact-text.js'
 import type { DiffImpact, ImpactSite, ImpactedSymbol } from './types.js'
 
 function site(line: number, fields: Partial<ImpactSite> = {}): ImpactSite {
@@ -77,7 +77,7 @@ describe('renderImpact', () => {
         '  src/x.ts:3 (uses) [observed #12]: const h = [getUser]',
         '  +1 more: use the callers tool',
         '  depends on: query → src/db.ts:12 (function)',
-        'method helper (src/users.ts:10-30) — no callers or uses found',
+        'No callers or uses outside the diff: method helper (src/users.ts:10-30)',
       ].join('\n'),
       shown: [3, 0],
     })
@@ -112,6 +112,21 @@ describe('renderImpact', () => {
     expect(text).toContain(
       'function getUser (src/users.ts:10-30, exported) — 2000+ callers in 40+ files (search cut short: use the callers tool with path)',
     )
+  })
+
+  it('keeps to its default budget of 4 KB', () => {
+    const many = Array.from({ length: 200 }, (_, index) =>
+      site(index + 1, { text: `getUser(${'x'.repeat(60)})` }),
+    )
+
+    const { text } = renderImpact({
+      symbols: [symbol({ callers: 200, sites: many, dependencies: [] })],
+      omittedSymbols: 0,
+      callerFiles: 1,
+    })
+
+    expect(IMPACT_BUDGET_BYTES).toBe(4_000)
+    expect(Buffer.byteLength(text)).toBeLessThanOrEqual(4_000)
   })
 
   it('says one caller in one file', () => {

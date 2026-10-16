@@ -74,6 +74,19 @@ describe('review prompt with the impact of the diff', () => {
     }
   })
 
+  it('leaves the block out when no changed symbol has a caller outside the diff', () => {
+    const lonely: DiffImpact = {
+      symbols: [{ ...IMPACT_DATA.symbols[0]!, callers: 0, files: 0, sites: [] }],
+      omittedSymbols: 0,
+      callerFiles: 0,
+    }
+
+    const prompt = buildReviewPrompt({ pullRequest: pullRequestFixture(), impact: lonely }, NONCE)
+
+    expect(prompt.data).not.toContain('PHADA_IMPACT')
+    expect(prompt.instructions).not.toContain(IMPACT)
+  })
+
   it('gives the verifier the same block', () => {
     const prompt = buildVerifyPrompt(
       { pullRequest: pullRequestFixture(), impact: IMPACT_DATA },

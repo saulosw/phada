@@ -207,7 +207,7 @@ Before the AI starts, Phada builds the [map](#repository-map) of the pull reques
 files it has not read before), resolves names to their definitions and works out the **impact of
 the diff**: the functions, classes and types the pull request changes, the code that calls or uses
 them and what they depend on. The AI gets that list, with the text of each calling line, as the
-starting point of its investigation (up to 8 KB, 20 changed symbols and 3 lines per file), and
+starting point of its investigation (only when a changed symbol has callers outside the diff; up to 4 KB, 20 changed symbols and 3 lines per file), and
 Phada prints a summary:
 
 ```text
