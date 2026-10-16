@@ -335,3 +335,31 @@ describe('repository graph time limits', () => {
     expect(result.sites.length).toBeLessThan(30)
   })
 })
+
+describe('repository graph lookups', () => {
+  it('looks up the definitions of a name it guesses only once per graph', async () => {
+    const { reader, readText } = await indexFixture({
+      'src/a.ts': 'export function a(repo: any) {\n  return repo.save(1)\n}\n',
+      'src/b.ts': 'export function b(repo: any) {\n  return repo.save(2)\n}\n',
+      'src/store.ts': 'export class Store {\n  save(x: number) {}\n}\n',
+    })
+    const looked: string[] = []
+    const counting = new Proxy(reader, {
+      get(target, property, receiver) {
+        const value = Reflect.get(target, property, receiver)
+        if (typeof value !== 'function') return value
+        if (property !== 'symbolsNamed') return value.bind(target)
+        return (name: string, options?: { ignoreCase?: boolean }) => {
+          looked.push(name)
+          return value.call(target, name, options)
+        }
+      },
+    })
+    const graph = await openRepositoryGraph({ reader: counting, readText })
+
+    graph.dependencies({ name: 'a' })
+    graph.dependencies({ name: 'b' })
+
+    expect(looked.filter((name) => name === 'save')).toHaveLength(1)
+  })
+})

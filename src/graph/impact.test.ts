@@ -123,6 +123,22 @@ describe('computeImpact', () => {
     ])
   })
 
+  it('lists the callers it resolved before the ones it matched by name', async () => {
+    const graph = await graphOf({
+      'src/store.ts': 'export function save(id: string) {\n  return id\n}\n',
+      'src/a.ts': 'export function viaName(repo: any) {\n  return repo.save(1)\n}\n',
+      'src/z.ts':
+        "import { save } from './store'\nexport function direct() {\n  return save('x')\n}\n",
+    })
+
+    const [save] = (await computeImpact(graph, [{ path: 'src/store.ts', lines: [2] }])).symbols
+
+    expect(save?.sites.map((site) => `${site.path} ${site.how}`)).toEqual([
+      'src/z.ts resolved',
+      'src/a.ts inferred',
+    ])
+  })
+
   it('lists callers in test files after the ones in the code', async () => {
     const graph = await graphOf({
       ...FILES,
