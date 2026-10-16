@@ -81,9 +81,9 @@ async function impactOf(
   symbol: GraphSymbol,
   changedByPath: ReadonlyMap<string, ReadonlySet<number>>,
 ): Promise<{ impacted: ImpactedSymbol; files: Set<string> }> {
-  const sites = graph
-    .callers(symbol)
-    .sites.filter((site) => changedByPath.get(site.path)?.has(site.line) !== true)
+  const found = graph.callers(symbol)
+  const sites = found.sites
+    .filter((site) => changedByPath.get(site.path)?.has(site.line) !== true)
     .sort(
       (a, b) =>
         Number(TEST_PATH.test(a.path)) - Number(TEST_PATH.test(b.path)) ||
@@ -140,6 +140,7 @@ async function impactOf(
     exported: symbol.exported,
     callers: sites.length,
     files: files.size,
+    ...(found.capped ? { capped: true } : {}),
     sites: impactSites,
     dependencies,
   }

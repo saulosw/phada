@@ -47,6 +47,7 @@ export interface ImpactedSymbol {
   exported: boolean
   callers: number
   files: number
+  capped?: boolean
   sites: ImpactSite[]
   dependencies: ImpactDependency[]
 }

@@ -100,6 +100,20 @@ describe('renderImpact', () => {
     expect(text.endsWith('+2 more changed symbols')).toBe(true)
   })
 
+  it('says when the search for callers was cut short', () => {
+    const { text } = renderImpact({
+      symbols: [
+        symbol({ callers: 2000, files: 40, capped: true, sites: [site(4)], dependencies: [] }),
+      ],
+      omittedSymbols: 0,
+      callerFiles: 40,
+    })
+
+    expect(text).toContain(
+      'function getUser (src/users.ts:10-30, exported) — 2000+ callers in 40+ files (search cut short: use the callers tool with path)',
+    )
+  })
+
   it('says one caller in one file', () => {
     expect(
       renderImpact({

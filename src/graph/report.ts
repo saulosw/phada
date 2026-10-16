@@ -22,6 +22,7 @@ export interface ImpactReport {
     files: number
     shown: number
     dependencies: number
+    capped: boolean
   }[]
   totals: { symbols: number; callers: number; files: number }
   learned: { from: string; to: string; pullRequest: number }[]
@@ -51,6 +52,7 @@ export function buildImpactReport(input: ImpactReportInput): ImpactReport {
       files: symbol.files,
       shown: input.shown?.[index] ?? 0,
       dependencies: symbol.dependencies.length,
+      capped: symbol.capped === true,
     })),
     totals: {
       symbols: symbols.length + (input.impact?.omittedSymbols ?? 0),

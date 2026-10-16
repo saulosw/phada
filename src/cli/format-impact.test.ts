@@ -15,6 +15,7 @@ const used: ImpactReport = {
       files: 5,
       shown: 3,
       dependencies: 1,
+      capped: false,
     },
     {
       kind: 'method',
@@ -25,6 +26,7 @@ const used: ImpactReport = {
       files: 2,
       shown: 2,
       dependencies: 0,
+      capped: false,
     },
     {
       kind: 'class',
@@ -35,6 +37,7 @@ const used: ImpactReport = {
       files: 0,
       shown: 0,
       dependencies: 0,
+      capped: false,
     },
   ],
   totals: { symbols: 3, callers: 12, files: 7 },

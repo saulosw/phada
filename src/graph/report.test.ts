@@ -13,6 +13,7 @@ const IMPACT: DiffImpact = {
       exported: true,
       callers: 4,
       files: 3,
+      capped: true,
       sites: [],
       dependencies: [{ name: 'query', path: 'src/db.ts', line: 1, kind: 'function' }],
     },
@@ -63,6 +64,7 @@ describe('buildImpactReport', () => {
           files: 3,
           shown: 3,
           dependencies: 1,
+          capped: true,
         },
         {
           kind: 'method',
@@ -73,6 +75,7 @@ describe('buildImpactReport', () => {
           files: 1,
           shown: 2,
           dependencies: 0,
+          capped: false,
         },
       ],
       totals: { symbols: 2, callers: 6, files: 3 },

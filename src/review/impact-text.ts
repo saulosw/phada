@@ -55,10 +55,11 @@ export function renderImpact(
 
 function header(symbol: ImpactedSymbol): string {
   const place = `${symbol.path}:${symbol.startLine}-${symbol.endLine}${symbol.exported ? ', exported' : ''}`
+  const more = symbol.capped === true ? '+' : ''
   const reach =
-    symbol.callers === 0
+    symbol.callers === 0 && symbol.capped !== true
       ? 'no callers or uses found'
-      : `${symbol.callers} caller${symbol.callers === 1 ? '' : 's'} in ${symbol.files} file${symbol.files === 1 ? '' : 's'}`
+      : `${symbol.callers}${more} caller${symbol.callers === 1 && more === '' ? '' : 's'} in ${symbol.files}${more} file${symbol.files === 1 && more === '' ? '' : 's'}${symbol.capped === true ? ' (search cut short: use the callers tool with path)' : ''}`
   return `${symbol.kind} ${symbol.name} (${place}) — ${reach}`
 }
 

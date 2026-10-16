@@ -362,6 +362,7 @@ describe('publication', () => {
           files: 1,
           shown: 2,
           dependencies: 0,
+          capped: false,
         },
       ],
       totals: { symbols: 1, callers: 2, files: 1 },

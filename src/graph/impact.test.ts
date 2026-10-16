@@ -158,6 +158,26 @@ describe('computeImpact', () => {
     ])
   })
 
+  it('marks a symbol whose callers search was cut short', async () => {
+    const graph = await graphOf()
+    const capped = new Proxy(graph, {
+      get(target, property) {
+        if (property === 'callers') {
+          return (symbol: Parameters<typeof graph.callers>[0]) => ({
+            ...target.callers(symbol),
+            capped: true,
+          })
+        }
+        const value = Reflect.get(target, property, target)
+        return typeof value === 'function' ? value.bind(target) : value
+      },
+    })
+
+    const [getUser] = (await computeImpact(capped, [{ path: 'src/users.ts', lines: [9] }])).symbols
+
+    expect(getUser?.capped).toBe(true)
+  })
+
   it('leaves out call sites on the changed lines themselves', async () => {
     const graph = await graphOf()
 
