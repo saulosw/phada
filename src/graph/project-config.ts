@@ -10,15 +10,25 @@ export interface GoModule {
   module: string
 }
 
+export interface WorkspacePackage {
+  name: string
+  dir: string
+  exports: readonly { pattern: string; target: string }[]
+  main?: string
+}
+
 export interface ProjectConfig {
   tsconfigs: ReadonlyMap<string, TsPaths>
   goModules: readonly GoModule[]
   pythonRoots: readonly string[]
+  workspacePackages: readonly WorkspacePackage[]
 }
 
 const TS_CONFIG = /(^|\/)(tsconfig|jsconfig)(\.[\w-]+)?\.json$/
 const MAIN_TS_CONFIG = /(^|\/)(tsconfig|jsconfig)\.json$/
 const GO_MOD = /(^|\/)go\.mod$/
+const PACKAGE_JSON = /(^|\/)package\.json$/
+const EXPORT_CONDITIONS = ['import', 'default', 'require', 'node']
 const PYTHON_PROJECT = /(^|\/)(pyproject\.toml|setup\.py|setup\.cfg)$/
 const MAX_EXTENDS = 5
 const DEPENDENCY_FOLDER = /(^|\/)(node_modules|bower_components|\.venv|venv|site-packages|vendor)\//
@@ -79,7 +89,47 @@ export async function loadProjectConfig(
       if (!pythonRoots.includes(root)) pythonRoots.push(root)
     }
   }
-  return { tsconfigs, goModules, pythonRoots }
+  const workspacePackages: WorkspacePackage[] = []
+  for (const path of all.filter((item) => PACKAGE_JSON.test(item))) {
+    if (reads >= MAX_CONFIG_FILES) break
+    const parsed = parseJsonc(await read(path).catch(() => ''))
+    if (typeof parsed !== 'object' || parsed === null) continue
+    const manifest = parsed as { name?: unknown; main?: unknown; exports?: unknown }
+    if (typeof manifest.name !== 'string' || manifest.name === '') continue
+    workspacePackages.push({
+      name: manifest.name,
+      dir: dirOf(path),
+      exports: exportEntries(manifest.exports),
+      ...(typeof manifest.main === 'string' ? { main: manifest.main } : {}),
+    })
+  }
+  return { tsconfigs, goModules, pythonRoots, workspacePackages }
+}
+
+function exportEntries(exports: unknown): { pattern: string; target: string }[] {
+  if (typeof exports === 'string') return [{ pattern: '.', target: exports }]
+  if (typeof exports !== 'object' || exports === null || Array.isArray(exports)) return []
+  const entries = Object.entries(exports as Record<string, unknown>)
+  if (entries.every(([key]) => !key.startsWith('.'))) {
+    const target = conditionTarget(exports)
+    return target === undefined ? [] : [{ pattern: '.', target }]
+  }
+  return entries.flatMap(([pattern, value]) => {
+    if (!pattern.startsWith('.') || pattern.endsWith('package.json')) return []
+    const target = conditionTarget(value)
+    return target === undefined ? [] : [{ pattern, target }]
+  })
+}
+
+function conditionTarget(value: unknown): string | undefined {
+  if (typeof value === 'string') return value
+  if (typeof value !== 'object' || value === null) return undefined
+  const conditions = value as Record<string, unknown>
+  for (const condition of EXPORT_CONDITIONS) {
+    const target = conditionTarget(conditions[condition])
+    if (target !== undefined) return target
+  }
+  return undefined
 }
 
 async function loadTsConfig(

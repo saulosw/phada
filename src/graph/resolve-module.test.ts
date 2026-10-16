@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest'
 import type { ProjectConfig } from './project-config.js'
 import { resolveModule } from './resolve-module.js'
 
-const NONE: ProjectConfig = { tsconfigs: new Map(), goModules: [], pythonRoots: ['', 'src'] }
+const NONE: ProjectConfig = {
+  tsconfigs: new Map(),
+  goModules: [],
+  pythonRoots: ['', 'src'],
+  workspacePackages: [],
+}
 
 function files(...paths: string[]): ReadonlySet<string> {
   return new Set(paths)
@@ -69,6 +74,75 @@ describe('resolveModule for TypeScript and JavaScript', () => {
     expect(resolveModule('src/a.ts', 'react', 'typescript', files('react.ts'), NONE)).toEqual({
       kind: 'external',
       module: 'react',
+    })
+  })
+})
+
+describe('resolveModule for packages of the same repository', () => {
+  const config: ProjectConfig = {
+    ...NONE,
+    workspacePackages: [
+      {
+        name: '@nestjs/common',
+        dir: 'packages/common',
+        exports: [
+          { pattern: '.', target: './index.js' },
+          { pattern: './internal', target: './internal.js' },
+          { pattern: './*', target: './*.js' },
+        ],
+      },
+      {
+        name: '@navi/contracts',
+        dir: 'packages/contracts',
+        exports: [
+          { pattern: '.', target: './src/index.ts' },
+          { pattern: './validation', target: './src/validation.ts' },
+        ],
+      },
+      { name: 'legacy-lib', dir: 'libs/legacy', exports: [], main: 'lib/main.js' },
+    ],
+  }
+  const paths = files(
+    'packages/common/index.ts',
+    'packages/common/internal.ts',
+    'packages/common/utils/shared.utils.ts',
+    'packages/contracts/src/index.ts',
+    'packages/contracts/src/validation.ts',
+    'libs/legacy/lib/main.ts',
+  )
+
+  it('follows the exports of a package to its TypeScript sources', () => {
+    expect(
+      resolveModule('packages/core/a.ts', '@nestjs/common', 'typescript', paths, config),
+    ).toEqual({
+      kind: 'files',
+      paths: ['packages/common/index.ts'],
+    })
+    expect(
+      resolveModule('packages/core/a.ts', '@nestjs/common/internal', 'typescript', paths, config),
+    ).toEqual({ kind: 'files', paths: ['packages/common/internal.ts'] })
+    expect(
+      resolveModule(
+        'packages/core/a.ts',
+        '@nestjs/common/utils/shared.utils',
+        'typescript',
+        paths,
+        config,
+      ),
+    ).toEqual({ kind: 'files', paths: ['packages/common/utils/shared.utils.ts'] })
+    expect(
+      resolveModule('apps/desktop/x.ts', '@navi/contracts/validation', 'typescript', paths, config),
+    ).toEqual({ kind: 'files', paths: ['packages/contracts/src/validation.ts'] })
+  })
+
+  it('uses main when a package has no exports, and leaves other packages external', () => {
+    expect(resolveModule('a.ts', 'legacy-lib', 'typescript', paths, config)).toEqual({
+      kind: 'files',
+      paths: ['libs/legacy/lib/main.ts'],
+    })
+    expect(resolveModule('a.ts', '@nestjs/commonx', 'typescript', paths, config)).toEqual({
+      kind: 'external',
+      module: '@nestjs/commonx',
     })
   })
 })

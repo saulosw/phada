@@ -100,6 +100,33 @@ describe('loadProjectConfig', () => {
     expect(config.tsconfigs.get('')?.paths).toEqual([{ pattern: '@/*', targets: ['src/*'] }])
   })
 
+  it('reads the name and entry points of the packages in the repository', async () => {
+    const { paths, readText } = reader({
+      'package.json': '{ "name": "root", "private": true, "workspaces": ["packages/*"] }',
+      'packages/common/package.json':
+        '{ "name": "@nestjs/common", "main": "./index.js", "exports": { ".": "./index.js", "./*": { "types": "./*.d.ts", "default": "./*.js" } } }',
+      'packages/old/package.json': '{ "name": "old-lib", "main": "lib/main.js" }',
+      'node_modules/react/package.json': '{ "name": "react" }',
+      'packages/broken/package.json': 'nope',
+    })
+
+    const config = await loadProjectConfig(paths, readText)
+
+    expect(config.workspacePackages).toEqual([
+      { name: 'root', dir: '', exports: [] },
+      {
+        name: '@nestjs/common',
+        dir: 'packages/common',
+        exports: [
+          { pattern: '.', target: './index.js' },
+          { pattern: './*', target: './*.js' },
+        ],
+        main: './index.js',
+      },
+      { name: 'old-lib', dir: 'packages/old', exports: [], main: 'lib/main.js' },
+    ])
+  })
+
   it('reads the module of each go.mod', async () => {
     const { paths, readText } = reader({
       'go.mod': 'module github.com/spf13/cobra\n\ngo 1.21\n',

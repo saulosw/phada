@@ -47,21 +47,48 @@ function resolveScript(
     return base === undefined ? undefined : scriptFile(base, paths)
   }
   const tsconfig = nearest(config.tsconfigs, dirOf(importer))
-  if (tsconfig === undefined) return undefined
-  for (const { pattern, targets } of tsconfig.paths) {
-    const star = matchPattern(pattern, specifier)
-    if (star === undefined) continue
-    for (const target of targets) {
-      const base = inside(target.replace('*', star))
+  if (tsconfig !== undefined) {
+    for (const { pattern, targets } of tsconfig.paths) {
+      const star = matchPattern(pattern, specifier)
+      if (star === undefined) continue
+      for (const target of targets) {
+        const base = inside(target.replace('*', star))
+        const file = base === undefined ? undefined : scriptFile(base, paths)
+        if (file !== undefined) return file
+      }
+    }
+    if (tsconfig.baseUrl !== undefined) {
+      const base = inside(posix.join(tsconfig.baseUrl, specifier))
       const file = base === undefined ? undefined : scriptFile(base, paths)
       if (file !== undefined) return file
     }
   }
-  if (tsconfig.baseUrl !== undefined) {
-    const base = inside(posix.join(tsconfig.baseUrl, specifier))
+  return workspaceFile(specifier, paths, config)
+}
+
+function workspaceFile(
+  specifier: string,
+  paths: ReadonlySet<string>,
+  config: ProjectConfig,
+): string[] | undefined {
+  const owner = config.workspacePackages
+    .filter(({ name }) => specifier === name || specifier.startsWith(`${name}/`))
+    .sort((a, b) => b.name.length - a.name.length)[0]
+  if (owner === undefined) return undefined
+  const sub = specifier.slice(owner.name.length)
+  const key = `.${sub}`
+  const fromRoot = (relative: string) => {
+    const base = inside(posix.join(owner.dir, relative))
     return base === undefined ? undefined : scriptFile(base, paths)
   }
-  return undefined
+  for (const { pattern, target } of owner.exports) {
+    const star = matchPattern(pattern, key)
+    if (star === undefined) continue
+    const file = fromRoot(target.replace('*', star))
+    if (file !== undefined) return file
+  }
+  if (sub === '') return fromRoot(owner.main ?? 'index') ?? fromRoot('src/index')
+  return fromRoot(sub.slice(1)) ?? fromRoot(posix.join('src', sub.slice(1)))
 }
 
 function scriptFile(base: string, paths: ReadonlySet<string>): string[] | undefined {
