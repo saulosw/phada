@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
+import { IndexStoreError } from './index-store.js'
 import { openObservedStore } from './observed-store.js'
 import type { ObservedEdge } from './observed-store.js'
 
@@ -50,5 +51,43 @@ describe('openObservedStore', () => {
     expect(store.rebuilt).toBe(true)
     expect(store.all()).toEqual([])
     store.close()
+  })
+
+  it('keeps what it learned when the database is busy, and says so with an index error', async () => {
+    const path = join(dir, 'busy', 'shop.sqlite')
+    const first = await openObservedStore(path)
+    first.add([EDGE])
+    first.close()
+    const sqlite = await import('node:sqlite')
+    class Busy extends sqlite.DatabaseSync {
+      override exec(sql: string): void {
+        if (sql.startsWith('pragma journal_mode')) throw new Error('database is locked')
+        super.exec(sql)
+      }
+    }
+
+    await expect(
+      openObservedStore(path, { loadSqlite: async () => ({ ...sqlite, DatabaseSync: Busy }) }),
+    ).rejects.toThrow(IndexStoreError)
+
+    const reopened = await openObservedStore(path)
+    expect(reopened.all()).toHaveLength(1)
+    expect(reopened.rebuilt).toBe(false)
+    reopened.close()
+  })
+
+  it('reports a database it cannot open as an index error', async () => {
+    const sqlite = await import('node:sqlite')
+    class Unopenable {
+      constructor() {
+        throw new Error('unable to open database file')
+      }
+    }
+
+    await expect(
+      openObservedStore(join(dir, 'x', 'y.sqlite'), {
+        loadSqlite: async () => ({ ...sqlite, DatabaseSync: Unopenable as never }),
+      }),
+    ).rejects.toThrow(IndexStoreError)
   })
 })

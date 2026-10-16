@@ -1,7 +1,7 @@
 import { mkdir, rm } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { DatabaseSync, SQLInputValue } from 'node:sqlite'
-import { IndexStoreError } from './index-store.js'
+import { IndexStoreError, isNotADatabase } from './index-store.js'
 
 export const OBSERVED_SCHEMA_VERSION = 1
 
@@ -72,17 +72,23 @@ export async function openObservedStore(
   }
   const now = options.now ?? (() => new Date())
   const opened = open(sqlite, path)
-  if (opened !== undefined) return new SqliteObservedStore(opened, false, now)
+  if (opened !== 'rebuild') return new SqliteObservedStore(opened, false, now)
   await Promise.all(['', '-wal', '-shm'].map((suffix) => rm(`${path}${suffix}`, { force: true })))
   const recreated = open(sqlite, path)
-  if (recreated === undefined) throw new IndexStoreError(`Cannot open ${path}`)
+  if (recreated === 'rebuild') throw new IndexStoreError(`Cannot open ${path}`)
   return new SqliteObservedStore(recreated, true, now)
 }
 
-function open(sqlite: Sqlite, path: string): DatabaseSync | undefined {
-  const db = new sqlite.DatabaseSync(path)
+function open(sqlite: Sqlite, path: string): DatabaseSync | 'rebuild' {
+  let db: DatabaseSync
+  try {
+    db = new sqlite.DatabaseSync(path)
+  } catch (error) {
+    throw new IndexStoreError(`Cannot open ${path}: ${(error as Error).message}`)
+  }
   try {
     db.exec('pragma busy_timeout = 5000')
+    db.exec('pragma journal_mode = wal')
     const tables = Number(
       db.prepare("select count(*) as n from sqlite_master where type = 'table'").get()?.n ?? 0,
     )
@@ -96,9 +102,13 @@ function open(sqlite: Sqlite, path: string): DatabaseSync | undefined {
     }
     const version = db.prepare("select value from meta where key = 'schema_version'").get()?.value
     if (version === String(OBSERVED_SCHEMA_VERSION)) return db
-  } catch {}
-  db.close()
-  return undefined
+    db.close()
+    return 'rebuild'
+  } catch (error) {
+    db.close()
+    if (isNotADatabase(error) || /no such table/i.test((error as Error).message)) return 'rebuild'
+    throw new IndexStoreError(`Cannot open ${path}: ${(error as Error).message}`)
+  }
 }
 
 class SqliteObservedStore implements ObservedStore {

@@ -132,7 +132,12 @@ export async function openIndexStore(
 type Opened = { ok: true; db: DatabaseSync } | { ok: false; existed: boolean; error: Error }
 
 function openDatabase(sqlite: Sqlite, path: string, phadaVersion: string): Opened {
-  const db = new sqlite.DatabaseSync(path)
+  let db: DatabaseSync
+  try {
+    db = new sqlite.DatabaseSync(path)
+  } catch (error) {
+    throw new IndexStoreError(`Cannot open the index at ${path}: ${(error as Error).message}`)
+  }
   try {
     db.exec('pragma busy_timeout = 5000')
     db.exec('pragma journal_mode = wal')
@@ -174,14 +179,14 @@ function openDatabase(sqlite: Sqlite, path: string, phadaVersion: string): Opene
   } catch (error) {
     if (!isNotADatabase(error)) {
       db.close()
-      throw error
+      throw new IndexStoreError(`Cannot open the index at ${path}: ${(error as Error).message}`)
     }
     db.close()
     return { ok: false, existed: true, error: error as Error }
   }
 }
 
-function isNotADatabase(error: unknown): boolean {
+export function isNotADatabase(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error)
   return /not a database|malformed|file is encrypted/i.test(message)
 }

@@ -263,6 +263,78 @@ describe('reviewPullRequest', () => {
     expect(toolNames(h.prompts[0])).toEqual(['read_file', 'grep', 'list', 'history'])
   })
 
+  it('reviews without the graph when SQLite fails in an unexpected way, and closes the stores', async () => {
+    let observedClosed = 0
+    const h = setup({
+      openIndexStore: async () => {
+        const store = await openIndexStore(freshPath('index'))
+        store.reader = () => {
+          throw new Error('disk I/O error')
+        }
+        return store
+      },
+      openObservedStore: async () => {
+        const store = await openObservedStore(freshPath('observed'))
+        const close = store.close.bind(store)
+        store.close = () => {
+          observedClosed += 1
+          close()
+        }
+        return store
+      },
+    })
+
+    const result = await reviewPullRequest(input, h.deps)
+
+    expect(h.events).toContain(
+      'warning: Could not use the repository graph (disk I/O error): reviewing without it.',
+    )
+    expect(result.impact).toMatchObject({ status: 'unavailable', reason: 'disk I/O error' })
+    expect(toolNames(h.prompts[0])).toEqual(['read_file', 'grep', 'list', 'history'])
+    expect(observedClosed).toBe(1)
+    expect(result.outcome.status).toBe('reviewed')
+  })
+
+  it('says when what earlier reviews learned could not be read and starts over', async () => {
+    const h = setup({
+      openObservedStore: async () => {
+        const store = await openObservedStore(freshPath('observed'))
+        return new Proxy(store, {
+          get(target, property) {
+            if (property === 'rebuilt') return true
+            const value = Reflect.get(target, property, target)
+            return typeof value === 'function' ? value.bind(target) : value
+          },
+        })
+      },
+    })
+
+    await reviewPullRequest(input, h.deps)
+
+    expect(h.events).toContain(
+      'warning: What earlier reviews of acme/shop learned could not be read: starting over.',
+    )
+  })
+
+  it('keeps only the most recent commits in the index after indexing a head', async () => {
+    let pruned: number[] = []
+    const h = setup({
+      openIndexStore: async () => {
+        const store = await openIndexStore(freshPath('index'))
+        const prune = store.prune.bind(store)
+        store.prune = (keep) => {
+          pruned = [...pruned, keep]
+          return prune(keep)
+        }
+        return store
+      },
+    })
+
+    await reviewPullRequest(input, h.deps)
+
+    expect(pruned).toEqual([10])
+  })
+
   it("reviews without tools or the user's servers when the head cannot be fetched", async () => {
     const h = setup({
       openMirror: () =>

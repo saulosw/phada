@@ -367,6 +367,25 @@ describe('openIndexStore', () => {
     expect(executed).toContain('pragma synchronous = normal')
   })
 
+  it('reports a database it cannot open as an index error with the path', async () => {
+    const path = freshPath()
+    class Unopenable {
+      constructor() {
+        throw new Error('unable to open database file')
+      }
+    }
+
+    const sqlite = await import('node:sqlite')
+
+    await expect(
+      openIndexStore(path, {
+        loadSqlite: async () => ({ ...sqlite, DatabaseSync: Unopenable as never }),
+      }),
+    ).rejects.toEqual(
+      new IndexStoreError(`Cannot open the index at ${path}: unable to open database file`),
+    )
+  })
+
   it('says which Node.js version it needs when SQLite is missing', async () => {
     await expect(
       openIndexStore(freshPath(), {

@@ -25,7 +25,7 @@ import type { DiffImpact, ReviewOutcome } from '../review/types.js'
 import { IndexStoreError } from '../store/index-store.js'
 import type { IndexStore } from '../store/index-store.js'
 import type { ObservedEdge, ObservedStore } from '../store/observed-store.js'
-import { DEPENDENCY_FOLDERS, indexCommit } from './index-repository.js'
+import { DEPENDENCY_FOLDERS, indexCommit, KEEP_COMMITS } from './index-repository.js'
 
 export const REVIEW_INDEX_BUDGET_MS = 60_000
 
@@ -117,8 +117,15 @@ export async function reviewPullRequest(
         investigation = createInvestigation(opened.checkout)
         head = await openHeadGraph(pullRequest, loaded, opened, deps)
         if (head.graph !== undefined) {
-          impact = await computeImpact(head.graph, changedLines(loaded.diff))
-          investigation = createInvestigation(opened.checkout, { graph: head.graph })
+          try {
+            impact = await computeImpact(head.graph, changedLines(loaded.diff))
+            investigation = createInvestigation(opened.checkout, { graph: head.graph })
+          } catch (error) {
+            const message = errorMessage(error)
+            deps.events.warning(graphFailure(message))
+            head = { ...head, reason: message }
+            delete head.graph
+          }
         }
       }
     }
@@ -192,6 +199,7 @@ async function openHeadGraph(
 ): Promise<HeadGraph> {
   const { mirror, sha, checkout } = opened
   let store: IndexStore | undefined
+  let observed: ObservedStore | undefined
   try {
     const files = await mirror.listFiles(sha)
     store = await deps.openIndexStore()
@@ -220,9 +228,14 @@ async function openHeadGraph(
       store.close()
       return { reason: `index of ${pullRequest.repo} is not ready (${progress})` }
     }
-    let observed: ObservedStore | undefined
+    store.prune(KEEP_COMMITS)
     try {
       observed = await deps.openObservedStore()
+      if (observed.rebuilt) {
+        deps.events.warning(
+          `What earlier reviews of ${pullRequest.repo} learned could not be read: starting over.`,
+        )
+      }
     } catch (error) {
       if (!(error instanceof IndexStoreError)) throw error
       deps.events.warning(`${error.message}: reviewing without what earlier reviews learned.`)
@@ -241,14 +254,24 @@ async function openHeadGraph(
       index: { files: result.files, extracted: result.extracted, durationMs: result.durationMs },
     }
   } catch (error) {
-    if (!(error instanceof IndexStoreError) && !(error instanceof CheckoutUnavailableError)) {
-      store?.close()
-      throw error
-    }
     store?.close()
-    deps.events.warning(`${error.message}: reviewing without the repository graph.`)
-    return { reason: error.message }
+    observed?.close()
+    const message = errorMessage(error)
+    deps.events.warning(
+      error instanceof IndexStoreError || error instanceof CheckoutUnavailableError
+        ? `${message}: reviewing without the repository graph.`
+        : graphFailure(message),
+    )
+    return { reason: message }
   }
+}
+
+function graphFailure(message: string): string {
+  return `Could not use the repository graph (${message}): reviewing without it.`
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
 function learn(
