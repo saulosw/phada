@@ -103,8 +103,7 @@ lists them with the reason, and gives the verifier's reason for every confirmed 
 for a finding it did not check). Confirmed findings still below 50 are dropped like any other. A
 finding without an answer keeps its first rating and the footer says how many were left unchecked
 (`not verified` when none got an answer). Verification adds about half the time and doubles the
-tokens; the time and tokens shown are the total of both calls. On the evaluation corpus, with the
-repository investigation, it showed one more real problem with no added noise.
+tokens; the time and tokens shown are the total of both calls.
 
 If the AI's answer is not a valid review, Phada stops with an error instead of printing it;
 `--debug` shows the start of the answer.
