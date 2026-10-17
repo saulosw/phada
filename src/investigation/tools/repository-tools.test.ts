@@ -208,3 +208,77 @@ describe('repositoryTools', () => {
     })
   })
 })
+
+describe('repositoryTools with related repositories', () => {
+  const related = [
+    {
+      repo: 'acme/web',
+      checkout: memoryCheckout(
+        { 'src/a.ts': 'web\n' },
+        {
+          matches: [{ path: 'src/a.ts', line: 1, text: 'web' }],
+          entries: { '': [{ name: 'src', kind: 'dir' }] },
+        },
+      ),
+    },
+  ]
+
+  it('adds an optional repo argument limited to the related repositories', () => {
+    const toolbox = createToolbox(
+      repositoryTools(memoryCheckout({}), related),
+      new ToolLog(),
+      'review',
+    )
+
+    for (const definition of toolbox.definitions) {
+      expect(definition.inputSchema).toMatchObject({
+        properties: { repo: { enum: ['acme/web'] } },
+      })
+      expect(definition.description).toContain('repo')
+    }
+  })
+
+  it('keeps the arguments of the tools without related repositories', () => {
+    for (const definition of toolboxFor(memoryCheckout({})).definitions) {
+      expect(definition.inputSchema.properties).not.toHaveProperty('repo')
+    }
+  })
+
+  it('reads, searches and lists a related repository, naming its paths owner/repo:path', async () => {
+    const log = new ToolLog()
+    const toolbox = createToolbox(
+      repositoryTools(memoryCheckout({ 'src/a.ts': 'own\n' }), related),
+      log,
+      'review',
+    )
+
+    expect(await toolbox.call('read_file', { repo: 'acme/web', path: 'src/a.ts' })).toEqual({
+      text: '1\tweb',
+      isError: false,
+    })
+    expect((await toolbox.call('grep', { repo: 'acme/web', pattern: 'web' })).text).toBe(
+      'acme/web:src/a.ts:1: web',
+    )
+    expect((await toolbox.call('list', { repo: 'acme/web' })).text).toBe('src/')
+    expect((await toolbox.call('read_file', { path: 'src/a.ts' })).text).toBe('1\town')
+    expect(log.records.map((record) => record.touched)).toEqual([
+      ['acme/web:src/a.ts'],
+      ['acme/web:src/a.ts'],
+      [],
+      ['src/a.ts'],
+    ])
+  })
+
+  it('refuses an unknown repository and a path outside the related repository', async () => {
+    const toolbox = createToolbox(
+      repositoryTools(memoryCheckout({}), related),
+      new ToolLog(),
+      'review',
+    )
+
+    expect((await toolbox.call('read_file', { repo: 'acme/other', path: 'a' })).text).toMatch(
+      /^Invalid arguments for read_file: repo/,
+    )
+    expect((await toolbox.call('read_file', { repo: 'acme/web', path: '../x' })).isError).toBe(true)
+  })
+})

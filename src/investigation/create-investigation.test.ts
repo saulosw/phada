@@ -56,3 +56,24 @@ describe('createInvestigation', () => {
     expect(closed).toBe(true)
   })
 })
+
+describe('createInvestigation with related repositories', () => {
+  it('offers repo on the reading and graph tools, never on history, and closes every checkout', async () => {
+    const closed: string[] = []
+    const investigation = createInvestigation(
+      checkout(() => closed.push('reviewed')),
+      {
+        related: [{ repo: 'acme/web', checkout: checkout(() => closed.push('acme/web')) }],
+      },
+    )
+
+    const definitions = investigation.tools('review').definitions
+    const withRepo = definitions
+      .filter((definition) => JSON.stringify(definition.inputSchema).includes('"repo"'))
+      .map(({ name }) => name)
+    await investigation.close()
+
+    expect(withRepo).toEqual(['read_file', 'grep', 'list'])
+    expect(closed).toEqual(['reviewed', 'acme/web'])
+  })
+})
