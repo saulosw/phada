@@ -63,6 +63,10 @@ export async function readPackages(
   return { published: published.list(), depends: depends.list() }
 }
 
+export function packageKey({ ecosystem, name }: PackageRef): string {
+  return `${ecosystem}\0${name}`
+}
+
 export function normalizePythonName(name: string): string {
   return name.replace(/[-_.]+/g, '-').toLowerCase()
 }
@@ -73,7 +77,7 @@ class PackageSet {
   add(ecosystem: Ecosystem, raw: string): void {
     const name = ecosystem === 'python' ? normalizePythonName(raw) : raw
     if (name === '') return
-    const key = `${ecosystem}\0${name}`
+    const key = packageKey({ ecosystem, name })
     if (!this.#items.has(key)) this.#items.set(key, { ecosystem, name })
   }
 

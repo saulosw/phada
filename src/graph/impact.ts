@@ -1,6 +1,12 @@
 import { parseDiffFiles } from '../review/diff-lines.js'
-import type { DiffImpact, ImpactDependency, ImpactSite, ImpactedSymbol } from '../review/types.js'
-import type { GraphSymbol, RepositoryGraph, Site } from './types.js'
+import type {
+  DiffImpact,
+  ImpactDependency,
+  ImpactSite,
+  ImpactedSymbol,
+  RelatedReach,
+} from '../review/types.js'
+import type { Dependency, GraphSymbol, RepositoryGraph, Site } from './types.js'
 
 export const IMPACT_MAX_SYMBOLS = 20
 export const IMPACT_SITES_PER_FILE = 3
@@ -76,6 +82,29 @@ export async function computeImpact(
   }
 }
 
+function relatedReach(
+  sites: readonly Site[],
+  dependencies: readonly Dependency[],
+): { related?: RelatedReach[] } {
+  const reach = new Map<string, RelatedReach>()
+  const entry = (repo: string) => {
+    const known = reach.get(repo) ?? { repo, callers: 0, uses: 0 }
+    reach.set(repo, known)
+    return known
+  }
+  for (const site of sites) if (site.repo !== undefined) entry(site.repo).callers += 1
+  const used = new Set<string>()
+  for (const item of dependencies) {
+    const target = item.target
+    if (target?.repo === undefined) continue
+    const key = `${target.repo}:${target.path}:${target.id}`
+    if (used.has(key)) continue
+    used.add(key)
+    entry(target.repo).uses += 1
+  }
+  return reach.size === 0 ? {} : { related: [...reach.values()] }
+}
+
 function fileKey(site: Site): string {
   return `${site.repo ?? ''}\0${site.path}`
 }
@@ -90,9 +119,11 @@ function keepSites(sites: readonly Site[]): Site[] {
     chosen.add(index)
   }
   const repos = new Set<string>()
+  const guaranteed: number[] = []
   sites.forEach((site, index) => {
     if (site.repo === undefined || repos.has(site.repo)) return
     repos.add(site.repo)
+    guaranteed.push(index)
     take(index)
   })
   sites.forEach((site, index) => {
@@ -100,7 +131,11 @@ function keepSites(sites: readonly Site[]): Site[] {
     if ((perFile.get(fileKey(site)) ?? 0) >= IMPACT_SITES_PER_FILE) return
     take(index)
   })
-  return sites.filter((_, index) => chosen.has(index))
+  const first = new Set(guaranteed)
+  return [
+    ...guaranteed.flatMap((index) => sites[index] ?? []),
+    ...sites.filter((_, index) => chosen.has(index) && !first.has(index)),
+  ]
 }
 
 async function impactOf(
@@ -142,7 +177,8 @@ async function impactOf(
   }
   const dependencies: ImpactDependency[] = []
   const seen = new Set<string>()
-  for (const item of graph.dependencies(symbol).dependencies) {
+  const allDependencies = graph.dependencies(symbol).dependencies
+  for (const item of allDependencies) {
     const target = item.target
     if (target === undefined || item.how === 'observed') continue
     if (target.repo === undefined && target.path === symbol.path) continue
@@ -170,6 +206,7 @@ async function impactOf(
     ...(found.capped ? { capped: true } : {}),
     sites: impactSites,
     dependencies,
+    ...relatedReach(sites, allDependencies),
   }
   return { impacted, files }
 }

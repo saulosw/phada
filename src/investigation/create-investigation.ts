@@ -36,9 +36,6 @@ export function createInvestigation(
   return {
     log,
     tools: (pass) => createToolbox(tools, log, pass),
-    close: async () => {
-      await checkout.close()
-      for (const item of related) await item.checkout.close()
-    },
+    close: () => checkout.close(),
   }
 }

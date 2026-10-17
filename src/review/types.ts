@@ -52,6 +52,13 @@ export interface ImpactedSymbol {
   capped?: boolean
   sites: ImpactSite[]
   dependencies: ImpactDependency[]
+  related?: RelatedReach[]
+}
+
+export interface RelatedReach {
+  repo: string
+  callers: number
+  uses: number
 }
 
 export interface DiffImpact {

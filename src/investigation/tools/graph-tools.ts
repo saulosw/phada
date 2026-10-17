@@ -8,7 +8,7 @@ import type {
   Targets,
 } from '../../graph/types.js'
 import { qualified, RELATED_NOTE, withRepo } from './related-repo.js'
-import type { RelatedCheckout } from './related-repo.js'
+import type { RelatedCheckout, WithRepo } from './related-repo.js'
 import { inputSchemaOf, ToolFailure } from './tool-registry.js'
 import type { RegisteredTool, ToolOutput } from './tool-registry.js'
 
@@ -47,8 +47,6 @@ export interface GraphToolsOptions {
   related?: readonly Pick<RelatedCheckout, 'repo' | 'graph'>[]
 }
 
-type WithRepo<T> = T & { repo?: string }
-
 export function graphTools(
   graph: RepositoryGraph,
   options: GraphToolsOptions = {},
@@ -57,10 +55,8 @@ export function graphTools(
   const related = options.related ?? []
   const repos = related.map((item) => item.repo)
   const note = repos.length === 0 ? '' : RELATED_NOTE
-  const findArgs = withRepo(FindSymbolArgs, repos) as z.ZodType<
-    WithRepo<z.infer<typeof FindSymbolArgs>>
-  >
-  const symbolArgs = withRepo(SymbolArgs, repos) as z.ZodType<WithRepo<z.infer<typeof SymbolArgs>>>
+  const findArgs = withRepo(FindSymbolArgs, repos)
+  const symbolArgs = withRepo(SymbolArgs, repos)
   const graphOf = (repo: string | undefined): RepositoryGraph => {
     if (repo === undefined) return graph
     const found = related.find((item) => item.repo === repo)?.graph

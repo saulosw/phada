@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { Checkout, DirEntry } from '../../repository/checkout.js'
 import { toRepoPath } from '../../repository/repo-path.js'
 import { qualified, RELATED_NOTE, withRepo } from './related-repo.js'
-import type { RelatedCheckout } from './related-repo.js'
+import type { RelatedCheckout, WithRepo } from './related-repo.js'
 import { inputSchemaOf, ToolFailure } from './tool-registry.js'
 import type { RegisteredTool, ToolOutput } from './tool-registry.js'
 
@@ -39,8 +39,6 @@ const KIND_MARKER: Readonly<Record<DirEntry['kind'], string>> = {
   submodule: ' (submodule)',
 }
 
-type WithRepo<T> = T & { repo?: string }
-
 export function repositoryTools(
   checkout: Checkout,
   related: readonly Pick<RelatedCheckout, 'repo' | 'checkout'>[] = [],
@@ -59,7 +57,7 @@ export function repositoryTools(
       description: `Read a text file of the repository at the pull request head, with line numbers. Returns up to ${READ_MAX_LINES} lines per call; use from and to for other lines.${note}`,
       inputSchema: inputSchemaOf(readArgs),
     },
-    args: readArgs as z.ZodType<WithRepo<z.infer<typeof ReadFileArgs>>>,
+    args: readArgs,
     run: async ({ path: input, from = 1, to, repo }) => {
       const path = toRepoPath(input, { allowRoot: false })
       const lines = splitLines(await checkoutOf(repo).readText(path))
@@ -81,7 +79,7 @@ export function repositoryTools(
       description: `Search the repository at the pull request head with an extended regular expression. Returns up to ${GREP_MAX_LINES} matching lines as path:line: text.${note}`,
       inputSchema: inputSchemaOf(grepArgs),
     },
-    args: grepArgs as z.ZodType<WithRepo<z.infer<typeof GrepArgs>>>,
+    args: grepArgs,
     run: async ({ pattern, path: input, ignoreCase, repo }) => {
       const path = toRepoPath(input, { allowRoot: true })
       const matches = await checkoutOf(repo).grep(pattern, {
@@ -113,7 +111,7 @@ export function repositoryTools(
       description: `List a folder of the repository at the pull request head: folders end with /, symbolic links with @. Returns up to ${LIST_MAX_ENTRIES} entries.${note}`,
       inputSchema: inputSchemaOf(listArgs),
     },
-    args: listArgs as z.ZodType<WithRepo<z.infer<typeof ListArgs>>>,
+    args: listArgs,
     run: async ({ path: input, repo }): Promise<ToolOutput> => {
       const path = toRepoPath(input, { allowRoot: true })
       const entries = (await checkoutOf(repo).listDir(path))

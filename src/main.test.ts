@@ -1086,7 +1086,6 @@ describe('run with the repository investigation', () => {
         repo: `${owner}/${repo}`,
         private: false,
         defaultBranch: 'main',
-        archived: false,
         empty: false,
       }),
     }

@@ -72,4 +72,3 @@ export const ConfigFileSchema = z.strictObject({
 
 export type ConfigFile = z.infer<typeof ConfigFileSchema>
 export type ConfigRule = z.infer<typeof RuleSchema>
-export type ConfigRelatedRepo = z.infer<typeof RelatedRepoSchema>

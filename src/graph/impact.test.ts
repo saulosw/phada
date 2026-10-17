@@ -294,6 +294,7 @@ describe('computeImpact across repositories', () => {
 
     expect(getUser?.files).toBe(3)
     expect(getUser?.sites.filter((site) => site.repo === 'acme/web')).toHaveLength(3)
+    expect(getUser?.related).toEqual([{ repo: 'acme/web', callers: 4, uses: 0 }])
     expect(
       getUser?.sites.filter((site) => site.repo === undefined && site.path === 'src/api.ts'),
     ).toHaveLength(3)
@@ -310,6 +311,6 @@ describe('computeImpact across repositories', () => {
     const [getUser] = (await computeImpact(graph, [{ path: 'src/users.ts', lines: [9] }])).symbols
 
     expect(getUser?.sites.length).toBe(IMPACT_SITES_PER_SYMBOL)
-    expect(getUser?.sites.some((site) => site.repo === 'zzz/last')).toBe(true)
+    expect(getUser?.sites[0]?.repo).toBe('zzz/last')
   })
 })

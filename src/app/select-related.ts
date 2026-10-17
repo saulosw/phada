@@ -60,9 +60,8 @@ export function selectCandidates(
 
 export function rankRelated<T extends { state: RelatedState; order: number }>(
   items: readonly T[],
-): { kept: T[]; dropped: T[] } {
-  const ranked = [...items].sort(
-    (a, b) => STATE_RANK[a.state] - STATE_RANK[b.state] || a.order - b.order,
-  )
-  return { kept: ranked.slice(0, MAX_RELATED), dropped: ranked.slice(MAX_RELATED) }
+): T[] {
+  return [...items]
+    .sort((a, b) => STATE_RANK[a.state] - STATE_RANK[b.state] || a.order - b.order)
+    .slice(0, MAX_RELATED)
 }

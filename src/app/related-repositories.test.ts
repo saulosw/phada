@@ -63,7 +63,6 @@ const info = (repo: string, fields: Partial<RepositoryInfo> = {}): RepositoryInf
   repo,
   private: false,
   defaultBranch: 'main',
-  archived: false,
   empty: false,
   ...fields,
 })
@@ -73,6 +72,7 @@ const input = (repos: string[]) => ({
   pullRequestPrivate: false,
   privateOnPublic: false,
   reviewedPackages: CORE,
+  index: true,
 })
 
 describe('openRelatedRepositories', () => {
@@ -154,6 +154,52 @@ describe('openRelatedRepositories', () => {
       'Cannot read acme/gone with this token (HTTP 404): reviewing without it.',
       'Could not fetch main from acme/broken: denied: run phada index acme/broken to prepare it.',
     ])
+  })
+
+  it('calls a fetch the remote refuses no access, and warns about an empty repository', async () => {
+    const refused = memoryMirror(
+      {},
+      {
+        fetch: async () => {
+          throw new CheckoutUnavailableError(
+            'fetch-failed',
+            'Could not fetch main from acme/hidden: remote: Repository not found.',
+          )
+        },
+      },
+    )
+    const { deps, warnings } = setup({
+      infos: {
+        'acme/hidden': info('acme/hidden'),
+        'acme/empty': info('acme/empty', { empty: true }),
+      },
+      mirrors: { 'acme/hidden': refused },
+    })
+
+    const { skipped } = await openRelatedRepositories(input(['acme/hidden', 'acme/empty']), deps)
+
+    expect(skipped.map((item) => `${item.repo} ${item.reason}`)).toEqual([
+      'acme/empty empty',
+      'acme/hidden no-access',
+    ])
+    expect(warnings).toEqual([
+      'acme/empty has no commits: reviewing without it.',
+      'Could not fetch main from acme/hidden: remote: Repository not found.: reviewing without it.',
+    ])
+  })
+
+  it('reads linked repositories without indexing them when asked to', async () => {
+    const { deps, stores } = setup({
+      infos: { 'acme/web': info('acme/web') },
+      mirrors: { 'acme/web': memoryMirror(consumer('web')) },
+    })
+
+    const { opened } = await openRelatedRepositories({ ...input(['acme/web']), index: false }, deps)
+
+    expect(
+      opened.map((item) => [item.repo, item.link.consumedByRelated.length, item.graph]),
+    ).toEqual([['acme/web', 1, undefined]])
+    expect(stores).toEqual([])
   })
 
   it('warns about a private repository for a public pull request', async () => {

@@ -11,18 +11,23 @@ export interface RelatedCheckout {
 export const RELATED_NOTE =
   ' With repo, it reads a related repository instead, at the head of its default branch.'
 
-export function withRepo<T extends z.ZodRawShape>(
-  schema: z.ZodObject<T>,
+export type WithRepo<T> = T & { repo?: string }
+
+export function withRepo<S extends z.ZodObject<z.ZodRawShape>>(
+  schema: S,
   repos: readonly string[],
-): z.ZodType {
+): z.ZodType<WithRepo<z.infer<S>>> {
   const [first, ...rest] = repos
-  if (first === undefined) return schema
-  return schema.extend({
-    repo: z
-      .enum([first, ...rest])
-      .optional()
-      .describe('Related repository to read instead of the one under review'),
-  })
+  const extended =
+    first === undefined
+      ? schema
+      : schema.extend({
+          repo: z
+            .enum([first, ...rest])
+            .optional()
+            .describe('Related repository to read instead of the one under review'),
+        })
+  return extended as unknown as z.ZodType<WithRepo<z.infer<S>>>
 }
 
 export function qualified(repo: string | undefined, path: string): string {

@@ -1,3 +1,4 @@
+import { packageKey } from './packages.js'
 import type { PackageRef, RepositoryPackages } from './packages.js'
 
 export interface RepositoryLink {
@@ -20,6 +21,6 @@ export function hasLink(link: RepositoryLink): boolean {
 }
 
 function shared(published: readonly PackageRef[], depends: readonly PackageRef[]): PackageRef[] {
-  const wanted = new Set(depends.map((item) => `${item.ecosystem}\0${item.name}`))
-  return published.filter((item) => wanted.has(`${item.ecosystem}\0${item.name}`))
+  const wanted = new Set(depends.map(packageKey))
+  return published.filter((item) => wanted.has(packageKey(item)))
 }

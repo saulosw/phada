@@ -1,6 +1,6 @@
 import type { PullRequest } from '../github/pull-request.js'
 import type { Toolbox } from '../investigation/toolbox.js'
-import { renderImpact } from './impact-text.js'
+import { reachesOutside, renderImpact } from './impact-text.js'
 import type { ContextDoc, ContextRule, DiffImpact, RelatedSummary, ReviewContext } from './types.js'
 
 export const CONFIDENCE_SCALE = `Rate each candidate problem from 0 to 100 for how sure you are that it is
@@ -82,10 +82,7 @@ function relatedLine({
 }
 
 export function hasImpact(impact: DiffImpact | undefined): impact is DiffImpact {
-  return (
-    impact !== undefined &&
-    impact.symbols.some((symbol) => symbol.callers > 0 || symbol.capped === true)
-  )
+  return impact !== undefined && impact.symbols.some(reachesOutside)
 }
 
 export function impactBlocks(impact: DiffImpact | undefined, nonce: string): string[] {

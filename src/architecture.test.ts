@@ -166,6 +166,7 @@ const APP: Boundary = {
     '../store/observed-store.js',
   ]),
   expected: [
+    'error-message.ts',
     'index-repository.ts',
     'related-report.ts',
     'related-repositories.ts',

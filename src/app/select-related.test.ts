@@ -13,7 +13,6 @@ const info = (repo: string, fields: Partial<RepositoryInfo> = {}): RepositoryInf
   repo,
   private: false,
   defaultBranch: 'main',
-  archived: false,
   empty: false,
   ...fields,
 })
@@ -36,11 +35,11 @@ describe('selectCandidates', () => {
     ).toHaveLength(1)
   })
 
-  it('skips the reviewed repository, a repository it cannot read and an empty one; keeps an archived one', () => {
+  it('skips the reviewed repository, a repository it cannot read and an empty one', () => {
     const infos = new Map<string, RepositoryInfo | 'no-access'>([
       ['acme/gone', 'no-access'],
       ['acme/empty', info('acme/empty', { empty: true })],
-      ['acme/old', info('acme/old', { archived: true })],
+      ['acme/old', info('acme/old')],
     ])
     const list = ['Acme/Shop', 'acme/gone', 'acme/empty', 'acme/old'].map(declared)
 
@@ -83,10 +82,9 @@ describe('rankRelated', () => {
     ] as const
     const items = states.map((state, order) => ({ state, order, name: `r${order}` }))
 
-    const { kept, dropped } = rankRelated(items)
+    const kept = rankRelated(items)
 
     expect(kept.map((item) => item.name)).toEqual(['r2', 'r4', 'r7', 'r1', 'r5', 'r0', 'r3'])
-    expect(dropped.map((item) => item.name)).toEqual(['r6', 'r8'])
     expect(MAX_RELATED).toBe(7)
   })
 })

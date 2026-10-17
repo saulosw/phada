@@ -1,5 +1,5 @@
 import { GitHubAuthError, GitHubError } from './errors.js'
-import { booleanField, field, numberField, stringField } from './json-fields.js'
+import { booleanField, field, stringField } from './json-fields.js'
 import { ACCEPT_JSON, ensureOk, readJson, sendGitHubRequest } from './request.js'
 import type { GitHubRequestContext } from './request.js'
 import type { RepositoryFilesOptions } from './repository-files.js'
@@ -10,7 +10,6 @@ export interface RepositoryInfo {
   repo: string
   private: boolean
   defaultBranch?: string
-  archived: boolean
   empty: boolean
 }
 
@@ -46,13 +45,12 @@ export async function fetchRepository(options: RepositoryFilesOptions): Promise<
     throw error
   }
   const json = await readJson(response, ctx)
-  const defaultBranch = field(json, 'default_branch')
-  const size = numberField(json, 'size')
+  const branch = field(json, 'default_branch')
+  const defaultBranch = typeof branch === 'string' && branch !== '' ? branch : undefined
   return {
     repo: stringField(json, 'full_name'),
     private: booleanField(json, 'private'),
-    ...(typeof defaultBranch === 'string' && defaultBranch !== '' ? { defaultBranch } : {}),
-    archived: booleanField(json, 'archived'),
-    empty: size === 0 || typeof defaultBranch !== 'string' || defaultBranch === '',
+    ...(defaultBranch === undefined ? {} : { defaultBranch }),
+    empty: defaultBranch === undefined,
   }
 }

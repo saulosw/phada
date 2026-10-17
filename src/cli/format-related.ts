@@ -1,4 +1,5 @@
 import type { RelatedEntry, RelatedReport } from '../app/related-report.js'
+import { MAX_RELATED } from '../app/select-related.js'
 import type { SkipReason } from '../app/select-related.js'
 import { toTerminalText } from './terminal-text.js'
 import { formatCount } from './units.js'
@@ -9,7 +10,7 @@ const SKIP_TEXT: Readonly<Record<SkipReason, string>> = {
   empty: 'empty',
   'private-on-public': 'private, PR is public',
   'fetch-failed': 'fetch failed',
-  limit: 'over the limit of 7',
+  limit: `over the limit of ${MAX_RELATED}`,
 }
 
 export function formatRelatedLine(report: RelatedReport): string | undefined {

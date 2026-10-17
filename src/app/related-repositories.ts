@@ -11,12 +11,16 @@ import type { Extractor } from '../repo-map/extract.js'
 import type { Checkout } from '../repository/checkout.js'
 import type { GitMirror, TreeFile } from '../repository/git-mirror.js'
 import type { IndexStore } from '../store/index-store.js'
+import { errorMessage } from './error-message.js'
 import { DEPENDENCY_FOLDERS, indexCommit, KEEP_COMMITS } from './index-repository.js'
 import { selectCandidates } from './select-related.js'
 import type { RelatedCandidate, SkippedRepository } from './select-related.js'
 
 export const RELATED_INDEX_BUDGET_MS = 60_000
 export const RELATED_REF = 'refs/phada/default'
+
+const NO_ACCESS =
+  /repository not found|authentication failed|could not read username|access denied|permission denied|error: 40[34]/i
 
 export interface RelatedAccess {
   openMirror(): Promise<GitMirror>
@@ -43,6 +47,7 @@ export interface OpenRelatedInput {
   pullRequestPrivate: boolean
   privateOnPublic: boolean
   reviewedPackages: RepositoryPackages
+  index: boolean
 }
 
 export interface OpenedRelated {
@@ -91,6 +96,8 @@ export async function openRelatedRepositories(
         `${item.repo} is private and ${input.reviewed} is public: allow it in your own config with context.privateOnPublic.`,
       )
     }
+    if (item.reason === 'empty')
+      events.warning(`${item.repo} has no commits: reviewing without it.`)
   }
   const order = new Map(input.declared.map((item, index) => [item.repo, index]))
   const fetched = await Promise.all(
@@ -105,9 +112,7 @@ export async function openRelatedRepositories(
         )
         const files = await mirror.listFiles(sha)
         const checkout = mirror.checkout(sha)
-        const packages = await readPackages(new Set(files.map((file) => file.path)), (path) =>
-          checkout.readText(path),
-        )
+        const packages = await checkoutPackages(files, checkout)
         return {
           candidate,
           access,
@@ -119,6 +124,10 @@ export async function openRelatedRepositories(
         }
       } catch (error) {
         const message = errorMessage(error)
+        if (NO_ACCESS.test(message)) {
+          events.warning(`${message}: reviewing without it.`)
+          return { repo, origin, reason: 'no-access', message }
+        }
         events.warning(`${message}: run phada index ${repo} to prepare it.`)
         return { repo, origin, reason: 'fetch-failed', message }
       }
@@ -132,7 +141,8 @@ export async function openRelatedRepositories(
       continue
     }
     const { repo, origin, description } = item.candidate.declared
-    const indexed = hasLink(item.link) ? await indexRelated(item, deadline, deps) : {}
+    const indexed =
+      input.index && hasLink(item.link) ? await indexRelated(item, deadline, deps) : {}
     opened.push({
       repo,
       origin,
@@ -149,6 +159,13 @@ export async function openRelatedRepositories(
     })
   }
   return { opened, skipped }
+}
+
+export function checkoutPackages(
+  files: readonly TreeFile[],
+  checkout: Checkout,
+): Promise<RepositoryPackages> {
+  return readPackages(new Set(files.map((file) => file.path)), (path) => checkout.readText(path))
 }
 
 async function indexRelated(
@@ -197,8 +214,4 @@ async function indexRelated(
     )
     return {}
   }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }

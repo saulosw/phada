@@ -58,7 +58,7 @@ describe('createInvestigation', () => {
 })
 
 describe('createInvestigation with related repositories', () => {
-  it('offers repo on the reading and graph tools, never on history, and closes every checkout', async () => {
+  it('offers repo on the reading tools, never on history, and leaves the related checkouts to their owner', async () => {
     const closed: string[] = []
     const investigation = createInvestigation(
       checkout(() => closed.push('reviewed')),
@@ -74,6 +74,6 @@ describe('createInvestigation with related repositories', () => {
     await investigation.close()
 
     expect(withRepo).toEqual(['read_file', 'grep', 'list'])
-    expect(closed).toEqual(['reviewed', 'acme/web'])
+    expect(closed).toEqual(['reviewed'])
   })
 })

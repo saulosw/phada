@@ -2,6 +2,14 @@ import type { DiffImpact, ImpactSite, ImpactedSymbol } from './types.js'
 
 export const IMPACT_BUDGET_BYTES = 4_000
 
+export function reachesOutside(symbol: ImpactedSymbol): boolean {
+  return (
+    symbol.callers > 0 ||
+    symbol.capped === true ||
+    symbol.dependencies.some((dependency) => dependency.repo !== undefined)
+  )
+}
+
 export function renderImpact(
   impact: DiffImpact,
   budget = IMPACT_BUDGET_BYTES,
@@ -15,7 +23,7 @@ export function renderImpact(
     used += Buffer.byteLength(line) + 1
   }
   let skipped = impact.omittedSymbols
-  const reached = impact.symbols.map((symbol) => symbol.callers > 0 || symbol.capped === true)
+  const reached = impact.symbols.map(reachesOutside)
   const shownBySymbol = impact.symbols.map(() => 0)
   const withCallers = impact.symbols.flatMap((symbol, index) => (reached[index] ? [index] : []))
   for (const [position, index] of withCallers.entries()) {
@@ -42,8 +50,7 @@ export function renderImpact(
     if (symbol.dependencies.length > 0) {
       const depends = `  depends on: ${symbol.dependencies
         .map(
-          ({ name, repo, path, line, kind }) =>
-            `${name} → ${repo === undefined ? '' : `${repo}:`}${path}:${line} (${kind})`,
+          ({ name, repo, path, line, kind }) => `${name} → ${place(repo, path)}:${line} (${kind})`,
         )
         .join(', ')}`
       if (fits(depends)) add(depends)
@@ -93,6 +100,9 @@ function siteLine(site: ImpactSite): string {
       : site.how === 'observed'
         ? ` [observed${site.pullRequest === undefined ? '' : ` #${site.pullRequest}`}]`
         : ''
-  const place = `${site.repo === undefined ? '' : `${site.repo}:`}${site.path}:${site.line}`
-  return `  ${place}${owner}${kind}${tag}: ${site.text}`
+  return `  ${place(site.repo, site.path)}:${site.line}${owner}${kind}${tag}: ${site.text}`
+}
+
+function place(repo: string | undefined, path: string): string {
+  return repo === undefined ? path : `${repo}:${path}`
 }

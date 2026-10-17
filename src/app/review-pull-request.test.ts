@@ -158,6 +158,7 @@ function setup(overrides: Partial<PullRequestReviewDeps> = {}, outputs: ReviewOu
       indexing: (total) => events.push(`indexing ${total}`),
       indexed: () => {},
       impactReady: (report) => events.push(`impact ${report.status}`),
+      relatedReady: () => {},
     },
     ...overrides,
   }
@@ -539,12 +540,15 @@ describe('reviewPullRequest with related repositories', () => {
     repo,
     private: false,
     defaultBranch: 'main',
-    archived: false,
     empty: false,
     ...fields,
   })
 
-  function relatedDeps(infos: Record<string, RepositoryInfo>, read: string[] = []): RelatedDeps {
+  function relatedDeps(
+    infos: Record<string, RepositoryInfo>,
+    read: string[] = [],
+    stores: { closed: boolean }[] = [],
+  ): RelatedDeps {
     return {
       readRepository: async (repo) => {
         read.push(repo)
@@ -554,7 +558,17 @@ describe('reviewPullRequest with related repositories', () => {
       },
       openRelated: (repo) => ({
         openMirror: async () => memoryMirror(repo === 'acme/web' ? WEB : { 'README.md': '# x\n' }),
-        openIndexStore: () => openIndexStore(freshPath('related')),
+        openIndexStore: async () => {
+          const store = await openIndexStore(freshPath('related'))
+          const tracked = { closed: false }
+          stores.push(tracked)
+          const close = store.close.bind(store)
+          store.close = () => {
+            tracked.closed = true
+            close()
+          }
+          return store
+        },
       }),
       extractor,
       now: () => 0,
@@ -586,6 +600,78 @@ describe('reviewPullRequest with related repositories', () => {
         { repo: 'acme/admin', state: 'unlinked', packages: [], graph: false },
       ],
     })
+  })
+
+  it('reads related repositories without indexing them when the head has no graph', async () => {
+    const stores: { closed: boolean }[] = []
+    const h = setup({
+      contextSources: sources('context:\n  repos: [acme/web]'),
+      related: relatedDeps({ 'acme/web': info('acme/web') }, [], stores),
+      openIndexStore: async () => {
+        throw new IndexStoreError('Cannot open the index: read-only file system')
+      },
+    })
+
+    const result = await reviewPullRequest(input, h.deps)
+
+    expect(stores).toEqual([])
+    expect(h.prompts[0]?.data).toContain(
+      'acme/web at ccccccc — linked by package, no relation to this change (read tools only)',
+    )
+    expect(result.related.repositories).toEqual([
+      expect.objectContaining({ repo: 'acme/web', state: 'linked', graph: false }),
+    ])
+  })
+
+  it('keeps the review when the files of the head cannot be listed for the related repositories', async () => {
+    const h = setup({
+      contextSources: sources('context:\n  repos: [acme/web]'),
+      related: relatedDeps({ 'acme/web': info('acme/web') }),
+      openMirror: async () => {
+        const mirror = fakeMirror(() => {})
+        let calls = 0
+        const listFiles = mirror.listFiles.bind(mirror)
+        mirror.listFiles = async (sha) => {
+          calls += 1
+          if (calls > 1)
+            throw new CheckoutUnavailableError(
+              'fetch-failed',
+              'Could not list the files of abc1234',
+            )
+          return listFiles(sha)
+        }
+        return mirror
+      },
+    })
+
+    const result = await reviewPullRequest(input, h.deps)
+
+    expect(result.outcome.status).toBe('reviewed')
+    expect(result.related).toEqual({
+      status: 'unavailable',
+      reason: 'Could not list the files of abc1234',
+      repositories: [],
+    })
+    expect(h.events).toContain(
+      'warning: Could not list the files of abc1234: reviewing without related repositories.',
+    )
+  })
+
+  it('closes the related repositories when the provider fails', async () => {
+    const stores: { closed: boolean }[] = []
+    const h = setup({
+      contextSources: sources('context:\n  repos: [acme/web]'),
+      related: relatedDeps({ 'acme/web': info('acme/web') }, [], stores),
+      createProvider: () => ({
+        id: 'fake',
+        review: async () => {
+          throw new Error('the AI CLI crashed')
+        },
+      }),
+    })
+
+    await expect(reviewPullRequest(input, h.deps)).rejects.toThrow('the AI CLI crashed')
+    expect(stores).toEqual([{ closed: true }])
   })
 
   it('keeps seven consumers and leaves the eighth out of the impact too', async () => {

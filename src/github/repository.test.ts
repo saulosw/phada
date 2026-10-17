@@ -17,20 +17,14 @@ const repositoryBody = (fields: Record<string, unknown>) =>
   })
 
 describe('fetchRepository', () => {
-  it('reads the visibility, the default branch and whether it is archived or empty', async () => {
+  it('reads the visibility, the default branch and whether it is empty', async () => {
     const { fetch, calls } = createFakeFetch({
       [JSON_ACCEPT]: [{ status: 200, body: repositoryBody({ archived: true }) }],
     })
 
     const info = await fetchRepository({ owner: 'acme', repo: 'web', token: TOKEN, fetch })
 
-    expect(info).toEqual({
-      repo: 'acme/web',
-      private: true,
-      defaultBranch: 'main',
-      archived: true,
-      empty: false,
-    })
+    expect(info).toEqual({ repo: 'acme/web', private: true, defaultBranch: 'main', empty: false })
     expect(calls[0]?.url).toBe('https://api.github.com/repos/acme/web')
   })
 
@@ -41,7 +35,17 @@ describe('fetchRepository', () => {
 
     const info = await fetchRepository({ owner: 'acme', repo: 'web', token: TOKEN, fetch })
 
-    expect(info).toEqual({ repo: 'acme/web', private: true, archived: false, empty: true })
+    expect(info).toEqual({ repo: 'acme/web', private: true, empty: true })
+  })
+
+  it('keeps a new repository whose size GitHub has not computed yet', async () => {
+    const { fetch } = createFakeFetch({
+      [JSON_ACCEPT]: [{ status: 200, body: repositoryBody({ size: 0 }) }],
+    })
+
+    const info = await fetchRepository({ owner: 'acme', repo: 'web', token: TOKEN, fetch })
+
+    expect(info.empty).toBe(false)
   })
 
   it.each([404, 403])(
