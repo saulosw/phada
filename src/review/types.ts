@@ -60,6 +60,17 @@ export interface DiffImpact {
   callerFiles: number
 }
 
+export type RelatedState = 'consumers' | 'uses' | 'linked' | 'unlinked'
+
+export interface RelatedSummary {
+  repo: string
+  commit: string
+  state: RelatedState
+  count?: number
+  description?: string
+  graph: boolean
+}
+
 export interface ReviewRequest {
   pullRequest: PullRequest
   language?: string
@@ -67,6 +78,7 @@ export interface ReviewRequest {
   verify?: boolean
   context?: ReviewContext
   impact?: DiffImpact
+  related?: RelatedSummary[]
 }
 
 export interface ReviewTarget {
