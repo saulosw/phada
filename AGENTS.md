@@ -39,10 +39,18 @@ src/
                          #   src/graph/ and src/app/
   app/                   # use cases any caller can run (CLI today), with injected readers
     review-pull-request.ts # reviewPullRequest(): repository context → mirror → index of the head
-                         #   (60 s budget) → graph and impact of the diff → investigation → review
-                         #   → observed relations → reports; progress through typed events
+                         #   (60 s budget) → related repositories → graph and impact of the diff
+                         #   across them → investigation → review → observed relations → reports;
+                         #   progress through typed events
     index-repository.ts  #   indexRepository(): mirror → files left out and why → indexCommit();
                          #   indexCommit(): extract new blobs (optional deadline) → store the commit
+    related-repositories.ts # openRelatedRepositories(): metadata → selection → fetch of the default
+                         #   branch → manifests and links → index of the linked ones (60 s in total)
+    select-related.ts    #   selectCandidates() (access, empty, private on public, 20 at most),
+                         #   rankRelated() (7: related to the change › linked › the rest)
+    related-report.ts    #   rankOpened(), buildRelatedReport(), relatedSummaries(): the related
+                         #   repositories for the prompt, the CLI and the JSON
+    error-message.ts     #   errorMessage(): the message of any thrown value
   cli/                   # terminal edge
     args.ts              #   parseCliArgs(): `review` (--dry-run, --force, --verify/--no-verify,
                          #   --investigate/--no-investigate) and
@@ -101,7 +109,7 @@ src/
     pull-request-reviews.ts # fetchReviewState(): viewer, reviews and threads, paginated
     create-review.ts     #   createReview(): one COMMENT review with line comments
     repository-files.ts  #   fetchRepositoryTree(), fetchRepositoryFile(): the repository at a commit
-    repository.ts        #   fetchRepository(): visibility, default branch, archived or empty
+    repository.ts        #   fetchRepository(): visibility, default branch, empty
   graph/                 # the repository graph, resolved on demand from the index of a commit
     types.ts             #   RepositoryGraph, GraphSymbol, Site, Dependency, …
     project-config.ts    #   tsconfig/jsconfig paths, package.json of the repository's own
@@ -112,7 +120,8 @@ src/
     repository-graph.ts  #   openRepositoryGraph(): findSymbol, callers, dependencies, similar,
                          #   symbolAt, lineText, observed relations, exported, externalSites
     packages.ts          #   readPackages(): what the manifests publish and depend on (npm, Go,
-                         #   Python); toml.ts reads the few TOML tables it needs
+                         #   Python)
+    toml.ts              #   parseTomlTables(): the strings and string arrays of each TOML table
     repository-links.ts  #   linkRepositories(): packages one repository publishes and the other uses
     linked-graph.ts      #   linkGraphs(): callers in consumers, dependencies in publishers
     similar.ts           #   scoreSimilar(): calls, parameters, name tokens, owner kind
