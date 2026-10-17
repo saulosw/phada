@@ -167,6 +167,7 @@ const APP: Boundary = {
   ]),
   expected: [
     'index-repository.ts',
+    'related-report.ts',
     'related-repositories.ts',
     'review-pull-request.ts',
     'select-related.ts',

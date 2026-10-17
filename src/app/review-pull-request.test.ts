@@ -16,6 +16,9 @@ import type { GitMirror, TreeFile } from '../repository/git-mirror.js'
 import { IndexStoreError, openIndexStore } from '../store/index-store.js'
 import { openObservedStore } from '../store/observed-store.js'
 import type { ObservedStore } from '../store/observed-store.js'
+import { memoryMirror } from '../../test/support/memory-mirror.js'
+import type { RepositoryInfo } from '../github/repository.js'
+import type { RelatedDeps } from './related-repositories.js'
 import { reviewPullRequest } from './review-pull-request.js'
 import type { PullRequestReviewDeps } from './review-pull-request.js'
 
@@ -45,6 +48,7 @@ export function buy(id: string) {
 }
 `,
   'src/routes.ts': "export const routes = { buy: 'spend' }\n",
+  'package.json': '{ "name": "shop", "main": "src/shop.ts" }\n',
   '.phada/config.yml': 'ignore: ["**"]\n',
 }
 
@@ -209,7 +213,7 @@ describe('reviewPullRequest', () => {
     expect(result.outcome.status).toBe('reviewed')
     expect(result.impact).toMatchObject({
       status: 'used',
-      index: { files: 4, extracted: 3 },
+      index: { files: 5, extracted: 3 },
       totals: { symbols: 1, callers: 1, files: 1 },
     })
     expect(result.investigation).toMatchObject({ status: 'used', totals: { calls: 1 } })
@@ -523,5 +527,153 @@ describe('reviewPullRequest', () => {
     await reviewPullRequest({ ...input, options: { investigate: false, verify: false } }, h.deps)
 
     expect(passes).toEqual(['review', 'verify'])
+  })
+})
+
+describe('reviewPullRequest with related repositories', () => {
+  const WEB = {
+    'package.json': '{ "name": "web", "dependencies": { "shop": "^1" } }\n',
+    'src/web.ts': "import { spend } from 'shop'\nexport const paid = spend('u1', 2)\n",
+  }
+  const info = (repo: string, fields: Partial<RepositoryInfo> = {}): RepositoryInfo => ({
+    repo,
+    private: false,
+    defaultBranch: 'main',
+    archived: false,
+    empty: false,
+    ...fields,
+  })
+
+  function relatedDeps(infos: Record<string, RepositoryInfo>, read: string[] = []): RelatedDeps {
+    return {
+      readRepository: async (repo) => {
+        read.push(repo)
+        const found = infos[repo]
+        if (found === undefined) throw new Error(`Cannot read ${repo}`)
+        return found
+      },
+      openRelated: (repo) => ({
+        openMirror: async () => memoryMirror(repo === 'acme/web' ? WEB : { 'README.md': '# x\n' }),
+        openIndexStore: () => openIndexStore(freshPath('related')),
+      }),
+      extractor,
+      now: () => 0,
+      events: { warning: () => {}, indexing: () => {}, indexed: () => {} },
+    }
+  }
+
+  it('follows the change into a consumer and lets the AI read it', async () => {
+    const h = setup({
+      contextSources: sources('context:\n  repos: [acme/web, acme/admin]'),
+      related: relatedDeps({ 'acme/web': info('acme/web'), 'acme/admin': info('acme/admin') }),
+    })
+
+    const result = await reviewPullRequest(input, h.deps)
+
+    const data = h.prompts[0]?.data ?? ''
+    expect(data).toContain("acme/web:src/web.ts:2: export const paid = spend('u1', 2)")
+    expect(data).toContain('acme/web at ccccccc — uses the changed code at 1 place')
+    expect(data).toContain('acme/admin at ccccccc — no package link (read tools only)')
+    expect(
+      h.prompts[0]?.tools?.definitions.find((tool) => tool.name === 'read_file')?.inputSchema,
+    ).toMatchObject({
+      properties: { repo: { enum: ['acme/web', 'acme/admin'] } },
+    })
+    expect(result.related).toMatchObject({
+      status: 'used',
+      repositories: [
+        { repo: 'acme/web', state: 'consumers', count: 1, packages: ['shop'], graph: true },
+        { repo: 'acme/admin', state: 'unlinked', packages: [], graph: false },
+      ],
+    })
+  })
+
+  it('keeps seven consumers and leaves the eighth out of the impact too', async () => {
+    const names = Array.from({ length: 8 }, (_, index) => `acme/web${index}`)
+    const deps = relatedDeps(Object.fromEntries(names.map((name) => [name, info(name)])))
+    const h = setup({
+      contextSources: sources(`context:\n  repos: [${names.join(', ')}]`),
+      related: { ...deps, openRelated: (repo) => ({ ...deps.openRelated('acme/web'), repo }) },
+    })
+
+    const result = await reviewPullRequest(input, h.deps)
+
+    const data = h.prompts[0]?.data ?? ''
+    expect(data).toContain('acme/web6 at')
+    expect(data).not.toContain('acme/web7')
+    expect(result.related.repositories.at(-1)).toMatchObject({
+      repo: 'acme/web7',
+      state: 'skipped',
+      reason: 'limit',
+    })
+  })
+
+  it('reads no related repository without investigation, and says when none is declared', async () => {
+    const read: string[] = []
+    const off = setup({
+      contextSources: sources('context:\n  repos: [acme/web]'),
+      related: relatedDeps({ 'acme/web': info('acme/web') }, read),
+    })
+
+    const result = await reviewPullRequest(
+      { ...input, options: { verify: false, investigate: false } },
+      off.deps,
+    )
+    const none = await reviewPullRequest(input, setup({ related: relatedDeps({}) }).deps)
+
+    expect(read).toEqual([])
+    expect(result.related).toEqual({ status: 'off', repositories: [] })
+    expect(none.related).toEqual({ status: 'none', repositories: [] })
+  })
+
+  it('keeps a private repository out of a public pull request even if the repository allows it', async () => {
+    const h = setup({
+      contextSources: sources('context:\n  repos: [acme/web]\n  privateOnPublic: true'),
+      related: relatedDeps({ 'acme/web': info('acme/web', { private: true }) }),
+    })
+
+    const result = await reviewPullRequest(input, h.deps)
+
+    expect(result.related.repositories).toEqual([
+      expect.objectContaining({ repo: 'acme/web', state: 'skipped', reason: 'private-on-public' }),
+    ])
+    expect(h.prompts[0]?.data).not.toContain('PHADA_RELATED')
+  })
+
+  it('never learns an edge from a source in another repository', async () => {
+    const finding = findingFixture({
+      file: 'src/shop.ts',
+      line: 3,
+      confidence: 95,
+      sources: ['acme/web:src/web.ts:2'],
+    })
+    const outputs: ReviewOutput[] = [
+      { text: reviewReportJson({ findings: [finding] }), durationMs: 10 },
+      {
+        text: verificationJson([verdictFixture({ id: 1, reason: 'The web app pays twice' })]),
+        durationMs: 5,
+      },
+    ]
+    let calls = 0
+    const h = setup({
+      contextSources: sources('context:\n  repos: [acme/web]'),
+      related: relatedDeps({ 'acme/web': info('acme/web') }),
+      createProvider: () => ({
+        id: 'fake',
+        review: async (prompt) => {
+          calls += 1
+          if (calls === 1)
+            await prompt.tools?.call('read_file', { repo: 'acme/web', path: 'src/web.ts' })
+          return outputs[calls - 1] ?? OUTPUT
+        },
+      }),
+    })
+
+    const result = await reviewPullRequest({ ...input, options: { verify: true } }, h.deps)
+
+    const reviewed = result.outcome.status === 'reviewed' ? result.outcome.result : undefined
+    expect(reviewed?.findings[0]?.sources).toEqual(['acme/web:src/web.ts:2'])
+    expect(result.impact.learned).toEqual([])
+    expect(await h.observedEdges()).toEqual([])
   })
 })
