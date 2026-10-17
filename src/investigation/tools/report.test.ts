@@ -9,7 +9,7 @@ function logOf(...records: Parameters<ToolLog['add']>[0][]): ToolLog {
   return log
 }
 
-const base = { pass: 'review' as const, durationMs: 3, bytes: 100 }
+const base = { pass: 'review' as const, durationMs: 3, bytes: 100, touched: [] }
 
 describe('buildInvestigationReport', () => {
   it('describes each call by its target and marks the ones used in a finding', () => {

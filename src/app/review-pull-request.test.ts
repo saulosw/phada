@@ -400,6 +400,52 @@ describe('reviewPullRequest', () => {
     expect((await h.observedEdges()).map((edge) => edge.to.path)).toEqual(['src/routes.ts'])
   })
 
+  it('learns nothing from a file of the diff that a tool only listed', async () => {
+    const diff = [
+      pullRequestFixture().diff,
+      'diff --git a/src/routes.ts b/src/routes.ts',
+      '--- a/src/routes.ts',
+      '+++ b/src/routes.ts',
+      '@@ -1 +1 @@',
+      "-export const routes = { buy: 'buy' }",
+      "+export const routes = { buy: 'spend' }",
+      '',
+    ].join('\n')
+    const finding = findingFixture({
+      file: 'src/shop.ts',
+      line: 3,
+      confidence: 95,
+      sources: ['src/routes.ts'],
+    })
+    const outputs: ReviewOutput[] = [
+      { text: reviewReportJson({ findings: [finding] }), durationMs: 10 },
+      {
+        text: verificationJson([verdictFixture({ id: 1, reason: 'The route calls it by name' })]),
+        durationMs: 5,
+      },
+    ]
+    let calls = 0
+    const h = setup({
+      createProvider: () => ({
+        id: 'fake',
+        review: async (prompt) => {
+          calls += 1
+          if (calls === 1) await prompt.tools?.call('find_symbol', { name: 'routes' })
+          return outputs[calls - 1] ?? OUTPUT
+        },
+      }),
+    })
+
+    const result = await reviewPullRequest(
+      { ...input, pullRequest: pullRequestFixture({ diff }), options: { verify: true } },
+      h.deps,
+    )
+
+    expect(result.investigation.calls).toMatchObject([{ tool: 'find_symbol', inSources: true }])
+    expect(result.impact.learned).toEqual([])
+    expect(await h.observedEdges()).toEqual([])
+  })
+
   it('closes the checkout when the provider cannot be created', async () => {
     const h = setup()
     h.deps.createProvider = () => {

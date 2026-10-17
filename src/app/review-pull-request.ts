@@ -287,7 +287,7 @@ function learn(
     graph: head.graph,
     findings: reviewed.findings,
     verified: reviewed.verification !== undefined,
-    readPaths: new Set(investigation.log.records.flatMap((record) => record.paths)),
+    readPaths: new Set(investigation.log.records.flatMap((record) => record.touched)),
     pullRequest: pullRequest.number,
     commit: head.graph.commit,
     known: head.observed.all(),

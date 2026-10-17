@@ -44,12 +44,18 @@ export function createToolbox(
     touchedPaths: () => [...touched],
     async call(name: string, args: unknown, options: ToolCallOptions = {}): Promise<ToolResult> {
       const startedAt = performance.now()
-      const record = (fields: { paths?: string[]; bytes?: number; error?: string }) =>
+      const record = (fields: {
+        paths?: string[]
+        touched?: string[]
+        bytes?: number
+        error?: string
+      }) =>
         log.add({
           pass,
           tool: name,
           args,
           paths: fields.paths ?? [],
+          touched: fields.touched ?? [],
           bytes: fields.bytes ?? 0,
           durationMs: performance.now() - startedAt,
           ...(fields.error === undefined ? {} : { error: fields.error }),
@@ -85,7 +91,7 @@ export function createToolbox(
         const size = Buffer.byteLength(text)
         bytes += size
         for (const path of output.touched) touched.add(path)
-        record({ paths: output.paths, bytes: size })
+        record({ paths: output.paths, touched: output.touched, bytes: size })
         return { text, isError: false }
       } catch (error) {
         const { code, message } = describeFailure(name, error)
