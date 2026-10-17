@@ -31,6 +31,7 @@ export interface Site {
 }
 
 export interface Dependency {
+  repo?: string
   name: string
   line: number
   kind: EdgeKind
@@ -97,6 +98,7 @@ export interface RepositoryGraph {
   externalSites(name: string): ExternalSite[]
   importsModule(path: string, accepts: (module: string) => boolean): boolean
   languageOf(path: string): Language | undefined
+  resolvesPackage(specifier: string, language: Language): boolean
 }
 
 export interface OpenGraphInput {

@@ -281,6 +281,10 @@ export class NameResolver {
     return paths === undefined ? [] : this.#exported(paths, name, 0, new Set())
   }
 
+  resolvesPackage(specifier: string, language: Language): boolean {
+    return resolvePackage(specifier, language, this.#reader.paths(), this.#config) !== undefined
+  }
+
   membersOf(owner: GraphSymbol, name: string): GraphSymbol[] {
     return this.#membersOf(owner, name, 0)
   }

@@ -337,6 +337,10 @@ class IndexGraph implements RepositoryGraph {
     ].some((item) => accepts(item.module))
   }
 
+  resolvesPackage(specifier: string, language: Language): boolean {
+    return this.#resolver.resolvesPackage(specifier, language)
+  }
+
   languageOf(path: string): Language | undefined {
     return this.#resolver.context(path)?.language
   }
@@ -540,6 +544,8 @@ function dedupeSites(sites: readonly Site[]): Site[] {
 export function sortSites(sites: readonly Site[]): Site[] {
   return [...sites].sort(
     (a, b) =>
+      Number(a.repo !== undefined) - Number(b.repo !== undefined) ||
+      (a.repo ?? '').localeCompare(b.repo ?? '') ||
       HOW_RANK[a.how] - HOW_RANK[b.how] ||
       (a.path < b.path ? -1 : a.path > b.path ? 1 : 0) ||
       a.line - b.line,

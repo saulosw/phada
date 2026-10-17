@@ -107,6 +107,7 @@ const GRAPH: Boundary = {
   ]),
   expected: [
     'impact.ts',
+    'linked-graph.ts',
     'observe.ts',
     'packages.ts',
     'project-config.ts',
