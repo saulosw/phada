@@ -129,6 +129,27 @@ describe('renderImpact', () => {
     expect(Buffer.byteLength(text)).toBeLessThanOrEqual(4_000)
   })
 
+  it('names the repository of a site and of a dependency outside the reviewed one', () => {
+    const impact: DiffImpact = {
+      symbols: [
+        symbol({
+          callers: 1,
+          sites: [site(42, { repo: 'acme/web', in: 'load' })],
+          dependencies: [
+            { name: 'query', repo: 'acme/db', path: 'src/query.ts', line: 12, kind: 'function' },
+          ],
+        }),
+      ],
+      omittedSymbols: 0,
+      callerFiles: 1,
+    }
+
+    const { text } = renderImpact(impact)
+
+    expect(text).toContain('  acme/web:src/api.ts:42 in load: getUser(42)')
+    expect(text).toContain('depends on: query → acme/db:src/query.ts:12 (function)')
+  })
+
   it('says one caller in one file', () => {
     expect(
       renderImpact({

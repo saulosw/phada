@@ -22,6 +22,7 @@ export interface ReviewContext {
 }
 
 export interface ImpactSite {
+  repo?: string
   path: string
   line: number
   in?: string
@@ -33,6 +34,7 @@ export interface ImpactSite {
 
 export interface ImpactDependency {
   name: string
+  repo?: string
   path: string
   line: number
   kind: string

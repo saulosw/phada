@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { indexFixture } from '../../test/support/index-fixture.js'
-import { changedLines, computeImpact } from './impact.js'
+import { changedLines, computeImpact, IMPACT_SITES_PER_SYMBOL } from './impact.js'
+import type { GraphSymbol, RepositoryGraph, Site } from './types.js'
 import { openRepositoryGraph } from './repository-graph.js'
 
 const FILES = {
@@ -229,5 +230,86 @@ describe('computeImpact', () => {
       omittedSymbols: 0,
       callerFiles: 0,
     })
+  })
+})
+
+describe('computeImpact across repositories', () => {
+  function withConsumers(graph: RepositoryGraph, extra: (symbol: GraphSymbol) => Site | Site[]) {
+    return new Proxy(graph, {
+      get(target, property) {
+        if (property === 'callers') {
+          return (wanted: Parameters<typeof graph.callers>[0]) => {
+            const found = target.callers(wanted)
+            return {
+              ...found,
+              sites: [...found.sites, ...found.symbols.flatMap(extra)],
+            }
+          }
+        }
+        if (property === 'lineText') {
+          return async (path: string, line: number, repo?: string) =>
+            repo === undefined ? target.lineText(path, line) : `${repo} ${path} ${line}`
+        }
+        const value = Reflect.get(target, property, target)
+        return typeof value === 'function' ? value.bind(target) : value
+      },
+    })
+  }
+
+  const consumer =
+    (repo: string, path: string, line: number) =>
+    (symbol: GraphSymbol): Site => ({
+      repo,
+      path,
+      line,
+      target: symbol,
+      kind: 'calls',
+      how: 'resolved',
+    })
+
+  it('keeps a consumer site on a path and line the diff changes in the reviewed repository', async () => {
+    const graph = withConsumers(await graphOf(), consumer('acme/web', 'src/jobs.ts', 3))
+
+    const [getUser] = (
+      await computeImpact(graph, [
+        { path: 'src/users.ts', lines: [9] },
+        { path: 'src/jobs.ts', lines: [3] },
+      ])
+    ).symbols
+
+    expect(getUser?.sites.map((site) => `${site.repo ?? '.'}:${site.path}:${site.line}`)).toEqual(
+      expect.arrayContaining(['acme/web:src/jobs.ts:3']),
+    )
+    expect(getUser?.sites.find((site) => site.repo === 'acme/web')?.text).toBe(
+      'acme/web src/jobs.ts 3',
+    )
+  })
+
+  it('counts files per repository and keeps three sites per file of each', async () => {
+    const graph = withConsumers(await graphOf(), (symbol) =>
+      [3, 6, 7, 10].map((line) => consumer('acme/web', 'src/api.ts', line)(symbol)),
+    )
+
+    const [getUser] = (await computeImpact(graph, [{ path: 'src/users.ts', lines: [9] }])).symbols
+
+    expect(getUser?.files).toBe(3)
+    expect(getUser?.sites.filter((site) => site.repo === 'acme/web')).toHaveLength(3)
+    expect(
+      getUser?.sites.filter((site) => site.repo === undefined && site.path === 'src/api.ts'),
+    ).toHaveLength(3)
+  })
+
+  it('keeps at least one site of every consumer repository within the cap', async () => {
+    const many: Record<string, string> = { ...FILES }
+    for (let index = 0; index < 40; index += 1) {
+      many[`src/use${index}.ts`] =
+        `import { getUser } from './users'\nexport const v${index} = getUser('${index}')\n`
+    }
+    const graph = withConsumers(await graphOf(many), consumer('zzz/last', 'src/z.ts', 1))
+
+    const [getUser] = (await computeImpact(graph, [{ path: 'src/users.ts', lines: [9] }])).symbols
+
+    expect(getUser?.sites.length).toBe(IMPACT_SITES_PER_SYMBOL)
+    expect(getUser?.sites.some((site) => site.repo === 'zzz/last')).toBe(true)
   })
 })

@@ -41,7 +41,10 @@ export function renderImpact(
     if (symbol.callers > count && fits(more(count))) add(more(count))
     if (symbol.dependencies.length > 0) {
       const depends = `  depends on: ${symbol.dependencies
-        .map(({ name, path, line, kind }) => `${name} → ${path}:${line} (${kind})`)
+        .map(
+          ({ name, repo, path, line, kind }) =>
+            `${name} → ${repo === undefined ? '' : `${repo}:`}${path}:${line} (${kind})`,
+        )
         .join(', ')}`
       if (fits(depends)) add(depends)
     }
@@ -90,5 +93,6 @@ function siteLine(site: ImpactSite): string {
       : site.how === 'observed'
         ? ` [observed${site.pullRequest === undefined ? '' : ` #${site.pullRequest}`}]`
         : ''
-  return `  ${site.path}:${site.line}${owner}${kind}${tag}: ${site.text}`
+  const place = `${site.repo === undefined ? '' : `${site.repo}:`}${site.path}:${site.line}`
+  return `  ${place}${owner}${kind}${tag}: ${site.text}`
 }
