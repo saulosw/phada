@@ -129,9 +129,12 @@ const APP: Boundary = {
     '../config/parse-config.js',
     '../context/ignore.js',
     '../graph/impact.js',
+    '../graph/linked-graph.js',
     '../graph/observe.js',
+    '../graph/packages.js',
     '../graph/report.js',
     '../graph/repository-graph.js',
+    '../graph/repository-links.js',
     '../investigation/create-investigation.js',
     '../investigation/tools/report.js',
     '../repo-map/languages.js',
@@ -145,7 +148,9 @@ const APP: Boundary = {
     '../context/types.js',
     '../github/pull-request.js',
     '../github/repository.js',
+    '../graph/packages.js',
     '../graph/report.js',
+    '../graph/repository-links.js',
     '../graph/types.js',
     '../investigation/create-investigation.js',
     '../investigation/tools/report.js',
@@ -160,7 +165,12 @@ const APP: Boundary = {
     '../store/index-store.js',
     '../store/observed-store.js',
   ]),
-  expected: ['index-repository.ts', 'review-pull-request.ts', 'select-related.ts'],
+  expected: [
+    'index-repository.ts',
+    'related-repositories.ts',
+    'review-pull-request.ts',
+    'select-related.ts',
+  ],
 }
 const STATIC_MODULE = /^\s*(?:import|export)\s+(type\s+)?(?:[^'"]*?\bfrom\s+)?['"]([^'"]+)['"]/gm
 const DYNAMIC_MODULE = /\bimport\(\s*['"]([^'"]+)['"]\s*\)/g
