@@ -4,7 +4,7 @@ import type { SymbolKind } from '../repo-map/types.js'
 import type { ExportRow, ImportRow, IndexReader, SymbolRow } from '../store/index-reader.js'
 import { dirOf } from './project-config.js'
 import type { ProjectConfig } from './project-config.js'
-import { goPackageFiles, pythonFile, resolveModule } from './resolve-module.js'
+import { goPackageFiles, pythonFile, resolveModule, resolvePackage } from './resolve-module.js'
 import type { ModuleTarget } from './resolve-module.js'
 import type { GraphSymbol } from './types.js'
 
@@ -23,7 +23,14 @@ export interface NameSite {
 }
 
 export type Resolution =
-  { how: 'resolved' | 'inferred'; symbols: GraphSymbol[] } | { how: 'external'; module?: string }
+  | { how: 'resolved' | 'inferred'; symbols: GraphSymbol[] }
+  | { how: 'external'; module?: string; imported?: string; member?: string }
+
+interface ExternalFound {
+  module: string
+  imported?: string
+  member?: string
+}
 
 export interface FileContext {
   path: string
@@ -37,7 +44,7 @@ export interface FileContext {
   exports: readonly ExportRow[]
 }
 
-type Found = GraphSymbol[] | { module: string } | undefined
+type Found = GraphSymbol[] | ExternalFound | undefined
 
 export class NameResolver {
   readonly #reader: IndexReader
@@ -119,8 +126,7 @@ export class NameResolver {
         ? this.#unqualified(context, site, new Set())
         : this.#qualified(context, site)
     if (Array.isArray(found) && found.length > 0) return { how: 'resolved', symbols: found }
-    if (found !== undefined && !Array.isArray(found))
-      return { how: 'external', module: found.module }
+    if (found !== undefined && !Array.isArray(found)) return { how: 'external', ...found }
     return this.#inferred(site.name)
   }
 
@@ -157,7 +163,7 @@ export class NameResolver {
     const namespace = context.namespaces.get(qualifier)
     if (namespace !== undefined) {
       const target = this.#module(context.path, namespace.module, context.language)
-      if (target.kind === 'external') return { module: target.module }
+      if (target.kind === 'external') return { module: target.module, imported: site.name }
       return this.#exported(target.paths, site.name, 0, new Set())
     }
     const binding = context.bindings.get(qualifier)
@@ -167,8 +173,9 @@ export class NameResolver {
         if (submodule !== undefined) return this.#exported(submodule, site.name, 0, new Set())
       }
       const imported = this.#imported(context, binding, new Set())
-      if (!Array.isArray(imported)) return imported
-      return imported.flatMap((owner) => this.#membersOf(owner, site.name, 0))
+      if (imported !== undefined && !Array.isArray(imported))
+        return { ...imported, member: site.name }
+      return (imported ?? []).flatMap((owner) => this.#membersOf(owner, site.name, 0))
     }
     const localClass = context.symbols.find(
       (symbol) => symbol.name === qualifier && CLASS_KINDS.has(symbol.kind),
@@ -182,9 +189,12 @@ export class NameResolver {
 
   #imported(context: FileContext, binding: ImportRow, visited: Set<string>): Found {
     const target = this.#module(context.path, binding.module, context.language)
-    if (target.kind === 'external') return { module: target.module }
     const name =
       binding.kind === 'default' ? 'default' : binding.kind === 'require' ? undefined : binding.name
+    if (target.kind === 'external')
+      return name === undefined
+        ? { module: target.module }
+        : { module: target.module, imported: name }
     if (name === undefined) return { module: binding.module }
     if (context.language === 'python') {
       const submodule = this.#pythonSubmodule(context, binding)
@@ -264,6 +274,15 @@ export class NameResolver {
       if (found.length > 0) return found
     }
     return []
+  }
+
+  exportedFromPackage(specifier: string, name: string, language: Language): GraphSymbol[] {
+    const paths = resolvePackage(specifier, language, this.#reader.paths(), this.#config)
+    return paths === undefined ? [] : this.#exported(paths, name, 0, new Set())
+  }
+
+  membersOf(owner: GraphSymbol, name: string): GraphSymbol[] {
+    return this.#membersOf(owner, name, 0)
   }
 
   #member(context: FileContext, owner: SymbolRow | undefined, name: string): Found {

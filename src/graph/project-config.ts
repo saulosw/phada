@@ -31,7 +31,8 @@ const PACKAGE_JSON = /(^|\/)package\.json$/
 const EXPORT_CONDITIONS = ['import', 'default', 'require', 'node']
 const PYTHON_PROJECT = /(^|\/)(pyproject\.toml|setup\.py|setup\.cfg)$/
 const MAX_EXTENDS = 5
-export const DEPENDENCY_FOLDER = /(^|\/)(node_modules|bower_components|\.venv|venv|site-packages|vendor)\//
+export const DEPENDENCY_FOLDER =
+  /(^|\/)(node_modules|bower_components|\.venv|venv|site-packages|vendor)\//
 export const MAX_CONFIG_FILES = 300
 
 type ReadText = (path: string) => Promise<string>

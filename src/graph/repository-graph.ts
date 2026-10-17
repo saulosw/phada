@@ -1,3 +1,4 @@
+import type { Language } from '../repo-map/languages.js'
 import type { SymbolKind } from '../repo-map/types.js'
 import type { CallRow, IndexReader, ReferenceRow, SymbolRow } from '../store/index-reader.js'
 import type { ObservedEdge, ObservedEndpoint } from '../store/observed-store.js'
@@ -12,6 +13,7 @@ import type {
   Dependency,
   EdgeHow,
   EdgeKind,
+  ExternalSite,
   GraphSymbol,
   OpenGraphInput,
   RepositoryGraph,
@@ -35,6 +37,7 @@ const OWNER_KINDS: ReadonlySet<SymbolKind> = new Set([
   'interface',
   'type',
 ])
+const CLASS_KINDS: ReadonlySet<SymbolKind> = new Set(['class', 'struct', 'interface'])
 const KIND_RANK: Readonly<Record<string, number>> = {
   function: 0,
   method: 0,
@@ -287,6 +290,57 @@ class IndexGraph implements RepositoryGraph {
       : this.#resolver.graphSymbol(path, innermost, context)
   }
 
+  exported(specifier: string, name: string, language: Language): GraphSymbol[] {
+    return this.#resolver.exportedFromPackage(specifier, name, language)
+  }
+
+  members(owner: GraphSymbol, name: string): GraphSymbol[] {
+    return this.#resolver.membersOf(owner, name)
+  }
+
+  exportedMethods(name: string): GraphSymbol[] {
+    return this.#expand(this.#reader.symbolsNamed(name)).filter((symbol) => {
+      if (symbol.kind !== 'method') return false
+      const context = this.#resolver.context(symbol.path)
+      const row = context?.byId.get(symbol.id)
+      const parent = row?.parentId === undefined ? undefined : context?.byId.get(row.parentId)
+      return parent !== undefined && CLASS_KINDS.has(parent.kind) && parent.exported
+    })
+  }
+
+  externalSites(name: string): ExternalSite[] {
+    const names = new Set([name])
+    for (const item of this.#reader.importsNamed(name)) {
+      if (item.alias !== undefined) names.add(item.alias)
+    }
+    const found: ExternalSite[] = []
+    let budget = CALLER_CANDIDATES_MAX
+    for (const each of names) {
+      const calls = this.#reader.callsNamed(each, budget)
+      budget -= calls.length
+      const references = this.#reader.referencesNamed(each, Math.max(budget, 0))
+      budget -= references.length
+      for (const row of calls) found.push(...this.#externalAt(row, 'calls', row.callerId))
+      for (const row of references) found.push(...this.#externalAt(row, 'uses', row.ownerId))
+      if (budget <= 0) break
+    }
+    return found.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0) || a.line - b.line)
+  }
+
+  importsModule(path: string, accepts: (module: string) => boolean): boolean {
+    const context = this.#resolver.context(path)
+    if (context === undefined) return false
+    return [
+      ...context.bindings.values(),
+      ...context.namespaces.values(),
+      ...context.starImports,
+    ].some((item) => accepts(item.module))
+  }
+
+  languageOf(path: string): Language | undefined {
+    return this.#resolver.context(path)?.language
+  }
+
   async lineText(path: string, line: number): Promise<string | undefined> {
     let lines = this.#lines.get(path)
     if (lines === undefined) {
@@ -319,6 +373,32 @@ class IndexGraph implements RepositoryGraph {
         ...(owner === undefined ? {} : { in: this.#resolver.graphSymbol(path, owner, context) }),
         kind,
         how: resolution.how === 'inferred' ? 'inferred' : 'resolved',
+      })
+    }
+    return found
+  }
+
+  #externalAt(
+    row: CallRow | ReferenceRow,
+    kind: 'calls' | 'uses',
+    ownerId: number | undefined,
+  ): ExternalSite[] {
+    const found: ExternalSite[] = []
+    for (const path of this.#reader.pathsOfBlob(row.blobId)) {
+      const context = this.#resolver.context(path)
+      if (context === undefined) continue
+      const resolution = this.#resolver.resolve(context, siteOf(row, ownerId))
+      if (resolution.how !== 'external') continue
+      const owner = ownerId === undefined ? undefined : context.byId.get(ownerId)
+      found.push({
+        path,
+        line: row.line,
+        name: row.name,
+        ...(owner === undefined ? {} : { in: this.#resolver.graphSymbol(path, owner, context) }),
+        kind,
+        ...(resolution.module === undefined ? {} : { module: resolution.module }),
+        ...(resolution.imported === undefined ? {} : { imported: resolution.imported }),
+        ...(resolution.member === undefined ? {} : { member: resolution.member }),
       })
     }
     return found
@@ -428,6 +508,8 @@ function toDependency(
       kind,
       how: 'resolved',
       ...(resolution.module === undefined ? {} : { module: resolution.module }),
+      ...(resolution.imported === undefined ? {} : { imported: resolution.imported }),
+      ...(resolution.member === undefined ? {} : { member: resolution.member }),
     }
   }
   return resolution.symbols.map((target) => ({ name, line, kind, how: resolution.how, target }))
