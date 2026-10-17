@@ -60,6 +60,7 @@ src/
     format-publication.ts #  skip and "Published" messages
     format-context.ts    #   the "Context:" line and the context section of --dry-run
     format-investigation.ts # the "Investigated:" line and the investigation section of --dry-run
+    format-related.ts    #   the "Related:" line and the related repositories section of --dry-run
     format-impact.ts     #   the "Impact:" line and the impact section of --dry-run
     finding-references.ts #  the "Based on" line: sources and rule of a finding
     format-json.ts       #   formatReviewJson(): schemaVersion 1, with the publication, context,
@@ -100,14 +101,20 @@ src/
     pull-request-reviews.ts # fetchReviewState(): viewer, reviews and threads, paginated
     create-review.ts     #   createReview(): one COMMENT review with line comments
     repository-files.ts  #   fetchRepositoryTree(), fetchRepositoryFile(): the repository at a commit
+    repository.ts        #   fetchRepository(): visibility, default branch, archived or empty
   graph/                 # the repository graph, resolved on demand from the index of a commit
     types.ts             #   RepositoryGraph, GraphSymbol, Site, Dependency, …
     project-config.ts    #   tsconfig/jsconfig paths, package.json of the repository's own
                          #   packages, go.mod modules, Python roots
-    resolve-module.ts    #   import specifier → files of the commit, or external
+    resolve-module.ts    #   import specifier → files of the commit, or external;
+                         #   resolvePackage(): a package of the repository as seen from outside
     resolve-name.ts      #   NameResolver: call or use → definitions (resolved, inferred, external)
     repository-graph.ts  #   openRepositoryGraph(): findSymbol, callers, dependencies, similar,
-                         #   symbolAt, lineText, observed relations
+                         #   symbolAt, lineText, observed relations, exported, externalSites
+    packages.ts          #   readPackages(): what the manifests publish and depend on (npm, Go,
+                         #   Python); toml.ts reads the few TOML tables it needs
+    repository-links.ts  #   linkRepositories(): packages one repository publishes and the other uses
+    linked-graph.ts      #   linkGraphs(): callers in consumers, dependencies in publishers
     similar.ts           #   scoreSimilar(): calls, parameters, name tokens, owner kind
     impact.ts            #   changedLines(), computeImpact(): changed symbols → callers and dependencies
     observe.ts           #   learnObservedEdges(): confirmed finding + source the AI read → relation
@@ -118,6 +125,7 @@ src/
     tools/               #   the tools, pure over a Checkout and a RepositoryGraph
       tool-registry.ts   #     RegisteredTool, createToolbox(): validation, budget, answer size, log
       repository-tools.ts #    read_file, grep and list
+      related-repo.ts    #     the repo argument of the tools; owner/repo:path
       history-tool.ts    #     history: commits and blame of a file, pull request from the subject
       graph-tools.ts     #     find_symbol, callers, dependencies and similar
       budget.ts          #     calls and bytes per review pass, answer size
