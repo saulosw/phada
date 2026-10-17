@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { callLines, heritageLines, symbolLines, symbolNamed } from '../../test/support/file-map.js'
+import {
+  callLines,
+  heritageLines,
+  referenceLines,
+  symbolLines,
+  symbolNamed,
+} from '../../test/support/file-map.js'
 import { createExtractor } from './extract.js'
 import type { FileMap } from './types.js'
 
@@ -212,6 +218,7 @@ describe('extract hostile files', () => {
       exports: [],
       calls: [],
       heritage: [],
+      references: [],
       parseErrors: 0,
     })
   })
@@ -245,5 +252,67 @@ describe('extract hostile files', () => {
     )
 
     expect(await slow.extract('typescript', text)).toBe('timeout')
+  })
+})
+
+describe('extract TypeScript references', () => {
+  it('records uses of imported names that are not calls', async () => {
+    const map = await mapOf(
+      'typescript',
+      `import { formatUser, type User } from './user.js'
+import * as db from './db.js'
+import local from './local.js'
+const handlers = [formatUser]
+export function show(u: User): string {
+  const row = db.table
+  return formatUser(u) + local + row + db.render(u)
+}
+function notImported(x: number) { return x }
+const obj = { local }
+`,
+    )
+
+    expect(referenceLines(map)).toEqual([
+      'formatUser in (module):4',
+      'User in show:5',
+      'table on db in show:6',
+      'local in show:7',
+      'local in (module):10',
+    ])
+  })
+
+  it('records an imported component used in JSX', async () => {
+    const map = await mapOf(
+      'tsx',
+      `import Button from './Button'
+export const App = () => <Button label="x" />
+`,
+    )
+
+    expect(referenceLines(map)).toEqual(['Button in App:2'])
+  })
+
+  it('records a type of an imported namespace', async () => {
+    const map = await mapOf(
+      'typescript',
+      `import * as api from './api'
+let current: api.Session | undefined
+`,
+    )
+
+    expect(referenceLines(map)).toEqual(['Session on api in (module):2'])
+  })
+
+  it('records imported types in return types, aliases and fields', async () => {
+    const map = await mapOf(
+      'typescript',
+      `import type { User, Id, Store } from './types'
+export function load(): User { return undefined as never }
+type Key = Id
+class Cache { store: Store }
+`,
+    )
+
+    expect(referenceLines(map)).toEqual(['User in load:2', 'Id in Key:3', 'Store in Cache:4'])
   })
 })

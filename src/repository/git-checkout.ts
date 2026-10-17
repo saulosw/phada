@@ -1,14 +1,29 @@
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { CommandOutputTooLargeError } from '../process/errors.js'
 import type { RunCommandOptions, RunCommandResult } from '../process/run-command.js'
 import { CheckoutError } from './checkout.js'
-import type { Checkout, DirEntry, DirEntryKind, GrepMatch, GrepOptions } from './checkout.js'
+import type {
+  BlameRange,
+  Checkout,
+  DirEntry,
+  DirEntryKind,
+  FileHistory,
+  GrepMatch,
+  GrepOptions,
+  HistoryCommit,
+  LineRange,
+} from './checkout.js'
 
 export const FETCH_TIMEOUT_MS = 120_000
 export const GIT_READ_TIMEOUT_MS = 20_000
 export const READ_MAX_FILE_BYTES = 1_000_000
 export const GREP_MAX_OUTPUT = 2_000_000
+export const HISTORY_COMMITS = 10
 
 const BINARY_PROBE_LENGTH = 8000
+const LOG_FORMAT = '--format=%H%x1f%ad%x1f%an%x1f%s%x1e'
+const BLAME_HEADER = /^([0-9a-f]{40}) \d+ (\d+)/
 const GITHUB_TOKEN_KEYS: ReadonlySet<string> = new Set(['GITHUB_TOKEN', 'GH_TOKEN'])
 const KEPT_GIT_VARIABLES = /^GIT_(SSH|ASKPASS|SSL_|HTTP_|PROXY_|CURL_)/
 const GLOB_CHARS = /[*?[\]{}]/
@@ -48,12 +63,21 @@ export class GitCheckout implements Checkout {
   readonly #run: Run
   readonly #dir: string
   readonly #env: NodeJS.ProcessEnv
+  readonly #deepen: (() => Promise<boolean>) | undefined
+  #deepened: Promise<boolean> | undefined
 
-  constructor(run: Run, dir: string, commit: string, env: NodeJS.ProcessEnv) {
+  constructor(
+    run: Run,
+    dir: string,
+    commit: string,
+    env: NodeJS.ProcessEnv,
+    deepen?: () => Promise<boolean>,
+  ) {
     this.#run = run
     this.#dir = dir
     this.commit = commit
     this.#env = env
+    this.#deepen = deepen
   }
 
   async readText(path: string): Promise<string> {
@@ -135,7 +159,71 @@ export class GitCheckout implements Checkout {
     return entries.map(({ mode, name }) => ({ name, kind: KIND_BY_MODE[mode] ?? 'file' }))
   }
 
+  async history(path: string, range?: LineRange): Promise<FileHistory> {
+    if (this.#deepen !== undefined) {
+      this.#deepened ??= this.#deepen().catch(() => false)
+      await this.#deepened
+    }
+    const shallow = await this.#shallowCommits()
+    if (range === undefined) {
+      const commits = parseLog(
+        await this.#git(
+          [
+            'log',
+            '-n',
+            String(HISTORY_COMMITS),
+            '--date=short',
+            LOG_FORMAT,
+            this.commit,
+            '--',
+            path,
+          ],
+          {
+            GIT_LITERAL_PATHSPECS: '1',
+          },
+        ),
+      )
+      const last = commits.at(-1)
+      return { commits, truncated: last !== undefined && shallow.has(last.sha) }
+    }
+    const blame = parseBlame(
+      await this.#git([
+        'blame',
+        '--porcelain',
+        '-L',
+        `${range.from},${range.to}`,
+        this.commit,
+        '--',
+        path,
+      ]).catch((error: unknown) => {
+        throw error instanceof CheckoutError
+          ? new CheckoutError(
+              'not-found',
+              `${path} has no lines ${range.from}-${range.to} at the pull request head`,
+            )
+          : error
+      }),
+    )
+    const shas = new Set(blame.map((item) => item.sha))
+    const commits = parseLog(
+      await this.#git(
+        ['log', '--topo-order', '--date=short', LOG_FORMAT, this.commit, '--', path],
+        {
+          GIT_LITERAL_PATHSPECS: '1',
+        },
+      ),
+    )
+      .filter((commit) => shas.has(commit.sha))
+      .slice(0, HISTORY_COMMITS)
+    return { commits, blame, truncated: [...shas].some((sha) => shallow.has(sha)) }
+  }
+
   async close(): Promise<void> {}
+
+  async #shallowCommits(): Promise<Set<string>> {
+    const text = await readFile(join(this.#dir, 'shallow'), 'utf8').catch(() => '')
+    return new Set(text.split('\n').filter((line) => line !== ''))
+  }
 
   async #entry(path: string): Promise<TreeEntry> {
     const [entry] = parseTree(
@@ -157,6 +245,27 @@ export class GitCheckout implements Checkout {
     }
     return result.stdout
   }
+}
+
+function parseLog(output: string): HistoryCommit[] {
+  return output.split('\x1e').flatMap((record) => {
+    const [sha = '', date = '', author = '', subject = ''] = record.trim().split('\x1f')
+    return sha === '' ? [] : [{ sha, date, author, subject }]
+  })
+}
+
+function parseBlame(output: string): BlameRange[] {
+  const ranges: BlameRange[] = []
+  for (const line of output.split('\n')) {
+    const header = BLAME_HEADER.exec(line)
+    if (header === null) continue
+    const sha = header[1] ?? ''
+    const final = Number(header[2])
+    const last = ranges.at(-1)
+    if (last !== undefined && last.sha === sha && last.to === final - 1) last.to = final
+    else ranges.push({ from: final, to: final, sha })
+  }
+  return ranges
 }
 
 function parseTree(output: string): TreeEntry[] {

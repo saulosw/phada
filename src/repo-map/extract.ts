@@ -65,6 +65,7 @@ export function createExtractor(options: ExtractorOptions = {}): Extractor {
       try {
         const collector = new Collector()
         WALKERS[language](tree.rootNode, collector)
+        collector.keepImportedReferences()
         collector.map.parseErrors = tree.rootNode.hasError ? countErrors(tree.rootNode) : 0
         return collector.map
       } finally {

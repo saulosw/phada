@@ -56,5 +56,6 @@ export interface LoadedContext {
   diff: string
   options: ContextOptions
   context: ReviewContext
+  ignore: string[]
   report: ContextReport
 }

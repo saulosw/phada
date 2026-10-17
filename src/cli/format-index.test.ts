@@ -26,6 +26,7 @@ const REPORT: IndexReport = {
     imports: 1_930,
     exports: 812,
     calls: 6_402,
+    references: 2_210,
     parseErrors: 2,
   },
   leftOut: [
@@ -56,7 +57,7 @@ describe('formatIndexText', () => {
         'Files: 412 indexed (37 read, 375 unchanged) · 11 left out',
         'Languages: TypeScript 301 · JavaScript 64 · Python 47',
         'Symbols: 1,204 functions · 388 methods · 1 class · 2,310 parameters',
-        'Imports 1,930 · exports 812 · calls 6,402 · 2 parse errors',
+        'Imports 1,930 · exports 812 · calls 6,402 · uses 2,210 · 2 parse errors',
         'Left out: 8 no grammar (.md 3, .json 2, (none) 1, other 2) · 1 too large · 1 binary · 1 symbolic link',
         'Index: ~/.cache/phada/index/acme/shop.sqlite (2.4 MB) · mirror 6.1 MB',
         '',
@@ -82,7 +83,7 @@ describe('formatIndexText', () => {
     expect(text).toContain('Files: 0 indexed (0 read, 0 unchanged)\n')
     expect(text).toContain('Languages: none\n')
     expect(text).toContain('Symbols: none\n')
-    expect(text).toContain('Imports 1,930 · exports 812 · calls 6,402\n')
+    expect(text).toContain('Imports 1,930 · exports 812 · calls 6,402 · uses 2,210\n')
     expect(text).not.toContain('Left out')
     expect(text).toContain('Index: /home/u/.cache/phada/index/acme/shop.sqlite (2.4 MB)')
   })
@@ -121,6 +122,7 @@ describe('formatIndexJson', () => {
       imports: 1_930,
       exports: 812,
       calls: 6_402,
+      references: 2_210,
       parseErrors: 2,
       leftOut: REPORT.leftOut,
       rebuilt: true,

@@ -51,9 +51,17 @@ const INVESTIGATION: Boundary = {
     '../repository/checkout.js',
     '../repository/repo-path.js',
   ]),
-  types: new Set(['../providers/types.js', '../review/types.js', '../repository/checkout.js']),
+  types: new Set([
+    '../providers/types.js',
+    '../review/types.js',
+    '../repository/checkout.js',
+    '../graph/types.js',
+  ]),
   expected: [
     'toolbox.ts',
+    'create-investigation.ts',
+    'tools/graph-tools.ts',
+    'tools/history-tool.ts',
     'mcp/mcp-server.ts',
     'tools/repository-tools.ts',
     'tools/tool-registry.ts',
@@ -87,6 +95,28 @@ const STORE: Boundary = {
   types: new Set(['../repo-map/types.js', '../repo-map/languages.js']),
   expected: ['index-store.ts', 'schema.ts'],
 }
+const GRAPH: Boundary = {
+  dir: 'graph',
+  values: new Set(['node:path', '../review/diff-lines.js']),
+  types: new Set([
+    '../repo-map/languages.js',
+    '../repo-map/types.js',
+    '../store/index-reader.js',
+    '../store/observed-store.js',
+    '../review/types.js',
+  ]),
+  expected: [
+    'impact.ts',
+    'observe.ts',
+    'project-config.ts',
+    'report.ts',
+    'repository-graph.ts',
+    'resolve-module.ts',
+    'resolve-name.ts',
+    'similar.ts',
+    'types.ts',
+  ],
+}
 const APP: Boundary = {
   dir: 'app',
   values: new Set([
@@ -94,10 +124,15 @@ const APP: Boundary = {
     '../config/merge-config.js',
     '../config/parse-config.js',
     '../context/ignore.js',
-    '../investigation/open-investigation.js',
+    '../graph/impact.js',
+    '../graph/observe.js',
+    '../graph/report.js',
+    '../graph/repository-graph.js',
+    '../investigation/create-investigation.js',
     '../investigation/tools/report.js',
     '../repo-map/languages.js',
     '../repository/git-checkout.js',
+    '../review/impact-text.js',
     '../review/run-review.js',
     '../store/index-store.js',
   ]),
@@ -105,7 +140,9 @@ const APP: Boundary = {
     '../config/types.js',
     '../context/types.js',
     '../github/pull-request.js',
-    '../investigation/open-investigation.js',
+    '../graph/report.js',
+    '../graph/types.js',
+    '../investigation/create-investigation.js',
     '../investigation/tools/report.js',
     '../investigation/tools/tool-log.js',
     '../providers/types.js',
@@ -116,6 +153,7 @@ const APP: Boundary = {
     '../repository/git-mirror.js',
     '../review/types.js',
     '../store/index-store.js',
+    '../store/observed-store.js',
   ]),
   expected: ['index-repository.ts', 'review-pull-request.ts'],
 }
@@ -311,7 +349,7 @@ describe('repository boundary rules', () => {
   it.each([
     [
       'the investigation',
-      "import { openInvestigation } from '../investigation/open-investigation.js'",
+      "import { createInvestigation } from '../investigation/create-investigation.js'",
     ],
     ['a concrete provider', "import { ClaudeCliProvider } from '../providers/claude.js'"],
     ['process.env', 'const token = process.env.GITHUB_TOKEN'],
@@ -353,7 +391,7 @@ describe('store boundary rules', () => {
   })
 })
 
-describe.each([REVIEW, PUBLISH, CONTEXT, INVESTIGATION, REPOSITORY, REPO_MAP, STORE, APP])(
+describe.each([REVIEW, PUBLISH, CONTEXT, INVESTIGATION, REPOSITORY, REPO_MAP, STORE, GRAPH, APP])(
   '$dir boundary',
   (boundary) => {
     const sources = sourcesOf(boundary)

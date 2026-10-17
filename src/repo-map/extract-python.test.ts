@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { callLines, heritageLines, symbolLines, symbolNamed } from '../../test/support/file-map.js'
+import {
+  callLines,
+  heritageLines,
+  referenceLines,
+  symbolLines,
+  symbolNamed,
+} from '../../test/support/file-map.js'
 import { createExtractor } from './extract.js'
 
 const extractor = createExtractor()
@@ -84,5 +90,30 @@ describe('extract Python', () => {
       'variable c exported',
     ])
     expect(callLines(map)).toEqual(['main in (module)'])
+  })
+
+  it('records uses of imported names that are not calls', async () => {
+    const map = await mapOf(`from app.models import User as U
+import app.utils as utils
+import os
+def f(path):
+    utils.helper(path)
+    return U, utils.slugify, os.path.join
+`)
+
+    expect(referenceLines(map)).toEqual([
+      'U in f:6',
+      'slugify on utils in f:6',
+      'path on os in f:6',
+    ])
+  })
+
+  it('records a function of a module imported from its package', async () => {
+    const map = await mapOf(`from django.urls import path
+from . import views
+urlpatterns = [path('', views.recipes, name='recipes')]
+`)
+
+    expect(referenceLines(map)).toEqual(['recipes on views in (module):3'])
   })
 })

@@ -35,12 +35,14 @@ src/
                          #   pull request and review state, run/skip, then the review use case,
                          #   then print or publish; createProvider()
   architecture.test.ts   # allowed imports of src/review/, src/publish/, src/context/,
-                         #   src/investigation/, src/repository/, src/repo-map/, src/store/ and src/app/
+                         #   src/investigation/, src/repository/, src/repo-map/, src/store/,
+                         #   src/graph/ and src/app/
   app/                   # use cases any caller can run (CLI today), with injected readers
-    review-pull-request.ts # reviewPullRequest(): repository context → investigation → review →
-                         #   investigation report; reports progress through typed events
-    index-repository.ts  #   indexRepository(): mirror → files left out and why → extract new blobs →
-                         #   store the commit; reports progress through typed events
+    review-pull-request.ts # reviewPullRequest(): repository context → mirror → index of the head
+                         #   (60 s budget) → graph and impact of the diff → investigation → review
+                         #   → observed relations → reports; progress through typed events
+    index-repository.ts  #   indexRepository(): mirror → files left out and why → indexCommit();
+                         #   indexCommit(): extract new blobs (optional deadline) → store the commit
   cli/                   # terminal edge
     args.ts              #   parseCliArgs(): `review` (--dry-run, --force, --verify/--no-verify,
                          #   --investigate/--no-investigate) and
@@ -58,15 +60,17 @@ src/
     format-publication.ts #  skip and "Published" messages
     format-context.ts    #   the "Context:" line and the context section of --dry-run
     format-investigation.ts # the "Investigated:" line and the investigation section of --dry-run
+    format-impact.ts     #   the "Impact:" line and the impact section of --dry-run
     finding-references.ts #  the "Based on" line: sources and rule of a finding
-    format-json.ts       #   formatReviewJson(): schemaVersion 1, with the publication, context and
-                         #   investigation blocks
+    format-json.ts       #   formatReviewJson(): schemaVersion 1, with the publication, context,
+                         #   investigation and impact blocks
     markdown-text.ts     #   escapes AI text: block markers; for GitHub also HTML and mentions
     review-text.ts       #   model label and short SHA
     i18n/                #   fixed review text per language: messages.ts (Messages, messagesFor()),
                          #   en.ts, pt.ts; unknown languages fall back to English
     format-error.ts      #   error → one line + exit code (2 usage, 1 failure); --debug details
-    progress.ts          #   withProgress(): ReviewProvider decorator with a live timer on a TTY
+    progress.ts          #   withProgress(): ReviewProvider decorator with a live timer on a TTY;
+                         #   indexProgress(): the "Indexing N files…" lines
     terminal-text.ts     #   toTerminalText(): strips control and bidi characters from external text
     units.ts             #   duration, tokens, bytes, counts
   config/                # the config files: .phada/ in the repository and the user's own
@@ -77,7 +81,7 @@ src/
     user-config.ts       #   the user's folder (PHADA_CONFIG_HOME › XDG › ~/.config/phada), loadUserLayers()
     local-files.ts       #   LocalFileSystem and its node:fs implementation
     cache-paths.ts       #   the cache folder (PHADA_CACHE_HOME › XDG › ~/.cache/phada),
-                         #   repositoryCache(): mirror and index paths; pathSize()
+                         #   repositoryCache(): mirror, index and observed paths; pathSize()
     errors.ts            #   ConfigError
   context/               # what the review sends besides the diff, with injected readers
     phada-paths.ts       #   .phada/ folders from the root to each changed file
@@ -96,12 +100,26 @@ src/
     pull-request-reviews.ts # fetchReviewState(): viewer, reviews and threads, paginated
     create-review.ts     #   createReview(): one COMMENT review with line comments
     repository-files.ts  #   fetchRepositoryTree(), fetchRepositoryFile(): the repository at a commit
+  graph/                 # the repository graph, resolved on demand from the index of a commit
+    types.ts             #   RepositoryGraph, GraphSymbol, Site, Dependency, …
+    project-config.ts    #   tsconfig/jsconfig paths, package.json of the repository's own
+                         #   packages, go.mod modules, Python roots
+    resolve-module.ts    #   import specifier → files of the commit, or external
+    resolve-name.ts      #   NameResolver: call or use → definitions (resolved, inferred, external)
+    repository-graph.ts  #   openRepositoryGraph(): findSymbol, callers, dependencies, similar,
+                         #   symbolAt, lineText, observed relations
+    similar.ts           #   scoreSimilar(): calls, parameters, name tokens, owner kind
+    impact.ts            #   changedLines(), computeImpact(): changed symbols → callers and dependencies
+    observe.ts           #   learnObservedEdges(): confirmed finding + source the AI read → relation
+    report.ts            #   buildImpactReport(): the impact for the CLI and the JSON
   investigation/         # the AI reads the pull request head with Phada's read-only tools
     toolbox.ts           #   the tools contract: ToolDefinition, ToolResult, Toolbox
-    open-investigation.ts #  openInvestigation(): checkout + tools per pass + log
-    tools/               #   the tools, pure over a Checkout
+    create-investigation.ts # createInvestigation(): checkout (+ graph) → tools per pass + log
+    tools/               #   the tools, pure over a Checkout and a RepositoryGraph
       tool-registry.ts   #     RegisteredTool, createToolbox(): validation, budget, answer size, log
       repository-tools.ts #    read_file, grep and list
+      history-tool.ts    #     history: commits and blame of a file, pull request from the subject
+      graph-tools.ts     #     find_symbol, callers, dependencies and similar
       budget.ts          #     calls and bytes per review pass, answer size
       tool-log.ts        #     ToolLog: one record per tool call
       report.ts          #     buildInvestigationReport(): what the AI read, for the CLI and the JSON
@@ -124,26 +142,32 @@ src/
     plan-publication.ts  #   planPublication(): new comments vs findings still open in a thread
     types.ts             #   PublicationPlan, RunDecision, SkipReason
   repository/            # the repository through git objects, in a persistent mirror
-    checkout.ts          #   Checkout (read, grep, list), CheckoutError, OpenCheckoutOptions
-    git-checkout.ts      #   GitCheckout: one commit of the mirror; the git environment without tokens
+    checkout.ts          #   Checkout (read, grep, list, history), CheckoutError
+    git-checkout.ts      #   GitCheckout: one commit of the mirror (log, blame); the git environment
+                         #   without tokens
     git-mirror.ts        #   openGitMirror(): bare repository in the cache, fetch --depth 1 into
-                         #   refs/phada/*, ls-tree -r, cat-file --batch; openMirrorCheckout()
+                         #   refs/phada/*, deepen to 200 commits for history, ls-tree -r,
+                         #   cat-file --batch
     mirror-lock.ts       #   withMirrorLock(): one fetch at a time per mirror, stale locks taken over
     repo-path.ts         #   toRepoPath(): paths inside the repository only
   repo-map/              # the code elements of a file, with tree-sitter (WASM)
     languages.ts         #   languageOf(): extension → TypeScript, TSX, JavaScript, Python, Go
     grammars.ts          #   readGrammar(): dist/grammars/ in the package, node_modules in development
     extract.ts           #   createExtractor(): parse with a timeout → FileMap or 'timeout'
-    walk.ts              #   Collector: symbols with their owner, imports, exports, calls, heritage
+    walk.ts              #   Collector: symbols with their owner, imports, exports, calls, heritage,
+                         #   uses of imported names
     languages/           #   one walker per language: javascript-like.ts, python.ts, go.ts
     types.ts             #   FileMap, ExtractedSymbol, SymbolKind, …
   store/                 # the map in SQLite (node:sqlite), one file per repository
     schema.ts            #   tables and SCHEMA_VERSION (another version is rebuilt)
-    index-store.ts       #   openIndexStore(): blobs, commits, summary, prune
+    index-store.ts       #   openIndexStore(): blobs, commits, summary, prune, reader()
+    index-reader.ts      #   IndexReader: the files, symbols, calls and uses of one commit
+    observed-store.ts    #   openObservedStore(): relations learned from reviews (own schema)
   review/                # the engine: data in, result out
     types.ts             #   ReviewRequest, Finding, ReviewResult, ReviewOutcome, …
     prompt-parts.ts      #   text shared by the review and verification prompts: rules section,
-                         #   docs block, diff scope
+                         #   docs block, impact block, diff scope and tools
+    impact-text.ts       #   renderImpact(): the impact of the diff within its 4 KB budget
     prompt.ts            #   buildReviewPrompt(): instructions + nonce-delimited data + output schema
     verify-prompt.ts     #   buildVerifyPrompt(): the second, skeptical pass (--verify)
     report-schema.ts     #   Zod schemas of the AI report + the JSON schema sent to providers
@@ -179,8 +203,8 @@ repository and of the local disk as data, and its only value imports from outsid
 `src/publish/` imports only types from outside the folder (`src/review/types.ts`,
 `src/github/pull-request-reviews.ts`). `src/repository/` runs `git` through
 `src/process/run-command.ts`. `src/investigation/` reads the repository only through a `Checkout`
-(`src/repository/checkout.ts`), opened by a function the caller passes in, and never imports the
-mirror, the CLI, the engine or a concrete provider; the
+(`src/repository/checkout.ts`) and a `RepositoryGraph` (`src/graph/types.ts`) the caller passes
+in, and never imports the mirror, the store, the CLI, the engine or a concrete provider; the
 engine sees its tools only as a `Toolbox` (`src/investigation/toolbox.ts`) that the caller passes
 in. `src/app/` orchestrates a review from injected readers and factories and never imports the
 CLI, a concrete provider or the GitHub client, nor prints: it reports through events, and
@@ -188,7 +212,9 @@ CLI, a concrete provider or the GitHub client, nor prints: it reports through ev
 `src/architecture.test.ts` enforces the allowed imports of these folders and forbids
 `process`/`console` inside them (`console` only, in `src/investigation/`). `src/repo-map/` parses
 text it is given (`web-tree-sitter`, reading only its grammars) and `src/store/` only talks to
-SQLite; neither runs `git`.
+SQLite; neither runs `git`. `src/graph/` reads the index through an `IndexReader` and files
+through a function it is given; its only value imports from outside the folder are `node:path`
+and the pure diff parser (`src/review/diff-lines.ts`).
 
 ## Conventions
 

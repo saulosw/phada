@@ -26,3 +26,12 @@ export function heritageLines(map: FileMap): string[] {
 export function symbolNamed(map: FileMap, kind: string, name: string, nth = 0) {
   return map.symbols.filter((symbol) => symbol.kind === kind && symbol.name === name)[nth]
 }
+
+export function referenceLines(map: FileMap): string[] {
+  return map.references.map((reference) => {
+    const on = reference.qualifier === undefined ? '' : ` on ${reference.qualifier}`
+    const owner =
+      reference.owner === undefined ? '(module)' : (map.symbols[reference.owner]?.name ?? '?')
+    return `${reference.name}${on} in ${owner}:${reference.line}`
+  })
+}

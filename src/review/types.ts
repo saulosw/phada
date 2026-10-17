@@ -21,12 +21,50 @@ export interface ReviewContext {
   ignored: string[]
 }
 
+export interface ImpactSite {
+  path: string
+  line: number
+  in?: string
+  kind: 'calls' | 'uses' | 'inherits' | 'related'
+  how: 'resolved' | 'inferred' | 'observed'
+  pullRequest?: number
+  text: string
+}
+
+export interface ImpactDependency {
+  name: string
+  path: string
+  line: number
+  kind: string
+}
+
+export interface ImpactedSymbol {
+  kind: string
+  name: string
+  path: string
+  startLine: number
+  endLine: number
+  exported: boolean
+  callers: number
+  files: number
+  capped?: boolean
+  sites: ImpactSite[]
+  dependencies: ImpactDependency[]
+}
+
+export interface DiffImpact {
+  symbols: ImpactedSymbol[]
+  omittedSymbols: number
+  callerFiles: number
+}
+
 export interface ReviewRequest {
   pullRequest: PullRequest
   language?: string
   minConfidence?: number
   verify?: boolean
   context?: ReviewContext
+  impact?: DiffImpact
 }
 
 export interface ReviewTarget {

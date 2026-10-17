@@ -22,6 +22,11 @@ export function walkPython(root: Node, c: Collector): void {
         return assignment(node)
       case 'call':
         return call(node)
+      case 'identifier':
+        c.reference(node.text, node)
+        return
+      case 'attribute':
+        return attribute(node)
       default:
         return visitChildren(node)
     }
@@ -71,9 +76,21 @@ export function walkPython(root: Node, c: Collector): void {
     const fn = node.childForFieldName('function')
     if (fn?.type === 'identifier') c.call(fn.text, node)
     else if (fn?.type === 'attribute') {
-      c.call(fn.childForFieldName('attribute')?.text ?? '', node, fn.childForFieldName('object'))
-    } else c.call('(anonymous)', node)
-    visitChildren(node)
+      const object = fn.childForFieldName('object')
+      c.call(fn.childForFieldName('attribute')?.text ?? '', node, object)
+      if (object && object.type !== 'identifier') visit(object)
+    } else {
+      c.call('(anonymous)', node)
+      if (fn) visit(fn)
+    }
+    for (const child of node.namedChildren) if (child && child.id !== fn?.id) visit(child)
+  }
+
+  function attribute(node: Node): void {
+    const object = node.childForFieldName('object')
+    const name = node.childForFieldName('attribute')
+    if (object && name && isDottedName(object)) c.reference(name.text, node, object.text)
+    if (object && object.type !== 'identifier') visit(object)
   }
 
   function importStatement(node: Node): void {
@@ -112,6 +129,13 @@ export function walkPython(root: Node, c: Collector): void {
     const key = c.owner()
     return owner === 'class' && key !== undefined && (c.map.symbols[key]?.exported ?? false)
   }
+}
+
+function isDottedName(node: Node): boolean {
+  if (node.type === 'identifier') return true
+  if (node.type !== 'attribute') return false
+  const object = node.childForFieldName('object')
+  return object !== null && isDottedName(object)
 }
 
 function parameterNameOf(node: Node): string | undefined {

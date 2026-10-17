@@ -10,7 +10,7 @@ import { CheckoutError } from '../repository/checkout.js'
 import type { TreeFile } from '../repository/git-mirror.js'
 import { openIndexStore } from '../store/index-store.js'
 import type { IndexStore } from '../store/index-store.js'
-import { indexRepository } from './index-repository.js'
+import { indexCommit, indexRepository } from './index-repository.js'
 import type { IndexRepositoryDeps } from './index-repository.js'
 
 const dir = mkdtempSync(join(tmpdir(), 'phada-index-'))
@@ -53,6 +53,7 @@ function fakeMirror(files: Record<string, FakeFile>) {
     },
     grep: async () => [],
     listDir: async () => [],
+    history: async () => ({ commits: [], truncated: false }),
     close: async () => {},
   }
   const mirror: IndexRepositoryDeps['mirror'] = {
@@ -355,5 +356,67 @@ describe('indexRepository', () => {
 
     await expect(indexRepository(INPUT, h.deps)).rejects.toThrow('boom')
     expect(h.closed).toHaveLength(1)
+  })
+})
+
+describe('indexCommit', () => {
+  it('stops extracting at the deadline, keeps the blobs it read and does not save the commit', async () => {
+    const { mirror } = fakeMirror({
+      'src/a.ts': { content: 'export function a() {}\n' },
+      'src/b.ts': { content: 'export function b() {}\n' },
+      'src/c.ts': { content: 'export function c() {}\n' },
+    })
+    const store = await openIndexStore(storePath())
+    let clock = 0
+    const files = await mirror.listFiles(SHA)
+
+    const result = await indexCommit(
+      { sha: SHA, ref: 'refs/phada/pull/1', files, ignore: () => false, deadline: 15 },
+      {
+        mirror,
+        store,
+        extractor,
+        now: () => {
+          clock += 10
+          return clock
+        },
+        events: { extracting: () => {}, extracted: () => {} },
+      },
+    )
+
+    expect(result).toEqual({ complete: false, extracted: 1, total: 3 })
+    expect(
+      store.knownBlobs(files.map((file) => ({ oid: file.oid, language: 'typescript' }))).size,
+    ).toBe(1)
+    expect(store.summary(SHA).files.indexed).toBe(0)
+    store.close()
+  })
+
+  it('indexes the files it is given with the ignore it is given and saves the commit', async () => {
+    const { mirror } = fakeMirror({
+      'src/a.ts': { content: 'export function a() {}\n' },
+      'src/skip.ts': { content: 'export function s() {}\n' },
+    })
+    const store = await openIndexStore(storePath())
+
+    const result = await indexCommit(
+      {
+        sha: SHA,
+        ref: 'refs/phada/pull/1',
+        files: await mirror.listFiles(SHA),
+        ignore: (path) => path === 'src/skip.ts',
+      },
+      {
+        mirror,
+        store,
+        extractor,
+        now: () => 1,
+        events: { extracting: () => {}, extracted: () => {} },
+      },
+    )
+
+    expect(result).toMatchObject({ complete: true, files: 2, extracted: 1, reused: 0 })
+    expect(store.summary(SHA).files).toMatchObject({ indexed: 1, ignored: 1 })
+    store.close()
   })
 })

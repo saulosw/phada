@@ -16,7 +16,7 @@ import type { RunCommandOptions, RunCommandResult } from '../process/run-command
 import { createLocalRepository } from '../../test/support/git-repo.js'
 import type { LocalRepository } from '../../test/support/git-repo.js'
 import { CheckoutUnavailableError } from './git-checkout.js'
-import { openGitMirror, openMirrorCheckout } from './git-mirror.js'
+import { openGitMirror } from './git-mirror.js'
 import type { GitMirror, GitMirrorOptions, TreeFile } from './git-mirror.js'
 
 const TOKEN = 'ghp_abcdefghijklmnopqrstuvwxyz0123456789'
@@ -173,16 +173,15 @@ describe('GitMirror with a local repository', () => {
   })
 
   it('opens a checkout of the fetched commit that can search it', async () => {
-    const checkout = await openMirrorCheckout({
+    const mirror = await openGitMirror({
       dir: options().dir,
       owner: 'acme',
       repo: 'shop',
-      sha: repository.sha,
-      keepAs: 'refs/phada/pull/9',
       token: TOKEN,
       env: process.env,
       remoteUrl: repository.url,
     })
+    const checkout = mirror.checkout(await mirror.fetch(repository.sha, 'refs/phada/pull/9'))
 
     expect(checkout.commit).toBe(repository.sha)
     expect(await checkout.grep('const a', {})).toEqual([

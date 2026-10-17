@@ -67,7 +67,7 @@ export function formatIndexText(report: IndexReport, sizes: IndexSizes, home: st
       ? ''
       : ` · ${number(summary.parseErrors)} parse error${summary.parseErrors === 1 ? '' : 's'}`
   lines.push(
-    `Imports ${number(summary.imports)} · exports ${number(summary.exports)} · calls ${number(summary.calls)}${errors}`,
+    `Imports ${number(summary.imports)} · exports ${number(summary.exports)} · calls ${number(summary.calls)} · uses ${number(summary.references)}${errors}`,
   )
   if (report.leftOut.length > 0) lines.push(`Left out: ${leftOutText(report.leftOut)}`)
   lines.push(
@@ -91,6 +91,7 @@ export function formatIndexJson(report: IndexReport, sizes: IndexSizes): string 
       imports: summary.imports,
       exports: summary.exports,
       calls: summary.calls,
+      references: summary.references,
       parseErrors: summary.parseErrors,
       leftOut: report.leftOut,
       rebuilt: report.rebuilt,

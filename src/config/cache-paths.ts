@@ -21,9 +21,13 @@ export function repositoryCache(
   home: string,
   owner: string,
   repo: string,
-): { mirror: string; index: string } {
+): { mirror: string; index: string; observed: string } {
   const cache = phadaCacheDir(env, home)
-  return { mirror: mirrorDir(cache, owner, repo), index: indexFile(cache, owner, repo) }
+  return {
+    mirror: mirrorDir(cache, owner, repo),
+    index: indexFile(cache, owner, repo),
+    observed: join(cache, 'observed', owner.toLowerCase(), `${repo.toLowerCase()}.sqlite`),
+  }
 }
 
 export async function pathSize(path: string): Promise<number> {

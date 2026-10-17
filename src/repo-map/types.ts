@@ -54,11 +54,19 @@ export interface ExtractedHeritage {
   relation: HeritageRelation
 }
 
+export interface ExtractedReference {
+  owner?: number
+  name: string
+  qualifier?: string
+  line: number
+}
+
 export interface FileMap {
   symbols: ExtractedSymbol[]
   imports: ExtractedImport[]
   exports: ExtractedExport[]
   calls: ExtractedCall[]
   heritage: ExtractedHeritage[]
+  references: ExtractedReference[]
   parseErrors: number
 }

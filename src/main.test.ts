@@ -20,11 +20,12 @@ import type {
 } from './github/pull-request-reviews.js'
 import type { FetchPullRequestOptions, PullRequest } from './github/pull-request.js'
 import type { RepositoryTree } from './github/repository-files.js'
-import type { Checkout, OpenCheckoutOptions } from './repository/checkout.js'
+import type { Checkout } from './repository/checkout.js'
 import { CheckoutUnavailableError } from './repository/git-checkout.js'
 import type { GitMirror, GitMirrorOptions } from './repository/git-mirror.js'
 import { createExtractor } from './repo-map/extract.js'
 import { openIndexStore } from './store/index-store.js'
+import { openObservedStore } from './store/observed-store.js'
 import { FINDING_MARKER, reviewMarker } from './publish/markers.js'
 import { createProvider, run } from './main.js'
 import type { MainDeps, ProviderOptions } from './main.js'
@@ -59,7 +60,8 @@ interface Harness {
   events: string[]
   providers: { name: string; options: ProviderOptions }[]
   prompts: ReviewPrompt[]
-  checkouts: OpenCheckoutOptions[]
+  checkouts: (GitMirrorOptions & { sha: string; keepAs: string })[]
+  observedPaths: string[]
   closed: () => number
   mirrors: GitMirrorOptions[]
   storePaths: string[]
@@ -70,7 +72,10 @@ afterAll(() => rmSync(storeDir, { recursive: true, force: true }))
 let storeCount = 0
 const extractor = createExtractor()
 
-function memoryMirror(files: Record<string, string>): GitMirror {
+function memoryMirror(
+  files: Record<string, string>,
+  hooks: { onFetch?: (ref: string, keepAs: string) => void; onClose?: () => void } = {},
+): GitMirror {
   const entries = Object.entries(files).map(([path, text], index) => ({
     path,
     oid: String(index + 1).padStart(40, 'a'),
@@ -79,11 +84,15 @@ function memoryMirror(files: Record<string, string>): GitMirror {
   }))
   return {
     dir: '/mirror',
-    fetch: async () => HEAD_SHA,
+    fetch: async (ref, keepAs) => {
+      hooks.onFetch?.(ref, keepAs)
+      return HEAD_SHA
+    },
     checkout: () => ({
-      ...memoryCheckout(() => {}),
+      ...memoryCheckout(hooks.onClose ?? (() => {})),
       readText: async (path) => files[path] ?? '',
     }),
+    deepen: async () => false,
     listFiles: async () => entries,
     readBlobs: async function* (wanted) {
       for (const file of wanted) {
@@ -99,6 +108,7 @@ function memoryCheckout(onClose: () => void): Checkout {
     readText: async (path) => `contents of ${path}\n`,
     grep: async () => [],
     listDir: async () => [],
+    history: async () => ({ commits: [], truncated: false }),
     close: async () => onClose(),
   }
 }
@@ -113,11 +123,11 @@ function harness(
     files?: MemoryFiles
     repoFiles?: Record<string, string>
     tree?: () => Promise<RepositoryTree>
-    openCheckout?: (options: OpenCheckoutOptions) => Promise<Checkout>
     openMirror?: (options: GitMirrorOptions) => Promise<GitMirror>
   } = {},
 ): Harness {
-  const checkouts: OpenCheckoutOptions[] = []
+  const checkouts: (GitMirrorOptions & { sha: string; keepAs: string })[] = []
+  const observedPaths: string[] = []
   const mirrors: GitMirrorOptions[] = []
   const storePaths: string[] = []
   let closed = 0
@@ -171,28 +181,36 @@ function harness(
       fileFetches.push({ path: options.path, ref: options.ref })
       return Promise.resolve(repoFiles[options.path] ?? null)
     },
-    openCheckout: (options) => {
-      checkouts.push(options)
-      return (
-        overrides.openCheckout?.(options) ??
-        Promise.resolve(
-          memoryCheckout(() => {
-            closed += 1
-          }),
-        )
-      )
-    },
     openMirror: (options) => {
       mirrors.push(options)
       return (
         overrides.openMirror?.(options) ??
-        Promise.resolve(memoryMirror({ 'src/a.ts': 'export function a() { b() }\n' }))
+        Promise.resolve(
+          memoryMirror(
+            { 'src/a.ts': 'export function a() { b() }\n' },
+            {
+              onFetch: (ref, keepAs) => {
+                if (keepAs.startsWith('refs/phada/pull/')) {
+                  checkouts.push({ ...options, sha: ref, keepAs })
+                }
+              },
+              onClose: () => {
+                closed += 1
+              },
+            },
+          ),
+        )
       )
     },
     openIndexStore: (path, version) => {
       storePaths.push(`${path} @${version}`)
       storeCount += 1
       return openIndexStore(join(storeDir, `${storeCount}.sqlite`))
+    },
+    openObservedStore: (path) => {
+      observedPaths.push(path)
+      storeCount += 1
+      return openObservedStore(join(storeDir, `observed-${storeCount}.sqlite`))
     },
     createExtractor: () => extractor,
     pathSize: async () => 2048,
@@ -218,6 +236,7 @@ function harness(
     stdout: () => out.join(''),
     stderr: () => err.join(''),
     checkouts,
+    observedPaths,
     closed: () => closed,
     mirrors,
     storePaths,
@@ -301,6 +320,8 @@ describe('run', () => {
         'Fetching acme/shop#12…',
         'acme/shop#12 · a1b2c3d · 2 files · +15 −1 · 523 B diff',
         'Context: no rules or docs',
+        'Indexing 1 file…',
+        'Impact: no indexed symbols changed',
         'Reviewing with fake-cli… (this can take a few minutes)',
         'Investigated: no tool calls',
         'Publishing the review…',
@@ -988,11 +1009,51 @@ describe('run with the repository investigation', () => {
       'read_file',
       'grep',
       'list',
+      'history',
+      'find_symbol',
+      'callers',
+      'dependencies',
+      'similar',
     ])
     expect(h.prompts[0]?.instructions).toContain('read_file, grep, list tools')
+    expect(h.storePaths).toEqual(['/home/u/.cache/phada/index/acme/shop.sqlite @1.2.3'])
+    expect(h.observedPaths).toEqual(['/home/u/.cache/phada/observed/acme/shop.sqlite'])
     expect(h.closed()).toBe(1)
     expect(h.stderr()).toContain('Investigated: no tool calls\n')
     expect(h.stdout()).toContain('## Investigation')
+  })
+
+  it('shows the impact of the diff on stderr, in the dry run and in the JSON', async () => {
+    const shop = [
+      "import { db } from './db'",
+      '',
+      'export async function spend(userId: string, amount: number) {',
+      '  const user = await db.user.find(userId)',
+      "  if (user.crystals < amount) throw new Error('insufficient crystals')",
+      '  await db.user.update(userId, { crystals: user.crystals - amount })',
+      '  return user.crystals - amount',
+      '}',
+      '',
+    ].join('\n')
+    const files = {
+      'src/shop.ts': shop,
+      'src/api.ts':
+        "import { spend } from './shop'\nexport function buy(id: string) {\n  return spend(id, 1)\n}\n",
+    }
+    const markdown = harness({ openMirror: async () => memoryMirror(files) })
+    const json = harness({ openMirror: async () => memoryMirror(files) })
+
+    await run(['review', 'acme/shop#12', '--dry-run'], markdown.deps)
+    await run(['review', 'acme/shop#12', '--dry-run', '--format', 'json'], json.deps)
+
+    expect(markdown.stderr()).toContain('Impact: 1 changed symbol · 1 caller in 1 file\n')
+    expect(markdown.stdout()).toContain(
+      '## Impact\n\nfunction spend (src/shop.ts:3-8, exported) — 1 caller in 1 file\n  src/api.ts:3 in buy: return spend(id, 1)\n',
+    )
+    expect(markdown.prompts[0]?.data).toContain('<<<PHADA_IMPACT_')
+    expect(JSON.parse(json.stdout())).toMatchObject({
+      impact: { status: 'used', totals: { symbols: 1, callers: 1, files: 1 } },
+    })
   })
 
   it('reports the calls of the AI', async () => {
@@ -1034,7 +1095,7 @@ describe('run with the repository investigation', () => {
 
   it('reviews without the investigation when the head cannot be fetched', async () => {
     const h = harness({
-      openCheckout: () =>
+      openMirror: () =>
         Promise.reject(new CheckoutUnavailableError('git-missing', 'git was not found')),
     })
 
@@ -1093,7 +1154,7 @@ describe('run with the repository investigation', () => {
   it("leaves the user's MCP servers out when the head cannot be fetched", async () => {
     const h = harness({
       files: memoryFiles({ '/cfg/config.yml': 'mcp: [linear]' }),
-      openCheckout: () =>
+      openMirror: () =>
         Promise.reject(new CheckoutUnavailableError('git-missing', 'git was not found')),
     })
 

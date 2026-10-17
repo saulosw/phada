@@ -5,6 +5,7 @@ export interface ToolCallRecord {
   tool: string
   args: unknown
   paths: string[]
+  touched: string[]
   bytes: number
   durationMs: number
   error?: string

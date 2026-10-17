@@ -233,6 +233,7 @@ describe('loadContext', () => {
     expect(loaded.diff).toBe(modifiedFile('src/api/users.ts'))
     expect(loaded.context.ignored).toEqual(['package-lock.json', 'src/gen/types.ts'])
     expect(loaded.report.ignored).toEqual(['package-lock.json', 'src/gen/types.ts'])
+    expect(loaded.ignore).toEqual(['src/gen/**'])
   })
 
   it('takes the options of the root config', async () => {

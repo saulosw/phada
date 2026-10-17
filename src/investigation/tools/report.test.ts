@@ -9,7 +9,7 @@ function logOf(...records: Parameters<ToolLog['add']>[0][]): ToolLog {
   return log
 }
 
-const base = { pass: 'review' as const, durationMs: 3, bytes: 100 }
+const base = { pass: 'review' as const, durationMs: 3, bytes: 100, touched: [] }
 
 describe('buildInvestigationReport', () => {
   it('describes each call by its target and marks the ones used in a finding', () => {
@@ -96,5 +96,27 @@ describe('buildInvestigationReport', () => {
       external: [],
       totals: { calls: 0, bytes: 0 },
     })
+  })
+
+  it('describes the graph and history queries by their target', () => {
+    const log = logOf(
+      { ...base, tool: 'find_symbol', args: { name: 'getUser', kind: 'function' }, paths: [] },
+      { ...base, tool: 'callers', args: { name: 'getUser', path: 'src/users.ts' }, paths: [] },
+      { ...base, tool: 'dependencies', args: { name: 'load' }, paths: [] },
+      { ...base, tool: 'similar', args: { name: 'handleOrder' }, paths: [] },
+      { ...base, tool: 'history', args: { path: 'src/a.ts', from: 10, to: 20 }, paths: [] },
+      { ...base, tool: 'history', args: { path: 'src/b.ts' }, paths: [] },
+    )
+
+    const report = buildInvestigationReport({ status: 'used', log, findings: [] })
+
+    expect(report.calls.map((call) => `${call.tool} ${call.target}`)).toEqual([
+      'find_symbol getUser (function)',
+      'callers getUser in src/users.ts',
+      'dependencies load',
+      'similar handleOrder',
+      'history src/a.ts:10-20',
+      'history src/b.ts',
+    ])
   })
 })

@@ -8,6 +8,9 @@ import {
   DIFF_LINE_NUMBERS,
   diffScope,
   docsBlock,
+  hasImpact,
+  IMPACT,
+  impactBlocks,
   pullRequestDetails,
   rulesSection,
   SEVERITY,
@@ -73,6 +76,7 @@ export function buildVerifyPrompt(
     data: [
       block('PHADA_PR', nonce, pullRequestDetails(pullRequest, context?.ignored)),
       ...(docs.length === 0 ? [] : [block('PHADA_DOCS', nonce, docsBlock(docs))]),
+      ...impactBlocks(request.impact, nonce),
       block('PHADA_DIFF', nonce, annotateDiff(pullRequest.diff)),
       block('PHADA_FINDINGS', nonce, candidates.map(candidateLine).join('\n')),
     ].join('\n\n'),
@@ -81,12 +85,13 @@ export function buildVerifyPrompt(
   }
 }
 
-function instructionsFor({ language, context }: ReviewRequest, tools?: Toolbox): string {
+function instructionsFor({ language, context, impact }: ReviewRequest, tools?: Toolbox): string {
   const sections = [
     ROLE,
     taskFor(tools),
     rulesSection(context?.rules ?? []),
     (context?.docs.length ?? 0) > 0 ? CONTEXT_DOCS : '',
+    hasImpact(impact) ? IMPACT : '',
     CONFIDENCE_SCALE,
     SEVERITY,
     diffScope(context, tools),

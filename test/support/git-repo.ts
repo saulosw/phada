@@ -7,7 +7,7 @@ export interface LocalRepository {
   dir: string
   url: string
   sha: string
-  commit(files: RepositoryFiles): string
+  commit(files: RepositoryFiles, message?: string): string
   remove(): void
 }
 
@@ -46,10 +46,10 @@ export function createLocalRepository(
     dir,
     url: `file://${dir}`,
     sha: git('rev-parse', 'HEAD').trim(),
-    commit: (changed) => {
+    commit: (changed, message = 'change') => {
       writeFiles(dir, changed)
       git('add', '-A')
-      git('commit', '-q', '--no-gpg-sign', '-m', 'change')
+      git('commit', '-q', '--no-gpg-sign', '-m', message)
       return git('rev-parse', 'HEAD').trim()
     },
     remove: () => rmSync(dir, { recursive: true, force: true }),

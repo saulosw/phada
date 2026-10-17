@@ -101,6 +101,7 @@ describe('createToolbox', () => {
         tool: 'echo',
         args: { path: 'src/a.ts' },
         paths: ['src/a.ts'],
+        touched: ['src/a.ts'],
         bytes: 12,
       }),
     ])

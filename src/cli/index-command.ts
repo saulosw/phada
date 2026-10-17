@@ -8,6 +8,7 @@ import type { IndexStore } from '../store/index-store.js'
 import type { IndexFormat, RepositoryName } from './args.js'
 import { MissingGitHubTokenError } from './errors.js'
 import { formatIndexJson, formatIndexText } from './format-index.js'
+import { indexProgress } from './progress.js'
 import type { TextOutput } from './progress.js'
 import { toTerminalText } from './terminal-text.js'
 
@@ -46,7 +47,6 @@ export async function runIndex(command: IndexCommand, deps: IndexCommandDeps): P
   const mirrorPath = paths.mirror
   deps.stderr.write(`Fetching ${owner}/${repo} (${command.ref ?? 'default branch'})…\n`)
   const mirror = await deps.openMirror({ dir: mirrorPath, owner, repo, token, env: deps.env })
-  const live = deps.stderr.isTTY === true
   const report = await indexRepository(
     { owner, repo, ...(command.ref === undefined ? {} : { ref: command.ref }), userLayers },
     {
@@ -54,17 +54,7 @@ export async function runIndex(command: IndexCommand, deps: IndexCommandDeps): P
       openStore: () => deps.openIndexStore(paths.index, deps.version),
       extractor: deps.createExtractor(),
       now: deps.now ?? (() => performance.now()),
-      events: {
-        extracting: (total) => {
-          if (total === 0) return
-          const files = `${total.toLocaleString('en-US')} file${total === 1 ? '' : 's'}`
-          deps.stderr.write(live ? `Indexing 0/${files}…` : `Indexing ${files}…\n`)
-        },
-        extracted: (done, total) => {
-          if (!live) return
-          deps.stderr.write(`\rIndexing ${done}/${total} files…${done === total ? '\n' : ''}`)
-        },
-      },
+      events: indexProgress(deps.stderr),
     },
   )
   for (const warning of report.warnings) {

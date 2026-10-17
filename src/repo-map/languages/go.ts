@@ -43,6 +43,10 @@ export function walkGo(root: Node, c: Collector): void {
         return visitChildren(node)
       case 'call_expression':
         return call(node)
+      case 'selector_expression':
+        return selector(node)
+      case 'qualified_type':
+        return qualifiedType(node)
       default:
         return visitChildren(node)
     }
@@ -111,9 +115,30 @@ export function walkGo(root: Node, c: Collector): void {
     const fn = node.childForFieldName('function')
     if (fn?.type === 'identifier') c.call(fn.text, node)
     else if (fn?.type === 'selector_expression') {
-      c.call(fn.childForFieldName('field')?.text ?? '', node, fn.childForFieldName('operand'))
-    } else c.call('(anonymous)', node)
-    visitChildren(node)
+      const operand = fn.childForFieldName('operand')
+      c.call(fn.childForFieldName('field')?.text ?? '', node, operand)
+      if (operand && operand.type !== 'identifier') visit(operand)
+    } else {
+      c.call('(anonymous)', node)
+      if (fn) visit(fn)
+    }
+    for (const child of node.namedChildren) if (child && child.id !== fn?.id) visit(child)
+  }
+
+  function selector(node: Node): void {
+    const operand = node.childForFieldName('operand')
+    const field = node.childForFieldName('field')
+    if (operand?.type === 'identifier' && field) {
+      c.reference(field.text, node, operand.text)
+      return
+    }
+    if (operand) visit(operand)
+  }
+
+  function qualifiedType(node: Node): void {
+    const pkg = node.childForFieldName('package')
+    const name = node.childForFieldName('name')
+    if (pkg && name) c.reference(name.text, node, pkg.text)
   }
 
   function importSpec(node: Node): void {
