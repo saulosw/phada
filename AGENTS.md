@@ -102,7 +102,8 @@ src/
     repository-files.ts  #   fetchRepositoryTree(), fetchRepositoryFile(): the repository at a commit
   graph/                 # the repository graph, resolved on demand from the index of a commit
     types.ts             #   RepositoryGraph, GraphSymbol, Site, Dependency, …
-    project-config.ts    #   tsconfig/jsconfig paths, go.mod modules, Python roots
+    project-config.ts    #   tsconfig/jsconfig paths, package.json of the repository's own
+                         #   packages, go.mod modules, Python roots
     resolve-module.ts    #   import specifier → files of the commit, or external
     resolve-name.ts      #   NameResolver: call or use → definitions (resolved, inferred, external)
     repository-graph.ts  #   openRepositoryGraph(): findSymbol, callers, dependencies, similar,

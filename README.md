@@ -214,7 +214,8 @@ Phada prints a summary:
 Impact: 3 changed symbols · 12 callers in 7 files
 ```
 
-Names are resolved through relative imports, `tsconfig`/`jsconfig` `paths` and `baseUrl`, Python
+Names are resolved through relative imports, `tsconfig`/`jsconfig` `paths` and `baseUrl`, packages
+of the same repository (by the `name`, `exports` and `main` of their `package.json`), Python
 packages (relative imports, `src/` layouts, folders with a `pyproject.toml`, `setup.py` or
 `setup.cfg`) and Go modules (`go.mod`). A method called on an object whose type Phada cannot see
 is matched by name when one to three definitions have that name, and marked `inferred`; calls it
