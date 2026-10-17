@@ -21,6 +21,10 @@ const CONTEXT = `# Files the review reads for context, besides the repository do
 #   files:
 #     - path: docs/architecture.md
 #     - path: prisma/schema.prisma
+#   repos:                     # other repositories the review may read (up to 7 per review)
+#     - acme/web
+#     - repo: acme/sdk
+#       description: SDK that wraps this API
 
 # Files left out of the diff, on top of lockfiles, minified files and source maps.
 # ignore: ["**/*.snap", "src/generated/**"]
@@ -45,6 +49,11 @@ export const USER_CONFIG_TEMPLATE = `# Your own Phada config. It applies to ever
 ${SHARED_OPTIONS}
 ${RULES}
 ${CONTEXT}
+# Let the review read a private related repository for a public pull request
+# (what the AI reads there may end up in the published review).
+# context:
+#   privateOnPublic: true
+
 # Files or folders on this machine to send as context (folders: every .md inside).
 # localFiles: ["~/notes/team-rules"]
 

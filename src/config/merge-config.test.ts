@@ -288,3 +288,52 @@ describe('investigation options', () => {
     ).toEqual(['notion', 'jira', 'linear'])
   })
 })
+
+describe('related repositories', () => {
+  it('adds the repositories of every layer once, in option precedence, with their origin', () => {
+    const merged = mergeConfig([
+      user({ context: { repos: ['acme/c', 'acme/a'] } }),
+      root({ context: { repos: ['acme/b', { repo: 'Acme/A', description: 'API' }] } }),
+      userRepo({ context: { repos: ['acme/a'] } }),
+    ])
+
+    expect(merged.repos).toEqual([
+      { repo: 'acme/a', description: 'API', origin: 'user:repos/acme/shop/config.yml' },
+      { repo: 'acme/b', origin: '.phada/config.yml' },
+      { repo: 'acme/c', origin: 'user:config.yml' },
+    ])
+    expect(merged.warnings).toEqual([])
+  })
+
+  it('ignores repositories declared in a subfolder with a warning', () => {
+    const merged = mergeConfig([sub('apps/web', { context: { repos: ['acme/b'] } })])
+
+    expect(merged.repos).toEqual([])
+    expect(merged.warnings).toEqual([
+      'apps/web/.phada/config.yml: context.repos is only read from the root .phada/config.yml or your own config; ignored.',
+    ])
+  })
+
+  it('reads privateOnPublic only from the user, the repository layer of the user winning', () => {
+    expect(mergeConfig([]).privateOnPublic).toBe(false)
+    expect(mergeConfig([user({ context: { privateOnPublic: true } })]).privateOnPublic).toBe(true)
+    expect(
+      mergeConfig([
+        user({ context: { privateOnPublic: true } }),
+        userRepo({ context: { privateOnPublic: false } }),
+      ]).privateOnPublic,
+    ).toBe(false)
+  })
+
+  it('ignores privateOnPublic in the repository with a warning', () => {
+    const merged = mergeConfig([
+      root({ context: { repos: ['acme/secret'], privateOnPublic: true } }),
+    ])
+
+    expect(merged.privateOnPublic).toBe(false)
+    expect(merged.repos).toEqual([{ repo: 'acme/secret', origin: '.phada/config.yml' }])
+    expect(merged.warnings).toEqual([
+      '.phada/config.yml: context.privateOnPublic is only read from your own config; ignored.',
+    ])
+  })
+})

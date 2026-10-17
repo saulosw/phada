@@ -69,6 +69,23 @@ describe('parseConfigText', () => {
       'rules:\n  - rule: x\n    scope: ["!**/*.test.ts"]',
       'rules.0.scope.0',
     ],
+    ['a repository without owner', 'context:\n  repos: [acme]', 'context.repos.0'],
+    ['a repository with a path', 'context:\n  repos: [acme/web/x]', 'context.repos.0'],
+    [
+      'a long repository description',
+      `context:\n  repos:\n    - repo: acme/web\n      description: ${'x'.repeat(301)}`,
+      'context.repos.0.description',
+    ],
+    [
+      'an unknown key in a repository',
+      'context:\n  repos:\n    - repo: acme/web\n      ref: main',
+      'context.repos.0.ref',
+    ],
+    [
+      'a non-boolean privateOnPublic',
+      'context:\n  privateOnPublic: yes please',
+      'context.privateOnPublic',
+    ],
     [
       'an exception in context files',
       'context:\n  files:\n    - path: "!docs/**"',
@@ -100,6 +117,27 @@ describe('parseConfigText', () => {
 
     expect(parsed.ok).toBe(false)
     if (!parsed.ok) expect(parsed.message).not.toContain('\n')
+  })
+
+  it('reads related repositories as names or with a description', () => {
+    const text = [
+      'context:',
+      '  repos:',
+      '    - acme/web',
+      '    - repo: acme/sdk',
+      '      description: SDK for the frontends',
+      '  privateOnPublic: true',
+    ].join('\n')
+
+    expect(parseConfigText(text)).toEqual({
+      ok: true,
+      config: {
+        context: {
+          repos: ['acme/web', { repo: 'acme/sdk', description: 'SDK for the frontends' }],
+          privateOnPublic: true,
+        },
+      },
+    })
   })
 
   it('reads investigate and the list of MCP servers', () => {

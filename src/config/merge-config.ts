@@ -20,6 +20,12 @@ export interface LocalFileRef {
   origin: string
 }
 
+export interface DeclaredRepository {
+  repo: string
+  description?: string
+  origin: string
+}
+
 export interface EffectiveConfig {
   language?: string
   minConfidence?: number
@@ -32,6 +38,8 @@ export interface EffectiveConfig {
   files: DeclaredFile[]
   localFiles: LocalFileRef[]
   ignore: string[]
+  repos: DeclaredRepository[]
+  privateOnPublic: boolean
   warnings: string[]
 }
 
@@ -77,6 +85,8 @@ export function mergeConfig(layers: readonly ConfigLayer[]): EffectiveConfig {
     files: [],
     localFiles: [],
     ignore: [],
+    repos: relatedRepositories(bySpecificity),
+    privateOnPublic: firstSet((config) => config.context?.privateOnPublic) ?? false,
     warnings,
   }
   for (const layer of usable) {
@@ -118,6 +128,27 @@ export function userMcpServers(userLayers: readonly ConfigLayer[]): string[] {
   return [...new Set(servers)]
 }
 
+function relatedRepositories(layers: readonly ConfigLayer[]): DeclaredRepository[] {
+  const byName = new Map<string, DeclaredRepository>()
+  for (const layer of layers) {
+    for (const entry of layer.config.context?.repos ?? []) {
+      const { repo, description } = typeof entry === 'string' ? { repo: entry } : entry
+      const key = repo.toLowerCase()
+      const known = byName.get(key)
+      if (known === undefined) {
+        byName.set(key, {
+          repo,
+          ...(description ? { description } : {}),
+          origin: layer.configLabel,
+        })
+      } else if (known.description === undefined && description) {
+        known.description = description
+      }
+    }
+  }
+  return [...byName.values()]
+}
+
 function disabledInFolders(layers: readonly ConfigLayer[]): Map<string, string[]> {
   const folders = new Map<string, string[]>()
   for (const layer of layers) {
@@ -141,9 +172,21 @@ function withoutMisplacedKeys(layer: ConfigLayer, warnings: string[]): ConfigLay
     }
     if (config.context?.defaults !== undefined) {
       warnings.push(misplacedOption(layer, 'context.defaults'))
-      const { files } = config.context
-      config.context = files === undefined ? {} : { files }
+      const { defaults: _defaults, ...rest } = config.context
+      config.context = rest
     }
+    if (config.context?.repos !== undefined) {
+      warnings.push(misplacedOption(layer, 'context.repos'))
+      const { repos: _repos, ...rest } = config.context
+      config.context = rest
+    }
+  }
+  if (config.context?.privateOnPublic !== undefined) {
+    warnings.push(
+      `${layer.configLabel}: context.privateOnPublic is only read from your own config; ignored.`,
+    )
+    const { privateOnPublic: _privateOnPublic, ...rest } = config.context
+    config.context = rest
   }
   for (const key of USER_ONLY) {
     if (config[key] !== undefined) {

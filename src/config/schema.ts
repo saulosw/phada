@@ -23,6 +23,19 @@ const RuleSchema = z.strictObject({
   severity: z.enum(['P0', 'P1', 'P2']).optional(),
 })
 
+const RepoName = z
+  .string()
+  .trim()
+  .regex(/^[\w.-]+\/[\w.-]+$/, 'use owner/repo')
+
+const RelatedRepoSchema = z.union([
+  RepoName,
+  z.strictObject({
+    repo: RepoName,
+    description: z.string().trim().max(300).optional(),
+  }),
+])
+
 const ContextFileSchema = z.strictObject({
   path: Pattern,
   description: z.string().optional(),
@@ -51,9 +64,12 @@ export const ConfigFileSchema = z.strictObject({
     .strictObject({
       defaults: z.boolean().optional(),
       files: z.array(ContextFileSchema).optional(),
+      repos: z.array(RelatedRepoSchema).optional(),
+      privateOnPublic: z.boolean().optional(),
     })
     .optional(),
 })
 
 export type ConfigFile = z.infer<typeof ConfigFileSchema>
 export type ConfigRule = z.infer<typeof RuleSchema>
+export type ConfigRelatedRepo = z.infer<typeof RelatedRepoSchema>
