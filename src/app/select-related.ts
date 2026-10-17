@@ -6,7 +6,13 @@ export const MAX_RELATED = 7
 export const MAX_RELATED_CANDIDATES = 20
 
 export type SkipReason =
-  'reviewed-repository' | 'no-access' | 'empty' | 'private-on-public' | 'fetch-failed' | 'limit'
+  | 'reviewed-repository'
+  | 'no-access'
+  | 'empty'
+  | 'private-on-public'
+  | 'fetch-failed'
+  | 'candidate-limit'
+  | 'limit'
 
 export interface RelatedCandidate {
   declared: DeclaredRepository
@@ -35,7 +41,7 @@ const STATE_RANK: Readonly<Record<RelatedState, number>> = {
 
 export function selectCandidates(
   declared: readonly DeclaredRepository[],
-  infos: ReadonlyMap<string, RepositoryInfo | 'no-access'>,
+  infos: ReadonlyMap<string, RepositoryInfo | 'no-access' | 'fetch-failed'>,
   options: SelectOptions,
 ): { candidates: RelatedCandidate[]; skipped: SkippedRepository[] } {
   const candidates: RelatedCandidate[] = []
@@ -48,11 +54,11 @@ export function selectCandidates(
       continue
     }
     const info = infos.get(item.repo) ?? 'no-access'
-    if (info === 'no-access') skip(item, 'no-access')
+    if (info === 'no-access' || info === 'fetch-failed') skip(item, info)
     else if (info.empty || info.defaultBranch === undefined) skip(item, 'empty')
     else if (info.private && !options.pullRequestPrivate && !options.privateOnPublic) {
       skip(item, 'private-on-public')
-    } else if (candidates.length >= MAX_RELATED_CANDIDATES) skip(item, 'limit')
+    } else if (candidates.length >= MAX_RELATED_CANDIDATES) skip(item, 'candidate-limit')
     else candidates.push({ declared: item, info })
   }
   return { candidates, skipped }

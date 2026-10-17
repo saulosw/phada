@@ -1,9 +1,9 @@
 import type { ConfigLayer } from '../config/types.js'
-import { DEFAULT_IGNORE, matcher } from '../context/ignore.js'
 import { loadContext } from '../context/load-context.js'
 import type { ContextReport, ContextSources, LoadedContext } from '../context/types.js'
 import type { PullRequest } from '../github/pull-request.js'
 import { changedLines, computeImpact } from '../graph/impact.js'
+import type { ChangedLines } from '../graph/impact.js'
 import { linkGraphs } from '../graph/linked-graph.js'
 import { learnObservedEdges } from '../graph/observe.js'
 import { buildImpactReport } from '../graph/report.js'
@@ -27,7 +27,7 @@ import { IndexStoreError } from '../store/index-store.js'
 import type { IndexStore } from '../store/index-store.js'
 import type { ObservedEdge, ObservedStore } from '../store/observed-store.js'
 import { errorMessage } from './error-message.js'
-import { DEPENDENCY_FOLDERS, indexCommit, KEEP_COMMITS } from './index-repository.js'
+import { indexForReview } from './index-repository.js'
 import { checkoutPackages, openRelatedRepositories } from './related-repositories.js'
 import type { OpenedRelated, RelatedDeps } from './related-repositories.js'
 import {
@@ -158,17 +158,10 @@ export async function reviewPullRequest(
         let graph: RepositoryGraph | undefined
         if (head.graph !== undefined) {
           try {
-            graph = linkGraphs(head.graph, linkedOf(opened))
-            impact = await computeImpact(graph, changed)
-            kept = rankOpened(opened, impact)
-            if (kept.length < opened.length && reachesDropped(opened, kept, impact)) {
-              graph = linkGraphs(head.graph, linkedOf(kept.map(({ item }) => item)))
-              impact = await computeImpact(graph, changed)
-              kept = rankOpened(
-                kept.map(({ item }) => item),
-                impact,
-              )
-            }
+            const linked = await linkAndRank(head.graph, opened, changed)
+            graph = linked.graph
+            impact = linked.impact
+            kept = linked.kept
           } catch (error) {
             const message = errorMessage(error)
             deps.events.warning(graphFailure(message))
@@ -203,7 +196,11 @@ export async function reviewPullRequest(
     const relatedReport = buildRelatedReport({
       status: relatedStatus,
       ...(relatedStatus === 'unavailable'
-        ? { reason: relatedReason ?? 'investigation did not run' }
+        ? {
+            reason:
+              relatedReason ??
+              (loaded.diff.trim() === '' ? 'nothing to review' : 'investigation did not run'),
+          }
         : {}),
       opened,
       kept,
@@ -267,6 +264,23 @@ export async function reviewPullRequest(
   }
 }
 
+async function linkAndRank(
+  reviewed: RepositoryGraph,
+  opened: readonly OpenedRelated[],
+  changed: readonly ChangedLines[],
+): Promise<{ graph: RepositoryGraph; impact: DiffImpact; kept: RankedRelated[] }> {
+  let graph = linkGraphs(reviewed, linkedOf(opened))
+  let impact = await computeImpact(graph, changed)
+  let kept = rankOpened(opened, impact)
+  if (kept.length < opened.length && reachesDropped(opened, kept, impact)) {
+    const items = kept.map(({ item }) => item)
+    graph = linkGraphs(reviewed, linkedOf(items))
+    impact = await computeImpact(graph, changed)
+    kept = rankOpened(items, impact)
+  }
+  return { graph, impact, kept }
+}
+
 async function openRelated(
   pullRequest: PullRequest,
   loaded: LoadedContext,
@@ -308,14 +322,8 @@ async function openHeadGraph(
     const files = await mirror.listFiles(sha)
     store = await deps.openIndexStore()
     const deadline = deps.now() + REVIEW_INDEX_BUDGET_MS
-    const result = await indexCommit(
-      {
-        sha,
-        ref: `refs/phada/pull/${pullRequest.number}`,
-        files,
-        ignore: matcher([...DEFAULT_IGNORE, ...DEPENDENCY_FOLDERS, ...loaded.ignore]),
-        deadline,
-      },
+    const result = await indexForReview(
+      { sha, ref: `refs/phada/pull/${pullRequest.number}`, files, ignore: loaded.ignore, deadline },
       {
         mirror,
         store,
@@ -325,14 +333,12 @@ async function openHeadGraph(
       },
     )
     if (!result.complete) {
-      const progress = `${result.extracted.toLocaleString('en-US')} of ${result.total.toLocaleString('en-US')} files`
       deps.events.warning(
-        `Index of ${pullRequest.repo} is not ready (${progress}): reviewing without the repository graph. Run phada index ${pullRequest.repo}, or the next review continues it.`,
+        `Index of ${pullRequest.repo} is not ready (${result.progress}): reviewing without the repository graph. Run phada index ${pullRequest.repo}, or the next review continues it.`,
       )
       store.close()
-      return { reason: `index of ${pullRequest.repo} is not ready (${progress})` }
+      return { reason: `index of ${pullRequest.repo} is not ready (${result.progress})` }
     }
-    store.prune(KEEP_COMMITS)
     try {
       observed = await deps.openObservedStore()
       if (observed.rebuilt) {

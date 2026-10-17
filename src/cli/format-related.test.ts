@@ -56,13 +56,21 @@ const USED: RelatedReport = {
       graph: false,
       reason: 'limit',
     },
+    {
+      repo: 'acme/y',
+      origin: '.phada/config.yml',
+      state: 'skipped',
+      packages: [],
+      graph: false,
+      reason: 'candidate-limit',
+    },
   ],
 }
 
 describe('formatRelatedLine', () => {
   it('names each related repository with what it has to do with the change', () => {
     expect(formatRelatedLine(USED)).toBe(
-      'Related: acme/web (consumer, 4 call sites) · acme/db (publisher, 1 symbol used) · acme/sdk (linked, read tools only) · acme/admin (no link) · acme/secret skipped (private, PR is public) · acme/x[2J skipped (over the limit of 7)',
+      'Related: acme/web (consumer, 4 call sites) · acme/db (publisher, 1 symbol used) · acme/sdk (linked, read tools only) · acme/admin (no link) · acme/secret skipped (private, PR is public) · acme/x[2J skipped (over the limit of 7) · acme/y skipped (over the 20 fetched at most)',
     )
   })
 
@@ -89,11 +97,9 @@ describe('formatRelatedSection', () => {
         '- acme/admin at fffffff (from .phada/config.yml): no link',
         '- acme/secret (from .phada/config.yml): skipped, private, PR is public',
         '- acme/x[2J (from .phada/config.yml): skipped, over the limit of 7',
+        '- acme/y (from .phada/config.yml): skipped, over the 20 fetched at most',
         '',
       ].join('\n'),
-    )
-    expect(formatRelatedSection({ status: 'none', repositories: [] })).toBe(
-      '## Related repositories\n\nNone declared.\n',
     )
   })
 })

@@ -357,6 +357,23 @@ describe('GitMirror fetch', () => {
   })
 
   it.each([
+    'remote: Repository not found.\nfatal: repository not found',
+    'fatal: Authentication failed for https://github.com/acme/shop/',
+    'remote: Write access to repository not granted.\nfatal: unable to access: The requested URL returned error: 403',
+  ])('calls a fetch the remote refuses no access (%s)', async (stderr) => {
+    const dir = join(parent, 'fake-denied', 'shop.git')
+    const { run } = fakeRun((args) =>
+      args.includes('fetch') ? { stdout: '', stderr, exitCode: 128, durationMs: 1 } : ok,
+    )
+    const mirror = await openGitMirror({ dir, owner: 'acme', repo: 'shop', token: TOKEN, env, run })
+
+    await expect(mirror.fetch('refs/heads/main', 'refs/phada/default')).rejects.toMatchObject({
+      name: 'CheckoutUnavailableError',
+      reason: 'no-access',
+    })
+  })
+
+  it.each([
     [new CommandNotFoundError('git'), 'git-missing'],
     [new CommandTimeoutError('git', 120_000), 'timeout'],
   ])('maps %s to %s', async (thrown, reason) => {

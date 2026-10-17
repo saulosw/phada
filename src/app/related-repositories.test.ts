@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { openFixtureStore } from '../../test/support/index-fixture.js'
 import { memoryMirror } from '../../test/support/memory-mirror.js'
 import type { MemoryMirror } from '../../test/support/memory-mirror.js'
-import { RepositoryAccessError } from '../github/repository.js'
 import type { RepositoryInfo } from '../github/repository.js'
 import type { RepositoryPackages } from '../graph/packages.js'
 import { createExtractor } from '../repo-map/extract.js'
@@ -26,7 +25,7 @@ const consumer = (name: string) => ({
 })
 
 interface Setup {
-  infos: Record<string, RepositoryInfo | Error>
+  infos: Record<string, RepositoryInfo | 'no-access' | Error>
   mirrors: Record<string, MemoryMirror>
   now?: (stores: readonly IndexStore[]) => number
 }
@@ -135,23 +134,26 @@ describe('openRelatedRepositories', () => {
       infos: {
         'acme/web': info('acme/web'),
         'acme/broken': info('acme/broken'),
-        'acme/gone': new RepositoryAccessError('acme/gone', 404),
+        'acme/gone': 'no-access',
+        'acme/down': new Error('GitHub responded with HTTP 502'),
       },
       mirrors: { 'acme/web': memoryMirror(consumer('web')), 'acme/broken': broken },
     })
 
     const { opened, skipped } = await openRelatedRepositories(
-      input(['acme/gone', 'acme/broken', 'acme/web']),
+      input(['acme/gone', 'acme/down', 'acme/broken', 'acme/web']),
       deps,
     )
 
     expect(opened.map((item) => item.repo)).toEqual(['acme/web'])
     expect(skipped.map((item) => `${item.repo} ${item.reason}`)).toEqual([
       'acme/gone no-access',
+      'acme/down fetch-failed',
       'acme/broken fetch-failed',
     ])
     expect(warnings).toEqual([
-      'Cannot read acme/gone with this token (HTTP 404): reviewing without it.',
+      'Could not read acme/down (GitHub responded with HTTP 502): reviewing without it.',
+      'Cannot read acme/gone with this token: reviewing without it.',
       'Could not fetch main from acme/broken: denied: run phada index acme/broken to prepare it.',
     ])
   })
@@ -162,7 +164,7 @@ describe('openRelatedRepositories', () => {
       {
         fetch: async () => {
           throw new CheckoutUnavailableError(
-            'fetch-failed',
+            'no-access',
             'Could not fetch main from acme/hidden: remote: Repository not found.',
           )
         },

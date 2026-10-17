@@ -694,6 +694,24 @@ describe('reviewPullRequest with related repositories', () => {
     })
   })
 
+  it('says there was nothing to review when the diff is empty', async () => {
+    const h = setup({
+      contextSources: sources('context:\n  repos: [acme/web]'),
+      related: relatedDeps({ 'acme/web': info('acme/web') }),
+    })
+
+    const result = await reviewPullRequest(
+      { ...input, pullRequest: pullRequestFixture({ diff: '' }) },
+      h.deps,
+    )
+
+    expect(result.related).toEqual({
+      status: 'unavailable',
+      reason: 'nothing to review',
+      repositories: [],
+    })
+  })
+
   it('reads no related repository without investigation, and says when none is declared', async () => {
     const read: string[] = []
     const off = setup({

@@ -1,5 +1,4 @@
 import type { DeclaredRepository } from '../config/merge-config.js'
-import { DEFAULT_IGNORE, matcher } from '../context/ignore.js'
 import type { RepositoryInfo } from '../github/repository.js'
 import { readPackages } from '../graph/packages.js'
 import type { RepositoryPackages } from '../graph/packages.js'
@@ -11,16 +10,14 @@ import type { Extractor } from '../repo-map/extract.js'
 import type { Checkout } from '../repository/checkout.js'
 import type { GitMirror, TreeFile } from '../repository/git-mirror.js'
 import type { IndexStore } from '../store/index-store.js'
+import { CheckoutUnavailableError } from '../repository/git-checkout.js'
 import { errorMessage } from './error-message.js'
-import { DEPENDENCY_FOLDERS, indexCommit, KEEP_COMMITS } from './index-repository.js'
+import { indexForReview } from './index-repository.js'
 import { selectCandidates } from './select-related.js'
 import type { RelatedCandidate, SkippedRepository } from './select-related.js'
 
 export const RELATED_INDEX_BUDGET_MS = 60_000
 export const RELATED_REF = 'refs/phada/default'
-
-const NO_ACCESS =
-  /repository not found|authentication failed|could not read username|access denied|permission denied|error: 40[34]/i
 
 export interface RelatedAccess {
   openMirror(): Promise<GitMirror>
@@ -34,7 +31,7 @@ export interface RelatedEvents {
 }
 
 export interface RelatedDeps {
-  readRepository(repo: string): Promise<RepositoryInfo>
+  readRepository(repo: string): Promise<RepositoryInfo | 'no-access'>
   openRelated(repo: string): RelatedAccess
   extractor: Extractor
   now: () => number
@@ -77,15 +74,15 @@ export async function openRelatedRepositories(
   deps: RelatedDeps,
 ): Promise<{ opened: OpenedRelated[]; skipped: SkippedRepository[] }> {
   const { events } = deps
-  const infos = new Map<string, RepositoryInfo | 'no-access'>()
+  const infos = new Map<string, RepositoryInfo | 'no-access' | 'fetch-failed'>()
   await Promise.all(
     input.declared.map(async ({ repo }) => {
       if (repo.toLowerCase() === input.reviewed.toLowerCase()) return
       try {
         infos.set(repo, await deps.readRepository(repo))
       } catch (error) {
-        infos.set(repo, 'no-access')
-        events.warning(`${errorMessage(error)}: reviewing without it.`)
+        infos.set(repo, 'fetch-failed')
+        events.warning(`Could not read ${repo} (${errorMessage(error)}): reviewing without it.`)
       }
     }),
   )
@@ -96,6 +93,8 @@ export async function openRelatedRepositories(
         `${item.repo} is private and ${input.reviewed} is public: allow it in your own config with context.privateOnPublic.`,
       )
     }
+    if (item.reason === 'no-access')
+      events.warning(`Cannot read ${item.repo} with this token: reviewing without it.`)
     if (item.reason === 'empty')
       events.warning(`${item.repo} has no commits: reviewing without it.`)
   }
@@ -124,7 +123,7 @@ export async function openRelatedRepositories(
         }
       } catch (error) {
         const message = errorMessage(error)
-        if (NO_ACCESS.test(message)) {
+        if (error instanceof CheckoutUnavailableError && error.reason === 'no-access') {
           events.warning(`${message}: reviewing without it.`)
           return { repo, origin, reason: 'no-access', message }
         }
@@ -177,14 +176,8 @@ async function indexRelated(
   let store: IndexStore | undefined
   try {
     store = await item.access.openIndexStore()
-    const result = await indexCommit(
-      {
-        sha: item.sha,
-        ref: RELATED_REF,
-        files: item.files,
-        ignore: matcher([...DEFAULT_IGNORE, ...DEPENDENCY_FOLDERS]),
-        deadline,
-      },
+    const result = await indexForReview(
+      { sha: item.sha, ref: RELATED_REF, files: item.files, ignore: [], deadline },
       {
         mirror: item.mirror,
         store,
@@ -194,14 +187,12 @@ async function indexRelated(
       },
     )
     if (!result.complete) {
-      const progress = `${result.extracted.toLocaleString('en-US')} of ${result.total.toLocaleString('en-US')} files`
       deps.events.warning(
-        `Index of ${repo} is not ready (${progress}): reading it without its graph. Run phada index ${repo}, or the next review continues it.`,
+        `Index of ${repo} is not ready (${result.progress}): reading it without its graph. Run phada index ${repo}, or the next review continues it.`,
       )
       store.close()
       return {}
     }
-    store.prune(KEEP_COMMITS)
     const graph = await openRepositoryGraph({
       reader: store.reader(item.sha),
       readText: (path) => item.checkout.readText(path),

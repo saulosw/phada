@@ -1027,6 +1027,15 @@ describe('run with the repository investigation', () => {
     expect(h.stdout()).toContain('## Investigation')
   })
 
+  it('leaves the related repositories out of the dry run when none is declared', async () => {
+    const h = harness()
+
+    await run(['review', 'acme/shop#12', '--dry-run'], h.deps)
+
+    expect(h.stdout()).not.toContain('## Related repositories')
+    expect(h.stderr()).not.toContain('Related:')
+  })
+
   it('shows the impact of the diff on stderr, in the dry run and in the JSON', async () => {
     const shop = [
       "import { db } from './db'",

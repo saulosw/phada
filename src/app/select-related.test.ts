@@ -36,7 +36,7 @@ describe('selectCandidates', () => {
   })
 
   it('skips the reviewed repository, a repository it cannot read and an empty one', () => {
-    const infos = new Map<string, RepositoryInfo | 'no-access'>([
+    const infos = new Map<string, RepositoryInfo | 'no-access' | 'fetch-failed'>([
       ['acme/gone', 'no-access'],
       ['acme/empty', info('acme/empty', { empty: true })],
       ['acme/old', info('acme/old')],
@@ -61,8 +61,8 @@ describe('selectCandidates', () => {
 
     expect(candidates).toHaveLength(20)
     expect(skipped.map((item) => `${item.repo} ${item.reason}`)).toEqual([
-      'acme/r20 limit',
-      'acme/r21 limit',
+      'acme/r20 candidate-limit',
+      'acme/r21 candidate-limit',
     ])
   })
 })

@@ -39,6 +39,7 @@ import { formatPullRequestRef } from './github/pull-request-ref.js'
 import type { PullRequestRef } from './github/pull-request-ref.js'
 import type { FetchPullRequestOptions, PullRequest } from './github/pull-request.js'
 import type { RepositoryFilesOptions, RepositoryTree } from './github/repository-files.js'
+import { RepositoryAccessError } from './github/repository.js'
 import type { RepositoryInfo } from './github/repository.js'
 import type { Extractor } from './repo-map/extract.js'
 import type { GitMirror, GitMirrorOptions } from './repository/git-mirror.js'
@@ -222,7 +223,11 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
         watchProvider: (provider, pass) =>
           withProgress(provider, deps.stderr, PROGRESS_LABELS[pass]),
         related: {
-          readRepository: (name) => deps.fetchRepository({ ...splitRepo(name), token }),
+          readRepository: (name) =>
+            deps.fetchRepository({ ...splitRepo(name), token }).catch((error: unknown) => {
+              if (error instanceof RepositoryAccessError) return 'no-access' as const
+              throw error
+            }),
           openRelated: (name) => {
             const target = splitRepo(name)
             const paths = repositoryCache(deps.env, deps.home, target.owner, target.repo)
@@ -354,7 +359,7 @@ function printDryRun(
     )
   } else {
     deps.stdout.write(
-      `${formatGitHubPreview(review, messages)}\n${formatContextSection(context)}\n${formatImpactSection(impact, reports.impactText)}\n${formatRelatedSection(related)}\n${formatInvestigationSection(investigation)}`,
+      `${formatGitHubPreview(review, messages)}\n${formatContextSection(context)}\n${formatImpactSection(impact, reports.impactText)}\n${related.status === 'none' ? '' : `${formatRelatedSection(related)}\n`}${formatInvestigationSection(investigation)}`,
     )
   }
   deps.stderr.write('Dry run: nothing was posted.\n')
