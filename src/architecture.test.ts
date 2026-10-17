@@ -144,6 +144,7 @@ const APP: Boundary = {
     '../config/types.js',
     '../context/types.js',
     '../github/pull-request.js',
+    '../github/repository.js',
     '../graph/report.js',
     '../graph/types.js',
     '../investigation/create-investigation.js',
@@ -159,7 +160,7 @@ const APP: Boundary = {
     '../store/index-store.js',
     '../store/observed-store.js',
   ]),
-  expected: ['index-repository.ts', 'review-pull-request.ts'],
+  expected: ['index-repository.ts', 'review-pull-request.ts', 'select-related.ts'],
 }
 const STATIC_MODULE = /^\s*(?:import|export)\s+(type\s+)?(?:[^'"]*?\bfrom\s+)?['"]([^'"]+)['"]/gm
 const DYNAMIC_MODULE = /\bimport\(\s*['"]([^'"]+)['"]\s*\)/g
