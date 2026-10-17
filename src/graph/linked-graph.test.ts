@@ -67,6 +67,15 @@ describe('linkGraphs callers', () => {
     expect(sites.filter((site) => site.repo === 'acme/other')).toEqual([])
   })
 
+  it('never links a call to a package of the reviewed repository the consumer does not declare', async () => {
+    const graph = linkGraphs(await graphOf(CORE), [
+      { repo: 'acme/web', graph: await graphOf(WEB), link: consumes(npm('@acme/other')) },
+    ])
+
+    const sites = graph.callers({ name: 'getUser', path: 'src/users.ts' }).sites
+    expect(sites.filter((site) => site.repo === 'acme/web')).toEqual([])
+  })
+
   it('guesses a method call on an instance when the file imports the package', async () => {
     const graph = linkGraphs(await graphOf(CORE), [
       { repo: 'acme/web', graph: await graphOf(WEB), link: consumes(npm('@acme/core')) },
