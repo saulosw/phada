@@ -7,6 +7,8 @@ output can change between minor versions.
 
 ## Unreleased
 
+## 0.4.0 - 2026-10-17
+
 ### Added
 
 - Related repositories: `context.repos` in the root `.phada/config.yml` or in your own config
