@@ -36,8 +36,6 @@ describe('openObservedStore', () => {
       },
     ])
     expect(reopened.add([EDGE])).toBe(0)
-    reopened.remove([edges[0]?.id ?? -1])
-    expect(reopened.all()).toHaveLength(1)
     expect(reopened.rebuilt).toBe(false)
     reopened.close()
   })

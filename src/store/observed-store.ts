@@ -44,7 +44,6 @@ export interface ObservedStore {
   readonly rebuilt: boolean
   all(): ObservedEdge[]
   add(edges: readonly ObservedEdge[]): number
-  remove(ids: readonly number[]): void
   close(): void
 }
 
@@ -153,11 +152,6 @@ class SqliteObservedStore implements ObservedStore {
       )
     }
     return added
-  }
-
-  remove(ids: readonly number[]): void {
-    const statement = this.#db.prepare('delete from observed_edge where id = ?')
-    for (const id of ids) statement.run(id)
   }
 
   close(): void {

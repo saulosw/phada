@@ -245,8 +245,6 @@ async function openHeadGraph(
       readText: (path) => checkout.readText(path),
       observed: observed?.all() ?? [],
     })
-    const stale = graph.staleObserved()
-    if (stale.length > 0) observed?.remove(stale)
     return {
       graph,
       store,

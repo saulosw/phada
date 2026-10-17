@@ -75,7 +75,6 @@ export interface RepositoryGraph {
   similar(target: SymbolTarget | GraphSymbol): SimilarResult
   symbolAt(path: string, line: number): GraphSymbol | undefined
   lineText(path: string, line: number): Promise<string | undefined>
-  staleObserved(): number[]
 }
 
 export interface OpenGraphInput {

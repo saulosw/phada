@@ -161,10 +161,9 @@ describe('observed edges in the graph', () => {
         pullRequest: 12,
       }),
     ])
-    expect(graph.staleObserved()).toEqual([])
   })
 
-  it('drops an edge whose end no longer exists', async () => {
+  it('leaves out an edge whose end does not exist at this commit', async () => {
     const gone: ObservedEdge = {
       ...edge,
       id: 8,
@@ -173,6 +172,6 @@ describe('observed edges in the graph', () => {
     const graph = await setup([gone, { ...edge, id: 9, to: { path: 'src/deleted.ts' } }])
 
     expect(graph.callers({ name: 'getUser' }).sites.map((site) => site.how)).toEqual(['resolved'])
-    expect(graph.staleObserved()).toEqual([8, 9])
+    expect(graph.dependencies({ name: 'getUser' }).dependencies).toEqual([])
   })
 })

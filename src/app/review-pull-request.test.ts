@@ -481,6 +481,27 @@ describe('reviewPullRequest', () => {
     )
   })
 
+  it('keeps learned edges whose ends the pull request head does not have', async () => {
+    const path = freshPath('observed')
+    const seeded = await openObservedStore(path)
+    seeded.add([
+      {
+        from: { path: 'src/removed-by-this-pull-request.ts' },
+        to: { path: 'src/routes.ts' },
+        pullRequest: 3,
+        commit: 'c'.repeat(40),
+      },
+    ])
+    seeded.close()
+    const h = setup({ openObservedStore: () => openObservedStore(path) })
+
+    await reviewPullRequest(input, h.deps)
+
+    const reopened = await openObservedStore(path)
+    expect(reopened.all()).toHaveLength(1)
+    reopened.close()
+  })
+
   it('closes the checkout when the provider cannot be created', async () => {
     const h = setup()
     h.deps.createProvider = () => {

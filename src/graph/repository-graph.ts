@@ -74,7 +74,6 @@ class IndexGraph implements RepositoryGraph {
   readonly #readText: (path: string) => Promise<string>
   readonly #lines = new Map<string, Promise<string[] | undefined>>()
   readonly #observed: ValidObserved[] = []
-  readonly #stale: number[] = []
   readonly #now: () => number
 
   constructor(
@@ -92,16 +91,9 @@ class IndexGraph implements RepositoryGraph {
     for (const edge of observed) {
       const from = this.#observedEnd(edge.from)
       const to = this.#observedEnd(edge.to)
-      if (from === undefined || to === undefined) {
-        if (edge.id !== undefined) this.#stale.push(edge.id)
-        continue
-      }
+      if (from === undefined || to === undefined) continue
       this.#observed.push({ from, to, pullRequest: edge.pullRequest })
     }
-  }
-
-  staleObserved(): number[] {
-    return [...this.#stale]
   }
 
   findSymbol(name: string, kind?: SymbolKind): GraphSymbol[] {
