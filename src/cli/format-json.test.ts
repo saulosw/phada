@@ -77,6 +77,7 @@ describe('formatReviewJson', () => {
       context: null,
       investigation: null,
       impact: null,
+      related: null,
     })
   })
 
@@ -200,6 +201,7 @@ describe('formatReviewJson', () => {
       context: null,
       investigation: null,
       impact: null,
+      related: null,
     })
   })
 
@@ -310,6 +312,7 @@ describe('publication', () => {
       context: null,
       investigation: null,
       impact: null,
+      related: null,
     })
     expect(
       parse(
@@ -381,6 +384,73 @@ describe('publication', () => {
     )
 
     expect(output).toMatchObject({ impact })
-    expect(Object.keys(output as object).at(-1)).toBe('impact')
+    expect(Object.keys(output as object).slice(-2)).toEqual(['impact', 'related'])
+  })
+
+  it('adds the related repositories, with null for what is missing', () => {
+    const output = parse(
+      formatReviewJson(
+        pullRequestFixture(),
+        { status: 'reviewed', result: RESULT },
+        null,
+        null,
+        null,
+        null,
+        {
+          status: 'used',
+          repositories: [
+            {
+              repo: 'acme/web',
+              origin: '.phada/config.yml',
+              commit: 'abc',
+              state: 'consumers',
+              count: 2,
+              packages: ['shop'],
+              graph: true,
+            },
+            {
+              repo: 'acme/secret',
+              origin: 'user:config.yml',
+              state: 'skipped',
+              packages: [],
+              graph: false,
+              reason: 'private-on-public',
+            },
+          ],
+        },
+      ),
+    )
+
+    expect(output).toMatchObject({
+      schemaVersion: 1,
+      related: {
+        status: 'used',
+        reason: null,
+        repositories: [
+          {
+            repo: 'acme/web',
+            origin: '.phada/config.yml',
+            description: null,
+            commit: 'abc',
+            state: 'consumers',
+            count: 2,
+            packages: ['shop'],
+            graph: true,
+            reason: null,
+          },
+          {
+            repo: 'acme/secret',
+            origin: 'user:config.yml',
+            description: null,
+            commit: null,
+            state: 'skipped',
+            count: null,
+            packages: [],
+            graph: false,
+            reason: 'private-on-public',
+          },
+        ],
+      },
+    })
   })
 })

@@ -124,6 +124,7 @@ function harness(
     repoFiles?: Record<string, string>
     tree?: () => Promise<RepositoryTree>
     openMirror?: (options: GitMirrorOptions) => Promise<GitMirror>
+    fetchRepository?: MainDeps['fetchRepository']
   } = {},
 ): Harness {
   const checkouts: (GitMirrorOptions & { sha: string; keepAs: string })[] = []
@@ -181,6 +182,9 @@ function harness(
       fileFetches.push({ path: options.path, ref: options.ref })
       return Promise.resolve(repoFiles[options.path] ?? null)
     },
+    fetchRepository:
+      overrides.fetchRepository ??
+      ((options) => Promise.reject(new Error(`no repository ${options.owner}/${options.repo}`))),
     openMirror: (options) => {
       mirrors.push(options)
       return (
@@ -1053,6 +1057,56 @@ describe('run with the repository investigation', () => {
     expect(markdown.prompts[0]?.data).toContain('<<<PHADA_IMPACT_')
     expect(JSON.parse(json.stdout())).toMatchObject({
       impact: { status: 'used', totals: { symbols: 1, callers: 1, files: 1 } },
+    })
+  })
+
+  it('reads the related repositories and reports them on stderr, in the dry run and in the JSON', async () => {
+    const shop = {
+      'package.json': '{ "name": "shop", "main": "src/shop.ts" }\n',
+      'src/shop.ts': [
+        "import { db } from './db'",
+        '',
+        'export async function spend(userId: string, amount: number) {',
+        '  const user = await db.user.find(userId)',
+        "  if (user.crystals < amount) throw new Error('insufficient crystals')",
+        '  await db.user.update(userId, { crystals: user.crystals - amount })',
+        '  return user.crystals - amount',
+        '}',
+        '',
+      ].join('\n'),
+    }
+    const web = {
+      'package.json': '{ "name": "web", "dependencies": { "shop": "^1" } }\n',
+      'src/web.ts': "import { spend } from 'shop'\nexport const paid = spend('u1', 2)\n",
+    }
+    const options = {
+      repoFiles: { '.phada/config.yml': 'context:\n  repos: [acme/web]\n' },
+      openMirror: async ({ repo }: GitMirrorOptions) => memoryMirror(repo === 'web' ? web : shop),
+      fetchRepository: async ({ owner, repo }: { owner: string; repo: string }) => ({
+        repo: `${owner}/${repo}`,
+        private: false,
+        defaultBranch: 'main',
+        archived: false,
+        empty: false,
+      }),
+    }
+    const markdown = harness(options)
+    const json = harness(options)
+
+    await run(['review', 'acme/shop#12', '--dry-run'], markdown.deps)
+    await run(['review', 'acme/shop#12', '--dry-run', '--format', 'json'], json.deps)
+
+    expect(markdown.stderr()).toContain('Related: acme/web (consumer, 1 call site)\n')
+    expect(markdown.stdout()).toContain('## Related repositories\n\n- acme/web at ')
+    expect(markdown.mirrors.map((mirror) => mirror.dir)).toContain(
+      '/home/u/.cache/phada/repos/acme/web.git',
+    )
+    expect(markdown.prompts[0]?.data).toContain('acme/web:src/web.ts:2')
+    expect(JSON.parse(json.stdout())).toMatchObject({
+      related: {
+        status: 'used',
+        repositories: [{ repo: 'acme/web', state: 'consumers', count: 1 }],
+      },
     })
   })
 

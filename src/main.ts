@@ -12,6 +12,8 @@ import type { GitHubReview } from './cli/format-github.js'
 import { formatContextLine, formatContextSection } from './cli/format-context.js'
 import { formatImpactLine, formatImpactSection } from './cli/format-impact.js'
 import { formatInvestigationLine, formatInvestigationSection } from './cli/format-investigation.js'
+import { formatRelatedLine, formatRelatedSection } from './cli/format-related.js'
+import type { RelatedReport } from './app/related-report.js'
 import { formatAlreadyReviewedJson, formatReviewJson } from './cli/format-json.js'
 import type { Publication } from './cli/format-json.js'
 import { formatPublishedMessage, formatSkipMessage } from './cli/format-publication.js'
@@ -37,6 +39,7 @@ import { formatPullRequestRef } from './github/pull-request-ref.js'
 import type { PullRequestRef } from './github/pull-request-ref.js'
 import type { FetchPullRequestOptions, PullRequest } from './github/pull-request.js'
 import type { RepositoryFilesOptions, RepositoryTree } from './github/repository-files.js'
+import type { RepositoryInfo } from './github/repository.js'
 import type { Extractor } from './repo-map/extract.js'
 import type { GitMirror, GitMirrorOptions } from './repository/git-mirror.js'
 import type { IndexStore } from './store/index-store.js'
@@ -62,6 +65,7 @@ interface ReviewReports {
   investigation: InvestigationReport
   impact: ImpactReport
   impactText?: string
+  related: RelatedReport
 }
 
 export interface ProviderOptions {
@@ -92,6 +96,7 @@ export interface MainDeps {
   fetchRepositoryFile: (
     options: RepositoryFilesOptions & { path: string; ref: string },
   ) => Promise<string | null>
+  fetchRepository: (options: RepositoryFilesOptions) => Promise<RepositoryInfo>
   openMirror: (options: GitMirrorOptions) => Promise<GitMirror>
   openIndexStore: (path: string, version: string) => Promise<IndexStore>
   openObservedStore: (path: string) => Promise<ObservedStore>
@@ -216,6 +221,25 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
           }),
         watchProvider: (provider, pass) =>
           withProgress(provider, deps.stderr, PROGRESS_LABELS[pass]),
+        related: {
+          readRepository: (name) => deps.fetchRepository({ ...splitRepo(name), token }),
+          openRelated: (name) => {
+            const target = splitRepo(name)
+            const paths = repositoryCache(deps.env, deps.home, target.owner, target.repo)
+            return {
+              openMirror: () =>
+                deps.openMirror({ dir: paths.mirror, ...target, token, env: deps.env }),
+              openIndexStore: () => deps.openIndexStore(paths.index, deps.version),
+            }
+          },
+          extractor: deps.createExtractor(),
+          now: () => performance.now(),
+          events: {
+            warning: (message) => deps.stderr.write(`Warning: ${toTerminalText(message)}\n`),
+            indexing: progress.extracting,
+            indexed: progress.extracted,
+          },
+        },
         events: {
           contextLoaded: (report) => {
             for (const warning of report.warnings) {
@@ -228,6 +252,10 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
           indexed: progress.extracted,
           impactReady: (report) => {
             const line = formatImpactLine(report)
+            if (line !== undefined) deps.stderr.write(`${line}\n`)
+          },
+          relatedReady: (report) => {
+            const line = formatRelatedLine(report)
             if (line !== undefined) deps.stderr.write(`${line}\n`)
           },
         },
@@ -257,6 +285,7 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
       investigation: reviewed.investigation,
       impact: reviewed.impact,
       ...(reviewed.impactText === undefined ? {} : { impactText: reviewed.impactText }),
+      related: reviewed.related,
     }
     const investigationLine = formatInvestigationLine(reports.investigation)
     if (investigationLine !== undefined) deps.stderr.write(`${investigationLine}\n`)
@@ -296,6 +325,11 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
   }
 }
 
+function splitRepo(name: string): { owner: string; repo: string } {
+  const [owner = '', repo = ''] = name.split('/')
+  return { owner, repo }
+}
+
 function printDryRun(
   deps: MainDeps,
   format: OutputFormat,
@@ -307,7 +341,7 @@ function printDryRun(
   messages: Messages,
   reports: ReviewReports,
 ): void {
-  const { context, investigation, impact } = reports
+  const { context, investigation, impact, related } = reports
   if (format === 'json') {
     const publication: Publication = {
       status: 'dry-run',
@@ -316,11 +350,11 @@ function printDryRun(
       ...(wouldSkip === undefined ? {} : { wouldSkip }),
     }
     deps.stdout.write(
-      formatReviewJson(pullRequest, outcome, publication, context, investigation, impact),
+      formatReviewJson(pullRequest, outcome, publication, context, investigation, impact, related),
     )
   } else {
     deps.stdout.write(
-      `${formatGitHubPreview(review, messages)}\n${formatContextSection(context)}\n${formatImpactSection(impact, reports.impactText)}\n${formatInvestigationSection(investigation)}`,
+      `${formatGitHubPreview(review, messages)}\n${formatContextSection(context)}\n${formatImpactSection(impact, reports.impactText)}\n${formatRelatedSection(related)}\n${formatInvestigationSection(investigation)}`,
     )
   }
   deps.stderr.write('Dry run: nothing was posted.\n')
@@ -340,7 +374,7 @@ async function publish(
   messages: Messages,
   reports: ReviewReports,
 ): Promise<void> {
-  const { context, investigation, impact } = reports
+  const { context, investigation, impact, related } = reports
   if (format === 'markdown') deps.stdout.write(formatReview(pullRequest, outcome.result, messages))
   deps.stderr.write('Publishing the review…\n')
   let created: CreatedReview
@@ -355,7 +389,7 @@ async function publish(
     if (format === 'json') {
       const failed: Publication = { status: 'failed', error: errorSummary(error) }
       deps.stdout.write(
-        formatReviewJson(pullRequest, outcome, failed, context, investigation, impact),
+        formatReviewJson(pullRequest, outcome, failed, context, investigation, impact, related),
       )
     }
     throw error
@@ -365,7 +399,7 @@ async function publish(
   if (format === 'json') {
     const published: Publication = { status: 'published', url: created.url, comments, stillOpen }
     deps.stdout.write(
-      formatReviewJson(pullRequest, outcome, published, context, investigation, impact),
+      formatReviewJson(pullRequest, outcome, published, context, investigation, impact, related),
     )
   }
   deps.stderr.write(`${formatPublishedMessage(created.url, comments, stillOpen)}\n`)

@@ -1,3 +1,4 @@
+import type { RelatedReport } from '../app/related-report.js'
 import type { ContextReport } from '../context/types.js'
 import type { ImpactReport } from '../graph/report.js'
 import type { InvestigationReport } from '../investigation/tools/report.js'
@@ -23,6 +24,7 @@ export function formatReviewJson(
   context: ContextReport | null = null,
   investigation: InvestigationReport | null = null,
   impact: ImpactReport | null = null,
+  related: RelatedReport | null = null,
 ): string {
   const pullRequest = pullRequestJson(pr)
   const publicationBlock = publication === null ? null : publicationJson(publication)
@@ -38,6 +40,7 @@ export function formatReviewJson(
           context: contextBlock,
           investigation,
           impact,
+          related: relatedJson(related),
         }
       : {
           schemaVersion: SCHEMA_VERSION,
@@ -48,6 +51,7 @@ export function formatReviewJson(
           context: contextBlock,
           investigation,
           impact,
+          related: relatedJson(related),
         }
   return `${JSON.stringify(body, null, 2)}\n`
 }
@@ -62,8 +66,28 @@ export function formatAlreadyReviewedJson(pr: PullRequest, reason: SkipReason): 
     context: null,
     investigation: null,
     impact: null,
+    related: null,
   }
   return `${JSON.stringify(body, null, 2)}\n`
+}
+
+function relatedJson(report: RelatedReport | null) {
+  if (report === null) return null
+  return {
+    status: report.status,
+    reason: report.reason ?? null,
+    repositories: report.repositories.map((entry) => ({
+      repo: entry.repo,
+      origin: entry.origin,
+      description: entry.description ?? null,
+      commit: entry.commit ?? null,
+      state: entry.state,
+      count: entry.count ?? null,
+      packages: entry.packages,
+      graph: entry.graph,
+      reason: entry.reason ?? null,
+    })),
+  }
 }
 
 function pullRequestJson(pr: PullRequest) {
