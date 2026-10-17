@@ -108,12 +108,15 @@ const GRAPH: Boundary = {
   expected: [
     'impact.ts',
     'observe.ts',
+    'packages.ts',
     'project-config.ts',
     'report.ts',
     'repository-graph.ts',
+    'repository-links.ts',
     'resolve-module.ts',
     'resolve-name.ts',
     'similar.ts',
+    'toml.ts',
     'types.ts',
   ],
 }
