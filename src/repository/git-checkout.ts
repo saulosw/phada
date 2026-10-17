@@ -39,7 +39,7 @@ export type Run = (
   options?: RunCommandOptions,
 ) => Promise<RunCommandResult>
 
-export type CheckoutUnavailableReason = 'git-missing' | 'fetch-failed' | 'timeout'
+export type CheckoutUnavailableReason = 'git-missing' | 'fetch-failed' | 'no-access' | 'timeout'
 
 export class CheckoutUnavailableError extends Error {
   override readonly name = 'CheckoutUnavailableError'

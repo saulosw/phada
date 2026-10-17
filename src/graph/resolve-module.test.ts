@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ProjectConfig } from './project-config.js'
-import { resolveModule } from './resolve-module.js'
+import { resolveModule, resolvePackage } from './resolve-module.js'
 
 const NONE: ProjectConfig = {
   tsconfigs: new Map(),
@@ -208,5 +208,48 @@ describe('resolveModule for Go', () => {
       kind: 'external',
       module: 'fmt',
     })
+  })
+})
+
+describe('resolvePackage', () => {
+  it('resolves a package of the repository from outside, through main, exports and dist', () => {
+    const config: ProjectConfig = {
+      ...NONE,
+      tsconfigs: new Map([['', { paths: [{ pattern: '@/*', targets: ['src/*'] }] }]]),
+      workspacePackages: [
+        {
+          name: '@acme/core',
+          dir: 'packages/core',
+          exports: [{ pattern: './utils', target: './dist/utils.js' }],
+          main: 'dist/index.js',
+        },
+      ],
+    }
+    const paths = files('packages/core/src/index.ts', 'packages/core/dist/utils.ts', 'src/a.ts')
+
+    expect(resolvePackage('@acme/core', 'typescript', paths, config)).toEqual([
+      'packages/core/src/index.ts',
+    ])
+    expect(resolvePackage('@acme/core/utils', 'typescript', paths, config)).toEqual([
+      'packages/core/dist/utils.ts',
+    ])
+    expect(resolvePackage('@/a', 'typescript', paths, config)).toBeUndefined()
+    expect(resolvePackage('./src/a', 'typescript', paths, config)).toBeUndefined()
+  })
+
+  it('resolves a Go package by its module path and a Python module from its roots', () => {
+    const config: ProjectConfig = {
+      ...NONE,
+      goModules: [{ dir: '', module: 'github.com/acme/lib' }],
+    }
+    const paths = files('pkg/users/users.go', 'pkg/users/users_test.go', 'src/acme_lib/users.py')
+
+    expect(resolvePackage('github.com/acme/lib/pkg/users', 'go', paths, config)).toEqual([
+      'pkg/users/users.go',
+    ])
+    expect(resolvePackage('acme_lib.users', 'python', paths, config)).toEqual([
+      'src/acme_lib/users.py',
+    ])
+    expect(resolvePackage('.users', 'python', paths, config)).toBeUndefined()
   })
 })

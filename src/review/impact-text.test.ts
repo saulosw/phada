@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { IMPACT_BUDGET_BYTES, renderImpact } from './impact-text.js'
+import { hasImpact } from './prompt-parts.js'
 import type { DiffImpact, ImpactSite, ImpactedSymbol } from './types.js'
 
 function site(line: number, fields: Partial<ImpactSite> = {}): ImpactSite {
@@ -127,6 +128,52 @@ describe('renderImpact', () => {
 
     expect(IMPACT_BUDGET_BYTES).toBe(4_000)
     expect(Buffer.byteLength(text)).toBeLessThanOrEqual(4_000)
+  })
+
+  it('names the repository of a site and of a dependency outside the reviewed one', () => {
+    const impact: DiffImpact = {
+      symbols: [
+        symbol({
+          callers: 1,
+          sites: [site(42, { repo: 'acme/web', in: 'load' })],
+          dependencies: [
+            { name: 'query', repo: 'acme/db', path: 'src/query.ts', line: 12, kind: 'function' },
+          ],
+        }),
+      ],
+      omittedSymbols: 0,
+      callerFiles: 1,
+    }
+
+    const { text } = renderImpact(impact)
+
+    expect(text).toContain('  acme/web:src/api.ts:42 in load: getUser(42)')
+    expect(text).toContain('depends on: query → acme/db:src/query.ts:12 (function)')
+  })
+
+  it('shows a symbol without callers that uses a related repository, with what it uses there', () => {
+    const impact: DiffImpact = {
+      symbols: [
+        symbol({
+          callers: 0,
+          files: 0,
+          sites: [],
+          dependencies: [
+            { name: 'query', repo: 'acme/db', path: 'src/query.ts', line: 12, kind: 'function' },
+            { name: 'local', path: 'src/local.ts', line: 3, kind: 'function' },
+          ],
+        }),
+      ],
+      omittedSymbols: 0,
+      callerFiles: 0,
+    }
+
+    const { text } = renderImpact(impact)
+
+    expect(text).toBe(
+      'function getUser (src/users.ts:10-30, exported) — no callers or uses found\n  depends on: query → acme/db:src/query.ts:12 (function), local → src/local.ts:3 (function)',
+    )
+    expect(hasImpact(impact)).toBe(true)
   })
 
   it('says one caller in one file', () => {

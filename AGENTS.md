@@ -39,10 +39,18 @@ src/
                          #   src/graph/ and src/app/
   app/                   # use cases any caller can run (CLI today), with injected readers
     review-pull-request.ts # reviewPullRequest(): repository context → mirror → index of the head
-                         #   (60 s budget) → graph and impact of the diff → investigation → review
-                         #   → observed relations → reports; progress through typed events
+                         #   (60 s budget) → related repositories → graph and impact of the diff
+                         #   across them → investigation → review → observed relations → reports;
+                         #   progress through typed events
     index-repository.ts  #   indexRepository(): mirror → files left out and why → indexCommit();
                          #   indexCommit(): extract new blobs (optional deadline) → store the commit
+    related-repositories.ts # openRelatedRepositories(): metadata → selection → fetch of the default
+                         #   branch → manifests and links → index of the linked ones (60 s in total)
+    select-related.ts    #   selectCandidates() (access, empty, private on public, 20 at most),
+                         #   rankRelated() (7: related to the change › linked › the rest)
+    related-report.ts    #   rankOpened(), buildRelatedReport(), relatedSummaries(): the related
+                         #   repositories for the prompt, the CLI and the JSON
+    error-message.ts     #   errorMessage(): the message of any thrown value
   cli/                   # terminal edge
     args.ts              #   parseCliArgs(): `review` (--dry-run, --force, --verify/--no-verify,
                          #   --investigate/--no-investigate) and
@@ -60,6 +68,7 @@ src/
     format-publication.ts #  skip and "Published" messages
     format-context.ts    #   the "Context:" line and the context section of --dry-run
     format-investigation.ts # the "Investigated:" line and the investigation section of --dry-run
+    format-related.ts    #   the "Related:" line and the related repositories section of --dry-run
     format-impact.ts     #   the "Impact:" line and the impact section of --dry-run
     finding-references.ts #  the "Based on" line: sources and rule of a finding
     format-json.ts       #   formatReviewJson(): schemaVersion 1, with the publication, context,
@@ -100,14 +109,21 @@ src/
     pull-request-reviews.ts # fetchReviewState(): viewer, reviews and threads, paginated
     create-review.ts     #   createReview(): one COMMENT review with line comments
     repository-files.ts  #   fetchRepositoryTree(), fetchRepositoryFile(): the repository at a commit
+    repository.ts        #   fetchRepository(): visibility, default branch, empty
   graph/                 # the repository graph, resolved on demand from the index of a commit
     types.ts             #   RepositoryGraph, GraphSymbol, Site, Dependency, …
     project-config.ts    #   tsconfig/jsconfig paths, package.json of the repository's own
                          #   packages, go.mod modules, Python roots
-    resolve-module.ts    #   import specifier → files of the commit, or external
+    resolve-module.ts    #   import specifier → files of the commit, or external;
+                         #   resolvePackage(): a package of the repository as seen from outside
     resolve-name.ts      #   NameResolver: call or use → definitions (resolved, inferred, external)
     repository-graph.ts  #   openRepositoryGraph(): findSymbol, callers, dependencies, similar,
-                         #   symbolAt, lineText, observed relations
+                         #   symbolAt, lineText, observed relations, exported, externalSites
+    packages.ts          #   readPackages(): what the manifests publish and depend on (npm, Go,
+                         #   Python)
+    toml.ts              #   parseTomlTables(): the strings and string arrays of each TOML table
+    repository-links.ts  #   linkRepositories(): packages one repository publishes and the other uses
+    linked-graph.ts      #   linkGraphs(): callers in consumers, dependencies in publishers
     similar.ts           #   scoreSimilar(): calls, parameters, name tokens, owner kind
     impact.ts            #   changedLines(), computeImpact(): changed symbols → callers and dependencies
     observe.ts           #   learnObservedEdges(): confirmed finding + source the AI read → relation
@@ -118,6 +134,7 @@ src/
     tools/               #   the tools, pure over a Checkout and a RepositoryGraph
       tool-registry.ts   #     RegisteredTool, createToolbox(): validation, budget, answer size, log
       repository-tools.ts #    read_file, grep and list
+      related-repo.ts    #     the repo argument of the tools; owner/repo:path
       history-tool.ts    #     history: commits and blame of a file, pull request from the subject
       graph-tools.ts     #     find_symbol, callers, dependencies and similar
       budget.ts          #     calls and bytes per review pass, answer size
@@ -166,7 +183,8 @@ src/
   review/                # the engine: data in, result out
     types.ts             #   ReviewRequest, Finding, ReviewResult, ReviewOutcome, …
     prompt-parts.ts      #   text shared by the review and verification prompts: rules section,
-                         #   docs block, impact block, diff scope and tools
+                         #   docs block, related repositories (RELATED, relatedBlocks()), impact
+                         #   block, diff scope and tools
     impact-text.ts       #   renderImpact(): the impact of the diff within its 4 KB budget
     prompt.ts            #   buildReviewPrompt(): instructions + nonce-delimited data + output schema
     verify-prompt.ts     #   buildVerifyPrompt(): the second, skeptical pass (--verify)

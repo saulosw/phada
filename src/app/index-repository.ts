@@ -154,6 +154,28 @@ export async function indexRepository(
   }
 }
 
+export type ReviewIndexResult =
+  Extract<IndexCommitResult, { complete: true }> | { complete: false; progress: string }
+
+export async function indexForReview(
+  input: Omit<IndexCommitInput, 'ignore'> & { ignore: readonly string[] },
+  deps: IndexCommitDeps,
+): Promise<ReviewIndexResult> {
+  const result = await indexCommit(
+    { ...input, ignore: matcher([...DEFAULT_IGNORE, ...DEPENDENCY_FOLDERS, ...input.ignore]) },
+    deps,
+  )
+  if (!result.complete) {
+    const count = (value: number) => value.toLocaleString('en-US')
+    return {
+      complete: false,
+      progress: `${count(result.extracted)} of ${count(result.total)} files`,
+    }
+  }
+  deps.store.prune(KEEP_COMMITS)
+  return result
+}
+
 export async function indexCommit(
   input: IndexCommitInput,
   deps: IndexCommitDeps,

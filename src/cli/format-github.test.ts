@@ -372,6 +372,13 @@ describe('formatGitHubReview comments', () => {
     )
   })
 
+  it('names a source in a related repository as owner/repo:path', () => {
+    const crossing = findingFixture({ sources: ['acme/web:src/pages/invoice-page.ts:12'] })
+    const [comment] = formatGitHubReview(RESULT, plan([crossing])).comments
+
+    expect(comment?.body).toContain('<sub>Based on: `acme/web:src/pages/invoice-page.ts:12`</sub>')
+  })
+
   it('writes the sources line in the language of the review and drops backticks from it', () => {
     const ruled = findingFixture({ rule: 'a`b', sources: ['docs/`x`.md'] })
     const [comment] = formatGitHubReview(

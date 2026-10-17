@@ -7,6 +7,24 @@ output can change between minor versions.
 
 ## Unreleased
 
+## 0.4.0 - 2026-10-17
+
+### Added
+
+- Related repositories: `context.repos` in the root `.phada/config.yml` or in your own config
+  lists other repositories a review may read (`owner/repo`, or `{ repo, description }`). Phada
+  fetches the head of their default branch and the AI reads them with the new `repo` argument of
+  `read_file`, `grep`, `list`, `find_symbol`, `callers`, `dependencies` and `similar`; up to 7 are
+  read per review.
+- When a package manifest links the two repositories (npm, Go modules, Python), the related
+  repository is indexed and the impact of the diff follows the changed symbols to the code that
+  calls them there; `dependencies` points to the definitions in a package the reviewed repository
+  uses. Sources can cite `owner/repo:path`.
+- A private related repository is never read for a public pull request unless your own config
+  sets `context.privateOnPublic: true`; the related repository's `.phada/` is never loaded.
+- `Related: …` on stderr, a `Related repositories` section in `--dry-run` and a `related` block in
+  the JSON.
+
 ## 0.3.0 - 2026-10-15
 
 ### Added

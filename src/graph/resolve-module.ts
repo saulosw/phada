@@ -31,6 +31,22 @@ export function resolveModule(
     : { kind: 'files', paths: found }
 }
 
+export function resolvePackage(
+  specifier: string,
+  language: Language,
+  paths: ReadonlySet<string>,
+  config: ProjectConfig,
+): string[] | undefined {
+  if (specifier.startsWith('.')) return undefined
+  const found =
+    language === 'python'
+      ? resolvePython('', specifier, paths, config)
+      : language === 'go'
+        ? resolveGo(specifier, paths, config)
+        : workspaceFile(specifier, paths, config)
+  return found === undefined || found.length === 0 ? undefined : found
+}
+
 function resolveScript(
   importer: string,
   specifier: string,

@@ -246,6 +246,19 @@ describe('loadContext', () => {
     expect(loaded.options).toEqual({ language: 'pt-BR', verify: true, investigate: false })
   })
 
+  it('passes the related repositories and privateOnPublic on', async () => {
+    const sources = fakeSources({ '.phada/config.yml': 'context:\n  repos: [acme/web]' })
+    const userLayers = [userLayer({ context: { repos: ['acme/sdk'], privateOnPublic: true } })]
+
+    const loaded = await loadContext({ diff: DIFF, baseSha: SHA, userLayers, sources })
+
+    expect(loaded.repos).toEqual([
+      { repo: 'acme/web', origin: '.phada/config.yml' },
+      { repo: 'acme/sdk', origin: 'user:config.yml' },
+    ])
+    expect(loaded.privateOnPublic).toBe(true)
+  })
+
   it('keeps the user rules when the repository cannot be read', async () => {
     const sources = fakeSources({}, { tree: new Error('GitHub rejected the token (HTTP 403)') })
 

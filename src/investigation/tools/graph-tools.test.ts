@@ -161,3 +161,94 @@ describe('graph tools with many results', () => {
     expect(result.text.endsWith('+10 more callers')).toBe(true)
   })
 })
+
+describe('graph tools with related repositories', () => {
+  const WEB = {
+    'src/page.ts':
+      "import { getUser } from '@acme/core'\nexport function load(id: string) {\n  return getUser(id)\n}\n",
+  }
+
+  async function related(withGraph: boolean) {
+    const { reader, readText } = await indexFixture(WEB)
+    const webGraph = await openRepositoryGraph({ reader, readText })
+    return [{ repo: 'acme/web', ...(withGraph ? { graph: webGraph } : {}) }]
+  }
+
+  it('queries the graph of a related repository and names its paths owner/repo:path', async () => {
+    const { graph } = await setup()
+    const log = new ToolLog()
+    const toolbox = createToolbox(
+      graphTools(graph, { related: await related(true) }),
+      log,
+      'review',
+    )
+
+    const found = await toolbox.call('find_symbol', { name: 'load', repo: 'acme/web' })
+
+    expect(found.text).toMatch(/^function load — acme\/web:src\/page\.ts:2-4 \[exported\]/)
+    expect(log.records[0]?.paths).toEqual(['acme/web:src/page.ts'])
+  })
+
+  it('says to read a related repository without a graph', async () => {
+    const { graph } = await setup()
+    const toolbox = createToolbox(
+      graphTools(graph, { related: await related(false) }),
+      new ToolLog(),
+      'review',
+    )
+
+    const result = await toolbox.call('callers', { name: 'load', repo: 'acme/web' })
+
+    expect(result).toEqual({
+      text: 'acme/web has no graph in this review: use read_file and grep with repo.',
+      isError: true,
+    })
+  })
+
+  it('shows the callers found in another repository under owner/repo:path', async () => {
+    const { graph } = await setup()
+    const crossing: RepositoryGraph = new Proxy(graph, {
+      get(target, property) {
+        if (property === 'callers') {
+          return (wanted: Parameters<typeof graph.callers>[0]) => {
+            const found = target.callers(wanted)
+            const symbol = found.symbols[0]
+            return symbol === undefined
+              ? found
+              : {
+                  ...found,
+                  sites: [
+                    ...found.sites,
+                    {
+                      repo: 'acme/web',
+                      path: 'src/page.ts',
+                      line: 3,
+                      target: symbol,
+                      kind: 'calls',
+                      how: 'resolved',
+                    },
+                  ],
+                }
+          }
+        }
+        if (property === 'lineText') {
+          return async (path: string, line: number, repo?: string) =>
+            repo === 'acme/web' ? '  return getUser(id)' : target.lineText(path, line)
+        }
+        const value = Reflect.get(target, property, target)
+        return typeof value === 'function' ? value.bind(target) : value
+      },
+    })
+    const log = new ToolLog()
+    const toolbox = createToolbox(
+      graphTools(crossing, { related: await related(true) }),
+      log,
+      'review',
+    )
+
+    const result = await toolbox.call('callers', { name: 'getUser', path: 'src/users.ts' })
+
+    expect(result.text).toContain('acme/web:src/page.ts\n  3: return getUser(id)')
+    expect(log.records[0]?.touched).toContain('acme/web:src/page.ts')
+  })
+})
