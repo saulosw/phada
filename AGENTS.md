@@ -183,7 +183,8 @@ src/
   review/                # the engine: data in, result out
     types.ts             #   ReviewRequest, Finding, ReviewResult, ReviewOutcome, …
     prompt-parts.ts      #   text shared by the review and verification prompts: rules section,
-                         #   docs block, impact block, diff scope and tools
+                         #   docs block, related repositories (RELATED, relatedBlocks()), impact
+                         #   block, diff scope and tools
     impact-text.ts       #   renderImpact(): the impact of the diff within its 4 KB budget
     prompt.ts            #   buildReviewPrompt(): instructions + nonce-delimited data + output schema
     verify-prompt.ts     #   buildVerifyPrompt(): the second, skeptical pass (--verify)
