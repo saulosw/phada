@@ -446,6 +446,41 @@ describe('reviewPullRequest', () => {
     expect(await h.observedEdges()).toEqual([])
   })
 
+  it('keeps the review when what it learned cannot be saved', async () => {
+    const finding = findingFixture({
+      file: 'src/shop.ts',
+      line: 3,
+      confidence: 95,
+      sources: ['src/routes.ts'],
+    })
+    const h = setup(
+      {
+        openObservedStore: async () => {
+          const store = await openObservedStore(freshPath('observed'))
+          store.add = () => {
+            throw new Error('database is locked')
+          }
+          return store
+        },
+      },
+      [
+        { text: reviewReportJson({ findings: [finding] }), durationMs: 10 },
+        {
+          text: verificationJson([verdictFixture({ id: 1, reason: 'The route calls it by name' })]),
+          durationMs: 5,
+        },
+      ],
+    )
+
+    const result = await reviewPullRequest({ ...input, options: { verify: true } }, h.deps)
+
+    expect(result.outcome.status).toBe('reviewed')
+    expect(result.impact.learned).toEqual([])
+    expect(h.events).toContain(
+      'warning: Could not save what this review learned (database is locked).',
+    )
+  })
+
   it('closes the checkout when the provider cannot be created', async () => {
     const h = setup()
     h.deps.createProvider = () => {

@@ -165,7 +165,7 @@ export async function reviewPullRequest(
     )
 
     const reviewed = outcome.status === 'reviewed' ? outcome.result : undefined
-    const learned = learn(head, investigation, reviewed, pullRequest)
+    const learned = learn(head, investigation, reviewed, pullRequest, deps.events)
     const report = buildInvestigationReport({
       status: investigation !== undefined ? 'used' : investigate ? 'unavailable' : 'off',
       ...(unavailable === undefined ? {} : { reason: unavailable }),
@@ -279,19 +279,25 @@ function learn(
   investigation: Investigation | undefined,
   reviewed: Extract<ReviewOutcome, { status: 'reviewed' }>['result'] | undefined,
   pullRequest: PullRequest,
+  events: PullRequestReviewEvents,
 ): ObservedEdge[] {
   if (head.graph === undefined || head.observed === undefined || investigation === undefined)
     return []
   if (reviewed === undefined) return []
-  const learned = learnObservedEdges({
-    graph: head.graph,
-    findings: reviewed.findings,
-    verified: reviewed.verification !== undefined,
-    readPaths: new Set(investigation.log.records.flatMap((record) => record.touched)),
-    pullRequest: pullRequest.number,
-    commit: head.graph.commit,
-    known: head.observed.all(),
-  })
-  head.observed.add(learned)
-  return learned
+  try {
+    const learned = learnObservedEdges({
+      graph: head.graph,
+      findings: reviewed.findings,
+      verified: reviewed.verification !== undefined,
+      readPaths: new Set(investigation.log.records.flatMap((record) => record.touched)),
+      pullRequest: pullRequest.number,
+      commit: head.graph.commit,
+      known: head.observed.all(),
+    })
+    head.observed.add(learned)
+    return learned
+  } catch (error) {
+    events.warning(`Could not save what this review learned (${errorMessage(error)}).`)
+    return []
+  }
 }
