@@ -4,6 +4,8 @@ import { parseConfigText } from '../config/parse-config.js'
 import type { ConfigLayer } from '../config/types.js'
 import type { RepositoryTree } from '../github/repository-files.js'
 import type { ContextDoc, ContextRule } from '../review/types.js'
+import { docScope } from './doc-scope.js'
+import type { DocFormat } from './doc-scope.js'
 import { applyIgnore, DEFAULT_IGNORE, matcher } from './ignore.js'
 import { phadaDirs, phadaFiles } from './phada-paths.js'
 import {
@@ -189,7 +191,13 @@ function selectRules(
         : inScope.length > 0
           ? 'applied'
           : 'out-of-scope'
-    report.push({ key: rule.key, origin: rule.origin, status })
+    report.push({
+      key: rule.key,
+      origin: rule.origin,
+      scope: [...rule.scope],
+      ...(rule.severity === undefined ? {} : { severity: rule.severity }),
+      status,
+    })
     if (status === 'applied') applied.push(except.length === 0 ? rule : { ...rule, except })
   }
   return { applied, report }
@@ -231,7 +239,7 @@ async function collectDocs(
     ...fromRepository.slice(declaredCount),
   ]
   const probing = tree?.truncated ?? false
-  return fillBudget(planned, sources, sha, warnings, report, probing)
+  return fillBudget(planned, files, sources, sha, warnings, report, probing)
 }
 
 async function localCandidates(
@@ -273,7 +281,8 @@ async function localCandidates(
 }
 
 async function fillBudget(
-  planned: readonly PlannedDoc[],
+  candidates: readonly PlannedDoc[],
+  files: readonly string[],
   sources: ContextSources,
   sha: string,
   warnings: string[],
@@ -285,7 +294,36 @@ async function fillBudget(
     mapLimit(docs, READ_CONCURRENCY, async (doc) => {
       contents.set(doc, await readDoc(doc, sources))
     })
-  await read(planned.filter((doc) => doc.size === undefined))
+  await read(candidates.filter((doc) => doc.size === undefined || isScoped(doc)))
+  const scopes = new Map<PlannedDoc, string[]>()
+  const planned: PlannedDoc[] = []
+  for (const doc of candidates) {
+    const content = contents.get(doc)
+    if (!isScoped(doc) || typeof content !== 'string') {
+      planned.push(doc)
+      continue
+    }
+    const scope = docScope(doc.format, content, doc.dir ?? '')
+    if (scope.kind === 'invalid') {
+      warnings.push(`${doc.path}: could not read its front matter; included without a scope.`)
+    }
+    if (scope.kind === 'globs') {
+      scopes.set(doc, scope.patterns)
+      if (files.some(matcher(scope.patterns))) {
+        planned.push(doc)
+        continue
+      }
+    }
+    if (scope.kind === 'always' || scope.kind === 'invalid') {
+      planned.push(doc)
+      continue
+    }
+    report.push({
+      ...omitted(doc.path, doc.source, scope.kind === 'globs' ? 'out-of-scope' : scope.kind, doc),
+      bytes: byteLength(content),
+      ...(scope.kind === 'globs' ? { scope: scope.patterns } : {}),
+    })
+  }
   const dropped = new Set<PlannedDoc>()
   const skipped = new Set<PlannedDoc>()
   for (const doc of planned.filter((candidate) => candidate.size === undefined)) {
@@ -326,15 +364,17 @@ async function fillBudget(
     const shown = truncated ? truncateDoc(content) : content
     used += truncated ? byteLength(shown.slice(0, shown.lastIndexOf('\n['))) : bytes
     docs.push({ path: doc.path, content: shown })
+    const scope = scopes.get(doc)
     report.push({
       path: doc.path,
       origin: doc.source,
       category: doc.category,
       bytes,
       status: truncated ? 'truncated' : 'included',
+      ...(scope === undefined ? {} : { scope }),
     })
   }
-  return { docs, report: orderLike(report, planned), used }
+  return { docs, report: orderLike(report, candidates), used }
 }
 
 function planBudget(
@@ -357,6 +397,10 @@ function planBudget(
     chosen.push(doc)
   }
   return { chosen, omitted: omittedDocs }
+}
+
+function isScoped(doc: PlannedDoc): doc is PlannedDoc & { format: DocFormat } {
+  return doc.format !== undefined && doc.category !== 'declared'
 }
 
 function dropReason(content: DocContent | undefined): DocReport['reason'] | undefined {

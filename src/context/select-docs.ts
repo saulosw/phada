@@ -1,5 +1,7 @@
 import { posix } from 'node:path'
+import { escapeGlob } from '../config/merge-config.js'
 import type { DeclaredFile } from '../config/merge-config.js'
+import type { DocFormat } from './doc-scope.js'
 import { matcher } from './ignore.js'
 
 export type DocCategory = 'declared' | 'module' | 'agents' | 'contributing' | 'other'
@@ -14,6 +16,8 @@ export interface DocCandidate {
   category: DocCategory
   size?: number
   origin: string
+  format?: DocFormat
+  dir?: string
 }
 
 export type Fit = 'whole' | 'truncated' | 'omitted'
@@ -21,9 +25,13 @@ export type Fit = 'whole' | 'truncated' | 'omitted'
 export const DOCS_BUDGET_BYTES = 60_000
 export const DOC_LIMIT_BYTES = 20_000
 
-const MODULE_NAMES = ['README.md', 'AGENTS.md', 'CLAUDE.md']
+const MODULE_NAMES = ['README.md', 'AGENTS.md', 'CLAUDE.md', 'GEMINI.md']
 const AGENT_PATHS = ['AGENTS.md', 'CLAUDE.md', '.claude/CLAUDE.md']
 const AGENT_GLOB = '.claude/rules/**/*.md'
+const INSTRUCTIONS_PATH = '.github/copilot-instructions.md'
+const INSTRUCTIONS_GLOB = '.github/instructions/**/*.instructions.md'
+const MDC_GLOB = '.cursor/rules/**/*.mdc'
+const LATE_AGENT_PATHS = ['.cursorrules', '.windsurfrules', 'GEMINI.md']
 const CONTRIBUTING_PATHS = [
   'CONTRIBUTING.md',
   '.github/CONTRIBUTING.md',
@@ -57,6 +65,11 @@ export function truncateDoc(content: string): string {
   return `${kept}\n[truncated by Phada: ${byteLength(kept)} of ${bytes.length} bytes]`
 }
 
+interface Scoped {
+  format: DocFormat
+  dir: string
+}
+
 export function repositoryDocCandidates(input: {
   entries: readonly TreeEntry[]
   complete: boolean
@@ -71,11 +84,20 @@ export function repositoryDocCandidates(input: {
   const candidates: DocCandidate[] = []
   const missing: DeclaredFile[] = []
 
-  const add = (path: string, category: DocCategory, origin: string) => {
+  const add = (path: string, category: DocCategory, origin: string, scoped?: Scoped) => {
     if (seen.has(path)) return
     seen.add(path)
     const size = sizes.get(path)
-    candidates.push({ path, category, ...(size === undefined ? {} : { size }), origin })
+    candidates.push({
+      path,
+      category,
+      ...(size === undefined ? {} : { size }),
+      origin,
+      ...(scoped ?? {}),
+    })
+  }
+  const addMatching = (glob: string, category: DocCategory, scoped: Scoped) => {
+    for (const path of paths.filter(matcher([glob]))) add(path, category, 'default', scoped)
   }
   const addKnown = (path: string, category: DocCategory) => {
     const actual = byLowerPath.get(path.toLowerCase())
@@ -100,9 +122,14 @@ export function repositoryDocCandidates(input: {
 
   for (const dir of moduleDirs(input.changedFiles)) {
     for (const name of MODULE_NAMES) addKnown(`${dir}/${name}`, 'module')
+    addMatching(`${escapeGlob(dir)}/${MDC_GLOB}`, 'module', { format: 'mdc', dir })
   }
   for (const path of AGENT_PATHS) addKnown(path, 'agents')
   for (const path of paths.filter(matcher([AGENT_GLOB]))) add(path, 'agents', 'default')
+  addKnown(INSTRUCTIONS_PATH, 'agents')
+  addMatching(INSTRUCTIONS_GLOB, 'agents', { format: 'instructions', dir: '' })
+  addMatching(MDC_GLOB, 'agents', { format: 'mdc', dir: '' })
+  for (const path of LATE_AGENT_PATHS) addKnown(path, 'agents')
   for (const path of CONTRIBUTING_PATHS) addKnown(path, 'contributing')
   for (const path of paths.filter(matcher(OTHER_GLOBS))) {
     if (!EXCLUDED.test(posix.basename(path))) add(path, 'other', 'default')
