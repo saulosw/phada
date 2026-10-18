@@ -22,6 +22,7 @@ export interface ReviewContext {
 }
 
 export interface ImpactSite {
+  repo?: string
   path: string
   line: number
   in?: string
@@ -33,6 +34,7 @@ export interface ImpactSite {
 
 export interface ImpactDependency {
   name: string
+  repo?: string
   path: string
   line: number
   kind: string
@@ -50,12 +52,30 @@ export interface ImpactedSymbol {
   capped?: boolean
   sites: ImpactSite[]
   dependencies: ImpactDependency[]
+  related?: RelatedReach[]
+}
+
+export interface RelatedReach {
+  repo: string
+  callers: number
+  uses: number
 }
 
 export interface DiffImpact {
   symbols: ImpactedSymbol[]
   omittedSymbols: number
   callerFiles: number
+}
+
+export type RelatedState = 'consumers' | 'uses' | 'linked' | 'unlinked'
+
+export interface RelatedSummary {
+  repo: string
+  commit: string
+  state: RelatedState
+  count?: number
+  description?: string
+  graph: boolean
 }
 
 export interface ReviewRequest {
@@ -65,6 +85,7 @@ export interface ReviewRequest {
   verify?: boolean
   context?: ReviewContext
   impact?: DiffImpact
+  related?: RelatedSummary[]
 }
 
 export interface ReviewTarget {

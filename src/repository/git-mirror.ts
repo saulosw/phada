@@ -25,6 +25,8 @@ export const DEEPEN_TIMEOUT_MS = 30_000
 const SHA = /^[0-9a-f]{40}$/
 const PULL_REFS = 'refs/phada/pull/'
 const NEWLINE = 0x0a
+const NO_ACCESS =
+  /repository not found|authentication failed|could not read username|access denied|not granted|permission denied|error: 40[34]/i
 
 export type RunBytes = (
   command: string,
@@ -230,7 +232,7 @@ class GitMirrorRepository implements GitMirror {
     if (fetched.exitCode !== 0) {
       const detail = firstLine(fetched.stderr).replaceAll(token, '').replaceAll(basic, '')
       throw new CheckoutUnavailableError(
-        'fetch-failed',
+        NO_ACCESS.test(fetched.stderr) ? 'no-access' : 'fetch-failed',
         `Could not fetch ${SHA.test(ref) ? ref.slice(0, 7) : ref} from ${owner}/${repo}: ${redactSecrets(detail) || `git exited with code ${fetched.exitCode}`}`,
       )
     }

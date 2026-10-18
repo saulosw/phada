@@ -6,6 +6,7 @@ import { createReview } from './github/create-review.js'
 import { fetchReviewState } from './github/pull-request-reviews.js'
 import { fetchPullRequest } from './github/pull-request.js'
 import { fetchRepositoryFile, fetchRepositoryTree } from './github/repository-files.js'
+import { fetchRepository } from './github/repository.js'
 import { suppressSqliteWarning } from './cli/suppress-sqlite-warning.js'
 import { pathSize } from './config/cache-paths.js'
 import { createExtractor } from './repo-map/extract.js'
@@ -32,6 +33,7 @@ process.exitCode = await run(process.argv.slice(2), {
   createReview,
   fetchRepositoryTree,
   fetchRepositoryFile,
+  fetchRepository,
   openMirror: openGitMirror,
   openIndexStore: (path, version) => openIndexStore(path, { version }),
   openObservedStore: (path) => openObservedStore(path),

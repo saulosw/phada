@@ -7,6 +7,8 @@ import type {
   Site,
   Targets,
 } from '../../graph/types.js'
+import { qualified, RELATED_NOTE, withRepo } from './related-repo.js'
+import type { RelatedCheckout, WithRepo } from './related-repo.js'
 import { inputSchemaOf, ToolFailure } from './tool-registry.js'
 import type { RegisteredTool, ToolOutput } from './tool-registry.js'
 
@@ -42,6 +44,7 @@ const SymbolArgs = z.strictObject({
 
 export interface GraphToolsOptions {
   now?: () => number
+  related?: readonly Pick<RelatedCheckout, 'repo' | 'graph'>[]
 }
 
 export function graphTools(
@@ -49,6 +52,22 @@ export function graphTools(
   options: GraphToolsOptions = {},
 ): RegisteredTool<any>[] {
   const now = options.now ?? (() => performance.now())
+  const related = options.related ?? []
+  const repos = related.map((item) => item.repo)
+  const note = repos.length === 0 ? '' : RELATED_NOTE
+  const findArgs = withRepo(FindSymbolArgs, repos)
+  const symbolArgs = withRepo(SymbolArgs, repos)
+  const graphOf = (repo: string | undefined): RepositoryGraph => {
+    if (repo === undefined) return graph
+    const found = related.find((item) => item.repo === repo)?.graph
+    if (found === undefined) {
+      throw new ToolFailure(
+        'no-graph',
+        `${repo} has no graph in this review: use read_file and grep with repo.`,
+      )
+    }
+    return found
+  }
   const timed = <T>(query: () => T): T => {
     const started = now()
     const result = query()
@@ -58,62 +77,62 @@ export function graphTools(
     return result
   }
 
-  const findSymbol: RegisteredTool<z.infer<typeof FindSymbolArgs>> = {
+  const findSymbol: RegisteredTool<WithRepo<z.infer<typeof FindSymbolArgs>>> = {
     definition: {
       name: 'find_symbol',
-      description: `Find where a function, class, method, type or variable is defined at the pull request head. Returns up to ${FIND_SYMBOL_MAX} definitions with their lines and signature.`,
-      inputSchema: inputSchemaOf(FindSymbolArgs),
+      description: `Find where a function, class, method, type or variable is defined at the pull request head. Returns up to ${FIND_SYMBOL_MAX} definitions with their lines and signature.${note}`,
+      inputSchema: inputSchemaOf(findArgs),
     },
-    args: FindSymbolArgs,
-    run: async ({ name, kind }) => {
-      const found = timed(() => graph.findSymbol(name, kind))
+    args: findArgs,
+    run: async ({ name, kind, repo }) => {
+      const found = timed(() => graphOf(repo).findSymbol(name, kind))
       if (found.length === 0) return noSymbol(name)
-      const lines = found.slice(0, FIND_SYMBOL_MAX).map(definitionLine)
+      const lines = found.slice(0, FIND_SYMBOL_MAX).map((symbol) => definitionLine(symbol, repo))
       if (found.length > FIND_SYMBOL_MAX) lines.push(`+${found.length - FIND_SYMBOL_MAX} more`)
       return {
         text: lines.join('\n'),
-        paths: unique(found.map((symbol) => symbol.path)),
+        paths: unique(found.map((symbol) => place(symbol, repo))),
         touched: [],
       }
     },
   }
 
-  const callers: RegisteredTool<z.infer<typeof SymbolArgs>> = {
+  const callers: RegisteredTool<WithRepo<z.infer<typeof SymbolArgs>>> = {
     definition: {
       name: 'callers',
-      description: `List the code that calls, uses or inherits from a symbol at the pull request head, with the text of each line. Returns up to ${CALLERS_MAX_SITES} lines.`,
-      inputSchema: inputSchemaOf(SymbolArgs),
+      description: `List the code that calls, uses or inherits from a symbol at the pull request head, with the text of each line. Returns up to ${CALLERS_MAX_SITES} lines.${note}`,
+      inputSchema: inputSchemaOf(symbolArgs),
     },
-    args: SymbolArgs,
-    run: async (args) => {
-      const result = timed(() => graph.callers(args))
+    args: symbolArgs,
+    run: async ({ repo, ...args }) => {
+      const queried = graphOf(repo)
+      const result = timed(() => queried.callers(args))
       if (result.symbols.length === 0) return noSymbol(args.name)
-      return callersText(graph, args.name, result)
+      return callersText(queried, args.name, result, repo)
     },
   }
 
-  const dependencies: RegisteredTool<z.infer<typeof SymbolArgs>> = {
+  const dependencies: RegisteredTool<WithRepo<z.infer<typeof SymbolArgs>>> = {
     definition: {
       name: 'dependencies',
-      description:
-        'List what a symbol calls, uses and inherits, and where each of those is defined (or the package it comes from).',
-      inputSchema: inputSchemaOf(SymbolArgs),
+      description: `List what a symbol calls, uses and inherits, and where each of those is defined (or the package it comes from).${note}`,
+      inputSchema: inputSchemaOf(symbolArgs),
     },
-    args: SymbolArgs,
-    run: async (args) => {
-      const result = timed(() => graph.dependencies(args))
+    args: symbolArgs,
+    run: async ({ repo, ...args }) => {
+      const result = timed(() => graphOf(repo).dependencies(args))
       if (result.symbols.length === 0) return noSymbol(args.name)
       const lines: string[] = []
       const paths: string[] = []
       for (const symbol of result.symbols) {
-        lines.push(`What ${label(symbol)} depends on:`)
+        lines.push(`What ${label(symbol, repo)} depends on:`)
         const own = result.dependencies.filter(
           (item) => item.line >= symbol.startLine && item.line <= symbol.endLine,
         )
         if (own.length === 0) lines.push('  nothing it calls or uses was found')
         for (const item of own.slice(0, DEPENDENCIES_MAX)) {
-          lines.push(`  ${dependencyLine(item)}`)
-          if (item.target !== undefined) paths.push(item.target.path)
+          lines.push(`  ${dependencyLine(item, repo)}`)
+          if (item.target !== undefined) paths.push(place(item.target, repo))
         }
         if (own.length > DEPENDENCIES_MAX) lines.push(`  +${own.length - DEPENDENCIES_MAX} more`)
       }
@@ -122,16 +141,15 @@ export function graphTools(
     },
   }
 
-  const similar: RegisteredTool<z.infer<typeof SymbolArgs>> = {
+  const similar: RegisteredTool<WithRepo<z.infer<typeof SymbolArgs>>> = {
     definition: {
       name: 'similar',
-      description:
-        'List functions or methods built like the given one (same calls, parameters and name), to check that a change follows the same pattern.',
-      inputSchema: inputSchemaOf(SymbolArgs),
+      description: `List functions or methods built like the given one (same calls, parameters and name), to check that a change follows the same pattern.${note}`,
+      inputSchema: inputSchemaOf(symbolArgs),
     },
-    args: SymbolArgs,
-    run: async (args) => {
-      const result = timed(() => graph.similar(args))
+    args: symbolArgs,
+    run: async ({ repo, ...args }) => {
+      const result = timed(() => graphOf(repo).similar(args))
       if (result.symbols.length === 0) return noSymbol(args.name)
       const callable = result.symbols.filter(
         (symbol) => symbol.kind === 'function' || symbol.kind === 'method',
@@ -143,18 +161,20 @@ export function graphTools(
           touched: [],
         }
       }
-      const lines = [`Functions built like ${callable.map(label).join(', ')}:`]
+      const lines = [
+        `Functions built like ${callable.map((symbol) => label(symbol, repo)).join(', ')}:`,
+      ]
       if (result.similar.length === 0) lines.push('  No similar functions found.')
       for (const { symbol, score, shared } of result.similar) {
         const shares = shared.length === 0 ? '' : ` · shares: ${shared.join(', ')}`
         lines.push(
-          `  ${symbol.kind} ${symbol.name} — ${symbol.path}:${symbol.startLine}-${symbol.endLine} · score ${score.toFixed(2)}${shares}`,
+          `  ${symbol.kind} ${symbol.name} — ${place(symbol, repo)}:${symbol.startLine}-${symbol.endLine} · score ${score.toFixed(2)}${shares}`,
         )
       }
       lines.push(...othersNote(args.name, result))
       return {
         text: lines.join('\n'),
-        paths: unique(result.similar.map(({ symbol }) => symbol.path)),
+        paths: unique(result.similar.map(({ symbol }) => place(symbol, repo))),
         touched: [],
       }
     },
@@ -167,21 +187,23 @@ async function callersText(
   graph: RepositoryGraph,
   name: string,
   result: CallersResult,
+  repo?: string,
 ): Promise<ToolOutput> {
   const lines: string[] = []
   const touched: string[] = []
   let shown = 0
   for (const symbol of result.symbols) {
-    lines.push(`Callers and uses of ${label(symbol)}:`)
+    lines.push(`Callers and uses of ${label(symbol, repo)}:`)
     const sites = result.sites.filter((site) => reachesSymbol(site, symbol))
     if (sites.length === 0) lines.push('No callers or uses found in the indexed files.')
     let file: string | undefined
     for (const site of sites) {
       if (shown >= CALLERS_MAX_SITES) break
-      if (site.path !== file) {
-        file = site.path
-        lines.push(site.path)
-        touched.push(site.path)
+      const where = qualified(site.repo ?? repo, site.path)
+      if (where !== file) {
+        file = where
+        lines.push(where)
+        touched.push(where)
       }
       lines.push(`  ${await siteLine(graph, site)}`)
       shown += 1
@@ -202,7 +224,7 @@ function reachesSymbol(site: Site, symbol: GraphSymbol): boolean {
 }
 
 export async function siteLine(graph: RepositoryGraph, site: Site): Promise<string> {
-  const text = ((await graph.lineText(site.path, site.line)) ?? '')
+  const text = ((await graph.lineText(site.path, site.line, site.repo)) ?? '')
     .trim()
     .slice(0, LINE_TEXT_MAX_CHARS)
   const kind = site.kind === 'calls' ? '' : ` (${site.kind})`
@@ -216,24 +238,28 @@ export function tagOf(site: { how: string; pullRequest?: number }): string {
   return ''
 }
 
-function dependencyLine(item: Dependency): string {
+function place(symbol: GraphSymbol, repo?: string): string {
+  return qualified(symbol.repo ?? repo, symbol.path)
+}
+
+function dependencyLine(item: Dependency, repo?: string): string {
   const where =
     item.target === undefined
       ? item.how === 'observed'
         ? `${item.module ?? ''} (file)`
         : `external${item.module === undefined ? '' : ` (${item.module})`}`
-      : `${item.target.path}:${item.target.startLine} ${item.target.kind} ${item.target.name}`
+      : `${place(item.target, repo)}:${item.target.startLine} ${item.target.kind} ${item.target.name}`
   return `${item.name} (${item.kind}, line ${item.line}) → ${where}${tagOf(item)}`
 }
 
-function definitionLine(symbol: GraphSymbol): string {
+function definitionLine(symbol: GraphSymbol, repo?: string): string {
   const owner = symbol.owner === undefined ? '' : `${symbol.owner}.`
-  return `${symbol.kind} ${owner}${symbol.name} — ${symbol.path}:${symbol.startLine}-${symbol.endLine}${symbol.exported ? ' [exported]' : ''} · ${symbol.signature}`
+  return `${symbol.kind} ${owner}${symbol.name} — ${place(symbol, repo)}:${symbol.startLine}-${symbol.endLine}${symbol.exported ? ' [exported]' : ''} · ${symbol.signature}`
 }
 
-function label(symbol: GraphSymbol): string {
+function label(symbol: GraphSymbol, repo?: string): string {
   const owner = symbol.owner === undefined ? '' : `${symbol.owner}.`
-  return `${symbol.kind} ${owner}${symbol.name} (${symbol.path}:${symbol.startLine}-${symbol.endLine})`
+  return `${symbol.kind} ${owner}${symbol.name} (${place(symbol, repo)}:${symbol.startLine}-${symbol.endLine})`
 }
 
 function othersNote(name: string, targets: Targets): string[] {

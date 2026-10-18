@@ -3,6 +3,7 @@ import type { Checkout } from '../repository/checkout.js'
 import type { Toolbox } from './toolbox.js'
 import { graphTools } from './tools/graph-tools.js'
 import { historyTool } from './tools/history-tool.js'
+import type { RelatedCheckout } from './tools/related-repo.js'
 import { repositoryTools } from './tools/repository-tools.js'
 import { ToolLog } from './tools/tool-log.js'
 import type { ReviewPass } from './tools/tool-log.js'
@@ -14,8 +15,11 @@ export interface Investigation {
   close(): Promise<void>
 }
 
+export type { RelatedCheckout } from './tools/related-repo.js'
+
 export interface InvestigationOptions {
   graph?: RepositoryGraph
+  related?: readonly RelatedCheckout[]
 }
 
 export function createInvestigation(
@@ -23,10 +27,11 @@ export function createInvestigation(
   options: InvestigationOptions = {},
 ): Investigation {
   const log = new ToolLog()
+  const related = options.related ?? []
   const tools = [
-    ...repositoryTools(checkout),
+    ...repositoryTools(checkout, related),
     historyTool(checkout),
-    ...(options.graph === undefined ? [] : graphTools(options.graph)),
+    ...(options.graph === undefined ? [] : graphTools(options.graph, { related })),
   ]
   return {
     log,

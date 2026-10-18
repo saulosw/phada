@@ -72,6 +72,8 @@ export async function loadContext(input: {
     },
     context: { rules: rules.applied, docs: docs.docs, ignored },
     ignore: [...merged.ignore],
+    repos: merged.repos,
+    privateOnPublic: merged.privateOnPublic,
     report: {
       configFiles: [
         ...userLayers.map((layer): ConfigFileReport => ({

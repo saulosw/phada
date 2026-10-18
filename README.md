@@ -241,6 +241,50 @@ impact sent to the AI in an `Impact` section, and the JSON has an `impact` block
 symbol, its callers and the relations the review learned. `--no-investigate` turns the graph off
 with the rest of the investigation.
 
+### Related repositories
+
+A change in a shared package can break code in another repository. List the repositories a review
+may read as context, in the repository's `.phada/config.yml` (read at the base of the pull
+request) or in your own config:
+
+```yaml
+context:
+  repos:
+    - acme/web
+    - repo: acme/sdk
+      description: SDK that wraps this API for the frontends
+```
+
+For each one, Phada fetches the head of its default branch into the [cache](#cache) and the AI
+can read it with the `repo` argument of `read_file`, `grep`, `list`, `find_symbol`, `callers`,
+`dependencies` and `similar` (`history` stays on the reviewed repository). When a package manifest
+links the two repositories (`package.json` dependencies and `name`, `go.mod` `require` and
+`module`; for Python, the dependencies in `pyproject.toml` (`[project]` or Poetry) or
+`requirements*.txt` and the package name in `pyproject.toml`, `setup.py` or `setup.cfg`; the
+`install_requires` of `setup.py` and `setup.cfg` are not read), Phada also
+indexes the related repository and follows the link: the [impact](#repository-graph) of the diff
+lists the code in the other repository that calls what the pull request changes, and
+`dependencies` points to the definitions in a package the reviewed repository uses. Findings still
+point to a line of the diff; a file of another repository is cited as `owner/repo:path`.
+
+```text
+Related: acme/web (consumer, 4 call sites) · acme/sdk (linked) · acme/admin (no link)
+```
+
+- Up to 7 related repositories are read per review: first those with code related to the change,
+  then those linked by a package, then the rest, in the order they are declared (your config for
+  this repository, then the repository's, then your global config). At most 20 are fetched.
+- Linked repositories are indexed within 60 seconds in total; one that is not ready is read
+  without its graph, and the next review (or `phada index owner/repo`) continues it.
+- A private repository is never read for a public pull request, because what the AI reads may end
+  up in the published review, unless your own config sets `context.privateOnPublic: true` (the
+  repository's `.phada/` cannot).
+- The related repository's own `.phada/` is never loaded: only the reviewed repository's rules
+  apply, and what the AI reads in a related repository is data, like the pull request head.
+- A repository you cannot read, an empty one, or one whose fetch fails is skipped with a warning;
+  the review goes on. `--dry-run` shows a `Related repositories` section, and the JSON a `related`
+  block with each repository, its commit, its link and why one was skipped.
+
 ### Your AI's MCP servers
 
 With Claude Code, your own config can let the AI use some of the MCP servers you set up in Claude
@@ -290,8 +334,9 @@ Phada keeps a mirror of each repository it reviews or indexes, and the map, in
 `~/.cache/phada` (`$XDG_CACHE_HOME/phada` when set; `PHADA_CACHE_HOME` to choose another folder):
 
 - `repos/<owner>/<repo>.git`: a bare git repository with only the commits Phada fetched (the 20
-  most recently reviewed pull requests and the last indexed commit), without their history and
-  without your token;
+  most recently reviewed pull requests, the last indexed commit and, for a
+  [related repository](#related-repositories), the head of its default branch), without their
+  history and without your token;
 - `index/<owner>/<repo>.sqlite`: the map built by reviews and by `phada index`, with its 10 most
   recent commits; a new version of Phada builds it again from scratch;
 - `observed/<owner>/<repo>.sqlite`: the relations reviews learned (see
@@ -332,23 +377,26 @@ context:
   defaults: true
   files:
     - path: docs/architecture.md
+  repos: [acme/web]
 ```
 
-| Key                | What it does                                                                                                                                 | Where       |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| `provider`         | `claude`, `codex` or `ollama`                                                                                                                | your config |
-| `model`            | Model for that provider                                                                                                                      | your config |
-| `localFiles`       | Files or folders on your machine to send as docs (a folder sends every `.md` in it); relative paths start at the folder of that `config.yml` | your config |
-| `language`         | Review language, like `--language`                                                                                                           | both (root) |
-| `minConfidence`    | Confidence cut, like `--min-confidence`                                                                                                      | both (root) |
-| `verify`           | Verify findings, like `--verify`                                                                                                             | both (root) |
-| `investigate`      | `false` turns the [repository investigation](#repository-investigation) off, like `--no-investigate`                                         | both (root) |
-| `mcp`              | Names of your Claude Code MCP servers the AI may use (see [Your AI's MCP servers](#your-ais-mcp-servers))                                    | your config |
-| `context.defaults` | `false` sends only the files listed in `context.files`, not the docs Phada picks                                                             | both (root) |
-| `context.files`    | Files of the repository to always send (globs allowed), first in line for the budget                                                         | both        |
-| `ignore`           | More files to leave out of the diff                                                                                                          | both        |
-| `rules`            | Rules with `rule`, and optionally `id`, `scope` (globs) and `severity` (`P0`, `P1` or `P2`)                                                  | both        |
-| `disabledRules`    | Ids of rules from other config files to turn off; from a subfolder's `.phada/`, only inside that folder                                      | both        |
+| Key                       | What it does                                                                                                                                 | Where       |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| `provider`                | `claude`, `codex` or `ollama`                                                                                                                | your config |
+| `model`                   | Model for that provider                                                                                                                      | your config |
+| `localFiles`              | Files or folders on your machine to send as docs (a folder sends every `.md` in it); relative paths start at the folder of that `config.yml` | your config |
+| `language`                | Review language, like `--language`                                                                                                           | both (root) |
+| `minConfidence`           | Confidence cut, like `--min-confidence`                                                                                                      | both (root) |
+| `verify`                  | Verify findings, like `--verify`                                                                                                             | both (root) |
+| `investigate`             | `false` turns the [repository investigation](#repository-investigation) off, like `--no-investigate`                                         | both (root) |
+| `mcp`                     | Names of your Claude Code MCP servers the AI may use (see [Your AI's MCP servers](#your-ais-mcp-servers))                                    | your config |
+| `context.defaults`        | `false` sends only the files listed in `context.files`, not the docs Phada picks                                                             | both (root) |
+| `context.files`           | Files of the repository to always send (globs allowed), first in line for the budget                                                         | both        |
+| `context.repos`           | Other repositories the review may read (see [Related repositories](#related-repositories))                                                   | both (root) |
+| `context.privateOnPublic` | `true` lets a private related repository be read for a public pull request                                                                   | your config |
+| `ignore`                  | More files to leave out of the diff                                                                                                          | both        |
+| `rules`                   | Rules with `rule`, and optionally `id`, `scope` (globs) and `severity` (`P0`, `P1` or `P2`)                                                  | both        |
+| `disabledRules`           | Ids of rules from other config files to turn off; from a subfolder's `.phada/`, only inside that folder                                      | both        |
 
 Globs follow the usual `*`/`**` rules and are relative to the folder of the `.phada/` that
 declares them (the repository root for your own config): `*.snap` only matches at that level, so
@@ -392,7 +440,7 @@ your own stops Phada with an error that names the file and the key.
 With Claude Code and Codex, the AI runs in an empty temporary directory and only sees the text
 that Phada sends: the pull request, its diff, the rules and docs described in
 [Rules and repository context](#rules-and-repository-context), and what it reads with Phada's
-tools from the pull request head (see [Repository investigation](#repository-investigation)). Rules from `.phada/` and your
+tools from the pull request head and from the [related repositories](#related-repositories) (see [Repository investigation](#repository-investigation)). Rules from `.phada/` and your
 config are instructions; the pull request, the diff and the docs are data, and instructions
 hidden in them are reported as findings. Phada only reads the `model` from their settings. An
 `AGENTS.md`/`CLAUDE.md` in or above that temporary directory is never loaded, and the GitHub

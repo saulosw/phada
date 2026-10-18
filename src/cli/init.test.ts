@@ -80,6 +80,9 @@ describe('runInit', () => {
     expect(files.files.get('/w/proj/.phada/config.yml')).toContain('# rules:')
     expect(files.files.get('/cfg/config.yml')).toContain('# provider: claude')
     expect(files.files.get('/w/proj/.phada/config.yml')).not.toContain('provider')
+    expect(files.files.get('/w/proj/.phada/config.yml')).toContain('#   repos:')
+    expect(files.files.get('/w/proj/.phada/config.yml')).not.toContain('privateOnPublic')
+    expect(files.files.get('/cfg/config.yml')).toContain('#   privateOnPublic: true')
     const rules = files.files.get('/w/proj/.phada/rules.md') ?? 'missing'
     const layer = { kind: 'repo-root', dir: '', configLabel: 'c', config: {} } as const
     expect(mergeConfig([{ ...layer, rulesMarkdown: { label: 'r', text: rules } }]).rules).toEqual(

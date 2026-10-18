@@ -1,9 +1,10 @@
 import type { ConfigLayer } from '../config/types.js'
-import { DEFAULT_IGNORE, matcher } from '../context/ignore.js'
 import { loadContext } from '../context/load-context.js'
 import type { ContextReport, ContextSources, LoadedContext } from '../context/types.js'
 import type { PullRequest } from '../github/pull-request.js'
 import { changedLines, computeImpact } from '../graph/impact.js'
+import type { ChangedLines } from '../graph/impact.js'
+import { linkGraphs } from '../graph/linked-graph.js'
 import { learnObservedEdges } from '../graph/observe.js'
 import { buildImpactReport } from '../graph/report.js'
 import type { ImpactIndex, ImpactReport } from '../graph/report.js'
@@ -25,7 +26,18 @@ import type { DiffImpact, ReviewOutcome } from '../review/types.js'
 import { IndexStoreError } from '../store/index-store.js'
 import type { IndexStore } from '../store/index-store.js'
 import type { ObservedEdge, ObservedStore } from '../store/observed-store.js'
-import { DEPENDENCY_FOLDERS, indexCommit, KEEP_COMMITS } from './index-repository.js'
+import { errorMessage } from './error-message.js'
+import { indexForReview } from './index-repository.js'
+import { checkoutPackages, openRelatedRepositories } from './related-repositories.js'
+import type { OpenedRelated, RelatedDeps } from './related-repositories.js'
+import {
+  buildRelatedReport,
+  rankOpened,
+  reachesDropped,
+  relatedSummaries,
+} from './related-report.js'
+import type { RankedRelated, RelatedReport } from './related-report.js'
+import type { SkippedRepository } from './select-related.js'
 
 export const REVIEW_INDEX_BUDGET_MS = 60_000
 
@@ -49,6 +61,7 @@ export interface PullRequestReviewEvents {
   indexing(total: number): void
   indexed(done: number, total: number): void
   impactReady(report: ImpactReport): void
+  relatedReady(report: RelatedReport): void
 }
 
 export interface PullRequestReviewDeps {
@@ -60,6 +73,7 @@ export interface PullRequestReviewDeps {
   now: () => number
   createProvider: (userMcpServers: readonly string[]) => ReviewProvider
   watchProvider?: (provider: ReviewProvider, pass: ReviewPass) => ReviewProvider
+  related?: RelatedDeps
   events: PullRequestReviewEvents
 }
 
@@ -70,6 +84,7 @@ export interface PullRequestReview {
   investigation: InvestigationReport
   impact: ImpactReport
   impactText?: string
+  related: RelatedReport
 }
 
 interface HeadGraph {
@@ -101,32 +116,70 @@ export async function reviewPullRequest(
   let head: HeadGraph = {}
   let impact: DiffImpact | undefined
   let impactReport: ImpactReport
+  let opened: OpenedRelated[] = []
+  let kept: RankedRelated[] = []
+  let skipped: SkippedRepository[] = []
+  let relatedStatus: RelatedReport['status'] =
+    loaded.repos.length === 0 ? 'none' : investigate ? 'unavailable' : 'off'
+  let relatedReason: string | undefined
   try {
     if (investigate && loaded.diff.trim() !== '') {
-      let opened: { mirror: GitMirror; sha: string; checkout: Checkout } | undefined
+      let fetched: { mirror: GitMirror; sha: string; checkout: Checkout } | undefined
       try {
         const mirror = await deps.openMirror()
         const sha = await mirror.fetch(pullRequest.headSha, keepAs)
-        opened = { mirror, sha, checkout: mirror.checkout(sha, { deepenAs: keepAs }) }
+        fetched = { mirror, sha, checkout: mirror.checkout(sha, { deepenAs: keepAs }) }
       } catch (error) {
         if (!(error instanceof CheckoutUnavailableError)) throw error
         unavailable = error.message
+        relatedReason = error.message
         deps.events.warning(`${error.message}: reviewing without investigation.`)
       }
-      if (opened !== undefined) {
-        investigation = createInvestigation(opened.checkout)
-        head = await openHeadGraph(pullRequest, loaded, opened, deps)
+      if (fetched !== undefined) {
+        head = await openHeadGraph(pullRequest, loaded, fetched, deps)
+        if (loaded.repos.length > 0 && deps.related !== undefined) {
+          try {
+            const related = await openRelated(
+              pullRequest,
+              loaded,
+              fetched,
+              deps.related,
+              head.graph !== undefined,
+            )
+            opened = related.opened
+            skipped = related.skipped
+            relatedStatus = 'used'
+          } catch (error) {
+            relatedReason = errorMessage(error)
+            deps.events.warning(`${relatedReason}: reviewing without related repositories.`)
+          }
+        }
+        const changed = changedLines(loaded.diff)
+        let graph: RepositoryGraph | undefined
         if (head.graph !== undefined) {
           try {
-            impact = await computeImpact(head.graph, changedLines(loaded.diff))
-            investigation = createInvestigation(opened.checkout, { graph: head.graph })
+            const linked = await linkAndRank(head.graph, opened, changed)
+            graph = linked.graph
+            impact = linked.impact
+            kept = linked.kept
           } catch (error) {
             const message = errorMessage(error)
             deps.events.warning(graphFailure(message))
             head = { ...head, reason: message }
             delete head.graph
+            graph = undefined
+            impact = undefined
           }
         }
+        if (graph === undefined) kept = rankOpened(opened, undefined)
+        investigation = createInvestigation(fetched.checkout, {
+          ...(graph === undefined ? {} : { graph }),
+          related: kept.map(({ item }) => ({
+            repo: item.repo,
+            checkout: item.checkout,
+            ...(item.graph === undefined ? {} : { graph: item.graph }),
+          })),
+        })
       }
     }
     impactReport = buildImpactReport({
@@ -138,6 +191,23 @@ export async function reviewPullRequest(
       ...(impact === undefined ? {} : { impact, shown: renderImpact(impact).shown }),
     })
     deps.events.impactReady(impactReport)
+    const keptRepos = new Set(kept.map(({ item }) => item.repo))
+    const graphTools = head.graph !== undefined
+    const relatedReport = buildRelatedReport({
+      status: relatedStatus,
+      ...(relatedStatus === 'unavailable'
+        ? {
+            reason:
+              relatedReason ??
+              (loaded.diff.trim() === '' ? 'nothing to review' : 'investigation did not run'),
+          }
+        : {}),
+      opened,
+      kept,
+      skipped,
+      graphTools,
+    })
+    deps.events.relatedReady(relatedReport)
 
     const servers = investigation === undefined ? [] : input.userMcpServers
     if (servers.length > 0 && !pullRequest.private) {
@@ -156,6 +226,7 @@ export async function reviewPullRequest(
         verify: options.verify ?? loaded.options.verify ?? true,
         context: loaded.context,
         ...(impact === undefined ? {} : { impact }),
+        ...(kept.length === 0 ? {} : { related: relatedSummaries(kept, graphTools) }),
       },
       {
         provider: watch(provider, 'review'),
@@ -165,7 +236,7 @@ export async function reviewPullRequest(
     )
 
     const reviewed = outcome.status === 'reviewed' ? outcome.result : undefined
-    const learned = learn(head, investigation, reviewed, pullRequest, deps.events)
+    const learned = learn(head, investigation, reviewed, pullRequest, deps.events, keptRepos)
     const report = buildInvestigationReport({
       status: investigation !== undefined ? 'used' : investigate ? 'unavailable' : 'off',
       ...(unavailable === undefined ? {} : { reason: unavailable }),
@@ -183,12 +254,59 @@ export async function reviewPullRequest(
         learned.length === 0
           ? impactReport
           : { ...impactReport, learned: buildImpactReport({ status: 'used', learned }).learned },
+      related: relatedReport,
     }
   } finally {
     await investigation?.close()
+    for (const item of opened) await item.close()
     head.store?.close()
     head.observed?.close()
   }
+}
+
+async function linkAndRank(
+  reviewed: RepositoryGraph,
+  opened: readonly OpenedRelated[],
+  changed: readonly ChangedLines[],
+): Promise<{ graph: RepositoryGraph; impact: DiffImpact; kept: RankedRelated[] }> {
+  let graph = linkGraphs(reviewed, linkedOf(opened))
+  let impact = await computeImpact(graph, changed)
+  let kept = rankOpened(opened, impact)
+  if (kept.length < opened.length && reachesDropped(opened, kept, impact)) {
+    const items = kept.map(({ item }) => item)
+    graph = linkGraphs(reviewed, linkedOf(items))
+    impact = await computeImpact(graph, changed)
+    kept = rankOpened(items, impact)
+  }
+  return { graph, impact, kept }
+}
+
+async function openRelated(
+  pullRequest: PullRequest,
+  loaded: LoadedContext,
+  fetched: { mirror: GitMirror; sha: string; checkout: Checkout },
+  deps: RelatedDeps,
+  index: boolean,
+): Promise<{ opened: OpenedRelated[]; skipped: SkippedRepository[] }> {
+  const files = await fetched.mirror.listFiles(fetched.sha)
+  const reviewedPackages = await checkoutPackages(files, fetched.checkout)
+  return openRelatedRepositories(
+    {
+      declared: loaded.repos,
+      reviewed: pullRequest.repo,
+      pullRequestPrivate: pullRequest.private,
+      privateOnPublic: loaded.privateOnPublic,
+      reviewedPackages,
+      index,
+    },
+    deps,
+  )
+}
+
+function linkedOf(opened: readonly OpenedRelated[]) {
+  return opened.flatMap((item) =>
+    item.graph === undefined ? [] : [{ repo: item.repo, graph: item.graph, link: item.link }],
+  )
 }
 
 async function openHeadGraph(
@@ -204,14 +322,8 @@ async function openHeadGraph(
     const files = await mirror.listFiles(sha)
     store = await deps.openIndexStore()
     const deadline = deps.now() + REVIEW_INDEX_BUDGET_MS
-    const result = await indexCommit(
-      {
-        sha,
-        ref: `refs/phada/pull/${pullRequest.number}`,
-        files,
-        ignore: matcher([...DEFAULT_IGNORE, ...DEPENDENCY_FOLDERS, ...loaded.ignore]),
-        deadline,
-      },
+    const result = await indexForReview(
+      { sha, ref: `refs/phada/pull/${pullRequest.number}`, files, ignore: loaded.ignore, deadline },
       {
         mirror,
         store,
@@ -221,14 +333,12 @@ async function openHeadGraph(
       },
     )
     if (!result.complete) {
-      const progress = `${result.extracted.toLocaleString('en-US')} of ${result.total.toLocaleString('en-US')} files`
       deps.events.warning(
-        `Index of ${pullRequest.repo} is not ready (${progress}): reviewing without the repository graph. Run phada index ${pullRequest.repo}, or the next review continues it.`,
+        `Index of ${pullRequest.repo} is not ready (${result.progress}): reviewing without the repository graph. Run phada index ${pullRequest.repo}, or the next review continues it.`,
       )
       store.close()
-      return { reason: `index of ${pullRequest.repo} is not ready (${progress})` }
+      return { reason: `index of ${pullRequest.repo} is not ready (${result.progress})` }
     }
-    store.prune(KEEP_COMMITS)
     try {
       observed = await deps.openObservedStore()
       if (observed.rebuilt) {
@@ -268,16 +378,13 @@ function graphFailure(message: string): string {
   return `Could not use the repository graph (${message}): reviewing without it.`
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
 function learn(
   head: HeadGraph,
   investigation: Investigation | undefined,
   reviewed: Extract<ReviewOutcome, { status: 'reviewed' }>['result'] | undefined,
   pullRequest: PullRequest,
   events: PullRequestReviewEvents,
+  relatedRepos: ReadonlySet<string>,
 ): ObservedEdge[] {
   if (head.graph === undefined || head.observed === undefined || investigation === undefined)
     return []
@@ -287,7 +394,11 @@ function learn(
       graph: head.graph,
       findings: reviewed.findings,
       verified: reviewed.verification !== undefined,
-      readPaths: new Set(investigation.log.records.flatMap((record) => record.touched)),
+      readPaths: new Set(
+        investigation.log.records
+          .flatMap((record) => record.touched)
+          .filter((path) => ![...relatedRepos].some((repo) => path.startsWith(`${repo}:`))),
+      ),
       pullRequest: pullRequest.number,
       commit: head.graph.commit,
       known: head.observed.all(),
