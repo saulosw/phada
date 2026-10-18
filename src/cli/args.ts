@@ -16,11 +16,15 @@ export interface RepositoryName {
   repo: string
 }
 
+export type RulesTarget =
+  { kind: 'pull'; ref: PullRequestRef } | { kind: 'repo'; repo: RepositoryName }
+
 export type CliCommand =
   | { kind: 'help'; text: string }
   | { kind: 'version' }
   | { kind: 'init'; global: boolean; repo?: RepositoryName }
   | { kind: 'index'; repo: RepositoryName; ref?: string; format: IndexFormat; debug: boolean }
+  | { kind: 'rules'; target: RulesTarget; format: IndexFormat; debug: boolean }
   | {
       kind: 'review'
       ref: PullRequestRef
@@ -44,13 +48,14 @@ Commands:
   review <pull request>  Review a pull request and publish the review on it
   init                   Create config files for Phada
   index <owner/repo>     Build a map of a repository's code on this machine
+  rules <owner/repo[#N]> Show the rules and docs a review would read
 
 Options:
   -h, --help             Show this help
   -v, --version          Show the version
 
-Run "phada review --help", "phada init --help" or "phada index --help" for their
-options.`
+Run "phada review --help", "phada rules --help" and so on for the options of each
+command.`
 
 export const REVIEW_USAGE = `Usage: phada review <owner/repo#N | pull request URL> [options]
 
@@ -123,6 +128,26 @@ Environment:
   GH_TOKEN           Used when GITHUB_TOKEN is not set
   PHADA_CACHE_HOME   Folder of the mirror and the index (default: ~/.cache/phada)`
 
+export const RULES_USAGE = `Usage: phada rules <owner/repo[#N] | pull request URL> [options]
+
+Shows what a review reads besides the diff, without calling the AI: config
+files, rules with their origin and scope, docs and why each one was sent or left
+out, and ignored files.
+
+  phada rules owner/repo#N   the context the review of that pull request gets
+  phada rules owner/repo     everything on the default branch, without
+                             checking scopes against changed files
+
+Options:
+  --format <name>    Output: text or json (default: text)
+  --debug            Show error details
+  -h, --help         Show this help
+
+Environment:
+  GITHUB_TOKEN       GitHub token that can read the repository contents
+  GH_TOKEN           Used when GITHUB_TOKEN is not set
+  PHADA_CONFIG_HOME  Folder of your own config (default: ~/.config/phada)`
+
 const REPOSITORY_NAME = /^([\w.-]+)\/([\w.-]+)$/
 
 export function parseCliArgs(argv: readonly string[]): CliCommand {
@@ -130,6 +155,7 @@ export function parseCliArgs(argv: readonly string[]): CliCommand {
   if (command === 'review') return parseReviewArgs(rest)
   if (command === 'init') return parseInitArgs(rest)
   if (command === 'index') return parseIndexArgs(rest)
+  if (command === 'rules') return parseRulesArgs(rest)
   if (command !== undefined && !command.startsWith('-')) throw unknownCommand(command)
 
   const { values } = parseOptions(argv, {
@@ -145,7 +171,7 @@ function unknownCommand(command: string): UsageError {
   if (isPullRequestRef(command)) {
     return new UsageError(`Unknown command "${command}". Did you mean "phada review ${command}"?`)
   }
-  return new UsageError(`Unknown command "${command}". Available: review, init, index.`)
+  return new UsageError(`Unknown command "${command}". Available: review, init, index, rules.`)
 }
 
 function isPullRequestRef(input: string): boolean {
@@ -259,6 +285,27 @@ function parseIndexArgs(argv: readonly string[]): CliCommand {
     format: values.format,
     debug: values.debug,
   }
+}
+
+function parseRulesArgs(argv: readonly string[]): CliCommand {
+  const { values, positionals } = parseOptions(argv, {
+    format: { type: 'string', default: 'text' },
+    debug: { type: 'boolean', default: false },
+    help: { type: 'boolean', short: 'h', default: false },
+  })
+  if (values.help) return { kind: 'help', text: RULES_USAGE }
+  const [input, ...extra] = positionals
+  if (input === undefined) {
+    throw new UsageError('Missing the repository or pull request, e.g. phada rules owner/repo#123.')
+  }
+  if (extra.length > 0) throw new UsageError('Give one repository or pull request at a time.')
+  if (values.format !== 'text' && values.format !== 'json') {
+    throw new UsageError(`Invalid --format "${values.format}". Use text or json.`)
+  }
+  const target: RulesTarget = isPullRequestRef(input)
+    ? { kind: 'pull', ref: parsePullRequestRef(input) }
+    : { kind: 'repo', repo: parseRepositoryName(input) }
+  return { kind: 'rules', target, format: values.format, debug: values.debug }
 }
 
 function parseRepositoryName(name: string): RepositoryName {

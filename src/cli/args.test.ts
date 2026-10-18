@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { InvalidPullRequestRefError } from '../github/errors.js'
-import { INDEX_USAGE, INIT_USAGE, parseCliArgs, REVIEW_USAGE, USAGE } from './args.js'
+import { INDEX_USAGE, INIT_USAGE, parseCliArgs, REVIEW_USAGE, RULES_USAGE, USAGE } from './args.js'
 import { UsageError } from './errors.js'
 
 const REF = { owner: 'acme', repo: 'shop', number: 12 }
@@ -29,7 +29,10 @@ describe('parseCliArgs', () => {
       ['https://github.com/acme/shop/pull/12', '--verify'],
       'Unknown command "https://github.com/acme/shop/pull/12". Did you mean "phada review https://github.com/acme/shop/pull/12"?',
     ],
-    [['reveiw', 'acme/shop#12'], 'Unknown command "reveiw". Available: review, init, index.'],
+    [
+      ['reveiw', 'acme/shop#12'],
+      'Unknown command "reveiw". Available: review, init, index, rules.',
+    ],
     [['--verify'], "Unknown option '--verify'."],
   ])('rejects the command line %j with a usage error', (argv, message) => {
     expect(() => parseCliArgs(argv)).toThrow(new UsageError(message))
@@ -265,6 +268,49 @@ describe('parseCliArgs index', () => {
     [['index', 'a/b', 'c/d'], 'Index one repository at a time.'],
     [['index', 'a/b', '--format', 'markdown'], 'Invalid --format "markdown". Use text or json.'],
     [['index', 'a/b', '--ref', ' '], '--ref needs a branch, tag or commit.'],
+  ])('rejects %j', (argv, message) => {
+    expect(() => parseCliArgs(argv)).toThrow(new UsageError(message))
+  })
+})
+
+describe('parseCliArgs rules', () => {
+  it('takes a pull request or a repository', () => {
+    const pull = { kind: 'pull', ref: { owner: 'acme', repo: 'api', number: 7 } }
+    expect(parseCliArgs(['rules', 'acme/api#7'])).toEqual({
+      kind: 'rules',
+      target: pull,
+      format: 'text',
+      debug: false,
+    })
+    expect(
+      parseCliArgs(['rules', 'https://github.com/acme/api/pull/7', '--format', 'json']),
+    ).toEqual({
+      kind: 'rules',
+      target: pull,
+      format: 'json',
+      debug: false,
+    })
+    expect(parseCliArgs(['rules', 'acme/api', '--debug'])).toEqual({
+      kind: 'rules',
+      target: { kind: 'repo', repo: { owner: 'acme', repo: 'api' } },
+      format: 'text',
+      debug: true,
+    })
+  })
+
+  it('shows its help', () => {
+    expect(parseCliArgs(['rules', '--help'])).toEqual({ kind: 'help', text: RULES_USAGE })
+    expect(RULES_USAGE.startsWith('Usage: phada rules <owner/repo[#N] | pull request URL>')).toBe(
+      true,
+    )
+    expect(USAGE).toContain('rules <owner/repo[#N]>')
+  })
+
+  it.each([
+    [['rules'], 'Missing the repository or pull request, e.g. phada rules owner/repo#123.'],
+    [['rules', 'acme'], 'Invalid repository "acme". Use owner/repo.'],
+    [['rules', 'a/b', 'c/d'], 'Give one repository or pull request at a time.'],
+    [['rules', 'a/b', '--format', 'yaml'], 'Invalid --format "yaml". Use text or json.'],
   ])('rejects %j', (argv, message) => {
     expect(() => parseCliArgs(argv)).toThrow(new UsageError(message))
   })

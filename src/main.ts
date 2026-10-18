@@ -22,6 +22,8 @@ import { messagesFor } from './cli/i18n/messages.js'
 import type { Messages } from './cli/i18n/messages.js'
 import { runIndex } from './cli/index-command.js'
 import { runInit } from './cli/init.js'
+import { runRules } from './cli/rules-command.js'
+import { contextSourcesAt } from './cli/context-sources.js'
 import { indexProgress, withProgress } from './cli/progress.js'
 import { toTerminalText } from './cli/terminal-text.js'
 import type { TextOutput } from './cli/progress.js'
@@ -151,6 +153,10 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
       await runIndex(command, deps)
       return 0
     }
+    if (command.kind === 'rules') {
+      await runRules(command, deps)
+      return 0
+    }
 
     const token = deps.env.GITHUB_TOKEN?.trim() || deps.env.GH_TOKEN?.trim()
     if (!token) throw new MissingGitHubTokenError()
@@ -203,13 +209,7 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
         },
       },
       {
-        contextSources: {
-          readTree: () => deps.fetchRepositoryTree({ ...repository, sha: pullRequest.baseSha }),
-          readRepoFile: (path) =>
-            deps.fetchRepositoryFile({ ...repository, path, ref: pullRequest.baseSha }),
-          readLocalFile: (path) => deps.files.readText(expandHome(path, deps.home)),
-          listLocalDocs: (path) => deps.files.listDocs(expandHome(path, deps.home)),
-        },
+        contextSources: contextSourcesAt(deps, repository, pullRequest.baseSha),
         openMirror: () => deps.openMirror({ dir: cache.mirror, owner, repo, token, env: deps.env }),
         openIndexStore: () => deps.openIndexStore(cache.index, deps.version),
         openObservedStore: () => deps.openObservedStore(cache.observed),

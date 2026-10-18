@@ -1334,3 +1334,80 @@ describe('run index', () => {
     expect(h.stderr()).toMatch(/Warning: Ignoring \.phada\/config\.yml: /)
   })
 })
+
+describe('run rules', () => {
+  const RULE_FILES = {
+    '.github/instructions/shop.instructions.md': '---\napplyTo: "src/**"\n---\nUse cents.\n',
+    '.github/instructions/web.instructions.md': '---\napplyTo: "web/**"\n---\nUse hooks.\n',
+  }
+
+  it('asks for a token that can read the repository', async () => {
+    const h = harness({ env: {} })
+
+    expect(await run(['rules', 'acme/shop#12'], h.deps)).toBe(1)
+    expect(h.stderr()).toMatch(/^phada: No GitHub token found\./)
+    expect(h.fetches).toHaveLength(0)
+  })
+
+  it('shows the context the review of a pull request gets, without the AI', async () => {
+    const h = harness({ repoFiles: RULE_FILES })
+
+    expect(await run(['rules', 'acme/shop#12'], h.deps)).toBe(0)
+
+    expect(h.treeFetches).toEqual([{ sha: '0000000000000000000000000000000000000000' }])
+    expect(h.stdout()).toContain('Context for acme/shop#12 at 0000000\n')
+    expect(h.stdout()).toContain(
+      '- .github/instructions/shop.instructions.md (37 B, applies to src/**)\n',
+    )
+    expect(h.stdout()).toContain(
+      '- .github/instructions/web.instructions.md (37 B, out of scope: web/**)\n',
+    )
+    expect(h.providers).toEqual([])
+    expect(h.mirrors).toEqual([])
+    expect(h.stateFetches).toEqual([])
+  })
+
+  it('lists the context of the default branch as JSON', async () => {
+    const h = harness({
+      repoFiles: RULE_FILES,
+      fetchRepository: async () => ({
+        repo: 'acme/shop',
+        private: false,
+        defaultBranch: 'trunk',
+        empty: false,
+      }),
+    })
+
+    expect(await run(['rules', 'acme/shop', '--format', 'json'], h.deps)).toBe(0)
+
+    expect(h.treeFetches).toEqual([{ sha: 'trunk' }])
+    const output = JSON.parse(h.stdout())
+    expect(output).toMatchObject({
+      schemaVersion: 1,
+      pullRequest: null,
+      repository: { owner: 'acme', repo: 'shop', ref: 'trunk' },
+    })
+    expect(output.context.docs).toEqual([
+      expect.objectContaining({
+        path: '.github/instructions/shop.instructions.md',
+        status: 'listed',
+        scope: ['src/**'],
+      }),
+      expect.objectContaining({
+        path: '.github/instructions/web.instructions.md',
+        status: 'listed',
+        scope: ['web/**'],
+      }),
+    ])
+    expect(h.providers).toEqual([])
+  })
+
+  it('fails clearly for an empty repository', async () => {
+    const h = harness({
+      fetchRepository: async () => ({ repo: 'acme/shop', private: false, empty: true }),
+    })
+
+    expect(await run(['rules', 'acme/shop'], h.deps)).toBe(1)
+    expect(h.stderr()).toContain('phada: acme/shop is empty: there is no branch to read.')
+  })
+})
