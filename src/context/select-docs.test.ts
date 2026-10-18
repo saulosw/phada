@@ -157,12 +157,18 @@ describe('repositoryDocCandidates', () => {
       'src/api/README.md',
       'src/api/AGENTS.md',
       'src/api/CLAUDE.md',
+      'src/api/GEMINI.md',
       'src/README.md',
       'src/AGENTS.md',
       'src/CLAUDE.md',
+      'src/GEMINI.md',
       'AGENTS.md',
       'CLAUDE.md',
       '.claude/CLAUDE.md',
+      '.github/copilot-instructions.md',
+      '.cursorrules',
+      '.windsurfrules',
+      'GEMINI.md',
       'CONTRIBUTING.md',
       '.github/CONTRIBUTING.md',
       'docs/CONTRIBUTING.md',
@@ -170,6 +176,84 @@ describe('repositoryDocCandidates', () => {
     ])
     expect(candidates.every((candidate) => candidate.size === undefined)).toBe(true)
     expect(missing).toEqual([])
+  })
+  it('reads the instruction files of other tools after the agent docs, in a fixed order', () => {
+    const entries = [
+      'GEMINI.md',
+      '.windsurfrules',
+      '.cursorrules',
+      '.cursor/rules/x.mdc',
+      '.cursor/rules/db/a.mdc',
+      '.cursor/rules/notes.md',
+      '.github/instructions/a.instructions.md',
+      '.github/instructions/api/b.instructions.md',
+      '.github/instructions/notes.md',
+      '.github/copilot-instructions.md',
+      '.claude/rules/a.md',
+      'AGENTS.md',
+    ].map((path) => ({ path, size: 10 }))
+
+    const { candidates } = repositoryDocCandidates({
+      entries,
+      complete: true,
+      changedFiles: ['src/a.ts'],
+      declared: [],
+      defaults: true,
+    })
+
+    expect(
+      candidates.map(({ path, category, format, dir }) => [path, category, format, dir]),
+    ).toEqual([
+      ['AGENTS.md', 'agents', undefined, undefined],
+      ['.claude/rules/a.md', 'agents', undefined, undefined],
+      ['.github/copilot-instructions.md', 'agents', undefined, undefined],
+      ['.github/instructions/a.instructions.md', 'agents', 'instructions', ''],
+      ['.github/instructions/api/b.instructions.md', 'agents', 'instructions', ''],
+      ['.cursor/rules/db/a.mdc', 'agents', 'mdc', ''],
+      ['.cursor/rules/x.mdc', 'agents', 'mdc', ''],
+      ['.cursorrules', 'agents', undefined, undefined],
+      ['.windsurfrules', 'agents', undefined, undefined],
+      ['GEMINI.md', 'agents', undefined, undefined],
+    ])
+  })
+
+  it('reads GEMINI.md and nested mdc rules from the folders of the changed files', () => {
+    const entries = [
+      'packages/web/README.md',
+      'packages/web/GEMINI.md',
+      'packages/web/.cursor/rules/r.mdc',
+      'packages/api/.cursor/rules/s.mdc',
+      'packages/web/src/a.ts',
+    ].map((path) => ({ path, size: 10 }))
+
+    const { candidates } = repositoryDocCandidates({
+      entries,
+      complete: true,
+      changedFiles: ['packages/web/src/a.ts'],
+      declared: [],
+      defaults: true,
+    })
+
+    expect(
+      candidates.map(({ path, category, format, dir }) => [path, category, format, dir]),
+    ).toEqual([
+      ['packages/web/README.md', 'module', undefined, undefined],
+      ['packages/web/GEMINI.md', 'module', undefined, undefined],
+      ['packages/web/.cursor/rules/r.mdc', 'module', 'mdc', 'packages/web'],
+    ])
+  })
+
+  it('finds GEMINI.md whatever its case and reads no instruction file without defaults', () => {
+    const entries = ['gemini.md', '.cursorrules', '.cursor/rules/x.mdc'].map((path) => ({
+      path,
+      size: 10,
+    }))
+    const input = { entries, complete: true, changedFiles: [], declared: [] }
+
+    expect(
+      repositoryDocCandidates({ ...input, defaults: true }).candidates.map((c) => c.path),
+    ).toEqual(['.cursor/rules/x.mdc', '.cursorrules', 'gemini.md'])
+    expect(repositoryDocCandidates({ ...input, defaults: false }).candidates).toEqual([])
   })
 })
 

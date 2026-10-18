@@ -95,10 +95,26 @@ describe('loadContext', () => {
       },
     ])
     expect(loaded.report.rules).toEqual([
-      { key: 'orm-only', origin: '.phada/config.yml', status: 'out-of-scope' },
-      { key: 'no-console', origin: '.phada/config.yml', status: 'disabled' },
-      { key: 'zod-params', origin: '.phada/config.yml', status: 'applied' },
-      { key: 'src/api/.phada/rules.md', origin: 'src/api/.phada/rules.md', status: 'applied' },
+      {
+        key: 'orm-only',
+        origin: '.phada/config.yml',
+        scope: ['**/*.py'],
+        status: 'out-of-scope',
+      },
+      { key: 'no-console', origin: '.phada/config.yml', scope: ['**'], status: 'disabled' },
+      {
+        key: 'zod-params',
+        origin: '.phada/config.yml',
+        scope: ['**'],
+        severity: 'P1',
+        status: 'applied',
+      },
+      {
+        key: 'src/api/.phada/rules.md',
+        origin: 'src/api/.phada/rules.md',
+        scope: ['src/api/**'],
+        status: 'applied',
+      },
     ])
     expect(loaded.report.configFiles).toEqual([
       { path: '.phada/config.yml', origin: 'repository', status: 'loaded' },
@@ -121,6 +137,7 @@ describe('loadContext', () => {
       {
         key: 'app/(marketing)/.phada/rules.md',
         origin: 'app/(marketing)/.phada/rules.md',
+        scope: ['app/\\(marketing\\)/**'],
         status: 'applied',
       },
     ])
@@ -160,7 +177,7 @@ describe('loadContext', () => {
 
     expect(loaded.context.rules).toEqual([])
     expect(loaded.report.rules).toEqual([
-      { key: 'no-console', origin: '.phada/config.yml', status: 'disabled' },
+      { key: 'no-console', origin: '.phada/config.yml', scope: ['**'], status: 'disabled' },
     ])
   })
 
@@ -193,10 +210,10 @@ describe('loadContext', () => {
       },
     ])
     expect(both.report.rules).toEqual([
-      { key: 'no-console', origin: '.phada/config.yml', status: 'applied' },
+      { key: 'no-console', origin: '.phada/config.yml', scope: ['**'], status: 'applied' },
     ])
     expect(onlyApi.report.rules).toEqual([
-      { key: 'no-console', origin: '.phada/config.yml', status: 'disabled' },
+      { key: 'no-console', origin: '.phada/config.yml', scope: ['**'], status: 'disabled' },
     ])
   })
 
@@ -441,5 +458,168 @@ describe('loadContext', () => {
     expect(loaded.context.rules.map((rule) => rule.key)).toEqual(['.phada/rules.md'])
     expect(loaded.context.docs).toEqual([{ path: 'AGENTS.md', content: 'Be careful.' }])
     expect(loaded.report.docs.filter((entry) => entry.status !== 'omitted')).toHaveLength(1)
+    expect(loaded.report.docs.map((entry) => entry.path)).not.toContain('.cursorrules')
+  })
+
+  describe('instruction files with a scope', () => {
+    const BACKEND = '.github/instructions/backend.instructions.md'
+    const backend = '---\napplyTo: "src/backend/**"\n---\nAlways use UTC.\n'
+
+    it('sends a scoped file when a changed file matches and reports its scope', async () => {
+      const sources = fakeSources({ [BACKEND]: backend })
+
+      const loaded = await loadContext({
+        diff: modifiedFile('src/backend/a.ts'),
+        baseSha: SHA,
+        userLayers: [],
+        sources,
+      })
+
+      expect(loaded.context.docs).toEqual([{ path: BACKEND, content: backend }])
+      expect(loaded.report.docs).toEqual([
+        {
+          path: BACKEND,
+          origin: 'repository',
+          category: 'agents',
+          bytes: backend.length,
+          status: 'included',
+          scope: ['src/backend/**'],
+        },
+      ])
+    })
+
+    it('leaves a scoped file out when no changed file matches', async () => {
+      const sources = fakeSources({ [BACKEND]: backend })
+
+      const loaded = await loadContext({
+        diff: modifiedFile('src/frontend/a.ts'),
+        baseSha: SHA,
+        userLayers: [],
+        sources,
+      })
+
+      expect(loaded.context.docs).toEqual([])
+      expect(loaded.report.docs).toEqual([
+        {
+          path: BACKEND,
+          origin: 'repository',
+          category: 'agents',
+          bytes: backend.length,
+          status: 'omitted',
+          reason: 'out-of-scope',
+          scope: ['src/backend/**'],
+        },
+      ])
+      expect(loaded.report.budget.used).toBe(0)
+    })
+
+    it('leaves manual and excluded files out and keeps an unreadable front matter with a warning', async () => {
+      const sources = fakeSources({
+        '.cursor/rules/manual.mdc': '# Attach me by hand\n',
+        '.cursor/rules/broken.mdc': '---\nglobs: src/**\n# no end\n',
+        '.github/instructions/x.instructions.md':
+          '---\napplyTo: "**"\nexcludeAgent: "code-review"\n---\nOnly for coding.\n',
+      })
+
+      const loaded = await loadContext({
+        diff: modifiedFile('src/a.ts'),
+        baseSha: SHA,
+        userLayers: [],
+        sources,
+      })
+
+      expect(loaded.context.docs.map((doc) => doc.path)).toEqual(['.cursor/rules/broken.mdc'])
+      expect(loaded.report.docs.map(({ path, status, reason }) => [path, status, reason])).toEqual([
+        ['.github/instructions/x.instructions.md', 'omitted', 'excluded'],
+        ['.cursor/rules/broken.mdc', 'included', undefined],
+        ['.cursor/rules/manual.mdc', 'omitted', 'manual'],
+      ])
+      expect(loaded.report.warnings).toContain(
+        '.cursor/rules/broken.mdc: could not read its front matter; included without a scope.',
+      )
+    })
+
+    it('matches scopes against the changed files left after ignore', async () => {
+      const sources = fakeSources({ '.cursor/rules/json.mdc': '---\nglobs: **/*.json\n---\nx\n' })
+
+      const loaded = await loadContext({ diff: DIFF, baseSha: SHA, userLayers: [], sources })
+
+      expect(loaded.report.docs[0]).toMatchObject({ status: 'omitted', reason: 'out-of-scope' })
+    })
+
+    it('spends no budget on scoped files that do not apply', async () => {
+      const outOfScope = `---\nglobs: lib/**\n---\n${'x'.repeat(18_000)}\n`
+      const readme = 'r'.repeat(30_000)
+      const sources = fakeSources({
+        '.cursor/rules/a.mdc': outOfScope,
+        '.cursor/rules/b.mdc': outOfScope,
+        '.cursor/rules/c.mdc': outOfScope,
+        'README.md': readme,
+      })
+
+      const loaded = await loadContext({
+        diff: modifiedFile('src/a.ts'),
+        baseSha: SHA,
+        userLayers: [],
+        sources,
+      })
+
+      expect(loaded.report.docs.find((doc) => doc.path === 'README.md')).toMatchObject({
+        status: 'truncated',
+      })
+      expect(loaded.report.budget.used).toBeGreaterThan(19_000)
+    })
+
+    it('sends a declared instruction file whatever its scope', async () => {
+      const sources = fakeSources({ '.cursor/rules/x.mdc': '---\nglobs: lib/**\n---\nx\n' })
+
+      const loaded = await loadContext({
+        diff: modifiedFile('src/a.ts'),
+        baseSha: SHA,
+        userLayers: [userLayer({ context: { files: [{ path: '.cursor/rules/x.mdc' }] } })],
+        sources,
+      })
+
+      expect(loaded.report.docs).toEqual([
+        expect.objectContaining({
+          path: '.cursor/rules/x.mdc',
+          category: 'declared',
+          status: 'included',
+        }),
+      ])
+    })
+
+    it('leaves a doc out when only files its negated patterns exclude changed', async () => {
+      const sources = fakeSources({
+        '.cursor/rules/src.mdc': '---\nglobs: src/**, !src/**/*.test.ts\n---\nx\n',
+      })
+
+      const loaded = await loadContext({
+        diff: modifiedFile('src/a.test.ts'),
+        baseSha: SHA,
+        userLayers: [],
+        sources,
+      })
+
+      expect(loaded.report.docs[0]).toMatchObject({ status: 'omitted', reason: 'out-of-scope' })
+    })
+
+    it('makes a nested mdc file apply only inside its folder', async () => {
+      const sources = fakeSources({
+        'packages/web/.cursor/rules/r.mdc': '---\nglobs: *.tsx\n---\nUse hooks.\n',
+      })
+      const load = (path: string) =>
+        loadContext({ diff: modifiedFile(path), baseSha: SHA, userLayers: [], sources })
+
+      expect((await load('packages/web/src/a.tsx')).report.docs[0]).toMatchObject({
+        status: 'included',
+        category: 'module',
+        scope: ['packages/web/**/*.tsx'],
+      })
+      expect((await load('packages/web/src/a.ts')).report.docs[0]).toMatchObject({
+        status: 'omitted',
+        reason: 'out-of-scope',
+      })
+    })
   })
 })

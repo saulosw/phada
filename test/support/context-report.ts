@@ -4,9 +4,9 @@ export function contextReportFixture(overrides: Partial<ContextReport> = {}): Co
   return {
     configFiles: [{ path: '.phada/config.yml', origin: 'repository', status: 'loaded' }],
     rules: [
-      { key: 'orm-only', origin: '.phada/config.yml', status: 'applied' },
-      { key: 'no-console', origin: '.phada/config.yml', status: 'disabled' },
-      { key: 'py-only', origin: '.phada/config.yml', status: 'out-of-scope' },
+      { key: 'orm-only', origin: '.phada/config.yml', scope: ['**/*.py'], status: 'applied' },
+      { key: 'no-console', origin: '.phada/config.yml', scope: ['**'], status: 'disabled' },
+      { key: 'py-only', origin: '.phada/config.yml', scope: ['**/*.py'], status: 'out-of-scope' },
     ],
     docs: [
       {

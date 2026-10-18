@@ -51,14 +51,20 @@ src/
     related-report.ts    #   rankOpened(), buildRelatedReport(), relatedSummaries(): the related
                          #   repositories for the prompt, the CLI and the JSON
     error-message.ts     #   errorMessage(): the message of any thrown value
+    inspect-context.ts   #   inspectPullRequestContext(), inspectRepositoryContext(): the context
+                         #   without a review
   cli/                   # terminal edge
     args.ts              #   parseCliArgs(): `review` (--dry-run, --force, --verify/--no-verify,
-                         #   --investigate/--no-investigate) and
-                         #   `init` and `index` (--ref, --format text|json) commands, --help,
-                         #   --version; USAGE, REVIEW_USAGE, INIT_USAGE, INDEX_USAGE
+                         #   --investigate/--no-investigate), `init`, `index` (--ref, --format
+                         #   text|json) and `rules` (--format text|json) commands, --help,
+                         #   --version; USAGE, REVIEW_USAGE, INIT_USAGE, INDEX_USAGE, RULES_USAGE
     init.ts              #   runInit(): .phada/ in the repository, or the user's own config
     init-templates.ts    #   the commented files phada init writes
     index-command.ts     #   runIndex(): token, cache folder, mirror, progress, the map's report
+    rules-command.ts     #   runRules(): token, user config, the context of a pull request or of
+                         #   the default branch, printed as text or JSON
+    format-rules.ts      #   formatRulesText(), formatRulesJson() (schemaVersion 1)
+    context-sources.ts   #   contextSourcesAt(): the repository at a commit and the local files
     format-index.ts      #   formatIndexText(), formatIndexJson() (schemaVersion 1)
     suppress-sqlite-warning.ts # drops Node's ExperimentalWarning for the built-in SQLite
     errors.ts            #   UsageError, MissingGitHubTokenError
@@ -96,8 +102,14 @@ src/
     phada-paths.ts       #   .phada/ folders from the root to each changed file
     split-diff.ts        #   a unified diff split by file
     ignore.ts            #   DEFAULT_IGNORE (lockfiles, minified files, source maps), applyIgnore()
-    select-docs.ts       #   docs by priority, the 60 KB budget, cutting a doc at 20 KB
-    load-context.ts      #   loadContext(): config files, rules in scope, ignore, docs → ReviewContext + report
+    select-docs.ts       #   docs by priority (including other tools' instruction files), the
+                         #   60 KB budget, cutting a doc at 20 KB
+    frontmatter.ts       #   readFrontmatter(): the front matter of an instruction file, line by line
+    doc-scope.ts         #   docScope(): always, globs, manual or excluded, from applyTo, globs,
+                         #   alwaysApply, description and excludeAgent
+    load-context.ts      #   loadContext(): config files, rules in scope, ignore, docs in scope →
+                         #   ReviewContext + report
+    list-context.ts      #   listContext(): every .phada/ folder, rule and candidate doc of a branch
     types.ts             #   ContextReport, ContextSources, LoadedContext
   github/                # GitHub REST and GraphQL
     pull-request-ref.ts  #   parse/format "owner/repo#N" or a pull request URL

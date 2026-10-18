@@ -48,8 +48,8 @@ saves only the review, and `--format json` prints it as JSON for scripts. A revi
 request can take a few minutes. `phada review owner/repo#123 --dry-run` prints exactly what would
 be posted and posts nothing.
 
-`phada --help` lists the commands, and `phada review --help`, `phada init --help` and
-`phada index --help` list their options.
+`phada --help` lists the commands, and `phada review --help`, `phada init --help`,
+`phada index --help` and `phada rules --help` list their options.
 
 ### GitHub token
 
@@ -153,19 +153,48 @@ rules that review it.
   [Configuration](#configuration)). They reach the AI as instructions: a change that breaks one
   is a finding that names the rule, and a rule can set the lowest severity of those findings.
 - **Docs** the AI reads as reference, in this order: the files your config lists; `README.md`,
-  `AGENTS.md` and `CLAUDE.md` in the folders of the changed files and above them; `AGENTS.md`,
-  `CLAUDE.md`, `.claude/CLAUDE.md` and `.claude/rules/` at the root; `CONTRIBUTING.md` and
+  `AGENTS.md`, `CLAUDE.md`, `GEMINI.md` and `.cursor/rules/*.mdc` in the folders of the changed
+  files and above them; at the root, `AGENTS.md`, `CLAUDE.md`, `.claude/CLAUDE.md`,
+  `.claude/rules/`, `.github/copilot-instructions.md`, `.github/instructions/*.instructions.md`,
+  `.cursor/rules/*.mdc`, `.cursorrules`, `.windsurfrules` and `GEMINI.md`; `CONTRIBUTING.md` and
   `README.md`; then the other Markdown files at the root and in `docs/` (changelogs, licenses and
   codes of conduct are left out). Docs share a 60 KB budget; a doc over 20 KB is cut at a line
   with a visible note, and what does not fit is left out. Nothing is cut or left out silently.
+- **Instruction files with a scope**: a `.instructions.md` file is sent only when a changed file
+  matches its `applyTo`, and left out without one or with `excludeAgent: code-review`. A `.mdc`
+  file is sent when it has `alwaysApply: true`, when a changed file matches its `globs`, or when
+  it only has a `description`; one with none of these is meant to be attached by hand and is left
+  out. A pattern without a `/` (`*.ts`) matches in any folder, a pattern starting with `!` excludes
+  files, and the `globs` of a `.mdc` file in a subfolder's `.cursor/rules/` are relative to that
+  subfolder. Files your config lists are always sent.
 - **Ignored files**: lockfiles, minified files and source maps never reach the AI; `ignore` in
   the config adds more patterns. The review names every file it left out, so a change hidden in one of them is still visible to whoever reads it; when every changed file is ignored, Phada posts a short note that names them instead of a review.
 
 Phada prints what it sent before the review, e.g.
-`Context: 2 rules · 5 docs (21.3 KB, 1 omitted) · 1 file ignored`. With `--dry-run` the preview
+`Context: 2 rules · 5 docs (21.3 KB, 1 omitted, 2 not applied) · 1 file ignored`, where
+"omitted" means a doc did not fit or could not be read and "not applied" means an instruction file
+did not apply to this change. With `--dry-run` the preview
 ends with the full list, and the JSON has a `context` block with every rule, doc and ignored file,
-where it came from and whether it was sent. Findings list the docs and files they rely on and the
+where it came from, its scope and whether it was sent (`out-of-scope`, `manual` or `excluded`
+when an instruction file did not apply). Findings list the docs and files they rely on and the
 rule they break, in the JSON and under each comment on the pull request.
+
+### See the context without a review
+
+`phada rules` shows what a review reads besides the diff, without calling the AI:
+
+```bash
+phada rules owner/repo#123   # the context the review of this pull request gets
+phada rules owner/repo       # everything on the default branch, scopes not checked
+```
+
+For a pull request it lists the config files, the rules with their origin, scope and whether they
+apply, the docs and why each one was sent or left out, and the ignored files. For a repository it
+lists every `.phada/` folder, the rules, the docs a review could read (in subfolders, only where
+there is an `AGENTS.md`, `CLAUDE.md`, `GEMINI.md` or `.cursor/rules/`) with the scope of each
+instruction file, and the ignore patterns. `--format json` prints the same with `schemaVersion: 1`
+and the `context` block of `phada review --format json`. It needs a token that can read the
+repository contents and never writes anything.
 
 ## Repository investigation
 
@@ -434,6 +463,7 @@ your own stops Phada with an error that names the file and the key.
 | 2    | The command line or your own config is wrong (unknown option, invalid pull request reference, invalid `config.yml`, …)                                                   |
 
 `phada index` exits with 0 when the map was built and 1 when fetching or writing it failed.
+`phada rules` exits with 0 when it printed the context and 1 when GitHub could not be read.
 
 ## What the AI sees
 

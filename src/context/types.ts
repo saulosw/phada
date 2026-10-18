@@ -13,7 +13,9 @@ export interface ConfigFileReport {
 export interface RuleReport {
   key: string
   origin: string
-  status: 'applied' | 'disabled' | 'out-of-scope'
+  scope: string[]
+  severity?: 'P0' | 'P1' | 'P2'
+  status: 'applied' | 'disabled' | 'out-of-scope' | 'listed'
 }
 
 export interface DocReport {
@@ -21,8 +23,9 @@ export interface DocReport {
   origin: 'repository' | 'local'
   category: DocCategory
   bytes: number
-  status: 'included' | 'truncated' | 'omitted'
-  reason?: 'budget' | 'binary' | 'not-found' | 'unreadable'
+  status: 'included' | 'truncated' | 'omitted' | 'listed'
+  reason?: 'budget' | 'binary' | 'not-found' | 'unreadable' | 'out-of-scope' | 'manual' | 'excluded'
+  scope?: string[]
 }
 
 export interface ContextReport {

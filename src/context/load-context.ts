@@ -4,6 +4,8 @@ import { parseConfigText } from '../config/parse-config.js'
 import type { ConfigLayer } from '../config/types.js'
 import type { RepositoryTree } from '../github/repository-files.js'
 import type { ContextDoc, ContextRule } from '../review/types.js'
+import { docScope, scopeMatcher } from './doc-scope.js'
+import type { DocFormat } from './doc-scope.js'
 import { applyIgnore, DEFAULT_IGNORE, matcher } from './ignore.js'
 import { phadaDirs, phadaFiles } from './phada-paths.js'
 import {
@@ -24,11 +26,11 @@ import type {
   RuleReport,
 } from './types.js'
 
-const READ_CONCURRENCY = 4
+export const READ_CONCURRENCY = 4
 
-type DocContent = string | null | Error
+export type DocContent = string | null | Error
 
-interface PlannedDoc extends DocCandidate {
+export interface PlannedDoc extends DocCandidate {
   source: 'repository' | 'local'
   readPath: string
 }
@@ -52,12 +54,8 @@ export async function loadContext(input: {
   const repository =
     tree === undefined
       ? { layers: [], configFiles: [] }
-      : await readRepositoryLayers(tree, changed, sources, sha, warnings)
-  const merged = mergeConfig([
-    ...userLayers.filter((layer) => layer.kind === 'user'),
-    ...repository.layers,
-    ...userLayers.filter((layer) => layer.kind === 'user-repo'),
-  ])
+      : await readRepositoryLayers(tree, phadaDirs(changed), sources, sha, warnings)
+  const merged = mergeLayers(userLayers, repository.layers)
   warnings.push(...merged.warnings)
   const { diff, files, ignored } = applyIgnore(input.diff, [...DEFAULT_IGNORE, ...merged.ignore])
   const rules = selectRules(merged, files)
@@ -75,14 +73,7 @@ export async function loadContext(input: {
     repos: merged.repos,
     privateOnPublic: merged.privateOnPublic,
     report: {
-      configFiles: [
-        ...userLayers.map((layer): ConfigFileReport => ({
-          path: layer.configLabel,
-          origin: 'user',
-          status: 'loaded',
-        })),
-        ...repository.configFiles,
-      ],
+      configFiles: [...userConfigFiles(userLayers), ...repository.configFiles],
       rules: rules.report,
       docs: docs.report,
       ignored,
@@ -92,7 +83,22 @@ export async function loadContext(input: {
   }
 }
 
-async function readTree(
+export function mergeLayers(
+  userLayers: readonly ConfigLayer[],
+  repositoryLayers: readonly ConfigLayer[],
+): EffectiveConfig {
+  return mergeConfig([
+    ...userLayers.filter((layer) => layer.kind === 'user'),
+    ...repositoryLayers,
+    ...userLayers.filter((layer) => layer.kind === 'user-repo'),
+  ])
+}
+
+export function userConfigFiles(userLayers: readonly ConfigLayer[]): ConfigFileReport[] {
+  return userLayers.map((layer) => ({ path: layer.configLabel, origin: 'user', status: 'loaded' }))
+}
+
+export async function readTree(
   sources: ContextSources,
   sha: string,
   warnings: string[],
@@ -113,16 +119,15 @@ async function readTree(
   }
 }
 
-async function readRepositoryLayers(
+export async function readRepositoryLayers(
   tree: RepositoryTree,
-  changed: readonly string[],
+  dirs: readonly string[],
   sources: ContextSources,
   sha: string,
   warnings: string[],
 ): Promise<RepositoryLayers> {
   const present = new Set(tree.entries.map((entry) => entry.path))
   const wanted = (path: string) => tree.truncated || present.has(path)
-  const dirs = phadaDirs(changed)
   const texts = await mapLimit(dirs, READ_CONCURRENCY, async (dir) => {
     const { config, rules } = phadaFiles(dir)
     const [configText, rulesText] = await Promise.all(
@@ -189,7 +194,13 @@ function selectRules(
         : inScope.length > 0
           ? 'applied'
           : 'out-of-scope'
-    report.push({ key: rule.key, origin: rule.origin, status })
+    report.push({
+      key: rule.key,
+      origin: rule.origin,
+      scope: [...rule.scope],
+      ...(rule.severity === undefined ? {} : { severity: rule.severity }),
+      status,
+    })
     if (status === 'applied') applied.push(except.length === 0 ? rule : { ...rule, except })
   }
   return { applied, report }
@@ -231,10 +242,10 @@ async function collectDocs(
     ...fromRepository.slice(declaredCount),
   ]
   const probing = tree?.truncated ?? false
-  return fillBudget(planned, sources, sha, warnings, report, probing)
+  return fillBudget(planned, files, sources, sha, warnings, report, probing)
 }
 
-async function localCandidates(
+export async function localCandidates(
   merged: EffectiveConfig,
   sources: ContextSources,
   warnings: string[],
@@ -273,7 +284,8 @@ async function localCandidates(
 }
 
 async function fillBudget(
-  planned: readonly PlannedDoc[],
+  candidates: readonly PlannedDoc[],
+  files: readonly string[],
   sources: ContextSources,
   sha: string,
   warnings: string[],
@@ -285,7 +297,36 @@ async function fillBudget(
     mapLimit(docs, READ_CONCURRENCY, async (doc) => {
       contents.set(doc, await readDoc(doc, sources))
     })
-  await read(planned.filter((doc) => doc.size === undefined))
+  await read(candidates.filter((doc) => doc.size === undefined || isScoped(doc)))
+  const scopes = new Map<PlannedDoc, string[]>()
+  const planned: PlannedDoc[] = []
+  for (const doc of candidates) {
+    const content = contents.get(doc)
+    if (!isScoped(doc) || typeof content !== 'string') {
+      planned.push(doc)
+      continue
+    }
+    const scope = docScope(doc.format, content, doc.dir ?? '')
+    if (scope.kind === 'invalid') {
+      warnings.push(`${doc.path}: could not read its front matter; included without a scope.`)
+    }
+    if (scope.kind === 'globs') {
+      scopes.set(doc, scope.patterns)
+      if (files.some(scopeMatcher(scope.patterns))) {
+        planned.push(doc)
+        continue
+      }
+    }
+    if (scope.kind === 'always' || scope.kind === 'invalid') {
+      planned.push(doc)
+      continue
+    }
+    report.push({
+      ...omitted(doc.path, doc.source, scope.kind === 'globs' ? 'out-of-scope' : scope.kind, doc),
+      bytes: byteLength(content),
+      ...(scope.kind === 'globs' ? { scope: scope.patterns } : {}),
+    })
+  }
   const dropped = new Set<PlannedDoc>()
   const skipped = new Set<PlannedDoc>()
   for (const doc of planned.filter((candidate) => candidate.size === undefined)) {
@@ -326,15 +367,17 @@ async function fillBudget(
     const shown = truncated ? truncateDoc(content) : content
     used += truncated ? byteLength(shown.slice(0, shown.lastIndexOf('\n['))) : bytes
     docs.push({ path: doc.path, content: shown })
+    const scope = scopes.get(doc)
     report.push({
       path: doc.path,
       origin: doc.source,
       category: doc.category,
       bytes,
       status: truncated ? 'truncated' : 'included',
+      ...(scope === undefined ? {} : { scope }),
     })
   }
-  return { docs, report: orderLike(report, planned), used }
+  return { docs, report: orderLike(report, candidates), used }
 }
 
 function planBudget(
@@ -359,13 +402,17 @@ function planBudget(
   return { chosen, omitted: omittedDocs }
 }
 
+function isScoped(doc: PlannedDoc): doc is PlannedDoc & { format: DocFormat } {
+  return doc.format !== undefined
+}
+
 function dropReason(content: DocContent | undefined): DocReport['reason'] | undefined {
   if (content instanceof Error) return 'unreadable'
   if (content === null || content === undefined) return 'not-found'
   return content.includes('\u0000') ? 'binary' : undefined
 }
 
-async function readDoc(doc: PlannedDoc, sources: ContextSources): Promise<DocContent> {
+export async function readDoc(doc: PlannedDoc, sources: ContextSources): Promise<DocContent> {
   try {
     return doc.source === 'local'
       ? await sources.readLocalFile(doc.readPath)
@@ -397,7 +444,7 @@ function orderLike(report: readonly DocReport[], planned: readonly PlannedDoc[])
   return [...report].sort((a, b) => rank(a) - rank(b))
 }
 
-async function mapLimit<T, R>(
+export async function mapLimit<T, R>(
   items: readonly T[],
   limit: number,
   map: (item: T) => Promise<R>,
