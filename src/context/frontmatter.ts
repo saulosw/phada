@@ -4,8 +4,11 @@ export type Frontmatter =
   | { status: 'ok'; fields: ReadonlyMap<string, string[]> }
 
 const KEY_LINE = /^([A-Za-z][\w-]*):\s*(.*)$/
-const LIST_ITEM = /^\s+-\s*(.*)$/
+const LIST_ITEM = /^\s*-(?:\s+(.*))?$/
+const CONTINUATION = /^\s+(\S.*)$/
 const FENCE = /^---\s*$/
+const BLOCK_SCALAR = /^[>|][+-]?$/
+const TRAILING_COMMENT = /\s+#.*$/
 const WHOLE_VALUE_KEYS = new Set(['description'])
 
 export function readFrontmatter(text: string): Frontmatter {
@@ -16,24 +19,33 @@ export function readFrontmatter(text: string): Frontmatter {
   const fields = new Map<string, string[]>()
   let current: string | undefined
   for (const line of lines.slice(1, end)) {
-    const item = LIST_ITEM.exec(line)
-    if (item !== null && current !== undefined) {
-      fields.get(current)?.push(...valuesOf(current, item[1] ?? ''))
+    const entry = KEY_LINE.exec(line)
+    if (entry !== null) {
+      current = (entry[1] ?? '').toLowerCase()
+      fields.set(current, valuesOf(current, entry[2] ?? ''))
       continue
     }
-    const entry = KEY_LINE.exec(line)
-    if (entry === null) continue
-    current = (entry[1] ?? '').toLowerCase()
-    fields.set(current, valuesOf(current, entry[2] ?? ''))
+    if (current === undefined) continue
+    const values = fields.get(current) ?? []
+    const item = LIST_ITEM.exec(line)
+    if (item !== null && !WHOLE_VALUE_KEYS.has(current)) {
+      values.push(...valuesOf(current, item[1] ?? ''))
+      continue
+    }
+    const continuation = CONTINUATION.exec(line)
+    if (continuation !== null && WHOLE_VALUE_KEYS.has(current)) {
+      const joined = [...values, (continuation[1] ?? '').trim()].join(' ')
+      fields.set(current, [joined])
+    }
   }
   return { status: 'ok', fields }
 }
 
 function valuesOf(key: string, raw: string): string[] {
-  const value = raw.trim()
+  const value = withoutComment(raw.trim())
   if (WHOLE_VALUE_KEYS.has(key)) {
     const unquoted = unquote(value)
-    return unquoted === '' ? [] : [unquoted]
+    return unquoted === '' || BLOCK_SCALAR.test(unquoted) ? [] : [unquoted]
   }
   const inner =
     value.startsWith('[') && value.endsWith(']') ? value.slice(1, -1) : wholeQuoted(value)
@@ -42,9 +54,15 @@ function valuesOf(key: string, raw: string): string[] {
     .filter((part) => part !== '')
 }
 
+function withoutComment(value: string): string {
+  if (value.startsWith('"') || value.startsWith("'")) return value
+  return value.replace(TRAILING_COMMENT, '')
+}
+
 function splitOutsideQuotes(text: string): string[] {
   const parts: string[] = []
   let quote: string | undefined
+  let braces = 0
   let start = 0
   for (let index = 0; index < text.length; index++) {
     const char = text[index]
@@ -52,7 +70,11 @@ function splitOutsideQuotes(text: string): string[] {
       if (char === quote) quote = undefined
     } else if (char === '"' || char === "'") {
       quote = char
-    } else if (char === ',') {
+    } else if (char === '{') {
+      braces += 1
+    } else if (char === '}') {
+      braces = Math.max(0, braces - 1)
+    } else if (char === ',' && braces === 0) {
       parts.push(text.slice(start, index))
       start = index + 1
     }

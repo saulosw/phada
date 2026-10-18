@@ -48,4 +48,40 @@ describe('readFrontmatter', () => {
       globs: [],
     })
   })
+
+  it('keeps commas inside braces in one pattern', () => {
+    expect(
+      fields('---\napplyTo: "**/*.{ts,tsx}"\nglobs: src/**/*.{ts,tsx}, lib/**\n---\n'),
+    ).toEqual({
+      applyto: ['**/*.{ts,tsx}'],
+      globs: ['src/**/*.{ts,tsx}', 'lib/**'],
+    })
+  })
+
+  it('drops a trailing comment from an unquoted value', () => {
+    expect(
+      fields("---\nalwaysApply: true # always\nglobs: src/** # api\napplyTo: 'a#b'\n---\n"),
+    ).toEqual({
+      alwaysapply: ['true'],
+      globs: ['src/**'],
+      applyto: ['a#b'],
+    })
+  })
+
+  it('reads block lists that are not indented', () => {
+    expect(fields('---\nglobs:\n- "*.ts"\n- src/**\nalwaysApply: false\n---\n')).toEqual({
+      globs: ['*.ts', 'src/**'],
+      alwaysapply: ['false'],
+    })
+  })
+
+  it('reads a description written over several lines', () => {
+    expect(fields('---\ndescription:\n  Database access\n  rules\nglobs:\n---\n')).toEqual({
+      description: ['Database access rules'],
+      globs: [],
+    })
+    expect(fields('---\ndescription: >\n  Folded text\n---\n')).toEqual({
+      description: ['Folded text'],
+    })
+  })
 })
