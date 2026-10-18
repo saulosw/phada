@@ -12,17 +12,20 @@ const TRAILING_COMMENT = /\s+#.*$/
 const WHOLE_VALUE_KEYS = new Set(['description'])
 
 export function readFrontmatter(text: string): Frontmatter {
-  const lines = text.replace(/^﻿/, '').split(/\r?\n/)
+  const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/)
   if (!FENCE.test(lines[0] ?? '')) return { status: 'none' }
   const end = lines.findIndex((line, index) => index > 0 && FENCE.test(line))
   if (end === -1) return { status: 'invalid' }
   const fields = new Map<string, string[]>()
   let current: string | undefined
+  let scalar: string | undefined
   for (const line of lines.slice(1, end)) {
     const entry = KEY_LINE.exec(line)
     if (entry !== null) {
       current = (entry[1] ?? '').toLowerCase()
-      fields.set(current, valuesOf(current, entry[2] ?? ''))
+      const raw = withoutComment((entry[2] ?? '').trim())
+      scalar = BLOCK_SCALAR.test(raw) ? current : undefined
+      fields.set(current, scalar === undefined ? valuesOf(current, raw) : [])
       continue
     }
     if (current === undefined) continue
@@ -33,6 +36,11 @@ export function readFrontmatter(text: string): Frontmatter {
       continue
     }
     const continuation = CONTINUATION.exec(line)
+    if (continuation !== null && scalar === current && !WHOLE_VALUE_KEYS.has(current)) {
+      values.push(...valuesOf(current, continuation[1] ?? ''))
+      fields.set(current, values)
+      continue
+    }
     if (continuation !== null && WHOLE_VALUE_KEYS.has(current)) {
       const joined = [...values, (continuation[1] ?? '').trim()].join(' ')
       fields.set(current, [joined])
@@ -55,8 +63,12 @@ function valuesOf(key: string, raw: string): string[] {
 }
 
 function withoutComment(value: string): string {
-  if (value.startsWith('"') || value.startsWith("'")) return value
-  return value.replace(TRAILING_COMMENT, '')
+  const quote = value[0]
+  if (quote !== '"' && quote !== "'") return value.replace(TRAILING_COMMENT, '')
+  const end = value.indexOf(quote, 1)
+  if (end === -1) return value
+  const rest = value.slice(end + 1)
+  return rest.trim() === '' || /^\s+#/.test(rest) ? value.slice(0, end + 1) : value
 }
 
 function splitOutsideQuotes(text: string): string[] {

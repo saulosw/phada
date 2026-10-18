@@ -37,7 +37,7 @@ describe('readFrontmatter', () => {
   })
 
   it('accepts a byte order mark and CRLF line ends', () => {
-    expect(fields('﻿---\r\nexcludeAgent: "code-review"\r\n---\r\nbody')).toEqual({
+    expect(fields('\uFEFF---\r\nexcludeAgent: "code-review"\r\n---\r\nbody')).toEqual({
       excludeagent: ['code-review'],
     })
   })
@@ -82,6 +82,20 @@ describe('readFrontmatter', () => {
     })
     expect(fields('---\ndescription: >\n  Folded text\n---\n')).toEqual({
       description: ['Folded text'],
+    })
+  })
+
+  it('drops a comment after a quoted value', () => {
+    expect(fields('---\napplyTo: "src/**" # backend\nglobs: \'a/**, b/**\' # two\n---\n')).toEqual({
+      applyto: ['src/**'],
+      globs: ['a/**', 'b/**'],
+    })
+  })
+
+  it('reads patterns written as a block scalar on the next lines', () => {
+    expect(fields('---\nglobs: >\n  src/**, lib/**\napplyTo: |\n  docs/**\n---\n')).toEqual({
+      globs: ['src/**', 'lib/**'],
+      applyto: ['docs/**'],
     })
   })
 })
