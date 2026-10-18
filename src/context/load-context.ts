@@ -26,11 +26,11 @@ import type {
   RuleReport,
 } from './types.js'
 
-const READ_CONCURRENCY = 4
+export const READ_CONCURRENCY = 4
 
-type DocContent = string | null | Error
+export type DocContent = string | null | Error
 
-interface PlannedDoc extends DocCandidate {
+export interface PlannedDoc extends DocCandidate {
   source: 'repository' | 'local'
   readPath: string
 }
@@ -54,12 +54,8 @@ export async function loadContext(input: {
   const repository =
     tree === undefined
       ? { layers: [], configFiles: [] }
-      : await readRepositoryLayers(tree, changed, sources, sha, warnings)
-  const merged = mergeConfig([
-    ...userLayers.filter((layer) => layer.kind === 'user'),
-    ...repository.layers,
-    ...userLayers.filter((layer) => layer.kind === 'user-repo'),
-  ])
+      : await readRepositoryLayers(tree, phadaDirs(changed), sources, sha, warnings)
+  const merged = mergeLayers(userLayers, repository.layers)
   warnings.push(...merged.warnings)
   const { diff, files, ignored } = applyIgnore(input.diff, [...DEFAULT_IGNORE, ...merged.ignore])
   const rules = selectRules(merged, files)
@@ -77,14 +73,7 @@ export async function loadContext(input: {
     repos: merged.repos,
     privateOnPublic: merged.privateOnPublic,
     report: {
-      configFiles: [
-        ...userLayers.map((layer): ConfigFileReport => ({
-          path: layer.configLabel,
-          origin: 'user',
-          status: 'loaded',
-        })),
-        ...repository.configFiles,
-      ],
+      configFiles: [...userConfigFiles(userLayers), ...repository.configFiles],
       rules: rules.report,
       docs: docs.report,
       ignored,
@@ -94,7 +83,22 @@ export async function loadContext(input: {
   }
 }
 
-async function readTree(
+export function mergeLayers(
+  userLayers: readonly ConfigLayer[],
+  repositoryLayers: readonly ConfigLayer[],
+): EffectiveConfig {
+  return mergeConfig([
+    ...userLayers.filter((layer) => layer.kind === 'user'),
+    ...repositoryLayers,
+    ...userLayers.filter((layer) => layer.kind === 'user-repo'),
+  ])
+}
+
+export function userConfigFiles(userLayers: readonly ConfigLayer[]): ConfigFileReport[] {
+  return userLayers.map((layer) => ({ path: layer.configLabel, origin: 'user', status: 'loaded' }))
+}
+
+export async function readTree(
   sources: ContextSources,
   sha: string,
   warnings: string[],
@@ -115,16 +119,15 @@ async function readTree(
   }
 }
 
-async function readRepositoryLayers(
+export async function readRepositoryLayers(
   tree: RepositoryTree,
-  changed: readonly string[],
+  dirs: readonly string[],
   sources: ContextSources,
   sha: string,
   warnings: string[],
 ): Promise<RepositoryLayers> {
   const present = new Set(tree.entries.map((entry) => entry.path))
   const wanted = (path: string) => tree.truncated || present.has(path)
-  const dirs = phadaDirs(changed)
   const texts = await mapLimit(dirs, READ_CONCURRENCY, async (dir) => {
     const { config, rules } = phadaFiles(dir)
     const [configText, rulesText] = await Promise.all(
@@ -242,7 +245,7 @@ async function collectDocs(
   return fillBudget(planned, files, sources, sha, warnings, report, probing)
 }
 
-async function localCandidates(
+export async function localCandidates(
   merged: EffectiveConfig,
   sources: ContextSources,
   warnings: string[],
@@ -409,7 +412,7 @@ function dropReason(content: DocContent | undefined): DocReport['reason'] | unde
   return content.includes('\u0000') ? 'binary' : undefined
 }
 
-async function readDoc(doc: PlannedDoc, sources: ContextSources): Promise<DocContent> {
+export async function readDoc(doc: PlannedDoc, sources: ContextSources): Promise<DocContent> {
   try {
     return doc.source === 'local'
       ? await sources.readLocalFile(doc.readPath)
@@ -441,7 +444,7 @@ function orderLike(report: readonly DocReport[], planned: readonly PlannedDoc[])
   return [...report].sort((a, b) => rank(a) - rank(b))
 }
 
-async function mapLimit<T, R>(
+export async function mapLimit<T, R>(
   items: readonly T[],
   limit: number,
   map: (item: T) => Promise<R>,

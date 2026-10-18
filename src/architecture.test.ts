@@ -125,6 +125,7 @@ const APP: Boundary = {
   dir: 'app',
   values: new Set([
     '../context/load-context.js',
+    '../context/list-context.js',
     '../config/merge-config.js',
     '../config/parse-config.js',
     '../context/ignore.js',
