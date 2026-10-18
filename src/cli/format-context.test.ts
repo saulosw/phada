@@ -30,6 +30,26 @@ describe('formatContextLine', () => {
     expect(formatContextLine(report)).toBe('Context: 2 rules · 0 docs · 2 files ignored')
   })
 
+  it('counts the docs that did not apply apart from the omitted ones', () => {
+    const doc = { origin: 'repository' as const, category: 'agents' as const, bytes: 10 }
+    const report = contextReportFixture({
+      rules: [],
+      ignored: [],
+      docs: [
+        { ...doc, path: 'AGENTS.md', status: 'included' },
+        { ...doc, path: 'a.mdc', status: 'omitted', reason: 'out-of-scope', scope: ['lib/**'] },
+        { ...doc, path: 'b.mdc', status: 'omitted', reason: 'manual' },
+        { ...doc, path: 'c.instructions.md', status: 'omitted', reason: 'excluded' },
+        { ...doc, path: 'docs/big.md', status: 'omitted', reason: 'budget' },
+      ],
+      budget: { limit: 60_000, used: 10 },
+    })
+
+    expect(formatContextLine(report)).toBe(
+      'Context: 0 rules · 1 doc (10 B, 1 omitted, 3 not applied)',
+    )
+  })
+
   it('says when nothing was sent', () => {
     expect(formatContextLine(EMPTY)).toBe('Context: no rules or docs')
   })
@@ -104,10 +124,10 @@ describe('docLine', () => {
       docLine({ ...doc, status: 'omitted', reason: 'out-of-scope', scope: ['src/backend/**'] }),
     ).toBe('.github/instructions/backend.instructions.md (1.2 KB, out of scope: src/backend/**)')
     expect(docLine({ ...doc, status: 'omitted', reason: 'manual' })).toBe(
-      '.github/instructions/backend.instructions.md (1.2 KB, omitted: manual)',
+      '.github/instructions/backend.instructions.md (1.2 KB, not applied: only attached by hand)',
     )
     expect(docLine({ ...doc, status: 'omitted', reason: 'excluded' })).toBe(
-      '.github/instructions/backend.instructions.md (1.2 KB, omitted: excluded from review)',
+      '.github/instructions/backend.instructions.md (1.2 KB, not applied: excludeAgent code-review)',
     )
     expect(docLine({ ...doc, status: 'listed', scope: ['a/**', 'b/**'] })).toBe(
       '.github/instructions/backend.instructions.md (1.2 KB, applies to a/**, b/**)',

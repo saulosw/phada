@@ -25,6 +25,8 @@ output can change between minor versions.
 - The context report (`--dry-run` and the `context` block of the JSON) shows the scope and
   severity of each rule, the scope of each instruction file and why one was left out
   (`out-of-scope`, `manual`, `excluded`). The JSON keeps `schemaVersion: 1` and only gains fields.
+- The `Context:` line counts the instruction files that did not apply as "not applied", apart from
+  the docs omitted for the budget or a failed read.
 
 ## 0.4.0 - 2026-10-17
 

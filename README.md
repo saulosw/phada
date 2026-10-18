@@ -164,14 +164,16 @@ rules that review it.
   matches its `applyTo`, and left out without one or with `excludeAgent: code-review`. A `.mdc`
   file is sent when it has `alwaysApply: true`, when a changed file matches its `globs`, or when
   it only has a `description`; one with none of these is meant to be attached by hand and is left
-  out. A pattern without a `/` (`*.ts`) matches in any folder, and the `globs` of a `.mdc` file in
-  a subfolder's `.cursor/rules/` are relative to that subfolder. Files your config lists are always
-  sent.
+  out. A pattern without a `/` (`*.ts`) matches in any folder, a pattern starting with `!` excludes
+  files, and the `globs` of a `.mdc` file in a subfolder's `.cursor/rules/` are relative to that
+  subfolder. Files your config lists are always sent.
 - **Ignored files**: lockfiles, minified files and source maps never reach the AI; `ignore` in
   the config adds more patterns. The review names every file it left out, so a change hidden in one of them is still visible to whoever reads it; when every changed file is ignored, Phada posts a short note that names them instead of a review.
 
 Phada prints what it sent before the review, e.g.
-`Context: 2 rules · 5 docs (21.3 KB, 1 omitted) · 1 file ignored`. With `--dry-run` the preview
+`Context: 2 rules · 5 docs (21.3 KB, 1 omitted, 2 not applied) · 1 file ignored`, where
+"omitted" means a doc did not fit or could not be read and "not applied" means an instruction file
+did not apply to this change. With `--dry-run` the preview
 ends with the full list, and the JSON has a `context` block with every rule, doc and ignored file,
 where it came from, its scope and whether it was sent (`out-of-scope`, `manual` or `excluded`
 when an instruction file did not apply). Findings list the docs and files they rely on and the
