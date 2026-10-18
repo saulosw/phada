@@ -7,6 +7,25 @@ output can change between minor versions.
 
 ## Unreleased
 
+### Added
+
+- Reviews read the instruction files a repository keeps for other AI tools as reference docs:
+  `.github/copilot-instructions.md`, `.github/instructions/*.instructions.md`,
+  `.cursor/rules/*.mdc`, `.cursorrules`, `.windsurfrules` and `GEMINI.md` at the root, and
+  `GEMINI.md` and `.cursor/rules/*.mdc` in the folders of the changed files.
+- Instruction files that say where they apply are sent only when a changed file matches
+  (`applyTo`, `globs`); `alwaysApply: true` always applies; files meant to be attached by hand, or
+  with `excludeAgent: code-review`, are left out.
+- `phada rules owner/repo#N` shows the context the review of a pull request gets, and
+  `phada rules owner/repo` lists the rules, docs and ignore patterns on the default branch,
+  without calling the AI; `--format json` for scripts.
+
+### Changed
+
+- The context report (`--dry-run` and the `context` block of the JSON) shows the scope and
+  severity of each rule, the scope of each instruction file and why one was left out
+  (`out-of-scope`, `manual`, `excluded`). The JSON keeps `schemaVersion: 1` and only gains fields.
+
 ## 0.4.0 - 2026-10-17
 
 ### Added
