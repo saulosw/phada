@@ -4,7 +4,7 @@ import { parseConfigText } from '../config/parse-config.js'
 import type { ConfigLayer } from '../config/types.js'
 import type { RepositoryTree } from '../github/repository-files.js'
 import type { ContextDoc, ContextRule } from '../review/types.js'
-import { docScope } from './doc-scope.js'
+import { docScope, scopeMatcher } from './doc-scope.js'
 import type { DocFormat } from './doc-scope.js'
 import { applyIgnore, DEFAULT_IGNORE, matcher } from './ignore.js'
 import { phadaDirs, phadaFiles } from './phada-paths.js'
@@ -312,7 +312,7 @@ async function fillBudget(
     }
     if (scope.kind === 'globs') {
       scopes.set(doc, scope.patterns)
-      if (files.some(matcher(scope.patterns))) {
+      if (files.some(scopeMatcher(scope.patterns))) {
         planned.push(doc)
         continue
       }

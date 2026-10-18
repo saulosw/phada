@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { docScope } from './doc-scope.js'
+import { docScope, scopeMatcher } from './doc-scope.js'
 
 const mdc = (front: string, dir = '') => docScope('mdc', `---\n${front}\n---\n# Rule\n`, dir)
 const instructions = (front: string) => docScope('instructions', `---\n${front}\n---\n# Rule\n`, '')
@@ -65,5 +65,32 @@ describe('docScope', () => {
   it('drops a leading slash and reports an unreadable front matter', () => {
     expect(mdc('globs: /src/**')).toEqual({ kind: 'globs', patterns: ['src/**'] })
     expect(docScope('mdc', '---\nglobs: src/**\n', '')).toEqual({ kind: 'invalid' })
+  })
+
+  it('keeps negated patterns as exclusions, also in a nested folder', () => {
+    expect(mdc('globs: src/**, !src/**/*.test.ts')).toEqual({
+      kind: 'globs',
+      patterns: ['src/**', '!src/**/*.test.ts'],
+    })
+    expect(mdc('globs: "!*.test.ts"', 'web')).toEqual({
+      kind: 'globs',
+      patterns: ['web/**', '!web/**/*.test.ts'],
+    })
+    expect(mdc("globs: '**', '!docs/**'")).toEqual({ kind: 'globs', patterns: ['**', '!docs/**'] })
+  })
+})
+
+describe('scopeMatcher', () => {
+  it('matches a file that some pattern covers and no negated pattern excludes', () => {
+    const matches = scopeMatcher(['src/**', '!src/**/*.test.ts'])
+    expect(matches('src/a.ts')).toBe(true)
+    expect(matches('src/a.test.ts')).toBe(false)
+    expect(matches('lib/a.ts')).toBe(false)
+  })
+
+  it('treats a scope of only negated patterns as everything else', () => {
+    const matches = scopeMatcher(['!web/**/*.test.ts'])
+    expect(matches('web/a.ts')).toBe(true)
+    expect(matches('web/a.test.ts')).toBe(false)
   })
 })

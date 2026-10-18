@@ -1,5 +1,6 @@
 import { escapeGlob } from '../config/merge-config.js'
 import { readFrontmatter } from './frontmatter.js'
+import { matcher } from './ignore.js'
 
 export type DocFormat = 'mdc' | 'instructions'
 
@@ -32,13 +33,30 @@ export function docScope(format: DocFormat, text: string, dir: string): DocScope
   )
 }
 
+export function scopeMatcher(patterns: readonly string[]): (path: string) => boolean {
+  const excluded = patterns.filter(isNegated).map((pattern) => pattern.slice(1))
+  const included = patterns.filter((pattern) => !isNegated(pattern))
+  const covers = matcher(included.length === 0 ? ['**'] : included)
+  const excludes = matcher(excluded)
+  return (path) => covers(path) && !excludes(path)
+}
+
 function scoped(patterns: readonly string[], dir: string): DocScope | undefined {
   const cleaned = patterns
-    .map((pattern) => pattern.replace(/^\/+/, ''))
+    .map((pattern) => {
+      const negated = isNegated(pattern)
+      const body = (negated ? pattern.slice(1) : pattern).replace(/^\/+/, '')
+      return body === '' ? '' : `${negated ? '!' : ''}${inFolder(body, dir)}`
+    })
     .filter((pattern) => pattern !== '')
   if (cleaned.length === 0) return undefined
-  if (dir === '' && cleaned.some((pattern) => EVERYTHING.has(pattern))) return { kind: 'always' }
-  return { kind: 'globs', patterns: cleaned.map((pattern) => inFolder(pattern, dir)) }
+  if (dir !== '' && cleaned.every(isNegated)) cleaned.unshift(`${escapeGlob(dir)}/**`)
+  const everything = dir === '' && cleaned.includes('**') && !cleaned.some(isNegated)
+  return everything ? { kind: 'always' } : { kind: 'globs', patterns: cleaned }
+}
+
+function isNegated(pattern: string): boolean {
+  return pattern.startsWith('!')
 }
 
 function inFolder(pattern: string, dir: string): string {

@@ -589,6 +589,21 @@ describe('loadContext', () => {
       ])
     })
 
+    it('leaves a doc out when only files its negated patterns exclude changed', async () => {
+      const sources = fakeSources({
+        '.cursor/rules/src.mdc': '---\nglobs: src/**, !src/**/*.test.ts\n---\nx\n',
+      })
+
+      const loaded = await loadContext({
+        diff: modifiedFile('src/a.test.ts'),
+        baseSha: SHA,
+        userLayers: [],
+        sources,
+      })
+
+      expect(loaded.report.docs[0]).toMatchObject({ status: 'omitted', reason: 'out-of-scope' })
+    })
+
     it('makes a nested mdc file apply only inside its folder', async () => {
       const sources = fakeSources({
         'packages/web/.cursor/rules/r.mdc': '---\nglobs: *.tsx\n---\nUse hooks.\n',
