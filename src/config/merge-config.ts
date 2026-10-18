@@ -248,6 +248,6 @@ function inLayer(
     : joined
 }
 
-function escapeGlob(text: string): string {
+export function escapeGlob(text: string): string {
   return text.replace(GLOB_SYNTAX, '\\$&')
 }
