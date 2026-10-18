@@ -259,7 +259,9 @@ For each one, Phada fetches the head of its default branch into the [cache](#cac
 can read it with the `repo` argument of `read_file`, `grep`, `list`, `find_symbol`, `callers`,
 `dependencies` and `similar` (`history` stays on the reviewed repository). When a package manifest
 links the two repositories (`package.json` dependencies and `name`, `go.mod` `require` and
-`module`, `pyproject.toml`/`setup.py`/`setup.cfg`/`requirements*.txt` for Python), Phada also
+`module`; for Python, the dependencies in `pyproject.toml` (`[project]` or Poetry) or
+`requirements*.txt` and the package name in `pyproject.toml`, `setup.py` or `setup.cfg`; the
+`install_requires` of `setup.py` and `setup.cfg` are not read), Phada also
 indexes the related repository and follows the link: the [impact](#repository-graph) of the diff
 lists the code in the other repository that calls what the pull request changes, and
 `dependencies` points to the definitions in a package the reviewed repository uses. Findings still
