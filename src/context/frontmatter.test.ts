@@ -98,4 +98,11 @@ describe('readFrontmatter', () => {
       applyto: ['docs/**'],
     })
   })
+
+  it('reads a flow list written over several lines', () => {
+    expect(fields('---\nglobs: [\n  "src/**",\n  lib/**\n]\nalwaysApply: false\n---\n')).toEqual({
+      globs: ['src/**', 'lib/**'],
+      alwaysapply: ['false'],
+    })
+  })
 })

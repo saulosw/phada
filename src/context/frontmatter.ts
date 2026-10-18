@@ -19,13 +19,22 @@ export function readFrontmatter(text: string): Frontmatter {
   const fields = new Map<string, string[]>()
   let current: string | undefined
   let scalar: string | undefined
+  let flow: { key: string; text: string } | undefined
   for (const line of lines.slice(1, end)) {
+    if (flow !== undefined) {
+      flow.text += ` ${line.trim()}`
+      if (!flow.text.includes(']')) continue
+      fields.set(flow.key, valuesOf(flow.key, flow.text))
+      flow = undefined
+      continue
+    }
     const entry = KEY_LINE.exec(line)
     if (entry !== null) {
       current = (entry[1] ?? '').toLowerCase()
       const raw = withoutComment((entry[2] ?? '').trim())
       scalar = BLOCK_SCALAR.test(raw) ? current : undefined
-      fields.set(current, scalar === undefined ? valuesOf(current, raw) : [])
+      if (raw.startsWith('[') && !raw.includes(']')) flow = { key: current, text: raw }
+      fields.set(current, scalar === undefined && flow === undefined ? valuesOf(current, raw) : [])
       continue
     }
     if (current === undefined) continue
