@@ -113,8 +113,7 @@ async function listDocs(
     ...local,
     ...fromRepository.slice(declaredCount),
   ]
-  const needsReading = (doc: PlannedDoc) =>
-    doc.size === undefined || (doc.format !== undefined && doc.category !== 'declared')
+  const needsReading = (doc: PlannedDoc) => doc.size === undefined || doc.format !== undefined
   const contents = new Map<PlannedDoc, DocContent>()
   await mapLimit(planned.filter(needsReading), READ_CONCURRENCY, async (doc) => {
     contents.set(doc, await readDoc(doc, sources))
@@ -143,7 +142,7 @@ function listedDoc(
     return doc.category === 'declared' ? notFound(doc.path) : undefined
   }
   const bytes = byteLength(content)
-  if (doc.format === undefined || doc.category === 'declared') {
+  if (doc.format === undefined) {
     return { ...base, bytes, status: 'listed' }
   }
   const scope = docScope(doc.format, content, doc.dir ?? '')

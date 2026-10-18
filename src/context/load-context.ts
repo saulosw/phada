@@ -403,7 +403,7 @@ function planBudget(
 }
 
 function isScoped(doc: PlannedDoc): doc is PlannedDoc & { format: DocFormat } {
-  return doc.format !== undefined && doc.category !== 'declared'
+  return doc.format !== undefined
 }
 
 function dropReason(content: DocContent | undefined): DocReport['reason'] | undefined {
