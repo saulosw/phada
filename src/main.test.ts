@@ -1,4 +1,5 @@
 import { mkdtempSync, rmSync } from 'node:fs'
+import { GitHubError } from './github/errors.js'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
@@ -1400,6 +1401,17 @@ describe('run rules', () => {
       }),
     ])
     expect(h.providers).toEqual([])
+  })
+
+  it('fails when the repository contents cannot be read instead of printing an empty context', async () => {
+    const h = harness({
+      tree: () =>
+        Promise.reject(new GitHubError('Resource not accessible by personal access token')),
+    })
+
+    expect(await run(['rules', 'acme/shop#12'], h.deps)).toBe(1)
+    expect(h.stderr()).toContain('phada: Resource not accessible by personal access token')
+    expect(h.stdout()).toBe('')
   })
 
   it('fails clearly for an empty repository', async () => {

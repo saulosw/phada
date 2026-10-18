@@ -5,6 +5,7 @@ import { GitHubError } from '../github/errors.js'
 import type { FetchPullRequestOptions, PullRequest } from '../github/pull-request.js'
 import type { RepositoryFilesOptions } from '../github/repository-files.js'
 import type { RepositoryInfo } from '../github/repository.js'
+import type { ContextSources } from '../context/types.js'
 import type { IndexFormat, RulesTarget } from './args.js'
 import { contextSourcesAt } from './context-sources.js'
 import type { ContextReaders } from './context-sources.js'
@@ -45,7 +46,7 @@ export async function runRules(command: RulesCommand, deps: RulesCommandDeps): P
       diff: pullRequest.diff,
       baseSha: pullRequest.baseSha,
       userLayers,
-      sources: contextSourcesAt(deps, repository, pullRequest.baseSha),
+      sources: await readableSources(contextSourcesAt(deps, repository, pullRequest.baseSha)),
     })
     const view: RulesView = {
       pullRequest: { owner, repo, number: command.target.ref.number, baseSha: pullRequest.baseSha },
@@ -65,7 +66,7 @@ export async function runRules(command: RulesCommand, deps: RulesCommandDeps): P
   const { report, ignore } = await inspectRepositoryContext({
     ref,
     userLayers,
-    sources: contextSourcesAt(deps, repository, ref),
+    sources: await readableSources(contextSourcesAt(deps, repository, ref)),
   })
   const view: RulesView = { pullRequest: null, repository: { owner, repo, ref } }
   deps.stdout.write(
@@ -73,4 +74,9 @@ export async function runRules(command: RulesCommand, deps: RulesCommandDeps): P
       ? formatRulesJson(view, report, ignore)
       : formatRulesText(view, report, ignore),
   )
+}
+
+async function readableSources(sources: ContextSources): Promise<ContextSources> {
+  const tree = await sources.readTree()
+  return { ...sources, readTree: async () => tree }
 }
