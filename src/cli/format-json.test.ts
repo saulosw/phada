@@ -102,6 +102,60 @@ describe('formatReviewJson', () => {
     expect(output).toMatchObject({ context })
   })
 
+  it('prints the scope and severity of rules and the scope of docs only when there is one', () => {
+    const context = contextReportFixture({
+      rules: [
+        { key: 'a', origin: 'x', scope: ['src/**'], severity: 'P1', status: 'applied' },
+        { key: 'b', origin: 'x', scope: ['**'], status: 'applied' },
+      ],
+      docs: [
+        {
+          path: '.cursor/rules/a.mdc',
+          origin: 'repository',
+          category: 'agents',
+          bytes: 10,
+          status: 'omitted',
+          reason: 'out-of-scope',
+          scope: ['lib/**'],
+        },
+        {
+          path: 'README.md',
+          origin: 'repository',
+          category: 'contributing',
+          bytes: 5,
+          status: 'included',
+        },
+      ],
+    })
+
+    const output = parse(
+      formatReviewJson(pullRequestFixture(), { status: 'reviewed', result: RESULT }, null, context),
+    ) as { context: { rules: unknown[]; docs: unknown[] } }
+
+    expect(output.context.rules).toEqual([
+      { key: 'a', origin: 'x', scope: ['src/**'], severity: 'P1', status: 'applied' },
+      { key: 'b', origin: 'x', scope: ['**'], status: 'applied' },
+    ])
+    expect(output.context.docs).toEqual([
+      {
+        path: '.cursor/rules/a.mdc',
+        origin: 'repository',
+        category: 'agents',
+        bytes: 10,
+        status: 'omitted',
+        reason: 'out-of-scope',
+        scope: ['lib/**'],
+      },
+      {
+        path: 'README.md',
+        origin: 'repository',
+        category: 'contributing',
+        bytes: 5,
+        status: 'included',
+      },
+    ])
+  })
+
   it('prints a review skipped because every file was ignored, with its context', () => {
     const context = contextReportFixture()
 

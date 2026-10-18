@@ -191,7 +191,7 @@ function findingJson(finding: Finding) {
   }
 }
 
-function contextJson(context: ContextReport) {
+export function contextJson(context: ContextReport) {
   return {
     configFiles: context.configFiles.map(({ path, origin, status, message }) => ({
       path,
@@ -199,14 +199,21 @@ function contextJson(context: ContextReport) {
       status,
       ...(message === undefined ? {} : { message }),
     })),
-    rules: context.rules.map(({ key, origin, status }) => ({ key, origin, status })),
-    docs: context.docs.map(({ path, origin, category, bytes, status, reason }) => ({
+    rules: context.rules.map(({ key, origin, scope, severity, status }) => ({
+      key,
+      origin,
+      scope: [...scope],
+      ...(severity === undefined ? {} : { severity }),
+      status,
+    })),
+    docs: context.docs.map(({ path, origin, category, bytes, status, reason, scope }) => ({
       path,
       origin,
       category,
       bytes,
       status,
       ...(reason === undefined ? {} : { reason }),
+      ...(scope === undefined ? {} : { scope: [...scope] }),
     })),
     ignored: [...context.ignored],
     budget: { limit: context.budget.limit, used: context.budget.used },
