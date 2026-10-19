@@ -103,6 +103,10 @@ describe('formatWatchEvent', () => {
       '[14:03] acme/shop: indexing the default branch; it goes on when the queue is idle.',
     ],
     [{ kind: 'warning', message: 'acme/web: no access' }, '[14:03] Warning: acme/web: no access'],
+    [
+      { kind: 'limited', count: 6, until: local(14, 40).toISOString() },
+      '[14:03] 6 reviews in the last hour (maxReviewsPerHour): the next one starts at 14:40.',
+    ],
   ] as const)('prints %j', (event, line) => {
     expect(formatWatchEvent(event, AT)).toBe(line)
   })
@@ -143,10 +147,11 @@ const STATUS: HistoryStatus = {
 
 describe('formatWatchStatus', () => {
   it('shows the watch, the pause, the repositories, the queue, failures and the last reviews', () => {
-    expect(formatWatchStatus(STATUS, { pid: 123 }, AT)).toBe(
+    expect(formatWatchStatus(STATUS, { pid: 123 }, AT, { count: 6, max: 6 })).toBe(
       [
         'Watch: running (PID 123)',
         "Paused until 2026-10-18 14:30: the AI provider's usage limit.",
+        'Reviews in the last hour: 6 of 6',
         '',
         'Repositories:',
         '  acme/shop  checked 2026-10-18 14:00 · index at a1b2c3d',
@@ -194,15 +199,15 @@ describe('formatWatchStatus', () => {
 
 describe('formatWatchStatusJson', () => {
   it('prints schemaVersion 1 with every block', () => {
-    const json = JSON.parse(formatWatchStatusJson(STATUS, { pid: 123 }, AT)) as Record<
-      string,
-      unknown
-    >
+    const json = JSON.parse(
+      formatWatchStatusJson(STATUS, { pid: 123 }, AT, { count: 6, max: 6 }),
+    ) as Record<string, unknown>
 
     expect(json).toEqual({
       schemaVersion: 1,
       running: { pid: 123 },
       pause: STATUS.pause,
+      reviewsLastHour: { count: 6, max: 6 },
       repos: STATUS.repos,
       queue: STATUS.queued,
       inProgress: STATUS.running,

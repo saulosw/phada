@@ -35,6 +35,7 @@ export interface WatchEvents {
   indexed(repo: string, sha: string): void
   indexPartial(repo: string): void
   warning(message: string): void
+  limited(count: number, until: string): void
 }
 
 export interface WatchDeps {
@@ -57,6 +58,7 @@ export async function watchRepositories(input: WatchInput, deps: WatchDeps): Pro
   const { settings } = input
   history.recoverRunning(MAX_ATTEMPTS, iso(deps))
   const branches = new Map<string, string | undefined>()
+  let limitedUntil: string | undefined
   for (;;) {
     if (deps.stopRequested()) return { reason: 'stopped' }
     for (const repo of settings.repos) {
@@ -65,13 +67,19 @@ export async function watchRepositories(input: WatchInput, deps: WatchDeps): Pro
     }
     if (deps.stopRequested()) return { reason: 'stopped' }
     const now = iso(deps)
+    const watchRunsLastHour = history.watchRunsSince(later(now, -RATE_WINDOW_MS))
     const next = pickNext({
       queued: history.jobs({ status: ['queued'] }),
       now,
       ...pauseOf(history),
-      watchRunsLastHour: history.watchRunsSince(later(now, -RATE_WINDOW_MS)),
+      watchRunsLastHour,
       maxPerHour: settings.maxReviewsPerHour,
     })
+    if (!('job' in next) && next.reason === 'hourly-limit' && next.waitUntil !== limitedUntil) {
+      limitedUntil = next.waitUntil
+      if (next.waitUntil !== undefined)
+        deps.events.limited(watchRunsLastHour.length, next.waitUntil)
+    }
     if ('job' in next) {
       const exit = await runJob(next.job, deps)
       if (exit !== undefined) return exit

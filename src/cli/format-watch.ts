@@ -8,6 +8,11 @@ import { formatCount } from './units.js'
 
 const SCHEMA_VERSION = 1
 
+export interface HourlyReviews {
+  count: number
+  max: number
+}
+
 export type WatchEventView =
   | { kind: 'baseline'; repo: string; count: number }
   | { kind: 'queued'; job: JobRecord }
@@ -20,6 +25,7 @@ export type WatchEventView =
   | { kind: 'indexed'; repo: string; sha: string }
   | { kind: 'indexPartial'; repo: string }
   | { kind: 'warning'; message: string }
+  | { kind: 'limited'; count: number; until: string }
 
 export function formatWatchEvent(event: WatchEventView, at: Date): string {
   return `[${clock(at)}] ${toTerminalText(eventText(event))}`
@@ -49,6 +55,8 @@ function eventText(event: WatchEventView): string {
       return `${event.repo}: indexing the default branch; it goes on when the queue is idle.`
     case 'warning':
       return `Warning: ${event.message}`
+    case 'limited':
+      return `${formatCount(event.count, 'review')} in the last hour (maxReviewsPerHour): the next one starts at ${clock(new Date(event.until))}.`
   }
 }
 
@@ -76,12 +84,14 @@ export function formatWatchStatus(
   status: HistoryStatus,
   running: { pid: number } | undefined,
   now: Date,
+  hourly?: HourlyReviews,
 ): string {
   const lines = [
     running === undefined ? 'Watch: not running' : `Watch: running (PID ${running.pid})`,
   ]
   const pause = activePause(status.pause, now)
   if (pause !== undefined) lines.push(`Paused until ${when(pause.until)}: ${pauseReason(pause)}.`)
+  if (hourly !== undefined) lines.push(`Reviews in the last hour: ${hourly.count} of ${hourly.max}`)
   lines.push('')
   const width = Math.max(0, ...status.repos.map(({ repo }) => repo.length))
   section(lines, 'Repositories', 'none yet', status.repos, (repo) => {
@@ -111,11 +121,13 @@ export function formatWatchStatusJson(
   status: HistoryStatus,
   running: { pid: number } | undefined,
   now: Date,
+  hourly?: HourlyReviews,
 ): string {
   const body = {
     schemaVersion: SCHEMA_VERSION,
     running: running ?? null,
     pause: activePause(status.pause, now) ?? null,
+    reviewsLastHour: hourly ?? null,
     repos: status.repos,
     queue: status.queued,
     inProgress: status.running,

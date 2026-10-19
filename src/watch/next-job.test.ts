@@ -26,13 +26,17 @@ describe('pickNext', () => {
   it('waits for the first job that is not ready yet', () => {
     expect(pickNext({ ...base, queued: [job(1, at(5)), job(2, at(2))] })).toEqual({
       waitUntil: at(2),
+      reason: 'not-ready',
     })
   })
 
   it('waits for the end of a pause', () => {
     const pause = { until: at(15), reason: 'usage-limit', streak: 1 }
 
-    expect(pickNext({ ...base, queued: [job(1, at(-1))], pause })).toEqual({ waitUntil: at(15) })
+    expect(pickNext({ ...base, queued: [job(1, at(-1))], pause })).toEqual({
+      waitUntil: at(15),
+      reason: 'paused',
+    })
   })
 
   it('ignores a pause that is over', () => {
@@ -47,7 +51,7 @@ describe('pickNext', () => {
 
     expect(
       pickNext({ ...base, queued: [job(1, at(-1))], watchRunsLastHour, maxPerHour: 2 }),
-    ).toEqual({ waitUntil: at(10) })
+    ).toEqual({ waitUntil: at(10), reason: 'hourly-limit' })
   })
 
   it('has nothing to wait for with an empty queue', () => {

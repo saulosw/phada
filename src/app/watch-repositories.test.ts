@@ -111,6 +111,8 @@ async function setup(script: Script, history?: HistoryStore) {
       indexed: (repo) => events.push(`indexed ${repo}`),
       indexPartial: (repo) => events.push(`partial ${repo}`),
       warning: (message) => events.push(`warning ${message}`),
+      limited: (count, until) =>
+        events.push(`limited ${count} until ${(Date.parse(until) - START) / MIN}`),
     },
   }
   return { deps, store, ran, events, recorded, indexed, now: () => now - START }
@@ -286,6 +288,7 @@ describe('watchRepositories', () => {
       'started #3 @8',
       'started #4 @68',
     ])
+    expect(h.events.filter((event) => event.startsWith('limited'))).toEqual(['limited 1 until 68'])
   })
 
   it('puts a job interrupted by a crash back in the queue', async () => {

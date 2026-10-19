@@ -3,6 +3,7 @@ import { refreshIndex } from '../app/index-repository.js'
 import { reviewAndPublish } from '../app/review-and-publish.js'
 import type { ReviewRun } from '../app/review-and-publish.js'
 import { watchRepositories } from '../app/watch-repositories.js'
+import { RATE_WINDOW_MS } from '../watch/next-job.js'
 import type { RunOutcome, WatchDeps, WatchEvents } from '../app/watch-repositories.js'
 import { repositoryCache } from '../config/cache-paths.js'
 import { dataFiles } from '../config/data-paths.js'
@@ -50,10 +51,20 @@ export async function runWatch(command: WatchCommand, deps: MainDeps): Promise<n
       const status = history.status()
       const holder = await deps.lockHolder(files.lock)
       const running = holder === undefined ? undefined : { pid: holder }
+      const now = deps.clock()
+      const max = resolveWatchSettings(layers)?.maxReviewsPerHour
+      const hourly =
+        max === undefined
+          ? undefined
+          : {
+              count: history.watchRunsSince(new Date(now.getTime() - RATE_WINDOW_MS).toISOString())
+                .length,
+              max,
+            }
       deps.stdout.write(
         command.format === 'json'
-          ? formatWatchStatusJson(status, running, deps.clock())
-          : formatWatchStatus(status, running, deps.clock()),
+          ? formatWatchStatusJson(status, running, now, hourly)
+          : formatWatchStatus(status, running, now, hourly),
       )
     } finally {
       history.close()
@@ -146,6 +157,7 @@ async function watchUnderLock(
     indexed: (repo, sha) => print({ kind: 'indexed', repo, sha }),
     indexPartial: (repo) => print({ kind: 'indexPartial', repo }),
     warning: (message) => print({ kind: 'warning', message }),
+    limited: (count, until) => print({ kind: 'limited', count, until }),
   }
 
   const watchDeps: WatchDeps = {

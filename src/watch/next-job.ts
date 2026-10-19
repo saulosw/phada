@@ -11,23 +11,27 @@ export interface NextJobInput {
   maxPerHour: number
 }
 
-export type NextJob = { job: JobRecord } | { waitUntil?: string }
+export type WaitReason = 'not-ready' | 'paused' | 'hourly-limit'
+
+export type NextJob = { job: JobRecord } | { waitUntil?: string; reason?: WaitReason }
 
 export function pickNext(input: NextJobInput): NextJob {
   const { queued, now, pause } = input
   if (queued.length === 0) return {}
-  if (pause !== undefined && pause.until > now) return { waitUntil: pause.until }
+  if (pause !== undefined && pause.until > now) return { waitUntil: pause.until, reason: 'paused' }
   const recent = [...input.watchRunsLastHour].sort()
   if (recent.length >= input.maxPerHour) {
     const oldest = recent[recent.length - input.maxPerHour] ?? now
-    return { waitUntil: later(oldest, RATE_WINDOW_MS) }
+    return { waitUntil: later(oldest, RATE_WINDOW_MS), reason: 'hourly-limit' }
   }
   const ordered = [...queued].sort(
     (a, b) => compare(a.notBefore, b.notBefore) || compare(a.createdAt, b.createdAt) || a.id - b.id,
   )
   const first = ordered[0]
   if (first === undefined) return {}
-  return first.notBefore <= now ? { job: first } : { waitUntil: first.notBefore }
+  return first.notBefore <= now
+    ? { job: first }
+    : { waitUntil: first.notBefore, reason: 'not-ready' }
 }
 
 function compare(a: string, b: string): number {
