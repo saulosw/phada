@@ -88,5 +88,10 @@ export const portuguese: Messages = {
         : `Nenhum problema novo em ${sha}. ${value} comentários do Phada de revisões anteriores continuam abertos: resolva-os para receber uma revisão completa deste commit.`,
     preview: (index, total, place) =>
       `===== Comentário na linha ${index}/${total} · ${place} =====`,
+    fixedThreads: (value, sha) =>
+      value === 1
+        ? `1 comentário de revisões anteriores foi corrigido em ${sha} e resolvido.`
+        : `${value} comentários de revisões anteriores foram corrigidos em ${sha} e resolvidos.`,
+    resolvedReply: (sha, reason) => `Corrigido em \`${sha}\`: ${reason}`,
   },
 }

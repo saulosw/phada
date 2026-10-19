@@ -1,9 +1,9 @@
-import { randomBytes } from 'node:crypto'
 import type { ReviewProvider, TokenUsage } from '../providers/types.js'
 import type { Toolbox } from '../investigation/toolbox.js'
 import { withKnownReferences, withRuleSeverity } from './context-findings.js'
 import { diffFingerprint } from './diff-fingerprint.js'
 import { parseDiffFiles } from './diff-lines.js'
+import { newNonce } from './nonce.js'
 import { parseReviewReport } from './parse-report.js'
 import { buildReviewPrompt } from './prompt.js'
 import { scoreFindings } from './score.js'
@@ -44,7 +44,7 @@ export async function runReview(
     return { status: 'skipped', reason: allIgnored ? 'all-ignored' : 'empty-diff' }
   }
 
-  const createNonce = deps.createNonce ?? randomNonce
+  const createNonce = deps.createNonce ?? newNonce
   const reviewTools = deps.tools?.('review')
   const reviewOutput = await deps.provider.review(
     buildReviewPrompt(request, createNonce(), reviewTools),
@@ -134,8 +134,4 @@ function sumUsage(
     inputTokens: review.inputTokens + verification.inputTokens,
     outputTokens: review.outputTokens + verification.outputTokens,
   }
-}
-
-function randomNonce(): string {
-  return randomBytes(6).toString('hex')
 }

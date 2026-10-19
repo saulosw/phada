@@ -16,7 +16,13 @@ import { formatContextSection } from './cli/format-context.js'
 import { formatImpactSection } from './cli/format-impact.js'
 import { formatInvestigationLine, formatInvestigationSection } from './cli/format-investigation.js'
 import { formatRelatedSection } from './cli/format-related.js'
-import { formatPublishedMessage, formatSkipMessage } from './cli/format-publication.js'
+import {
+  formatPublishedMessage,
+  formatRecheckMessage,
+  formatResolvedMessage,
+  formatSkipMessage,
+  formatWouldResolveMessage,
+} from './cli/format-publication.js'
 import { formatPullRequestSummary, formatReview } from './cli/format-review.js'
 import { messagesFor } from './cli/i18n/messages.js'
 import { runIndex } from './cli/index-command.js'
@@ -116,6 +122,9 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
           minConfidence: command.minConfidence,
           verify: command.verify,
           investigate: command.investigate,
+          ...(command.resolveThreads === undefined
+            ? {}
+            : { resolveThreads: command.resolveThreads }),
         },
         userLayers,
         userMcpServers: mcp,
@@ -159,6 +168,15 @@ function reviewAndPublishDeps(
         body: rendered.body,
         comments: rendered.comments,
       }),
+    compare: (pullRequest, base) =>
+      deps.fetchComparison({
+        owner: command.ref.owner,
+        repo: command.ref.repo,
+        token,
+        base,
+        head: pullRequest.headSha,
+      }),
+    replyAndResolve: (threadId, body) => deps.replyAndResolve({ token, threadId, body }),
     events: {
       fetched: (pullRequest) => deps.stderr.write(`${formatPullRequestSummary(pullRequest)}\n`),
       reviewed: (reviewed, pullRequest) => printReviewed(deps, command, reviewed, pullRequest),
@@ -187,6 +205,9 @@ function printReviewed(
   }
   const investigationLine = formatInvestigationLine(reviewed.investigation)
   if (investigationLine !== undefined) deps.stderr.write(`${investigationLine}\n`)
+  if (reviewed.recheck !== undefined) {
+    deps.stderr.write(`${formatRecheckMessage(reviewed.recheck)}\n`)
+  }
   if (!command.dryRun && command.format === 'markdown') {
     deps.stdout.write(formatReview(pullRequest, outcome.result, messagesFor(reviewed.language)))
   }
@@ -222,6 +243,9 @@ function printRun(deps: MainDeps, command: ReviewCommand, run: ReviewRun): void 
         )
       }
       deps.stderr.write('Dry run: nothing was posted.\n')
+      if (publication.wouldResolve.length > 0) {
+        deps.stderr.write(`${formatWouldResolveMessage(publication.wouldResolve.length)}\n`)
+      }
       if (run.status === 'reviewed' && run.wouldSkip !== undefined) {
         deps.stderr.write(
           `Without --dry-run: ${formatSkipMessage(pullRequest.headSha, run.wouldSkip)}\n`,
@@ -234,6 +258,10 @@ function printRun(deps: MainDeps, command: ReviewCommand, run: ReviewRun): void 
       deps.stderr.write(
         `${formatPublishedMessage(publication.url, counts.comments, counts.stillOpen, counts.dismissed)}\n`,
       )
+      if (publication.resolved.total > 0) {
+        const { resolved, total } = publication.resolved
+        deps.stderr.write(`${formatResolvedMessage(resolved, total)}\n`)
+      }
       return
     default:
       return

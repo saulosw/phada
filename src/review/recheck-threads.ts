@@ -2,6 +2,7 @@ import type { Toolbox } from '../investigation/toolbox.js'
 import type { ReviewProvider } from '../providers/types.js'
 import { InvalidReviewReportError } from './errors.js'
 import { jsonObjects, preview } from './json-objects.js'
+import { newNonce } from './nonce.js'
 import { buildRecheckPrompt } from './recheck-prompt.js'
 import { RecheckEnvelopeSchema, RecheckVerdictSchema } from './recheck-schema.js'
 import type { RecheckReport, RecheckThread, RecheckVerdict, ReviewRequest } from './types.js'
@@ -13,7 +14,7 @@ export async function recheckThreads(
   request: ReviewRequest,
   threads: readonly RecheckThread[],
   provider: ReviewProvider,
-  nonce: string,
+  nonce: string = newNonce(),
   tools?: Toolbox,
 ): Promise<RecheckReport> {
   const changed = threads.filter((thread) => thread.changed)

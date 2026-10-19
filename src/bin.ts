@@ -2,7 +2,9 @@
 import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { nodeFileSystem } from './config/local-files.js'
+import { fetchComparison } from './github/compare-commits.js'
 import { createReview } from './github/create-review.js'
+import { replyAndResolve } from './github/resolve-thread.js'
 import { fetchReviewState } from './github/pull-request-reviews.js'
 import { fetchRepositoryFile, fetchRepositoryTree } from './github/repository-files.js'
 import { suppressSqliteWarning } from './cli/suppress-sqlite-warning.js'
@@ -36,6 +38,8 @@ process.exitCode = await run(process.argv.slice(2), {
   fetchPullRequest,
   fetchReviewState,
   createReview,
+  fetchComparison,
+  replyAndResolve,
   fetchRepositoryTree,
   fetchRepositoryFile,
   fetchRepository,

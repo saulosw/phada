@@ -14,6 +14,7 @@ import { createInvestigation } from '../investigation/create-investigation.js'
 import type { Investigation } from '../investigation/create-investigation.js'
 import { buildInvestigationReport } from '../investigation/tools/report.js'
 import type { InvestigationReport } from '../investigation/tools/report.js'
+import type { Toolbox } from '../investigation/toolbox.js'
 import type { ReviewPass } from '../investigation/tools/tool-log.js'
 import type { ReviewProvider } from '../providers/types.js'
 import type { Extractor } from '../repo-map/extract.js'
@@ -22,7 +23,8 @@ import { CheckoutUnavailableError } from '../repository/git-checkout.js'
 import type { GitMirror } from '../repository/git-mirror.js'
 import { renderImpact } from '../review/impact-text.js'
 import { runReview } from '../review/run-review.js'
-import type { DiffImpact, ReviewOutcome } from '../review/types.js'
+import { recheckThreads } from '../review/recheck-threads.js'
+import type { DiffImpact, RecheckReport, RecheckThread, ReviewOutcome } from '../review/types.js'
 import { IndexStoreError } from '../store/index-store.js'
 import type { IndexStore } from '../store/index-store.js'
 import type { ObservedEdge, ObservedStore } from '../store/observed-store.js'
@@ -46,6 +48,7 @@ export interface ReviewOptions {
   minConfidence?: number
   verify?: boolean
   investigate?: boolean
+  resolveThreads?: boolean
 }
 
 export interface PullRequestReviewInput {
@@ -54,6 +57,7 @@ export interface PullRequestReviewInput {
   userMcpServers: readonly string[]
   options: ReviewOptions
   loaded?: LoadedContext
+  recheck?: readonly RecheckThread[]
 }
 
 export interface PullRequestReviewEvents {
@@ -86,6 +90,7 @@ export interface PullRequestReview {
   impact: ImpactReport
   impactText?: string
   related: RelatedReport
+  recheck?: RecheckReport
 }
 
 export async function loadPullRequestContext(
@@ -227,6 +232,11 @@ export async function reviewPullRequest(
 
     const provider = deps.createProvider(servers)
     const watch = deps.watchProvider ?? ((watched: ReviewProvider) => watched)
+    const recheck = await recheckEarlier(input, loaded, language, {
+      provider: () => watch(provider, 'recheck'),
+      tools: () => investigation?.tools('recheck'),
+      warning: deps.events.warning,
+    })
     const outcome = await runReview(
       {
         pullRequest: { ...pullRequest, diff: loaded.diff },
@@ -264,12 +274,42 @@ export async function reviewPullRequest(
           ? impactReport
           : { ...impactReport, learned: buildImpactReport({ status: 'used', learned }).learned },
       related: relatedReport,
+      ...(recheck === undefined ? {} : { recheck }),
     }
   } finally {
     await investigation?.close()
     for (const item of opened) await item.close()
     head.store?.close()
     head.observed?.close()
+  }
+}
+
+async function recheckEarlier(
+  input: PullRequestReviewInput,
+  loaded: LoadedContext,
+  language: string | undefined,
+  run: {
+    provider: () => ReviewProvider
+    tools: () => Toolbox | undefined
+    warning: (message: string) => void
+  },
+): Promise<RecheckReport | undefined> {
+  if (input.recheck === undefined || input.recheck.length === 0) return undefined
+  try {
+    return await recheckThreads(
+      {
+        pullRequest: { ...input.pullRequest, diff: loaded.diff },
+        context: loaded.context,
+        ...(language === undefined ? {} : { language }),
+      },
+      input.recheck,
+      run.provider(),
+      undefined,
+      run.tools(),
+    )
+  } catch (error) {
+    run.warning(`Earlier comments were not rechecked: ${errorMessage(error)}`)
+    return undefined
   }
 }
 

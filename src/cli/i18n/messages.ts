@@ -43,6 +43,8 @@ export interface Messages {
     onlyStillOpenTitle: string
     onlyStillOpen(count: number, sha: string): string
     preview(index: number, total: number, place: string): string
+    fixedThreads(count: number, sha: string): string
+    resolvedReply(sha: string, reason: string): string
   }
 }
 

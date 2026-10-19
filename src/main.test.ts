@@ -12,7 +12,9 @@ import { verdictFixture, verificationJson } from '../test/support/verification.j
 import { REVIEW_USAGE, USAGE } from './cli/args.js'
 import { UsageError } from './cli/errors.js'
 import { formatAlreadyReviewedJson } from './cli/format-json.js'
+import type { ComparedFile, CompareOptions } from './github/compare-commits.js'
 import type { CreateReviewOptions, CreatedReview } from './github/create-review.js'
+import type { ReplyAndResolveOptions } from './github/resolve-thread.js'
 import { PullRequestNotFoundError, ReviewPermissionError } from './github/errors.js'
 import type {
   FetchReviewStateOptions,
@@ -31,7 +33,13 @@ import { MirrorLockTimeoutError } from './repository/mirror-lock.js'
 import { HistoryVersionError, openHistoryStore } from './store/history-store.js'
 import type { HistoryStore } from './store/history-store.js'
 import { DatabaseSync } from 'node:sqlite'
-import { FINDING_MARKER, parseReviewMarker, reviewMarker } from './publish/markers.js'
+import {
+  FINDING_MARKER,
+  parseReviewMarker,
+  resolvedMarker,
+  reviewMarker,
+} from './publish/markers.js'
+import { RECHECK_JSON_SCHEMA } from './review/recheck-schema.js'
 import { createProvider, run } from './main.js'
 import type { MainDeps, ProviderOptions } from './main.js'
 import { ClaudeCliProvider } from './providers/claude.js'
@@ -46,6 +54,13 @@ const OUTPUT: ReviewOutput = {
   durationMs: 42_149,
   model: 'claude-fake-1',
   usage: { inputTokens: 3512, outputTokens: 420 },
+}
+const RECHECK_UNSURE: ReviewOutput = { text: '{"verdicts": []}', durationMs: 900 }
+const RECHECK_FIXED: ReviewOutput = {
+  text: JSON.stringify({
+    verdicts: [{ id: 1, verdict: 'fixed', reason: 'The check is there now.' }],
+  }),
+  durationMs: 900,
 }
 
 const HEAD_SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
@@ -62,6 +77,8 @@ interface Harness {
   fetches: FetchPullRequestOptions[]
   stateFetches: FetchReviewStateOptions[]
   posts: CreateReviewOptions[]
+  comparisons: CompareOptions[]
+  replies: ReplyAndResolveOptions[]
   events: string[]
   providers: { name: string; options: ProviderOptions }[]
   prompts: ReviewPrompt[]
@@ -127,8 +144,10 @@ function harness(
     env?: NodeJS.ProcessEnv
     pullRequest?: () => Promise<PullRequest>
     review?: () => Promise<ReviewOutput>
+    recheck?: () => Promise<ReviewOutput>
     reviewState?: () => Promise<PullRequestReviewState>
     createReview?: () => Promise<CreatedReview>
+    compare?: () => Promise<ComparedFile[]>
     files?: MemoryFiles
     repoFiles?: Record<string, string>
     tree?: () => Promise<RepositoryTree>
@@ -162,6 +181,8 @@ function harness(
   const fetches: FetchPullRequestOptions[] = []
   const stateFetches: FetchReviewStateOptions[] = []
   const posts: CreateReviewOptions[] = []
+  const comparisons: CompareOptions[] = []
+  const replies: ReplyAndResolveOptions[] = []
   const events: string[] = []
   const providers: { name: string; options: ProviderOptions }[] = []
   const prompts: ReviewPrompt[] = []
@@ -190,6 +211,14 @@ function harness(
       events.push('post')
       posts.push(options)
       return overrides.createReview?.() ?? Promise.resolve({ url: REVIEW_URL })
+    },
+    fetchComparison: (options) => {
+      comparisons.push(options)
+      return overrides.compare?.() ?? Promise.resolve([])
+    },
+    replyAndResolve: async (options) => {
+      events.push(`resolve ${options.threadId}`)
+      replies.push(options)
     },
     fetchRepositoryTree: (options) => {
       treeFetches.push({ sha: options.sha })
@@ -269,6 +298,9 @@ function harness(
         review: (prompt) => {
           events.push('provider')
           prompts.push(prompt)
+          if (prompt.outputSchema === RECHECK_JSON_SCHEMA) {
+            return overrides.recheck?.() ?? Promise.resolve(RECHECK_UNSURE)
+          }
           return overrides.review?.() ?? Promise.resolve(OUTPUT)
         },
       }
@@ -296,6 +328,8 @@ function harness(
     fetches,
     stateFetches,
     posts,
+    comparisons,
+    replies,
     events,
     providers,
     prompts,
@@ -662,6 +696,86 @@ describe('createProvider', () => {
 
 describe('run publishing', () => {
   const REVIEW = ['review', 'acme/shop#12', '--no-verify']
+
+  describe('comments from an earlier commit', () => {
+    const OLD_SHA = '0'.repeat(40)
+    const earlier = (): Promise<PullRequestReviewState> =>
+      Promise.resolve({
+        viewer: 'octocat',
+        reviews: [
+          {
+            id: 'R0',
+            author: 'octocat',
+            body: reviewMarker({ sha: OLD_SHA, findings: 1 }),
+            commitSha: OLD_SHA,
+          },
+        ],
+        threads: [
+          {
+            id: 'T1',
+            isResolved: false,
+            path: 'src/shop.ts',
+            line: 3,
+            author: 'octocat',
+            body: `**P1** · Balance leaks · confidence 90\n\nWhy.\n\n${FINDING_MARKER}`,
+            reviewId: 'R0',
+            replies: [],
+          },
+        ],
+      })
+    const fixed = () => Promise.resolve(RECHECK_FIXED)
+    const changed = () =>
+      Promise.resolve([{ path: 'src/shop.ts', status: 'modified', patch: '@@ -3 +3 @@' }])
+
+    it('rechecks them and resolves the fixed one before publishing', async () => {
+      const h = harness({ reviewState: earlier, compare: changed, recheck: fixed })
+
+      expect(await run(REVIEW, h.deps)).toBe(0)
+      expect(h.comparisons).toEqual([
+        expect.objectContaining({ owner: 'acme', repo: 'shop', base: OLD_SHA, head: HEAD_SHA }),
+      ])
+      expect(h.replies).toEqual([
+        {
+          token: TOKEN,
+          threadId: 'T1',
+          body: `Fixed in \`${HEAD_SHA.slice(0, 7)}\`: The check is there now.\n\n${resolvedMarker(HEAD_SHA)}`,
+        },
+      ])
+      expect(h.events.slice(-2)).toEqual(['resolve T1', 'post'])
+      expect(h.stderr()).toContain(
+        'Rechecked 1 comment from previous reviews: 1 fixed, 0 still valid, 0 unsure.\n',
+      )
+      expect(h.stderr()).toContain('Resolved 1 of 1 comment found fixed.\n')
+    })
+
+    it('prints the recheck and the resolved threads in the JSON', async () => {
+      const h = harness({ reviewState: earlier, compare: changed, recheck: fixed })
+
+      await run([...REVIEW, '--format', 'json'], h.deps)
+
+      expect(JSON.parse(h.stdout())).toMatchObject({
+        recheck: { threads: 1, fixed: 1, verdicts: [{ threadId: 'T1', verdict: 'fixed' }] },
+        publication: { status: 'published', resolved: { resolved: 1, failed: 0, total: 1 } },
+      })
+    })
+
+    it('says what it would resolve on a dry run and resolves nothing', async () => {
+      const h = harness({ reviewState: earlier, compare: changed, recheck: fixed })
+
+      await run([...REVIEW, '--dry-run'], h.deps)
+
+      expect(h.replies).toEqual([])
+      expect(h.stderr()).toContain('Without --dry-run: 1 fixed comment would be resolved.\n')
+    })
+
+    it('neither rechecks nor resolves with --no-resolve', async () => {
+      const h = harness({ reviewState: earlier, compare: changed, recheck: fixed })
+
+      await run([...REVIEW, '--no-resolve'], h.deps)
+
+      expect([h.comparisons, h.replies]).toEqual([[], []])
+    })
+  })
 
   it('publishes the review after printing it', async () => {
     const h = harness({ review: () => Promise.resolve(WITH_FINDING) })

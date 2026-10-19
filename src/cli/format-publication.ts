@@ -1,4 +1,5 @@
 import type { SkipReason } from '../publish/types.js'
+import type { RecheckReport } from '../review/types.js'
 import { shortSha } from './review-text.js'
 import { formatCount } from './units.js'
 
@@ -36,4 +37,21 @@ export function formatPublishedMessage(
       : `${formatCount(dismissed, 'finding')} dismissed earlier, not posted again`,
   ].filter((note) => note !== '')
   return `Published the review${what}: ${url}${notes.length === 0 ? '' : ` (${notes.join('; ')})`}`
+}
+
+export function formatRecheckMessage({
+  threads,
+  fixed,
+  stillValid,
+  unsure,
+}: RecheckReport): string {
+  return `Rechecked ${formatCount(threads, 'comment')} from previous reviews: ${fixed} fixed, ${stillValid} still valid, ${unsure} unsure.`
+}
+
+export function formatResolvedMessage(resolved: number, total: number): string {
+  return `Resolved ${resolved} of ${formatCount(total, 'comment')} found fixed.`
+}
+
+export function formatWouldResolveMessage(count: number): string {
+  return `Without --dry-run: ${formatCount(count, 'fixed comment')} would be resolved.`
 }

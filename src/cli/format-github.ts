@@ -64,6 +64,14 @@ export function formatIgnoredOnlyReview(
   return { body, comments: [] }
 }
 
+export function formatResolvedReply(
+  headSha: string,
+  reason: string,
+  messages: Messages = english,
+): string {
+  return messages.github.resolvedReply(shortSha(headSha), githubBlock(reason))
+}
+
 export function formatGitHubPreview(
   { body, comments }: GitHubReview,
   messages: Messages = english,
@@ -84,9 +92,12 @@ function onlyStillOpenBody(
   return [
     `## ${messages.github.heading}: ${messages.github.onlyStillOpenTitle}`,
     messages.github.onlyStillOpen(plan.openThreads, sha),
+    fixedLine(result, plan, messages),
     `---\n<sub>${footer(result, githubLine(modelLabel(result)), messages)}</sub>`,
     markerOf(result),
-  ].join('\n\n')
+  ]
+    .filter((section) => section !== '')
+    .join('\n\n')
 }
 
 function reviewBody(
@@ -130,6 +141,7 @@ function renderBody(
     summary === '' ? '' : `### ${messages.summary}\n\n${summary}`,
     parts.files,
     countsLine(plan, messages),
+    fixedLine(result, plan, messages),
     findingList(messages.github.stillOpen, parts.stillOpen, parts.stillOpenOmitted, messages),
     findingList(
       messages.worthChecking(result.minConfidence),
@@ -144,6 +156,11 @@ function renderBody(
   ]
     .filter((section) => section !== '')
     .join('\n\n')
+}
+
+function fixedLine(result: ReviewResult, plan: PublicationPlan, messages: Messages): string {
+  if (plan.fixedThreads === 0) return ''
+  return messages.github.fixedThreads(plan.fixedThreads, shortSha(result.target.headSha))
 }
 
 function markerOf({ target, findings }: ReviewResult): string {

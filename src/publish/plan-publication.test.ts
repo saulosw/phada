@@ -31,6 +31,7 @@ describe('planPublication', () => {
       stillOpen: [],
       dismissed: [],
       fixedAgain: [],
+      fixedThreads: 0,
       openThreads: 0,
     })
   })
@@ -44,6 +45,7 @@ describe('planPublication', () => {
       stillOpen: [near],
       dismissed: [],
       fixedAgain: [],
+      fixedThreads: 0,
       openThreads: 1,
     })
   })
@@ -78,6 +80,7 @@ describe('planPublication', () => {
       stillOpen: [],
       dismissed: [finding],
       fixedAgain: [],
+      fixedThreads: 0,
       openThreads: 0,
     })
   })
@@ -135,6 +138,7 @@ describe('planPublication', () => {
       stillOpen: [same],
       dismissed: [],
       fixedAgain: [],
+      fixedThreads: 0,
       openThreads: 1,
     })
   })
@@ -149,6 +153,7 @@ describe('planPublication', () => {
       stillOpen: [near],
       dismissed: [],
       fixedAgain: [],
+      fixedThreads: 0,
       openThreads: 1,
     })
   })
@@ -195,6 +200,7 @@ describe('planPublication', () => {
         stillOpen: [],
         dismissed: [],
         fixedAgain: [same],
+        fixedThreads: 1,
         openThreads: 0,
       })
     })

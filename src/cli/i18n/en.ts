@@ -71,5 +71,10 @@ export const english: Messages = {
         ? `No new problems in ${sha}. 1 Phada comment from previous reviews is still open: resolve it to get a full review of this commit.`
         : `No new problems in ${sha}. ${count} Phada comments from previous reviews are still open: resolve them to get a full review of this commit.`,
     preview: (index, total, place) => `===== Inline comment ${index}/${total} · ${place} =====`,
+    fixedThreads: (count, sha) =>
+      count === 1
+        ? `1 comment from previous reviews is fixed in ${sha} and was resolved.`
+        : `${count} comments from previous reviews are fixed in ${sha} and were resolved.`,
+    resolvedReply: (sha, reason) => `Fixed in \`${sha}\`: ${reason}`,
   },
 }

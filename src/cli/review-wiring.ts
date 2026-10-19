@@ -22,7 +22,11 @@ import type { PublicationPlan } from '../publish/types.js'
 import type { ReviewResult } from '../review/types.js'
 import { contextSourcesAt } from './context-sources.js'
 import { errorSummary } from './format-error.js'
-import { formatGitHubReview, formatIgnoredOnlyReview } from './format-github.js'
+import {
+  formatGitHubReview,
+  formatIgnoredOnlyReview,
+  formatResolvedReply,
+} from './format-github.js'
 import { formatContextLine } from './format-context.js'
 import { formatImpactLine } from './format-impact.js'
 import { formatAlreadyReviewedJson, formatReviewJson } from './format-json.js'
@@ -63,6 +67,8 @@ export const renderReview = {
     language: string | undefined,
     diff: string,
   ): RenderedReview => formatIgnoredOnlyReview(headSha, ignored, messagesFor(language), diff),
+  resolvedReply: (headSha: string, reason: string, language?: string): string =>
+    formatResolvedReply(headSha, reason, messagesFor(language)),
 }
 
 export function pullRequestReviewDeps(
@@ -138,7 +144,16 @@ export function reviewRunJson(run: ReviewRun): string {
       run.publication === undefined || note === undefined
         ? null
         : toPublication(run.publication, note, { comments: 0, stillOpen: 0, dismissed: 0 })
-    return formatReviewJson(pullRequest, reviewed.outcome, publication, context)
+    return formatReviewJson(
+      pullRequest,
+      reviewed.outcome,
+      publication,
+      context,
+      null,
+      null,
+      null,
+      reviewed.recheck ?? null,
+    )
   }
   const { plan, rendered } = run
   const { investigation, impact, related } = reviewed
@@ -159,6 +174,7 @@ export function reviewRunJson(run: ReviewRun): string {
     investigation,
     impact,
     related,
+    reviewed.recheck ?? null,
   )
 }
 
@@ -176,7 +192,12 @@ function toPublication(
 ): Publication {
   switch (publication.status) {
     case 'published':
-      return { status: 'published', url: publication.url, ...counts }
+      return {
+        status: 'published',
+        url: publication.url,
+        ...counts,
+        resolved: publication.resolved,
+      }
     case 'dry-run':
       return {
         status: 'dry-run',
@@ -184,6 +205,7 @@ function toPublication(
         stillOpen: counts.stillOpen,
         dismissed: counts.dismissed,
         ...(wouldSkip === undefined ? {} : { wouldSkip }),
+        wouldResolve: publication.wouldResolve,
       }
     case 'failed':
       return { status: 'failed', error: errorSummary(publication.error) }

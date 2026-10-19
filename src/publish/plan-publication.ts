@@ -20,6 +20,7 @@ export function planPublication(
     stillOpen: [],
     dismissed: [],
     fixedAgain: [],
+    fixedThreads: fixed.length,
     openThreads: open.length,
   }
   for (const finding of findings) {

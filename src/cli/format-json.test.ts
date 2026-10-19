@@ -100,6 +100,7 @@ describe('formatReviewJson', () => {
       investigation: null,
       impact: null,
       related: null,
+      recheck: null,
     })
   })
 
@@ -278,6 +279,7 @@ describe('formatReviewJson', () => {
       investigation: null,
       impact: null,
       related: null,
+      recheck: null,
     })
   })
 
@@ -334,6 +336,7 @@ describe('publication', () => {
       comments: 2,
       stillOpen: 1,
       dismissed: 3,
+      resolved: { resolved: 0, failed: 0, total: 0 },
     })
     expect(parse(output)).toMatchObject({ status: 'reviewed', review: { summary: RESULT.summary } })
   })
@@ -371,6 +374,7 @@ describe('publication', () => {
       stillOpen: 0,
       dismissed: 0,
       wouldSkip: null,
+      wouldResolve: [],
     })
     expect(
       publicationOf(
@@ -397,6 +401,7 @@ describe('publication', () => {
       investigation: null,
       impact: null,
       related: null,
+      recheck: null,
     })
     expect(
       parse(
@@ -479,7 +484,7 @@ describe('publication', () => {
     )
 
     expect(output).toMatchObject({ impact })
-    expect(Object.keys(output as object).slice(-2)).toEqual(['impact', 'related'])
+    expect(Object.keys(output as object).slice(-3)).toEqual(['impact', 'related', 'recheck'])
   })
 
   it('adds the related repositories, with null for what is missing', () => {

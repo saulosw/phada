@@ -86,6 +86,7 @@ export const ConfigFileSchema = z.strictObject({
   minConfidence: z.number().int().min(50).max(100).optional(),
   verify: z.boolean().optional(),
   investigate: z.boolean().optional(),
+  resolveThreads: z.boolean().optional(),
   mcp: z
     .array(
       z

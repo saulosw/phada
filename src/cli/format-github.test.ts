@@ -7,6 +7,7 @@ import {
   formatGitHubPreview,
   formatGitHubReview,
   formatIgnoredOnlyReview,
+  formatResolvedReply,
   GITHUB_BODY_LIMIT,
 } from './format-github.js'
 import { messagesFor } from './i18n/messages.js'
@@ -57,6 +58,7 @@ const PLAN: PublicationPlan = {
   stillOpen: [OPEN],
   dismissed: [],
   fixedAgain: [],
+  fixedThreads: 0,
   openThreads: 1,
 }
 
@@ -77,7 +79,7 @@ function plan(
   stillOpen: Finding[] = [],
   openThreads = stillOpen.length,
 ): PublicationPlan {
-  return { comments, stillOpen, dismissed: [], fixedAgain: [], openThreads }
+  return { comments, stillOpen, dismissed: [], fixedAgain: [], fixedThreads: 0, openThreads }
 }
 
 describe('formatGitHubReview body', () => {
@@ -158,6 +160,19 @@ describe('formatGitHubReview body', () => {
 
     expect(parseReviewMarker(full)).toEqual({ sha: SHA, findings: 3, diff: '0123456789abcdef' })
     expect(parseReviewMarker(short)).toMatchObject({ diff: '0123456789abcdef' })
+  })
+
+  it('says how many comments from previous reviews were found fixed', () => {
+    const fixed = { ...plan([P1]), fixedThreads: 2 }
+    const onlyOpen = { ...plan([], [OPEN]), fixedThreads: 1 }
+
+    expect(formatGitHubReview(RESULT, fixed).body).toContain(
+      '2 comments from previous reviews are fixed in a1b2c3d and were resolved.',
+    )
+    expect(formatGitHubReview(RESULT, onlyOpen).body).toContain(
+      '1 comment from previous reviews is fixed in a1b2c3d and was resolved.',
+    )
+    expect(formatGitHubReview(RESULT, plan([P1])).body).not.toContain('previous reviews is fixed')
   })
 
   it('starts the reason line with a capital letter', () => {
@@ -514,6 +529,17 @@ describe('formatGitHubReview comments', () => {
     const [comment] = formatGitHubReview(RESULT, plan([emoji]), 301).comments
 
     expect(comment?.body).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/)
+  })
+})
+
+describe('formatResolvedReply', () => {
+  it('names the commit and escapes the reason of the AI', () => {
+    expect(formatResolvedReply(SHA, 'Now checks @admin <b>auth</b>.')).toBe(
+      'Fixed in `a1b2c3d`: Now checks @\u200badmin \\<b>auth\\</b>.',
+    )
+    expect(formatResolvedReply(SHA, 'Ok.', messagesFor('pt-BR'))).toBe(
+      'Corrigido em `a1b2c3d`: Ok.',
+    )
   })
 })
 

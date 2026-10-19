@@ -5,6 +5,7 @@ export interface PublicationPlan {
   stillOpen: Finding[]
   dismissed: Finding[]
   fixedAgain: Finding[]
+  fixedThreads: number
   openThreads: number
 }
 

@@ -6,7 +6,8 @@ import type { ContextSources } from '../context/types.js'
 import type { PullRequestReviewState } from '../github/pull-request-reviews.js'
 import type { PullRequest } from '../github/pull-request.js'
 import type { ReviewProvider } from '../providers/types.js'
-import { FINDING_MARKER, reviewMarker } from '../publish/markers.js'
+import { FINDING_MARKER, resolvedMarker, reviewMarker } from '../publish/markers.js'
+import { RECHECK_JSON_SCHEMA } from '../review/recheck-schema.js'
 import { diffFingerprint } from '../review/diff-fingerprint.js'
 import { reviewAndPublish } from './review-and-publish.js'
 import type { ReviewAndPublishDeps, ReviewAndPublishInput } from './review-and-publish.js'
@@ -56,12 +57,66 @@ function state(
   }
 }
 
-function setup(overrides: Partial<ReviewAndPublishDeps> = {}, pullRequest: PullRequest = PR) {
-  const calls = { reviews: 0, posts: [] as string[], events: [] as string[] }
+const OLD = '0'.repeat(40)
+const OLD_THREAD_BODY = `**P1** · Spend has no auth · confidence 90\n\nWhy.\n\n${FINDING_MARKER}`
+
+function earlierComments(
+  threads: { id: string; path?: string; title?: string }[] = [{ id: 'T1' }],
+): () => Promise<PullRequestReviewState> {
+  return async () => ({
+    viewer: 'octocat',
+    reviews: [
+      {
+        id: 'R0',
+        author: 'octocat',
+        body: reviewMarker({ sha: OLD, findings: threads.length }),
+        commitSha: OLD,
+      },
+    ],
+    threads: threads.map(({ id, path = 'src/shop.ts', title }) => ({
+      id,
+      isResolved: false,
+      path,
+      line: 3,
+      author: 'octocat',
+      body:
+        title === undefined
+          ? OLD_THREAD_BODY
+          : `**P1** · ${title} · confidence 90\n\nWhy.\n\n${FINDING_MARKER}`,
+      reviewId: 'R0',
+      replies: [],
+    })),
+  })
+}
+
+function verdicts(...items: { id: number; verdict: string }[]): string {
+  return JSON.stringify({ verdicts: items.map((item) => ({ ...item, reason: 'Checked.' })) })
+}
+
+function setup(
+  overrides: Partial<ReviewAndPublishDeps> = {},
+  pullRequest: PullRequest = PR,
+  recheckAnswer: () => Promise<string> = async () => verdicts({ id: 1, verdict: 'fixed' }),
+) {
+  const calls = {
+    reviews: 0,
+    posts: [] as string[],
+    events: [] as string[],
+    log: [] as string[],
+    rechecks: [] as string[],
+    replies: [] as string[],
+    warnings: [] as string[],
+  }
   const provider: ReviewProvider = {
     id: 'fake',
-    review: async () => {
+    review: async (prompt) => {
+      if (prompt.outputSchema === RECHECK_JSON_SCHEMA) {
+        calls.log.push('recheck')
+        calls.rechecks.push(prompt.data)
+        return { text: await recheckAnswer(), durationMs: 3 }
+      }
       calls.reviews += 1
+      calls.log.push('review')
       return { text: REPORT, durationMs: 5 }
     },
   }
@@ -75,7 +130,7 @@ function setup(overrides: Partial<ReviewAndPublishDeps> = {}, pullRequest: PullR
     createProvider: () => provider,
     events: {
       contextLoaded: () => undefined,
-      warning: () => undefined,
+      warning: (message) => calls.warnings.push(message),
       indexing: () => undefined,
       indexed: () => undefined,
       impactReady: () => undefined,
@@ -99,10 +154,20 @@ function setup(overrides: Partial<ReviewAndPublishDeps> = {}, pullRequest: PullR
         body: `ignored ${headSha} ${diff}`,
         comments: [],
       }),
+      resolvedReply: (headSha, reason) => `Fixed in ${headSha.slice(0, 7)}: ${reason}`,
     },
     createReview: async (_pull, rendered) => {
+      calls.log.push('post')
       calls.posts.push(rendered.body)
       return { url: URL }
+    },
+    compare: async () => {
+      calls.log.push('compare')
+      return [{ path: 'src/shop.ts', status: 'modified', patch: '@@ -3 +3 @@\n-a\n+b' }]
+    },
+    replyAndResolve: async (threadId, body) => {
+      calls.log.push(`resolve ${threadId}`)
+      calls.replies.push(body)
     },
     events: {
       fetched: () => calls.events.push('fetched'),
@@ -199,6 +264,136 @@ describe('reviewAndPublish', () => {
       expect(run.status === 'reviewed' && run.reviewed.outcome).toMatchObject({
         result: { target: { diffFingerprint: diffFingerprint(PR.diff) } },
       })
+    })
+  })
+
+  describe('earlier comments', () => {
+    it('rechecks them before the review and resolves the fixed one before posting', async () => {
+      const { deps, calls } = setup({ fetchReviewState: earlierComments() })
+
+      const run = await reviewAndPublish(INPUT, deps)
+
+      expect(calls.log).toEqual(['compare', 'recheck', 'review', 'resolve T1', 'post'])
+      expect(calls.rechecks[0]).toContain('--- src/shop.ts\n@@ -3 +3 @@\n-a\n+b')
+      expect(calls.replies).toEqual([
+        `Fixed in ${PR.headSha.slice(0, 7)}: Checked.\n\n${resolvedMarker(PR.headSha)}`,
+      ])
+      expect(run).toMatchObject({
+        status: 'reviewed',
+        reviewed: { recheck: { threads: 1, fixed: 1 } },
+        publication: { status: 'published', resolved: { resolved: 1, failed: 0, total: 1 } },
+      })
+    })
+
+    it('leaves the comments still valid or unsure open', async () => {
+      const threads = [{ id: 'T1' }, { id: 'T2', title: 'Other' }]
+      const { deps, calls } = setup({ fetchReviewState: earlierComments(threads) }, PR, async () =>
+        verdicts({ id: 1, verdict: 'still-valid' }, { id: 2, verdict: 'unsure' }),
+      )
+
+      const run = await reviewAndPublish(INPUT, deps)
+
+      expect(calls.replies).toEqual([])
+      expect(run).toMatchObject({ publication: { resolved: { resolved: 0, total: 0 } } })
+    })
+
+    it('compare failure sends threads without patch', async () => {
+      const { deps, calls } = setup({
+        fetchReviewState: earlierComments(),
+        compare: () => Promise.reject(new Error('gone')),
+      })
+
+      await reviewAndPublish(INPUT, deps)
+
+      expect(calls.rechecks[0]).toContain('(no patch: read the file with the tools)')
+    })
+
+    it('does not send to the AI a comment whose file did not change', async () => {
+      const { deps, calls } = setup({
+        fetchReviewState: earlierComments([{ id: 'T1', path: 'src/other.ts' }]),
+      })
+
+      const run = await reviewAndPublish(INPUT, deps)
+
+      expect(calls.rechecks).toEqual([])
+      expect(run).toMatchObject({ reviewed: { recheck: { threads: 1, stillValid: 1 } } })
+    })
+
+    it('keeps resolving and still posts when one thread fails', async () => {
+      const threads = [{ id: 'T1' }, { id: 'T2', title: 'Other' }]
+      const { deps, calls } = setup(
+        {
+          fetchReviewState: earlierComments(threads),
+          replyAndResolve: async (threadId) => {
+            if (threadId === 'T1') throw new Error('no permission')
+            calls.log.push(`resolve ${threadId}`)
+          },
+        },
+        PR,
+        async () => verdicts({ id: 1, verdict: 'fixed' }, { id: 2, verdict: 'fixed' }),
+      )
+
+      const run = await reviewAndPublish(INPUT, deps)
+
+      expect(calls.log.slice(-2)).toEqual(['resolve T2', 'post'])
+      expect(run).toMatchObject({
+        publication: { status: 'published', resolved: { resolved: 1, failed: 1, total: 2 } },
+      })
+    })
+
+    it('resolves nothing when the pull request moved on, on a dry run or without publishing', async () => {
+      const moved = setup({
+        fetchReviewState: earlierComments(),
+        checkHead: async () => ({ superseded: 'f'.repeat(40) }),
+      })
+      const dry = setup({ fetchReviewState: earlierComments() })
+      const off = setup({ fetchReviewState: earlierComments() })
+
+      await reviewAndPublish(INPUT, moved.deps)
+      const dryRun = await reviewAndPublish({ ...INPUT, dryRun: true }, dry.deps)
+      await reviewAndPublish({ ...INPUT, publish: false }, off.deps)
+
+      expect([moved.calls.replies, dry.calls.replies, off.calls.replies]).toEqual([[], [], []])
+      expect(dryRun).toMatchObject({
+        publication: { status: 'dry-run', wouldResolve: [{ threadId: 'T1', verdict: 'fixed' }] },
+      })
+    })
+
+    it('does not recheck when resolving threads is turned off', async () => {
+      const { deps, calls } = setup({ fetchReviewState: earlierComments() })
+
+      await reviewAndPublish(
+        { ...INPUT, options: { ...INPUT.options, resolveThreads: false } },
+        deps,
+      )
+
+      expect(calls.log).toEqual(['review', 'post'])
+    })
+
+    it('does not post again a finding of a comment found fixed in this run', async () => {
+      const { deps } = setup({
+        fetchReviewState: earlierComments([{ id: 'T1', title: 'spend has no auth' }]),
+      })
+
+      const run = await reviewAndPublish(INPUT, deps)
+
+      expect(run.status === 'reviewed' && run.plan).toMatchObject({
+        comments: [],
+        fixedAgain: [{ title: 'spend has no auth' }],
+        fixedThreads: 1,
+      })
+    })
+
+    it('reviews without resolving anything when the recheck fails', async () => {
+      const { deps, calls } = setup({ fetchReviewState: earlierComments() }, PR, async () => 'nope')
+
+      const run = await reviewAndPublish(INPUT, deps)
+
+      expect(calls.warnings).toEqual([
+        'Earlier comments were not rechecked: The AI did not return a valid review (no verdicts in the recheck).',
+      ])
+      expect(calls.replies).toEqual([])
+      expect(run).toMatchObject({ status: 'reviewed', publication: { status: 'published' } })
     })
   })
 

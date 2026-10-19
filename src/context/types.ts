@@ -54,6 +54,7 @@ export interface ContextOptions {
   minConfidence?: number
   verify?: boolean
   investigate?: boolean
+  resolveThreads?: boolean
 }
 
 export interface LoadedContext {
