@@ -47,7 +47,7 @@ function published(job: JobRecord): ReviewRun {
     status: 'reviewed',
     pullRequest,
     reviewed: {} as never,
-    plan: { comments: [], stillOpen: [], dismissed: [], openThreads: 0 },
+    plan: { comments: [], stillOpen: [], dismissed: [], fixedAgain: [], openThreads: 0 },
     rendered: { body: 'body', comments: [] },
     publication: { status: 'published', url: `https://x/${job.number}` },
   }

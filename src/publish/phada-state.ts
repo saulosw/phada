@@ -1,5 +1,5 @@
 import type { PullRequestReviewState, ReviewThread } from '../github/pull-request-reviews.js'
-import { hasFindingMarker, parseReviewMarker } from './markers.js'
+import { hasFindingMarker, hasResolvedMarker, parseReviewMarker } from './markers.js'
 import type { ReviewMarker } from './markers.js'
 
 export function latestPhadaReview(state: PullRequestReviewState): ReviewMarker | undefined {
@@ -28,6 +28,13 @@ export function phadaThreads(state: PullRequestReviewState): ReviewThread[] {
 
 export function openPhadaThreads(state: PullRequestReviewState): ReviewThread[] {
   return phadaThreads(state).filter((thread) => !thread.isResolved)
+}
+
+export function resolvedByPhada(state: PullRequestReviewState, thread: ReviewThread): boolean {
+  return (
+    thread.isResolved &&
+    thread.replies.some((reply) => isViewer(state, reply.author) && hasResolvedMarker(reply.body))
+  )
 }
 
 function isViewer(state: PullRequestReviewState, author: string): boolean {

@@ -9,6 +9,7 @@
           },
           "nodes": [
             {
+              "id": "PRRT_kwDOQNCyRM5c8pXa",
               "isResolved": false,
               "path": "api/src/routes/users.ts",
               "line": 63,
@@ -21,6 +22,22 @@
                     },
                     "pullRequestReview": {
                       "id": "PRR_kwDOQNCyRM8AAAABRNso_Q"
+                    }
+                  }
+                ]
+              },
+              "replies": {
+                "nodes": [
+                  {
+                    "body": "**P0** · Any user can spend another user's crystals · confidence 95\n\nThe user id comes from the request body.\n\n<!-- phada:finding -->",
+                    "author": {
+                      "login": "saulosw"
+                    }
+                  },
+                  {
+                    "body": "Still happens on main.",
+                    "author": {
+                      "login": "octocat"
                     }
                   }
                 ]

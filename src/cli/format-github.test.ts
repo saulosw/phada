@@ -56,6 +56,7 @@ const PLAN: PublicationPlan = {
   comments: [P1, P2],
   stillOpen: [OPEN],
   dismissed: [],
+  fixedAgain: [],
   openThreads: 1,
 }
 
@@ -76,7 +77,7 @@ function plan(
   stillOpen: Finding[] = [],
   openThreads = stillOpen.length,
 ): PublicationPlan {
-  return { comments, stillOpen, dismissed: [], openThreads }
+  return { comments, stillOpen, dismissed: [], fixedAgain: [], openThreads }
 }
 
 describe('formatGitHubReview body', () => {

@@ -42,12 +42,14 @@ function state(
     threads: options.reviewedHead
       ? [
           {
+            id: 'T1',
             isResolved: options.resolved ?? false,
             path: 'src/other.ts',
             line: 90,
             author: 'octocat',
             body: `**P1** · Old · confidence 90\n\nWhy.\n\n${FINDING_MARKER}`,
             reviewId: 'R1',
+            replies: [],
           },
         ]
       : [],

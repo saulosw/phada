@@ -313,13 +313,15 @@ function phadaState(threads: Partial<ReviewThread>[], findings = 1): PullRequest
         commitSha: HEAD_SHA,
       },
     ],
-    threads: threads.map((thread) => ({
+    threads: threads.map((thread, index) => ({
+      id: `T${index + 1}`,
       isResolved: false,
       path: 'src/shop.ts',
       line: 3,
       author: 'octocat',
       body: `**P1** · spend has no auth · confidence 90\n\nWhy.\n\n${FINDING_MARKER}`,
       reviewId: 'R1',
+      replies: [],
       ...thread,
     })),
   }

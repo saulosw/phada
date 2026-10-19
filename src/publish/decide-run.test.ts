@@ -22,12 +22,14 @@ function review(sha: string, findings: number, author = 'me', diff?: string): Pu
 
 function thread(overrides: Partial<ReviewThread> = {}): ReviewThread {
   return {
+    id: 'T1',
     isResolved: false,
     path: 'src/shop.ts',
     line: 3,
     author: 'me',
     body: `**P1** · Title · confidence 90\n\nWhy.\n\n${FINDING_MARKER}`,
     reviewId: 'R1',
+    replies: [],
     ...overrides,
   }
 }

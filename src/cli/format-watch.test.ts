@@ -22,7 +22,7 @@ const published: ReviewRun = {
   status: 'reviewed',
   pullRequest: pullRequestFixture({ number: 3 }),
   reviewed: {} as never,
-  plan: { comments: [], stillOpen: [], dismissed: [], openThreads: 0 },
+  plan: { comments: [], stillOpen: [], dismissed: [], fixedAgain: [], openThreads: 0 },
   rendered: { body: '', comments: [] },
   publication: { status: 'published', url: 'https://github.com/acme/shop/pull/3#r1' },
 }

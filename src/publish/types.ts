@@ -4,6 +4,7 @@ export interface PublicationPlan {
   comments: Finding[]
   stillOpen: Finding[]
   dismissed: Finding[]
+  fixedAgain: Finding[]
   openThreads: number
 }
 
