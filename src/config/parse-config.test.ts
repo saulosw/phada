@@ -153,4 +153,74 @@ describe('parseConfigText', () => {
     expect(parsed.ok).toBe(false)
     if (!parsed.ok) expect(parsed.message).toContain('use the server name as your AI CLI shows it')
   })
+
+  it('reads the watch block and history', () => {
+    const text = [
+      'history: false',
+      'watch:',
+      '  interval: 90s',
+      '  settle: 0s',
+      '  maxReviewsPerHour: 10',
+      '  repos:',
+      '    - acme/shop',
+      '    - repo: acme/web',
+      '      publish: false',
+      '      allowExternal: true',
+      '      authors: [alice]',
+      '      labels: [phada]',
+      '      baseBranches: [main]',
+    ].join('\n')
+
+    expect(parseConfigText(text)).toEqual({
+      ok: true,
+      config: {
+        history: false,
+        watch: {
+          interval: '90s',
+          settle: '0s',
+          maxReviewsPerHour: 10,
+          repos: [
+            'acme/shop',
+            {
+              repo: 'acme/web',
+              publish: false,
+              allowExternal: true,
+              authors: ['alice'],
+              labels: ['phada'],
+              baseBranches: ['main'],
+            },
+          ],
+        },
+      },
+    })
+  })
+
+  it.each([
+    [
+      'an interval under 60s',
+      'watch:\n  interval: 30s\n  repos: [a/b]',
+      'watch.interval: must be at least 60s',
+    ],
+    [
+      'a duration without a unit',
+      'watch:\n  settle: "5"\n  repos: [a/b]',
+      'watch.settle: use a duration like 90s, 5m or 1h',
+    ],
+    ['no repositories', 'watch:\n  repos: []', 'watch.repos'],
+    [
+      'a repository listed twice',
+      'watch:\n  repos: [A/b, a/B]',
+      'watch.repos: a/b is listed twice',
+    ],
+    [
+      'zero reviews per hour',
+      'watch:\n  maxReviewsPerHour: 0\n  repos: [a/b]',
+      'watch.maxReviewsPerHour',
+    ],
+  ])('refuses %s', (_case, text, message) => {
+    const parsed = parseConfigText(text)
+
+    expect(parsed.ok).toBe(false)
+    if (!parsed.ok) expect(parsed.message).toContain(message)
+  })
 })

@@ -36,6 +36,49 @@ const RelatedRepoSchema = z.union([
   }),
 ])
 
+const DURATION = /^\d+(s|m|h)$/
+const UNIT_MS: Readonly<Record<string, number>> = { s: 1_000, m: 60_000, h: 3_600_000 }
+export const MIN_WATCH_INTERVAL_MS = 60_000
+
+export function durationMs(text: string): number {
+  const unit = text.slice(-1)
+  return Number(text.slice(0, -1)) * (UNIT_MS[unit] ?? 0)
+}
+
+const Duration = z.string().trim().regex(DURATION, 'use a duration like 90s, 5m or 1h')
+
+const WatchedRepoSchema = z.union([
+  RepoName,
+  z.strictObject({
+    repo: RepoName,
+    publish: z.boolean().optional(),
+    allowExternal: z.boolean().optional(),
+    authors: z.array(z.string().trim().min(1)).optional(),
+    labels: z.array(z.string().trim().min(1)).optional(),
+    baseBranches: z.array(z.string().trim().min(1)).optional(),
+  }),
+])
+
+const WatchSchema = z.strictObject({
+  interval: Duration.refine(
+    (text) => !DURATION.test(text) || durationMs(text) >= MIN_WATCH_INTERVAL_MS,
+    'must be at least 60s',
+  ).optional(),
+  settle: Duration.optional(),
+  maxReviewsPerHour: z.number().int().min(1).max(60).optional(),
+  repos: z
+    .array(WatchedRepoSchema)
+    .min(1, 'list at least one owner/repo')
+    .superRefine((repos, context) => {
+      const seen = new Set<string>()
+      for (const entry of repos) {
+        const name = (typeof entry === 'string' ? entry : entry.repo).toLowerCase()
+        if (seen.has(name)) context.addIssue({ code: 'custom', message: `${name} is listed twice` })
+        seen.add(name)
+      }
+    }),
+})
+
 const ContextFileSchema = z.strictObject({
   path: Pattern,
   description: z.string().optional(),
@@ -68,7 +111,10 @@ export const ConfigFileSchema = z.strictObject({
       privateOnPublic: z.boolean().optional(),
     })
     .optional(),
+  history: z.boolean().optional(),
+  watch: WatchSchema.optional(),
 })
 
 export type ConfigFile = z.infer<typeof ConfigFileSchema>
 export type ConfigRule = z.infer<typeof RuleSchema>
+export type WatchConfig = z.infer<typeof WatchSchema>
