@@ -6,11 +6,14 @@ export interface RunOptions {
   headSha: string
   force: boolean
   dryRun: boolean
+  once?: boolean
 }
 
 export function decideRun(state: PullRequestReviewState, options: RunOptions): RunDecision {
   if (options.force) return { action: 'run' }
-  const reason = skipReason(state, options.headSha)
+  const reason = options.once
+    ? onceReason(state, options.headSha)
+    : skipReason(state, options.headSha)
   if (reason === undefined) return { action: 'run' }
   return options.dryRun ? { action: 'run', wouldSkip: reason } : { action: 'skip', reason }
 }
@@ -21,4 +24,8 @@ function skipReason(state: PullRequestReviewState, headSha: string): SkipReason 
   const openThreads = openPhadaThreads(state).length
   if (openThreads > 0) return { kind: 'open-threads', openThreads }
   return latest.findings === 0 ? { kind: 'nothing-found' } : undefined
+}
+
+function onceReason(state: PullRequestReviewState, headSha: string): SkipReason | undefined {
+  return phadaReviewsAt(state, headSha).length > 0 ? { kind: 'already-reviewed' } : undefined
 }

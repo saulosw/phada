@@ -27,6 +27,7 @@ describe('planPublication', () => {
     expect(planPublication(findings, state([]))).toEqual({
       comments: findings,
       stillOpen: [],
+      dismissed: [],
       openThreads: 0,
     })
   })
@@ -38,6 +39,7 @@ describe('planPublication', () => {
     expect(planPublication([near, far], state([thread()]))).toEqual({
       comments: [far],
       stillOpen: [near],
+      dismissed: [],
       openThreads: 1,
     })
   })
@@ -64,12 +66,35 @@ describe('planPublication', () => {
     expect(planPublication([other], state([thread()])).comments).toEqual([other])
   })
 
-  it('ignores resolved threads', () => {
+  it('holds back a finding that matches a Phada thread someone resolved', () => {
     const finding = findingFixture({ line: 10, title: 'Spend has no auth' })
 
-    expect(planPublication([finding], state([thread({ isResolved: true })])).comments).toEqual([
-      finding,
-    ])
+    expect(planPublication([finding], state([thread({ isResolved: true })]))).toEqual({
+      comments: [],
+      stillOpen: [],
+      dismissed: [finding],
+      openThreads: 0,
+    })
+  })
+
+  it('keeps a finding that matches an open and a resolved thread as still open', () => {
+    const finding = findingFixture({ line: 10 })
+    const threads = [thread({ isResolved: true }), thread({ line: 11 })]
+
+    expect(planPublication([finding], state(threads))).toMatchObject({
+      stillOpen: [finding],
+      dismissed: [],
+    })
+  })
+
+  it('posts a finding that matches a resolved thread of someone else or without the marker', () => {
+    const finding = findingFixture({ line: 10 })
+    const threads = [
+      thread({ isResolved: true, author: 'mallory' }),
+      thread({ isResolved: true, body: 'A human comment' }),
+    ]
+
+    expect(planPublication([finding], state(threads)).comments).toEqual([finding])
   })
 
   it('ignores threads written by someone else or without the marker', () => {
@@ -87,6 +112,7 @@ describe('planPublication', () => {
     expect(planPublication([same, other], state([outdated]))).toEqual({
       comments: [other],
       stillOpen: [same],
+      dismissed: [],
       openThreads: 1,
     })
   })
@@ -99,6 +125,7 @@ describe('planPublication', () => {
     expect(planPublication([sameTitleFar, near], state([odd]))).toEqual({
       comments: [sameTitleFar],
       stillOpen: [near],
+      dismissed: [],
       openThreads: 1,
     })
   })

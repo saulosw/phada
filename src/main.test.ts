@@ -673,7 +673,7 @@ describe('run publishing', () => {
     )
   })
 
-  it('reviews the same commit again once every thread is resolved', async () => {
+  it('reviews the same commit again once every thread is resolved, without reposting them', async () => {
     const h = harness({
       reviewState: () => Promise.resolve(phadaState([{ isResolved: true }])),
       review: () => Promise.resolve(WITH_FINDING),
@@ -681,7 +681,18 @@ describe('run publishing', () => {
 
     expect(await run(REVIEW, h.deps)).toBe(0)
     expect(h.prompts).toHaveLength(1)
-    expect(h.posts[0]?.comments).toHaveLength(1)
+    expect(h.posts[0]?.comments).toHaveLength(0)
+    expect(h.stderr()).toContain('(1 finding dismissed earlier, not posted again)')
+  })
+
+  it('counts the dismissed findings in the JSON publication', async () => {
+    const h = harness({
+      reviewState: () => Promise.resolve(phadaState([{ isResolved: true }])),
+      review: () => Promise.resolve(WITH_FINDING),
+    })
+
+    expect(await run([...REVIEW, '--format', 'json'], h.deps)).toBe(0)
+    expect(JSON.parse(h.stdout())).toMatchObject({ publication: { comments: 0, dismissed: 1 } })
   })
 
   it('reviews again with --force', async () => {

@@ -10,11 +10,14 @@ export function phadaReviewsAt(state: PullRequestReviewState, sha: string): Revi
   })
 }
 
-export function openPhadaThreads(state: PullRequestReviewState): ReviewThread[] {
+export function phadaThreads(state: PullRequestReviewState): ReviewThread[] {
   return state.threads.filter(
-    (thread) =>
-      !thread.isResolved && isViewer(state, thread.author) && hasFindingMarker(thread.body),
+    (thread) => isViewer(state, thread.author) && hasFindingMarker(thread.body),
   )
+}
+
+export function openPhadaThreads(state: PullRequestReviewState): ReviewThread[] {
+  return phadaThreads(state).filter((thread) => !thread.isResolved)
 }
 
 function isViewer(state: PullRequestReviewState, author: string): boolean {

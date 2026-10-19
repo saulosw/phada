@@ -1,6 +1,6 @@
 import type { PullRequestReviewState, ReviewThread } from '../github/pull-request-reviews.js'
 import type { Finding } from '../review/types.js'
-import { openPhadaThreads } from './phada-state.js'
+import { phadaThreads } from './phada-state.js'
 import type { PublicationPlan } from './types.js'
 
 const LINE_WINDOW = 3
@@ -10,10 +10,21 @@ export function planPublication(
   findings: readonly Finding[],
   state: PullRequestReviewState,
 ): PublicationPlan {
-  const open = openPhadaThreads(state)
-  const plan: PublicationPlan = { comments: [], stillOpen: [], openThreads: open.length }
+  const threads = phadaThreads(state)
+  const open = threads.filter((thread) => !thread.isResolved)
+  const resolved = threads.filter((thread) => thread.isResolved)
+  const plan: PublicationPlan = {
+    comments: [],
+    stillOpen: [],
+    dismissed: [],
+    openThreads: open.length,
+  }
   for (const finding of findings) {
-    const target = open.some((thread) => matches(thread, finding)) ? plan.stillOpen : plan.comments
+    const target = open.some((thread) => matches(thread, finding))
+      ? plan.stillOpen
+      : resolved.some((thread) => matches(thread, finding))
+        ? plan.dismissed
+        : plan.comments
     target.push(finding)
   }
   return plan

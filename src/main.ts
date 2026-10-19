@@ -352,6 +352,7 @@ function printDryRun(
       status: 'dry-run',
       review,
       stillOpen: plan.stillOpen.length,
+      dismissed: plan.dismissed.length,
       ...(wouldSkip === undefined ? {} : { wouldSkip }),
     }
     deps.stdout.write(
@@ -401,13 +402,20 @@ async function publish(
   }
   const comments = review.comments.length
   const stillOpen = plan.stillOpen.length
+  const dismissed = plan.dismissed.length
   if (format === 'json') {
-    const published: Publication = { status: 'published', url: created.url, comments, stillOpen }
+    const published: Publication = {
+      status: 'published',
+      url: created.url,
+      comments,
+      stillOpen,
+      dismissed,
+    }
     deps.stdout.write(
       formatReviewJson(pullRequest, outcome, published, context, investigation, impact, related),
     )
   }
-  deps.stderr.write(`${formatPublishedMessage(created.url, comments, stillOpen)}\n`)
+  deps.stderr.write(`${formatPublishedMessage(created.url, comments, stillOpen, dismissed)}\n`)
 }
 
 async function postNote(

@@ -32,3 +32,20 @@ describe('formatPublishedMessage', () => {
     expect(formatPublishedMessage(URL, 0, 0)).toBe(`Published the review: ${URL}`)
   })
 })
+
+describe('dismissed findings and already-reviewed', () => {
+  it('says how many findings were dismissed earlier and not posted again', () => {
+    expect(formatPublishedMessage(URL, 1, 0, 2)).toBe(
+      `Published the review with 1 inline comment: ${URL} (2 findings dismissed earlier, not posted again)`,
+    )
+    expect(formatPublishedMessage(URL, 0, 1, 1)).toBe(
+      `Published the review: ${URL} (1 finding still open from previous reviews; 1 finding dismissed earlier, not posted again)`,
+    )
+  })
+
+  it('says a commit Phada already reviewed is skipped', () => {
+    expect(
+      formatSkipMessage('a1b2c3d4e5f60718293a4b5c6d7e8f9012345678', { kind: 'already-reviewed' }),
+    ).toBe('a1b2c3d already reviewed by Phada: skipping.')
+  })
+})

@@ -52,7 +52,12 @@ const RESULT: ReviewResult = {
     durationMs: 500,
   },
 }
-const PLAN: PublicationPlan = { comments: [P1, P2], stillOpen: [OPEN], openThreads: 1 }
+const PLAN: PublicationPlan = {
+  comments: [P1, P2],
+  stillOpen: [OPEN],
+  dismissed: [],
+  openThreads: 1,
+}
 
 function result(overrides: Partial<ReviewResult> = {}): ReviewResult {
   return { ...RESULT, ...overrides }
@@ -71,7 +76,7 @@ function plan(
   stillOpen: Finding[] = [],
   openThreads = stillOpen.length,
 ): PublicationPlan {
-  return { comments, stillOpen, openThreads }
+  return { comments, stillOpen, dismissed: [], openThreads }
 }
 
 describe('formatGitHubReview body', () => {

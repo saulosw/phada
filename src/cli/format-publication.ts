@@ -3,6 +3,9 @@ import { shortSha } from './review-text.js'
 import { formatCount } from './units.js'
 
 export function formatSkipMessage(headSha: string, reason: SkipReason): string {
+  if (reason.kind === 'already-reviewed') {
+    return `${shortSha(headSha)} already reviewed by Phada: skipping.`
+  }
   const state =
     reason.kind === 'open-threads'
       ? `${formatCount(reason.openThreads, 'thread')} still open`
@@ -10,11 +13,18 @@ export function formatSkipMessage(headSha: string, reason: SkipReason): string {
   return `${shortSha(headSha)} already reviewed by Phada; ${state}. Use --force to review again.`
 }
 
-export function formatPublishedMessage(url: string, comments: number, stillOpen: number): string {
+export function formatPublishedMessage(
+  url: string,
+  comments: number,
+  stillOpen: number,
+  dismissed = 0,
+): string {
   const what = comments === 0 ? '' : ` with ${formatCount(comments, 'inline comment')}`
-  const open =
-    stillOpen === 0
+  const notes = [
+    stillOpen === 0 ? '' : `${formatCount(stillOpen, 'finding')} still open from previous reviews`,
+    dismissed === 0
       ? ''
-      : ` (${formatCount(stillOpen, 'finding')} still open from previous reviews)`
-  return `Published the review${what}: ${url}${open}`
+      : `${formatCount(dismissed, 'finding')} dismissed earlier, not posted again`,
+  ].filter((note) => note !== '')
+  return `Published the review${what}: ${url}${notes.length === 0 ? '' : ` (${notes.join('; ')})`}`
 }

@@ -303,9 +303,16 @@ describe('publication', () => {
       url,
       comments: 2,
       stillOpen: 1,
+      dismissed: 3,
     })
 
-    expect(publicationOf(output)).toEqual({ status: 'published', url, comments: 2, stillOpen: 1 })
+    expect(publicationOf(output)).toEqual({
+      status: 'published',
+      url,
+      comments: 2,
+      stillOpen: 1,
+      dismissed: 3,
+    })
     expect(parse(output)).toMatchObject({ status: 'reviewed', review: { summary: RESULT.summary } })
   })
 
@@ -340,6 +347,7 @@ describe('publication', () => {
       body: 'Body',
       comments: [{ path: 'src/shop.ts', line: 3, body: 'Comment' }],
       stillOpen: 0,
+      dismissed: 0,
       wouldSkip: null,
     })
     expect(
