@@ -149,6 +149,7 @@ const APP: Boundary = {
     '../publish/plan-publication.js',
     '../repo-map/languages.js',
     '../repository/git-checkout.js',
+    '../review/diff-fingerprint.js',
     '../review/impact-text.js',
     '../review/run-review.js',
     '../store/index-store.js',

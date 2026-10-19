@@ -92,6 +92,7 @@ export interface ReviewTarget {
   repo: string
   number: number
   headSha: string
+  diffFingerprint?: string
 }
 
 export type Severity = 'P0' | 'P1' | 'P2'

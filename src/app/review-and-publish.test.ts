@@ -7,6 +7,7 @@ import type { PullRequestReviewState } from '../github/pull-request-reviews.js'
 import type { PullRequest } from '../github/pull-request.js'
 import type { ReviewProvider } from '../providers/types.js'
 import { FINDING_MARKER, reviewMarker } from '../publish/markers.js'
+import { diffFingerprint } from '../review/diff-fingerprint.js'
 import { reviewAndPublish } from './review-and-publish.js'
 import type { ReviewAndPublishDeps, ReviewAndPublishInput } from './review-and-publish.js'
 import type { PullRequestReviewDeps } from './review-pull-request.js'
@@ -92,7 +93,10 @@ function setup(overrides: Partial<ReviewAndPublishDeps> = {}, pullRequest: PullR
           body: finding.title,
         })),
       }),
-      ignoredOnly: (headSha) => ({ body: `ignored ${headSha}`, comments: [] }),
+      ignoredOnly: (headSha, _ignored, _language, diff) => ({
+        body: `ignored ${headSha} ${diff}`,
+        comments: [],
+      }),
     },
     createReview: async (_pull, rendered) => {
       calls.posts.push(rendered.body)
@@ -156,6 +160,44 @@ describe('reviewAndPublish', () => {
     })
     expect(await reviewAndPublish(INPUT, deps)).toMatchObject({ status: 'reviewed' })
     expect(calls.reviews).toBe(1)
+  })
+
+  describe('same diff', () => {
+    const OLD = '0'.repeat(40)
+    const reviewedBefore = async (): Promise<PullRequestReviewState> => ({
+      viewer: 'octocat',
+      reviews: [
+        {
+          id: 'R0',
+          author: 'octocat',
+          body: reviewMarker({ sha: OLD, findings: 1, diff: diffFingerprint(PR.diff) }),
+          commitSha: OLD,
+        },
+      ],
+      threads: [],
+    })
+
+    it('skips a new commit whose filtered diff did not change, without calling the AI', async () => {
+      const { deps, calls } = setup({ fetchReviewState: reviewedBefore })
+
+      expect(await reviewAndPublish(INPUT, deps)).toEqual({
+        status: 'skipped',
+        pullRequest: PR,
+        reason: { kind: 'same-diff', since: OLD, ignoredOnly: false },
+      })
+      expect(calls.reviews).toBe(0)
+    })
+
+    it('reviews it with --force and keeps the fingerprint for the marker', async () => {
+      const { deps, calls } = setup({ fetchReviewState: reviewedBefore })
+
+      const run = await reviewAndPublish({ ...INPUT, force: true }, deps)
+
+      expect(calls.reviews).toBe(1)
+      expect(run.status === 'reviewed' && run.reviewed.outcome).toMatchObject({
+        result: { target: { diffFingerprint: diffFingerprint(PR.diff) } },
+      })
+    })
   })
 
   it('keeps the review without publishing it when publishing is off', async () => {
@@ -228,7 +270,7 @@ describe('reviewAndPublish', () => {
     const run = await reviewAndPublish(INPUT, deps)
 
     expect(run).toMatchObject({ status: 'nothing', publication: { status: 'published', url: URL } })
-    expect(calls.posts).toEqual([`ignored ${PR.headSha}`])
+    expect(calls.posts).toEqual([`ignored ${PR.headSha} ${diffFingerprint('')}`])
     expect(calls.reviews).toBe(0)
   })
 

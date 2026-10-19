@@ -9,6 +9,12 @@ describe('reviewMarker', () => {
       `<!-- phada:review sha=${SHA} findings=2 -->`,
     )
   })
+
+  it('writes the fingerprint of the diff when there is one', () => {
+    expect(reviewMarker({ sha: SHA, findings: 2, diff: '0123456789abcdef' })).toBe(
+      `<!-- phada:review sha=${SHA} findings=2 diff=0123456789abcdef -->`,
+    )
+  })
 })
 
 describe('parseReviewMarker', () => {
@@ -19,7 +25,14 @@ describe('parseReviewMarker', () => {
     })
   })
 
+  it('reads the fingerprint of the diff', () => {
+    expect(
+      parseReviewMarker(`<!-- phada:review sha=${SHA} findings=1 diff=0123456789abcdef -->`),
+    ).toEqual({ sha: SHA, findings: 1, diff: '0123456789abcdef' })
+  })
+
   it.each([
+    ['a short fingerprint', `<!-- phada:review sha=${SHA} findings=0 diff=0123 -->`],
     ['text after the marker', `<!-- phada:review sha=${SHA} findings=0 -->\nmore text`],
     ['a short SHA', '<!-- phada:review sha=a1b2c3d findings=0 -->'],
     ['an upper-case SHA', `<!-- phada:review sha=${SHA.toUpperCase()} findings=0 -->`],

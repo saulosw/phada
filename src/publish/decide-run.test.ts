@@ -11,11 +11,11 @@ const HEAD = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
 const OLD = '0'.repeat(40)
 const RUN = { headSha: HEAD, force: false, dryRun: false }
 
-function review(sha: string, findings: number, author = 'me'): PublishedReview {
+function review(sha: string, findings: number, author = 'me', diff?: string): PublishedReview {
   return {
     id: `R${findings}`,
     author,
-    body: `Body\n\n${reviewMarker({ sha, findings })}`,
+    body: `Body\n\n${reviewMarker({ sha, findings, ...(diff === undefined ? {} : { diff }) })}`,
     commitSha: sha,
   }
 }
@@ -143,6 +143,57 @@ describe('decideRun', () => {
       decideRun(state([review(HEAD, 0, 'mallory')]), { ...RUN, skipReviewedCommits: true }),
     ).toEqual({
       action: 'run',
+    })
+  })
+
+  describe('same diff', () => {
+    const DIFF = '0123456789abcdef'
+    const SAME = { ...RUN, diff: { fingerprint: DIFF, ignoredOnly: false } }
+
+    it('skips a new commit whose filtered diff is the one Phada reviewed last', () => {
+      expect(decideRun(state([review(OLD, 1, 'me', DIFF)]), SAME)).toEqual({
+        action: 'skip',
+        reason: { kind: 'same-diff', since: OLD, ignoredOnly: false },
+      })
+    })
+
+    it('says when only left-out files changed', () => {
+      const options = { ...RUN, diff: { fingerprint: DIFF, ignoredOnly: true } }
+
+      expect(decideRun(state([review(OLD, 1, 'me', DIFF)]), options)).toMatchObject({
+        reason: { kind: 'same-diff', ignoredOnly: true },
+      })
+    })
+
+    it('runs when the diff changed or the last review has no fingerprint', () => {
+      expect(decideRun(state([review(OLD, 1, 'me', 'ffffffffffffffff')]), SAME)).toEqual({
+        action: 'run',
+      })
+      expect(decideRun(state([review(OLD, 1)]), SAME)).toEqual({ action: 'run' })
+    })
+
+    it('compares with the latest review of Phada only', () => {
+      const reviews = [review(OLD, 1, 'me', DIFF), review('1'.repeat(40), 1, 'me', 'f'.repeat(16))]
+
+      expect(decideRun(state(reviews), SAME)).toEqual({ action: 'run' })
+      expect(decideRun(state([review(OLD, 1, 'mallory', DIFF)]), SAME)).toEqual({ action: 'run' })
+    })
+
+    it('runs with --force and says what would happen with --dry-run', () => {
+      const reviews = [review(OLD, 1, 'me', DIFF)]
+
+      expect(decideRun(state(reviews), { ...SAME, force: true })).toEqual({ action: 'run' })
+      expect(decideRun(state(reviews), { ...SAME, dryRun: true })).toEqual({
+        action: 'run',
+        wouldSkip: { kind: 'same-diff', since: OLD, ignoredOnly: false },
+      })
+    })
+
+    it('keeps the reasons of the same commit first', () => {
+      expect(decideRun(state([review(HEAD, 0, 'me', DIFF)]), SAME)).toEqual({
+        action: 'skip',
+        reason: { kind: 'nothing-found' },
+      })
     })
   })
 })

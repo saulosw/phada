@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto'
 import type { ReviewProvider, TokenUsage } from '../providers/types.js'
 import type { Toolbox } from '../investigation/toolbox.js'
 import { withKnownReferences, withRuleSeverity } from './context-findings.js'
+import { diffFingerprint } from './diff-fingerprint.js'
 import { parseDiffFiles } from './diff-lines.js'
 import { parseReviewReport } from './parse-report.js'
 import { buildReviewPrompt } from './prompt.js'
@@ -88,7 +89,12 @@ export async function runReview(
   return {
     status: 'reviewed',
     result: {
-      target: { repo: pullRequest.repo, number: pullRequest.number, headSha: pullRequest.headSha },
+      target: {
+        repo: pullRequest.repo,
+        number: pullRequest.number,
+        headSha: pullRequest.headSha,
+        diffFingerprint: diffFingerprint(pullRequest.diff),
+      },
       providerId: deps.provider.id,
       ...(model === undefined ? {} : { model }),
       ...(additionalModels === undefined ? {} : { additionalModels }),

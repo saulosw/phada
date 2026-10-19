@@ -56,8 +56,12 @@ const PROGRESS_LABELS: Readonly<Record<ReviewPass, string>> = {
 export const renderReview = {
   review: (result: ReviewResult, plan: PublicationPlan, language?: string): RenderedReview =>
     formatGitHubReview(result, plan, undefined, messagesFor(language)),
-  ignoredOnly: (headSha: string, ignored: readonly string[], language?: string): RenderedReview =>
-    formatIgnoredOnlyReview(headSha, ignored, messagesFor(language)),
+  ignoredOnly: (
+    headSha: string,
+    ignored: readonly string[],
+    language: string | undefined,
+    diff: string,
+  ): RenderedReview => formatIgnoredOnlyReview(headSha, ignored, messagesFor(language), diff),
 }
 
 export function pullRequestReviewDeps(

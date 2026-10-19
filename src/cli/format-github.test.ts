@@ -150,6 +150,15 @@ describe('formatGitHubReview body', () => {
     expect(parseReviewMarker(body)).toEqual({ sha: SHA, findings: 0 })
   })
 
+  it('writes the fingerprint of the reviewed diff in the marker', () => {
+    const target = { ...RESULT.target, diffFingerprint: '0123456789abcdef' }
+    const full = formatGitHubReview(result({ target }), PLAN).body
+    const short = formatGitHubReview(result({ target }), plan([], [OPEN])).body
+
+    expect(parseReviewMarker(full)).toEqual({ sha: SHA, findings: 3, diff: '0123456789abcdef' })
+    expect(parseReviewMarker(short)).toMatchObject({ diff: '0123456789abcdef' })
+  })
+
   it('starts the reason line with a capital letter', () => {
     const body = formatGitHubReview(
       result({ findings: [] }),
@@ -525,6 +534,12 @@ describe('formatGitHubPreview', () => {
 
 describe('formatIgnoredOnlyReview', () => {
   const SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
+
+  it('writes the fingerprint of the filtered diff in the marker', () => {
+    const { body } = formatIgnoredOnlyReview(SHA, ['yarn.lock'], undefined, '0123456789abcdef')
+
+    expect(parseReviewMarker(body)).toEqual({ sha: SHA, findings: 0, diff: '0123456789abcdef' })
+  })
 
   it('posts a short note that names the files left out and counts zero findings', () => {
     expect(formatIgnoredOnlyReview(SHA, ['package-lock.json', 'app.min.js'])).toEqual({

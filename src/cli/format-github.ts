@@ -49,6 +49,7 @@ export function formatIgnoredOnlyReview(
   headSha: string,
   ignored: readonly string[],
   messages: Messages = english,
+  diff?: string,
 ): GitHubReview {
   const sha = shortSha(headSha)
   const body = [
@@ -56,7 +57,7 @@ export function formatIgnoredOnlyReview(
     messages.github.allIgnored(sha),
     leftOutLine(ignored, messages),
     `---\n<sub>${messages.github.generatedWith} · ${sha}</sub>`,
-    reviewMarker({ sha: headSha, findings: 0 }),
+    reviewMarker({ sha: headSha, findings: 0, ...(diff === undefined ? {} : { diff }) }),
   ]
     .filter((section) => section !== '')
     .join('\n\n')
@@ -84,7 +85,7 @@ function onlyStillOpenBody(
     `## ${messages.github.heading}: ${messages.github.onlyStillOpenTitle}`,
     messages.github.onlyStillOpen(plan.openThreads, sha),
     `---\n<sub>${footer(result, githubLine(modelLabel(result)), messages)}</sub>`,
-    reviewMarker({ sha: result.target.headSha, findings: result.findings.length }),
+    markerOf(result),
   ].join('\n\n')
 }
 
@@ -139,10 +140,15 @@ function renderBody(
     messages.dropped(result.dropped),
     leftOutLine(result.ignored ?? [], messages),
     `---\n<sub>${footer(result, githubLine(parts.model), messages)}</sub>`,
-    reviewMarker({ sha: result.target.headSha, findings: result.findings.length }),
+    markerOf(result),
   ]
     .filter((section) => section !== '')
     .join('\n\n')
+}
+
+function markerOf({ target, findings }: ReviewResult): string {
+  const { headSha: sha, diffFingerprint: diff } = target
+  return reviewMarker({ sha, findings: findings.length, ...(diff === undefined ? {} : { diff }) })
 }
 
 function filesDetails(files: readonly FileChange[], messages: Messages): string {

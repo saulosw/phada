@@ -31,7 +31,7 @@ import { MirrorLockTimeoutError } from './repository/mirror-lock.js'
 import { HistoryVersionError, openHistoryStore } from './store/history-store.js'
 import type { HistoryStore } from './store/history-store.js'
 import { DatabaseSync } from 'node:sqlite'
-import { FINDING_MARKER, reviewMarker } from './publish/markers.js'
+import { FINDING_MARKER, parseReviewMarker, reviewMarker } from './publish/markers.js'
 import { createProvider, run } from './main.js'
 import type { MainDeps, ProviderOptions } from './main.js'
 import { ClaudeCliProvider } from './providers/claude.js'
@@ -678,7 +678,8 @@ describe('run publishing', () => {
       comments: [{ path: 'src/shop.ts', line: 3 }],
     })
     expect(post?.comments[0]?.body).toContain('**P1** · spend has no auth · confidence 90')
-    expect(post?.body.endsWith(reviewMarker({ sha: HEAD_SHA, findings: 1 }))).toBe(true)
+    expect(post?.body.trimEnd().endsWith(' -->')).toBe(true)
+    expect(parseReviewMarker(post?.body ?? '')).toMatchObject({ sha: HEAD_SHA, findings: 1 })
     expect(h.stderr()).toContain(
       `Publishing the review…\nPublished the review with 1 inline comment: ${REVIEW_URL}\n`,
     )
@@ -995,7 +996,7 @@ describe('run with config and repository context', () => {
     expect(h.posts).toHaveLength(1)
     expect(h.posts[0]).toMatchObject({ commitSha: HEAD_SHA, comments: [] })
     expect(h.posts[0]?.body).toContain('Left out of the review: `package-lock.json`')
-    expect(h.posts[0]?.body).toContain(reviewMarker({ sha: HEAD_SHA, findings: 0 }))
+    expect(parseReviewMarker(h.posts[0]?.body ?? '')).toMatchObject({ sha: HEAD_SHA, findings: 0 })
     expect(JSON.parse(h.stdout())).toMatchObject({
       status: 'skipped',
       reason: 'all-ignored',

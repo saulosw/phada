@@ -403,6 +403,17 @@ describe('publication', () => {
         formatAlreadyReviewedJson(pullRequestFixture(), { kind: 'open-threads', openThreads: 3 }),
       ),
     ).toMatchObject({ publication: { reason: 'open-threads', openThreads: 3 } })
+    expect(
+      parse(
+        formatAlreadyReviewedJson(pullRequestFixture(), {
+          kind: 'same-diff',
+          since: '0'.repeat(40),
+          ignoredOnly: true,
+        }),
+      ),
+    ).toMatchObject({
+      publication: { reason: 'same-diff', since: '0'.repeat(40), ignoredOnly: true },
+    })
   })
 
   it('adds the investigation report', () => {

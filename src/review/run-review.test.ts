@@ -6,6 +6,7 @@ import { reviewReportJson } from '../../test/support/review-report.js'
 import { verdictFixture, verificationJson } from '../../test/support/verification.js'
 import type { ReviewOutput, ReviewPrompt, ReviewProvider } from '../providers/types.js'
 import type { Toolbox } from '../investigation/toolbox.js'
+import { diffFingerprint } from './diff-fingerprint.js'
 import { InvalidReviewReportError } from './errors.js'
 import { buildReviewPrompt } from './prompt.js'
 import { REVIEW_REPORT_JSON_SCHEMA } from './report-schema.js'
@@ -61,6 +62,7 @@ describe('runReview', () => {
           repo: 'acme/shop',
           number: 12,
           headSha: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
+          diffFingerprint: diffFingerprint(pullRequestFixture().diff),
         },
         providerId: 'fake-cli',
         model: 'claude-fake-1',
@@ -217,6 +219,7 @@ describe('runReview', () => {
         repo: 'acme/shop',
         number: 12,
         headSha: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
+        diffFingerprint: diffFingerprint(pullRequestFixture().diff),
       },
       providerId: 'fake-cli',
       model: 'claude-fake-1',

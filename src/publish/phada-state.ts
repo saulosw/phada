@@ -2,6 +2,16 @@ import type { PullRequestReviewState, ReviewThread } from '../github/pull-reques
 import { hasFindingMarker, parseReviewMarker } from './markers.js'
 import type { ReviewMarker } from './markers.js'
 
+export function latestPhadaReview(state: PullRequestReviewState): ReviewMarker | undefined {
+  return state.reviews
+    .flatMap((review) => {
+      if (!isViewer(state, review.author)) return []
+      const marker = parseReviewMarker(review.body)
+      return marker === undefined ? [] : [marker]
+    })
+    .at(-1)
+}
+
 export function phadaReviewsAt(state: PullRequestReviewState, sha: string): ReviewMarker[] {
   return state.reviews.flatMap((review) => {
     if (!isViewer(state, review.author)) return []

@@ -1,22 +1,25 @@
 export const FINDING_MARKER = '<!-- phada:finding -->'
 
-const REVIEW_MARKER = /<!-- phada:review sha=([0-9a-f]{40}) findings=(\d+) -->\s*$/
+const REVIEW_MARKER =
+  /<!-- phada:review sha=([0-9a-f]{40}) findings=(\d+)(?: diff=([0-9a-f]{16}))? -->\s*$/
 const TRAILING_FINDING_MARKER = /<!-- phada:finding -->\s*$/
 
 export interface ReviewMarker {
   sha: string
   findings: number
+  diff?: string
 }
 
-export function reviewMarker({ sha, findings }: ReviewMarker): string {
-  return `<!-- phada:review sha=${sha} findings=${findings} -->`
+export function reviewMarker({ sha, findings, diff }: ReviewMarker): string {
+  const fingerprint = diff === undefined ? '' : ` diff=${diff}`
+  return `<!-- phada:review sha=${sha} findings=${findings}${fingerprint} -->`
 }
 
 export function parseReviewMarker(body: string): ReviewMarker | undefined {
   const match = REVIEW_MARKER.exec(body)
   if (match === null) return undefined
-  const [, sha = '', findings = ''] = match
-  return { sha, findings: Number(findings) }
+  const [, sha = '', findings = '', diff] = match
+  return { sha, findings: Number(findings), ...(diff === undefined ? {} : { diff }) }
 }
 
 export function hasFindingMarker(body: string): boolean {

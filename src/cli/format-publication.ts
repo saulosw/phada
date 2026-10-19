@@ -6,6 +6,12 @@ export function formatSkipMessage(headSha: string, reason: SkipReason): string {
   if (reason.kind === 'closed-or-draft') {
     return `The pull request is closed or a draft now: skipping ${shortSha(headSha)}.`
   }
+  if (reason.kind === 'same-diff') {
+    const what = reason.ignoredOnly
+      ? 'only files left out of the review changed'
+      : 'the diff did not change'
+    return `${shortSha(headSha)}: ${what} since ${shortSha(reason.since)}, which Phada reviewed. Use --force to review again.`
+  }
   if (reason.kind === 'already-reviewed') {
     return `${shortSha(headSha)} already reviewed by Phada: skipping.`
   }

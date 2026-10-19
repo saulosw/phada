@@ -6,8 +6,9 @@ import type { PullRequest } from '../github/pull-request.js'
 import { decideRun } from '../publish/decide-run.js'
 import { planPublication } from '../publish/plan-publication.js'
 import type { PublicationPlan, SkipReason } from '../publish/types.js'
+import { diffFingerprint } from '../review/diff-fingerprint.js'
 import type { ReviewResult } from '../review/types.js'
-import { reviewPullRequest } from './review-pull-request.js'
+import { loadPullRequestContext, reviewPullRequest } from './review-pull-request.js'
 import type {
   PullRequestReview,
   PullRequestReviewDeps,
@@ -71,7 +72,12 @@ export interface ReviewAndPublishDeps {
   reviewDeps(pullRequest: PullRequest): PullRequestReviewDeps
   render: {
     review(result: ReviewResult, plan: PublicationPlan, language?: string): RenderedReview
-    ignoredOnly(headSha: string, ignored: readonly string[], language?: string): RenderedReview
+    ignoredOnly(
+      headSha: string,
+      ignored: readonly string[],
+      language: string | undefined,
+      diff: string,
+    ): RenderedReview
   }
   createReview(pullRequest: PullRequest, rendered: RenderedReview): Promise<{ url: string }>
   checkHead?(pullRequest: PullRequest): Promise<HeadCheck>
@@ -88,25 +94,33 @@ export async function reviewAndPublish(
     return { status: 'skipped', pullRequest, reason: { kind: 'closed-or-draft' } }
   }
   const state = await deps.fetchReviewState(input.ref)
-  const decision = decideRun(state, {
+  const runOptions = {
     headSha: pullRequest.headSha,
     force: input.force,
     dryRun: input.dryRun,
     skipReviewedCommits: input.mode === 'watch',
+  }
+  const early = decideRun(state, runOptions)
+  if (early.action === 'skip') return { status: 'skipped', pullRequest, reason: early.reason }
+
+  const reviewDeps = deps.reviewDeps(pullRequest)
+  const review = {
+    pullRequest,
+    userLayers: input.userLayers,
+    userMcpServers: input.userMcpServers,
+    options: input.options,
+  }
+  const loaded = await loadPullRequestContext(review, reviewDeps)
+  const fingerprint = diffFingerprint(loaded.diff)
+  const decision = decideRun(state, {
+    ...runOptions,
+    diff: { fingerprint, ignoredOnly: loaded.context.ignored.length > 0 },
   })
   if (decision.action === 'skip') {
     return { status: 'skipped', pullRequest, reason: decision.reason }
   }
 
-  const reviewed = await reviewPullRequest(
-    {
-      pullRequest,
-      userLayers: input.userLayers,
-      userMcpServers: input.userMcpServers,
-      options: input.options,
-    },
-    deps.reviewDeps(pullRequest),
-  )
+  const reviewed = await reviewPullRequest({ ...review, loaded }, reviewDeps)
   const { outcome } = reviewed
   if (outcome.status === 'skipped') {
     if (outcome.reason !== 'all-ignored') {
@@ -117,6 +131,7 @@ export async function reviewAndPublish(
       pullRequest.headSha,
       reviewed.context.context.ignored,
       reviewed.language,
+      fingerprint,
     )
     deps.events.reviewed(reviewed, pullRequest)
     return {

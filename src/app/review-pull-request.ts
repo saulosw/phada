@@ -53,6 +53,7 @@ export interface PullRequestReviewInput {
   userLayers: readonly ConfigLayer[]
   userMcpServers: readonly string[]
   options: ReviewOptions
+  loaded?: LoadedContext
 }
 
 export interface PullRequestReviewEvents {
@@ -87,6 +88,20 @@ export interface PullRequestReview {
   related: RelatedReport
 }
 
+export async function loadPullRequestContext(
+  input: Pick<PullRequestReviewInput, 'pullRequest' | 'userLayers'>,
+  deps: Pick<PullRequestReviewDeps, 'contextSources' | 'events'>,
+): Promise<LoadedContext> {
+  const loaded = await loadContext({
+    diff: input.pullRequest.diff,
+    baseSha: input.pullRequest.baseSha,
+    userLayers: input.userLayers,
+    sources: deps.contextSources,
+  })
+  deps.events.contextLoaded(loaded.report)
+  return loaded
+}
+
 interface HeadGraph {
   graph?: RepositoryGraph
   store?: IndexStore
@@ -100,13 +115,7 @@ export async function reviewPullRequest(
   deps: PullRequestReviewDeps,
 ): Promise<PullRequestReview> {
   const { pullRequest, options } = input
-  const loaded = await loadContext({
-    diff: pullRequest.diff,
-    baseSha: pullRequest.baseSha,
-    userLayers: input.userLayers,
-    sources: deps.contextSources,
-  })
-  deps.events.contextLoaded(loaded.report)
+  const loaded = input.loaded ?? (await loadPullRequestContext(input, deps))
   const language = options.language ?? loaded.options.language
   const investigate = options.investigate ?? loaded.options.investigate ?? true
   const keepAs = `refs/phada/pull/${pullRequest.number}`
