@@ -243,6 +243,27 @@ describe('ClaudeCliProvider', () => {
     expect(error.reason).toBe('not-authenticated')
   })
 
+  it.each(['Claude AI usage limit reached|1760000000', "You've hit your limit · resets 3pm"])(
+    'reports usage-limit when Claude answers %s',
+    async (detail) => {
+      const error = await reviewError(provider('is_error', { env: { FAKE_CLAUDE_DETAIL: detail } }))
+
+      expect(error.reason).toBe('usage-limit')
+    },
+  )
+
+  it('reports usage-limit when the limit only shows up on stderr', async () => {
+    const error = await reviewError(provider('usage_limit_stderr'))
+
+    expect(error.reason).toBe('usage-limit')
+  })
+
+  it('passes detached to the command runner without changing the review', async () => {
+    const output = await provider('success', { detached: true }).review(PROMPT)
+
+    expect(output.text).toBe('LGTM from fake')
+  })
+
   it('reports failed with the redacted Claude error for any other is_error result', async () => {
     const error = await reviewError(provider('is_error'))
 

@@ -23,6 +23,7 @@ export interface RunCliOptions {
   cwd: string
   env: NodeJS.ProcessEnv
   timeoutMs: number
+  detached?: boolean
 }
 
 export async function runCli(options: RunCliOptions): Promise<RunCommandResult> {
@@ -32,6 +33,7 @@ export async function runCli(options: RunCliOptions): Promise<RunCommandResult> 
       cwd: options.cwd,
       env: withoutGitHubTokens(options.env),
       timeoutMs: options.timeoutMs,
+      ...(options.detached === undefined ? {} : { detached: options.detached }),
     })
   } catch (error) {
     throw toProviderError(error, options)

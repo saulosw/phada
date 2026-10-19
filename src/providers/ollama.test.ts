@@ -341,6 +341,16 @@ describe('OllamaProvider', () => {
     expect(error.message).toBe(`Ollama refused the request for "${MODEL}": unauthorized`)
   })
 
+  it('reports usage-limit when Ollama answers HTTP 429', async () => {
+    const body = JSON.stringify({ error: 'you have reached your hourly usage limit' })
+    const { provider } = setup({ chat: [{ status: 429, body }] })
+
+    const error = await reviewError(provider)
+
+    expect(error.reason).toBe('usage-limit')
+    expect(error.message).toBe('Ollama returned HTTP 429: you have reached your hourly usage limit')
+  })
+
   it('reports failed with the redacted Ollama error for any other status', async () => {
     const body = JSON.stringify({
       error: `this model is not included in your free usage ${FAKE_SECRET}`,

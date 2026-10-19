@@ -295,6 +295,16 @@ describe('CodexCliProvider', () => {
     expect(error.reason).toBe('not-authenticated')
   })
 
+  it('reports usage-limit when Codex says the usage limit was hit', async () => {
+    const error = await reviewError(
+      provider('turn_failed_custom', {
+        env: { FAKE_CODEX_FAILURE: "You've hit your usage limit. Try again in 2 hours." },
+      }),
+    )
+
+    expect(error.reason).toBe('usage-limit')
+  })
+
   it('falls back to the last redacted stderr line when there is no error event', async () => {
     const error = await reviewError(provider('stderr_only'))
 

@@ -41,6 +41,7 @@ export type ProviderErrorReason =
   | 'failed'
   | 'invalid-output'
   | 'prompt-too-large'
+  | 'usage-limit'
 
 export class ProviderError extends Error {
   override readonly name = 'ProviderError'

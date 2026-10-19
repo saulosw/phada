@@ -140,6 +140,10 @@ switch (env.FAKE_CLAUDE_MODE ?? 'success') {
     process.stderr.write('Invalid API key · Please run /login\n')
     process.exitCode = 1
     break
+  case 'usage_limit_stderr':
+    process.stderr.write('5-hour limit reached ∙ resets 3pm\n')
+    process.exitCode = 1
+    break
   case 'exit1':
     process.stderr.write(`boom ${secret}\n`)
     process.exitCode = 1

@@ -32,6 +32,7 @@ const MAX_TURNS_SUBTYPE = 'error_max_turns'
 const PHADA_TOOL_PREFIX = `mcp__${MCP_SERVER_NAME}__`
 const MCP_TOOL = /^mcp__(.+?)__(.+)$/
 const NOT_AUTHENTICATED = /not logged in|\/login|authenticat|api key/i
+const USAGE_LIMIT = /usage limit|hit your (usage )?limit|limit reached|rate.?limit/i
 
 const ClaudeUsage = z.object({
   input_tokens: z.number().optional(),
@@ -64,6 +65,7 @@ export interface ClaudeCliProviderOptions {
   command?: string
   model?: string
   timeoutMs?: number
+  detached?: boolean
   env?: NodeJS.ProcessEnv
   homeDir?: string
   userMcpServers?: string[]
@@ -85,11 +87,13 @@ export class ClaudeCliProvider implements ReviewProvider {
   readonly #env: NodeJS.ProcessEnv
   readonly #homeDir: string | undefined
   readonly #userMcpServers: readonly string[]
+  readonly #detached: boolean
 
   constructor(options: ClaudeCliProviderOptions = {}) {
     this.#command = options.command ?? DEFAULT_COMMAND
     this.#model = options.model
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
+    this.#detached = options.detached ?? false
     this.#env = options.env ?? process.env
     this.#homeDir = options.homeDir
     this.#userMcpServers = options.userMcpServers ?? []
@@ -113,6 +117,7 @@ export class ClaudeCliProvider implements ReviewProvider {
           providerId: PROVIDER_ID,
           names: NAMES,
           command: this.#command,
+          detached: this.#detached,
           args: [
             '-p',
             '--output-format',
@@ -273,5 +278,6 @@ function unreadableOutputError({ stdout, stderr, exitCode }: RunCommandResult): 
 }
 
 function reasonFor(detail: string): ProviderErrorReason {
-  return NOT_AUTHENTICATED.test(detail) ? 'not-authenticated' : 'failed'
+  if (NOT_AUTHENTICATED.test(detail)) return 'not-authenticated'
+  return USAGE_LIMIT.test(detail) ? 'usage-limit' : 'failed'
 }

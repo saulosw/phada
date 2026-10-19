@@ -55,6 +55,7 @@ const BASE_ARGS: readonly string[] = [
   '--json',
 ]
 const NOT_AUTHENTICATED = /401 Unauthorized|missing bearer|not logged in|codex login/i
+const USAGE_LIMIT = /usage limit|hit your (usage )?limit|limit reached|rate.?limit/i
 
 const CodexEvent = z.discriminatedUnion('type', [
   z.object({
@@ -81,6 +82,7 @@ export interface CodexCliProviderOptions {
   command?: string
   model?: string
   timeoutMs?: number
+  detached?: boolean
   env?: NodeJS.ProcessEnv
   homeDir?: string
 }
@@ -92,11 +94,13 @@ export class CodexCliProvider implements ReviewProvider {
   readonly #timeoutMs: number
   readonly #env: NodeJS.ProcessEnv
   readonly #homeDir: string | undefined
+  readonly #detached: boolean
 
   constructor(options: CodexCliProviderOptions = {}) {
     this.#command = options.command ?? DEFAULT_COMMAND
     this.#model = options.model
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
+    this.#detached = options.detached ?? false
     this.#env = options.env ?? process.env
     this.#homeDir = options.homeDir
   }
@@ -119,6 +123,7 @@ export class CodexCliProvider implements ReviewProvider {
           providerId: PROVIDER_ID,
           names: NAMES,
           command: this.#command,
+          detached: this.#detached,
           args: codexArgs({ instructionsPath, schemaPath, outputPath, model, mcp: server?.launch }),
           stdin: prompt.data,
           cwd,
@@ -236,7 +241,11 @@ function exitError({ stderr, exitCode }: RunCommandResult, events: readonly Code
   const lastStderrLine = stderr.trim().split('\n').at(-1) ?? ''
   const lastMessage = errorMessages(events).at(-1) ?? lastStderrLine
   const detail = snippet(lastMessage, MAX_DETAIL_LENGTH)
-  const reason = NOT_AUTHENTICATED.test(lastMessage) ? 'not-authenticated' : 'failed'
+  const reason = NOT_AUTHENTICATED.test(lastMessage)
+    ? 'not-authenticated'
+    : USAGE_LIMIT.test(lastMessage)
+      ? 'usage-limit'
+      : 'failed'
   return new ProviderError(
     PROVIDER_ID,
     reason,
