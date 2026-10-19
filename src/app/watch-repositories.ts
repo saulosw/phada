@@ -59,13 +59,23 @@ export async function watchRepositories(input: WatchInput, deps: WatchDeps): Pro
   history.recoverRunning(MAX_ATTEMPTS, iso(deps))
   const branches = new Map<string, string | undefined>()
   let limitedUntil: string | undefined
+  let firstPass = true
+  for (const repo of settings.repos) {
+    const baselineAt = history.repo(repo.repo)?.baselineAt
+    if (input.backfill && baselineAt !== undefined) {
+      deps.events.warning(
+        `${repo.repo}: --backfill only applies the first time a repository is seen; its open pull requests were recorded as they were on ${baselineAt.slice(0, 10)}.`,
+      )
+    }
+  }
   for (;;) {
     if (deps.stopRequested()) return { reason: 'stopped' }
     for (const repo of settings.repos) {
       if (deps.stopRequested()) return { reason: 'stopped' }
-      const exit = await discover(repo, input, deps)
+      const exit = await discover(repo, input, deps, input.once && firstPass)
       if (exit !== undefined) return exit
     }
+    firstPass = false
     if (deps.stopRequested()) return { reason: 'stopped' }
     const now = iso(deps)
     const watchRunsLastHour = history.watchRunsSince(later(now, -RATE_WINDOW_MS))
@@ -100,11 +110,16 @@ async function discover(
   repo: WatchedRepoSettings,
   input: WatchInput,
   deps: WatchDeps,
+  always: boolean,
 ): Promise<WatchExit | undefined> {
   const { history } = deps
   const record = history.repo(repo.repo) ?? { repo: repo.repo }
   const now = iso(deps)
-  if (record.checkedAt !== undefined && later(record.checkedAt, input.settings.intervalMs) > now) {
+  const due =
+    always ||
+    record.checkedAt === undefined ||
+    later(record.checkedAt, input.settings.intervalMs) <= now
+  if (!due) {
     return undefined
   }
   let listing: PullListing

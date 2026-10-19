@@ -426,4 +426,27 @@ describe('watchRepositories', () => {
 
     expect(listed).toEqual(['acme/shop'])
   })
+
+  it('looks for changes on every --once run, even before the interval', async () => {
+    const store = await openHistoryStore(join(dir, `w${++files}.sqlite`))
+    const recent = new Date(START - MIN).toISOString()
+    store.saveRepo({ repo: 'acme/shop', baselineAt: recent, checkedAt: recent })
+    const h = await setup({ listings: () => ({ status: 'ok', pulls: [pull(3)] }) }, store)
+
+    await watchRepositories(input({ once: true }), h.deps)
+
+    expect(h.events).toEqual(['queued #3 a'])
+  })
+
+  it('says --backfill does nothing for a repository already recorded', async () => {
+    const store = await openHistoryStore(join(dir, `w${++files}.sqlite`))
+    store.saveRepo({ repo: 'acme/shop', baselineAt: '2026-10-17T09:00:00.000Z' })
+    const h = await setup({ listings: () => ({ status: 'ok', pulls: [] }) }, store)
+
+    await watchRepositories(input({ once: true, backfill: true }), h.deps)
+
+    expect(h.events).toEqual([
+      'warning acme/shop: --backfill only applies the first time a repository is seen; its open pull requests were recorded as they were on 2026-10-17.',
+    ])
+  })
 })
