@@ -38,8 +38,8 @@ output can change between minor versions.
 
 ### Changed
 
-- A finding that matches a Phada thread someone resolved is no longer posted again on the next
-  review of that pull request; stderr and the JSON publication (`dismissed`) count them. The JSON
+- A finding with the same title as a Phada thread someone resolved in that file is no longer
+  posted again on the next review of that pull request; stderr and the JSON publication (`dismissed`) count them. The JSON
   keeps `schemaVersion: 1`.
 - The context report (`--dry-run` and the `context` block of the JSON) shows the scope and
   severity of each rule, the scope of each instruction file and why one was left out

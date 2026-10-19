@@ -137,8 +137,9 @@ After a new push, a finding that matches an open Phada thread (same file, and th
 line within three of it) is not posted again as a comment: the review body lists it under "Still
 open from previous reviews", so it never disappears from the pull request. When every finding is
 still open, Phada posts only a short note saying there is nothing new and how many findings remain
-open. A finding that matches a Phada thread someone resolved is not posted again either: the
-run says how many findings were dismissed earlier and left out (`dismissed` in the JSON).
+open. A finding with the same title as a Phada thread someone resolved in that file is not posted
+again either (a different finding near it still is): the run says how many findings were
+dismissed earlier and left out (`dismissed` in the JSON).
 
 Text written by the AI cannot mention anyone, link other issues or pull requests (`#12`, `owner/repo#12`), add HTML or forge Phada's own markers, and a body
 longer than GitHub allows is shortened with a visible "(truncated)". Two runs on the same pull
@@ -168,7 +169,7 @@ watch:
 
 ```bash
 phada watch              # in the foreground; Ctrl-C once lets the running review finish
-phada watch --once       # one cycle and exit, e.g. from cron
+phada watch --once       # one cycle and exit, e.g. from cron (always looks for changes)
 phada watch --status     # the queue, reviews in progress, failures, last review per repository
 ```
 
@@ -178,7 +179,8 @@ phada watch --status     # the queue, reviews in progress, failures, last review
   config files, as with `phada review`.
 - The first time the watch sees a repository, the pull requests already open are recorded as
   they are and not reviewed; a new pull request, or a new push on any of them, is.
-  `--backfill` reviews the open ones too.
+  `--backfill` reviews the open ones too; on a repository the watch already recorded it has no
+  effect, and the watch says so.
 - A push is reviewed once the `settle` time has passed since the watch first saw it, so a burst
   of pushes leads to one review of the newest commit. There is one job per pull request and one
   review at a time, at most `maxReviewsPerHour` an hour. When a pull request moves to a newer
