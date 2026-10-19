@@ -1,4 +1,4 @@
-import type { JobRecord, PauseState } from '../store/history-store.js'
+import type { JobRecord, PauseState } from './types.js'
 import { later } from './time.js'
 
 export const RATE_WINDOW_MS = 3_600_000

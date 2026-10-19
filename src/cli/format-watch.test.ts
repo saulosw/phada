@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { pullRequestFixture } from '../../test/support/pull-request.js'
 import type { ReviewRun } from '../app/review-and-publish.js'
-import type { HistoryStatus, JobRecord } from '../store/history-store.js'
+import type { HistoryStatus } from '../store/history-store.js'
+import type { JobRecord } from '../watch/types.js'
 import { formatWatchEvent, formatWatchStatus, formatWatchStatusJson } from './format-watch.js'
 
 const local = (hours: number, minutes: number) => new Date(2026, 9, 18, hours, minutes)

@@ -1,7 +1,5 @@
-import { durationMs } from './schema.js'
+import { durationMs } from './duration.js'
 import type { ConfigLayer } from './types.js'
-
-export { durationMs }
 
 export const DEFAULT_WATCH_INTERVAL_MS = 300_000
 export const DEFAULT_SETTLE_MS = 180_000

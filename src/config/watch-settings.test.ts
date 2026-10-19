@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ConfigLayer } from './types.js'
-import { durationMs, historyEnabled, resolveWatchSettings } from './watch-settings.js'
+import { durationMs } from './duration.js'
+import { historyEnabled, resolveWatchSettings } from './watch-settings.js'
 
 const user = (config: ConfigLayer['config']): ConfigLayer => ({
   kind: 'user',

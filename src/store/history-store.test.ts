@@ -5,7 +5,8 @@ import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { HISTORY_MIGRATIONS } from './history-migrations.js'
 import { HistoryStoreError, HistoryVersionError, openHistoryStore } from './history-store.js'
-import type { JobRecord, RunRecord } from './history-store.js'
+import type { RunRecord } from './history-store.js'
+import type { JobRecord } from '../watch/types.js'
 
 const dir = mkdtempSync(join(tmpdir(), 'phada-history-'))
 afterAll(() => rmSync(dir, { recursive: true, force: true }))

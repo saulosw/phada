@@ -29,12 +29,8 @@ const PUBLISH: Boundary = {
 const WATCH: Boundary = {
   dir: 'watch',
   values: new Set(),
-  types: new Set([
-    '../config/watch-settings.js',
-    '../github/list-pull-requests.js',
-    '../store/history-store.js',
-  ]),
-  expected: ['failures.ts', 'filters.ts', 'next-job.ts', 'plan-cycle.ts', 'time.ts'],
+  types: new Set(['../config/watch-settings.js', '../github/list-pull-requests.js']),
+  expected: ['failures.ts', 'filters.ts', 'next-job.ts', 'plan-cycle.ts', 'time.ts', 'types.ts'],
   globals: ['process', 'console', 'Date.now', 'setTimeout'],
 }
 const CONTEXT: Boundary = {
@@ -103,7 +99,7 @@ const REPO_MAP: Boundary = {
 const STORE: Boundary = {
   dir: 'store',
   values: new Set(['node:fs/promises', 'node:path', 'node:sqlite']),
-  types: new Set(['../repo-map/types.js', '../repo-map/languages.js']),
+  types: new Set(['../repo-map/types.js', '../repo-map/languages.js', '../watch/types.js']),
   expected: ['index-store.ts', 'schema.ts'],
 }
 const GRAPH: Boundary = {
@@ -188,6 +184,7 @@ const APP: Boundary = {
     '../review/types.js',
     '../store/index-store.js',
     '../store/history-store.js',
+    '../watch/types.js',
     '../store/observed-store.js',
   ]),
   expected: [
@@ -318,7 +315,7 @@ describe('watch boundary rules', () => {
     const code = [
       "import type { WatchedRepoSettings } from '../config/watch-settings.js'",
       "import type { OpenPull } from '../github/list-pull-requests.js'",
-      "import type { JobRecord } from '../store/history-store.js'",
+      "import type { JobRecord } from './types.js'",
       "import { later } from './failures.js'",
     ].join('\n')
 

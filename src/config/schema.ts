@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { DURATION, durationMs } from './duration.js'
 
 export const LANGUAGE_TAG = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/
 
@@ -36,14 +37,7 @@ const RelatedRepoSchema = z.union([
   }),
 ])
 
-const DURATION = /^\d+(s|m|h)$/
-const UNIT_MS: Readonly<Record<string, number>> = { s: 1_000, m: 60_000, h: 3_600_000 }
 export const MIN_WATCH_INTERVAL_MS = 60_000
-
-export function durationMs(text: string): number {
-  const unit = text.slice(-1)
-  return Number(text.slice(0, -1)) * (UNIT_MS[unit] ?? 0)
-}
 
 const Duration = z.string().trim().regex(DURATION, 'use a duration like 90s, 5m or 1h')
 

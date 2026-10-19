@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { WatchedRepoSettings } from '../config/watch-settings.js'
 import type { OpenPull } from '../github/list-pull-requests.js'
-import type { JobRecord, PullRecord } from '../store/history-store.js'
+import type { JobRecord, PullRecord } from './types.js'
 import { planCycle } from './plan-cycle.js'
 import type { CycleInput } from './plan-cycle.js'
 

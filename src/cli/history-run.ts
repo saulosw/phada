@@ -3,7 +3,8 @@ import type { PublicationResult, ReviewRun } from '../app/review-and-publish.js'
 import type { RunOutcome } from '../app/watch-repositories.js'
 import { ProviderError } from '../providers/types.js'
 import { InvalidReviewReportError } from '../review/errors.js'
-import type { FailureKind, JobRecord, RunRecord, RunStatus } from '../store/history-store.js'
+import type { RunRecord, RunStatus } from '../store/history-store.js'
+import type { FailureKind, JobRecord } from '../watch/types.js'
 import { errorSummary } from './format-error.js'
 
 export interface RunMeta {

@@ -6,7 +6,6 @@ import type { RunMeta } from './cli/history-run.js'
 import { dataFiles } from './config/data-paths.js'
 import type { ConfigLayer } from './config/types.js'
 import { historyEnabled } from './config/watch-settings.js'
-import type { HistoryStore } from './store/history-store.js'
 import type { PullRequestReview } from './app/review-pull-request.js'
 import { parseCliArgs } from './cli/args.js'
 import type { CliCommand } from './cli/args.js'
@@ -30,71 +29,20 @@ export { assertProviderChoice } from './cli/provider-choice.js'
 export type { ProviderOptions } from './cli/provider-choice.js'
 import type { Choice } from './cli/review-wiring.js'
 import { toTerminalText } from './cli/terminal-text.js'
-import type { TextOutput } from './cli/progress.js'
-import type { LocalFileSystem } from './config/local-files.js'
 import { resolveProvider, userMcpServers } from './config/merge-config.js'
 import { loadUserLayers } from './config/user-config.js'
-import type { CreatedReview, CreateReviewOptions } from './github/create-review.js'
-import type {
-  FetchReviewStateOptions,
-  PullRequestReviewState,
-} from './github/pull-request-reviews.js'
 import { formatPullRequestRef } from './github/pull-request-ref.js'
-import type { FetchPullRequestOptions, PullRequest } from './github/pull-request.js'
-import type { RepositoryFilesOptions, RepositoryTree } from './github/repository-files.js'
-import type { BranchHead, RepositoryInfo } from './github/repository.js'
-import type { PullListing } from './github/list-pull-requests.js'
+import type { PullRequest } from './github/pull-request.js'
 import { runWatch } from './cli/watch-command.js'
-import type { Extractor } from './repo-map/extract.js'
-import type { GitMirror, GitMirrorOptions } from './repository/git-mirror.js'
-import type { IndexStore } from './store/index-store.js'
-import type { ObservedStore } from './store/observed-store.js'
+import type { WatchCommandDeps } from './cli/watch-command.js'
 import { ClaudeCliProvider } from './providers/claude.js'
 import { CodexCliProvider } from './providers/codex.js'
 import { OllamaProvider } from './providers/ollama.js'
 import type { ReviewProvider } from './providers/types.js'
 
-export interface MainDeps {
-  env: NodeJS.ProcessEnv
-  version: string
+export interface MainDeps extends WatchCommandDeps {
   cwd: string
-  home: string
-  files: LocalFileSystem
-  stdout: TextOutput
-  stderr: TextOutput
-  fetchPullRequest: (options: FetchPullRequestOptions) => Promise<PullRequest>
-  fetchReviewState: (options: FetchReviewStateOptions) => Promise<PullRequestReviewState>
-  createReview: (options: CreateReviewOptions) => Promise<CreatedReview>
-  fetchRepositoryTree: (
-    options: RepositoryFilesOptions & { sha: string },
-  ) => Promise<RepositoryTree>
-  fetchRepositoryFile: (
-    options: RepositoryFilesOptions & { path: string; ref: string },
-  ) => Promise<string | null>
-  fetchRepository: (options: RepositoryFilesOptions) => Promise<RepositoryInfo>
-  openMirror: (options: GitMirrorOptions) => Promise<GitMirror>
-  openIndexStore: (path: string, version: string) => Promise<IndexStore>
-  openObservedStore: (path: string) => Promise<ObservedStore>
-  createExtractor: () => Extractor
   pathSize: (path: string) => Promise<number>
-  createProvider: (name: string, options: ProviderOptions) => ReviewProvider
-  openHistoryStore: (path: string) => Promise<HistoryStore>
-  listOpenPullRequests: (
-    options: RepositoryFilesOptions & { etag?: string },
-  ) => Promise<PullListing>
-  fetchPullRequestHead: (
-    options: FetchPullRequestOptions,
-  ) => Promise<{ state: 'open' | 'closed'; draft: boolean; headSha: string }>
-  fetchBranchHead: (
-    options: RepositoryFilesOptions & { branch: string; etag?: string },
-  ) => Promise<BranchHead>
-  withLock: <T>(path: string, work: () => Promise<T>) => Promise<T>
-  lockHolder: (path: string) => Promise<number | undefined>
-  onSignal: (handler: () => void) => void
-  killDetachedChildren: () => void
-  abort: (code: number) => void
-  sleep: (ms: number, signal: AbortSignal) => Promise<void>
-  clock: () => Date
 }
 
 export function createProvider(name: string, options: ProviderOptions): ReviewProvider {

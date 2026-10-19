@@ -1,5 +1,6 @@
 import type { ReviewRun } from '../app/review-and-publish.js'
-import type { HistoryStatus, JobRecord, PauseState, RunRecord } from '../store/history-store.js'
+import type { HistoryStatus, RunRecord } from '../store/history-store.js'
+import type { JobRecord, PauseState } from '../watch/types.js'
 import { errorMessage } from '../app/error-message.js'
 import { formatSkipMessage } from './format-publication.js'
 import { shortSha } from './review-text.js'

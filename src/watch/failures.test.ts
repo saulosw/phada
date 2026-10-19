@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { JobRecord } from '../store/history-store.js'
+import type { JobRecord } from './types.js'
 import { afterFailure } from './failures.js'
 
 const NOW = '2026-10-18T12:00:00.000Z'

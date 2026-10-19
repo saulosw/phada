@@ -1,6 +1,6 @@
 import type { WatchedRepoSettings } from '../config/watch-settings.js'
 import type { OpenPull } from '../github/list-pull-requests.js'
-import type { JobRecord, PullRecord } from '../store/history-store.js'
+import type { JobRecord, PullRecord } from './types.js'
 import { later } from './time.js'
 import { eligibility } from './filters.js'
 

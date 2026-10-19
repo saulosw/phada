@@ -1,5 +1,5 @@
 import type { WatchEvents } from '../app/watch-repositories.js'
-import type { JobRecord } from '../store/history-store.js'
+import type { JobRecord } from '../watch/types.js'
 
 export const ABORTED_EXIT_CODE = 130
 

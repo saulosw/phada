@@ -1,4 +1,4 @@
-import type { FailureKind, JobRecord, PauseState } from '../store/history-store.js'
+import type { FailureKind, JobRecord, PauseState } from './types.js'
 import { later } from './time.js'
 
 export const MAX_ATTEMPTS = 3

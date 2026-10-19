@@ -15,11 +15,10 @@ import {
 } from './history-columns.js'
 import type { Statement } from './history-columns.js'
 import { isNotADatabase } from './index-store.js'
+import type { FailureKind, JobRecord, JobStatus, PauseState, PullRecord } from '../watch/types.js'
 
-export type JobStatus = 'queued' | 'running' | 'done' | 'failed' | 'skipped' | 'superseded'
 export type RunStatus =
   'published' | 'dry-run' | 'not-published' | 'superseded' | 'skipped' | 'nothing' | 'failed'
-export type FailureKind = 'transient' | 'usage-limit' | 'rate-limit' | 'definitive' | 'fatal'
 
 export interface RepoRecord {
   repo: string
@@ -29,32 +28,6 @@ export interface RepoRecord {
   branchEtag?: string
   branchCheckedAt?: string
   indexedSha?: string
-}
-
-export interface PullRecord {
-  repo: string
-  number: number
-  headSha: string
-  headSeenAt: string
-  baselineSha?: string
-  eligible: boolean
-  state: 'open' | 'gone'
-}
-
-export interface JobRecord {
-  id: number
-  repo: string
-  number: number
-  headSha: string
-  status: JobStatus
-  attempts: number
-  notBefore: string
-  reason?: string
-  errorKind?: FailureKind
-  error?: string
-  createdAt: string
-  startedAt?: string
-  finishedAt?: string
 }
 
 export interface RunRecord {
@@ -77,12 +50,6 @@ export interface RunRecord {
   errorKind?: FailureKind
   error?: string
   resultJson?: string
-}
-
-export interface PauseState {
-  until: string
-  reason: string
-  streak: number
 }
 
 export interface HistoryStatus {

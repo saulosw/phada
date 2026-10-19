@@ -12,9 +12,19 @@ import { historyEnabled, resolveWatchSettings } from '../config/watch-settings.j
 import type { WatchSettings } from '../config/watch-settings.js'
 import { splitRepoName } from '../github/pull-request-ref.js'
 import type { ConfigLayer } from '../config/types.js'
-import type { MainDeps } from '../main.js'
+import type { CreatedReview, CreateReviewOptions } from '../github/create-review.js'
+import type { PullListing } from '../github/list-pull-requests.js'
+import type {
+  FetchReviewStateOptions,
+  PullRequestReviewState,
+} from '../github/pull-request-reviews.js'
+import type { FetchPullRequestOptions, PullRequest } from '../github/pull-request.js'
+import type { BranchHead } from '../github/repository.js'
+import type { RepositoryFilesOptions } from '../github/repository-files.js'
+import type { TextOutput } from './progress.js'
 import { MirrorLockTimeoutError } from '../repository/mirror-lock.js'
-import type { HistoryStore, JobRecord } from '../store/history-store.js'
+import type { HistoryStore } from '../store/history-store.js'
+import type { JobRecord } from '../watch/types.js'
 import type { IndexFormat } from './args.js'
 import { classifyFailure } from './classify-failure.js'
 import { MissingGitHubTokenError, UsageError, WatchRunningError } from './errors.js'
@@ -23,13 +33,37 @@ import { formatWatchEvent } from './format-watch.js'
 import { watchRun } from './history-run.js'
 import { assertProviderChoice } from './provider-choice.js'
 import { pullRequestReviewDeps, renderReview, reviewRunJson } from './review-wiring.js'
-import type { Choice } from './review-wiring.js'
+import type { Choice, ReviewWiringDeps } from './review-wiring.js'
 import { printWatchEvents } from './watch-events.js'
 import { watchStatusText } from './watch-status.js'
 import { ABORTED_EXIT_CODE, createStopControl, trackRunningJob } from './watch-stop.js'
 import type { StopControl } from './watch-stop.js'
 
 export { ABORTED_EXIT_CODE }
+
+export interface WatchCommandDeps extends ReviewWiringDeps {
+  stdout: TextOutput
+  fetchPullRequest: (options: FetchPullRequestOptions) => Promise<PullRequest>
+  fetchReviewState: (options: FetchReviewStateOptions) => Promise<PullRequestReviewState>
+  createReview: (options: CreateReviewOptions) => Promise<CreatedReview>
+  openHistoryStore: (path: string) => Promise<HistoryStore>
+  listOpenPullRequests: (
+    options: RepositoryFilesOptions & { etag?: string },
+  ) => Promise<PullListing>
+  fetchPullRequestHead: (
+    options: FetchPullRequestOptions,
+  ) => Promise<{ state: 'open' | 'closed'; draft: boolean; headSha: string }>
+  fetchBranchHead: (
+    options: RepositoryFilesOptions & { branch: string; etag?: string },
+  ) => Promise<BranchHead>
+  withLock: <T>(path: string, work: () => Promise<T>) => Promise<T>
+  lockHolder: (path: string) => Promise<number | undefined>
+  onSignal: (handler: () => void) => void
+  killDetachedChildren: () => void
+  abort: (code: number) => void
+  sleep: (ms: number, signal: AbortSignal) => Promise<void>
+  clock: () => Date
+}
 
 export interface WatchCommand {
   once: boolean
@@ -39,7 +73,7 @@ export interface WatchCommand {
   debug: boolean
 }
 
-export async function runWatch(command: WatchCommand, deps: MainDeps): Promise<number> {
+export async function runWatch(command: WatchCommand, deps: WatchCommandDeps): Promise<number> {
   const layers = await loadTopLevelUserLayers(deps)
   const files = dataFiles(deps.env, deps.home)
   if (command.status) {
@@ -92,7 +126,7 @@ async function watchUnderLock(
   command: WatchCommand,
   settings: WatchSettings,
   token: string,
-  deps: MainDeps,
+  deps: WatchCommandDeps,
 ): Promise<number> {
   const history = await deps.openHistoryStore(dataFiles(deps.env, deps.home).history)
   const stop = createStopControl({
@@ -125,7 +159,7 @@ function watchDeps(
   token: string,
   history: HistoryStore,
   stop: StopControl,
-  deps: MainDeps,
+  deps: WatchCommandDeps,
 ): WatchDeps {
   const choices = new Map<number, Choice>()
   const withEtag = (etag: string | undefined) => (etag === undefined ? {} : { etag })
@@ -177,7 +211,7 @@ async function refreshDefaultBranch(
   repo: string,
   budgetMs: number,
   token: string,
-  deps: MainDeps,
+  deps: WatchCommandDeps,
 ): Promise<'complete' | 'partial'> {
   const target = splitRepoName(repo)
   const cache = repositoryCache(deps.env, deps.home, target.owner, target.repo)
@@ -202,7 +236,7 @@ interface JobSetup {
   mcp: string[]
 }
 
-async function jobSetup(repo: string, deps: MainDeps): Promise<JobSetup> {
+async function jobSetup(repo: string, deps: WatchCommandDeps): Promise<JobSetup> {
   const userLayers = await loadUserLayers({ ...deps, ...splitRepoName(repo) })
   const choice = resolveProvider({}, userLayers)
   const mcp = userMcpServers(userLayers)
@@ -219,7 +253,7 @@ async function runJob(
   { userLayers, choice, mcp }: JobSetup,
   settings: WatchSettings,
   token: string,
-  deps: MainDeps,
+  deps: WatchCommandDeps,
 ): Promise<ReviewRun> {
   const target = splitRepoName(job.repo)
   const repo = settings.repos.find((entry) => entry.repo === job.repo)

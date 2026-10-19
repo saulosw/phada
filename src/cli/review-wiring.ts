@@ -6,7 +6,17 @@ import type { PullRequestRef } from '../github/pull-request-ref.js'
 import type { PullRequest } from '../github/pull-request.js'
 import { RepositoryAccessError } from '../github/repository.js'
 import type { ReviewPass } from '../investigation/tools/tool-log.js'
-import type { MainDeps } from '../main.js'
+import type { LocalFileSystem } from '../config/local-files.js'
+import type { RepositoryInfo } from '../github/repository.js'
+import type { RepositoryFilesOptions } from '../github/repository-files.js'
+import type { ReviewProvider } from '../providers/types.js'
+import type { Extractor } from '../repo-map/extract.js'
+import type { GitMirror, GitMirrorOptions } from '../repository/git-mirror.js'
+import type { IndexStore } from '../store/index-store.js'
+import type { ObservedStore } from '../store/observed-store.js'
+import type { ContextReaders } from './context-sources.js'
+import type { TextOutput } from './progress.js'
+import type { ProviderOptions } from './provider-choice.js'
 import type { SkipReason } from '../publish/types.js'
 import type { PublicationPlan } from '../publish/types.js'
 import type { ReviewResult } from '../review/types.js'
@@ -21,6 +31,19 @@ import { formatRelatedLine } from './format-related.js'
 import { messagesFor } from './i18n/messages.js'
 import { indexProgress, withProgress } from './progress.js'
 import { toTerminalText } from './terminal-text.js'
+
+export interface ReviewWiringDeps extends ContextReaders {
+  env: NodeJS.ProcessEnv
+  version: string
+  files: LocalFileSystem
+  stderr: TextOutput
+  fetchRepository: (options: RepositoryFilesOptions) => Promise<RepositoryInfo>
+  openMirror: (options: GitMirrorOptions) => Promise<GitMirror>
+  openIndexStore: (path: string, version: string) => Promise<IndexStore>
+  openObservedStore: (path: string) => Promise<ObservedStore>
+  createExtractor: () => Extractor
+  createProvider: (name: string, options: ProviderOptions) => ReviewProvider
+}
 
 export type PublishTarget = PullRequestRef & { token: string }
 export type Choice = { provider: string; model?: string }
@@ -38,7 +61,7 @@ export const renderReview = {
 }
 
 export function pullRequestReviewDeps(
-  deps: MainDeps,
+  deps: ReviewWiringDeps,
   repository: PublishTarget,
   choice: Choice & { detached?: boolean },
   pullRequest: PullRequest,
