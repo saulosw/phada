@@ -6,12 +6,8 @@ import {
 } from '../github/errors.js'
 import { ProviderError } from '../providers/types.js'
 import { MirrorLockTimeoutError } from '../repository/mirror-lock.js'
+import type { Failure } from '../app/watch-repositories.js'
 import type { FailureKind } from '../store/history-store.js'
-
-export interface Failure {
-  kind: FailureKind
-  resetAt?: string
-}
 
 const PROVIDER_KINDS: Readonly<Record<ProviderError['reason'], FailureKind>> = {
   'usage-limit': 'usage-limit',

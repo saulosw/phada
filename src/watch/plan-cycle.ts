@@ -1,7 +1,7 @@
 import type { WatchedRepoSettings } from '../config/watch-settings.js'
 import type { OpenPull } from '../github/list-pull-requests.js'
 import type { JobRecord, PullRecord } from '../store/history-store.js'
-import { later } from './failures.js'
+import { later } from './time.js'
 import { eligibility } from './filters.js'
 
 export interface CycleInput {
@@ -96,5 +96,8 @@ function record(repo: string, pull: OpenPull, headSeenAt: string, eligible: bool
 
 function blocks(job: JobRecord): boolean {
   if (job.status === 'superseded') return false
-  return !(job.status === 'skipped' && job.reason === 'closed')
+  return !(
+    job.status === 'skipped' &&
+    (job.reason === 'closed' || job.reason === 'closed-or-draft')
+  )
 }

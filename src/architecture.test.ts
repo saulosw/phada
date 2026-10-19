@@ -34,7 +34,7 @@ const WATCH: Boundary = {
     '../github/list-pull-requests.js',
     '../store/history-store.js',
   ]),
-  expected: ['failures.ts', 'filters.ts', 'next-job.ts', 'plan-cycle.ts'],
+  expected: ['failures.ts', 'filters.ts', 'next-job.ts', 'plan-cycle.ts', 'time.ts'],
   globals: ['process', 'console', 'Date.now', 'setTimeout'],
 }
 const CONTEXT: Boundary = {
@@ -159,6 +159,7 @@ const APP: Boundary = {
     '../watch/failures.js',
     '../watch/next-job.js',
     '../watch/plan-cycle.js',
+    '../watch/time.js',
   ]),
   types: new Set([
     '../config/types.js',

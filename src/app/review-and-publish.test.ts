@@ -193,10 +193,10 @@ describe('reviewAndPublish', () => {
   })
 
   it('does not publish a review whose pull request was closed meanwhile', async () => {
-    const { deps, calls } = setup({ checkHead: async () => 'closed' })
+    const { deps, calls } = setup({ checkHead: async () => 'closed-or-draft' })
 
     expect(await reviewAndPublish(INPUT, deps)).toMatchObject({
-      publication: { status: 'closed' },
+      publication: { status: 'closed-or-draft' },
     })
     expect(calls.posts).toEqual([])
   })
@@ -240,7 +240,7 @@ describe('reviewAndPublish', () => {
 
     expect(await reviewAndPublish({ ...INPUT, mode: 'watch' }, deps)).toMatchObject({
       status: 'skipped',
-      reason: { kind: 'closed' },
+      reason: { kind: 'closed-or-draft' },
     })
     expect(calls.reviews).toBe(0)
   })

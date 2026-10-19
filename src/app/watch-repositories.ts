@@ -2,7 +2,8 @@ import type { WatchedRepoSettings, WatchSettings } from '../config/watch-setting
 import type { PullListing } from '../github/list-pull-requests.js'
 import type { BranchHead } from '../github/repository.js'
 import type { FailureKind, HistoryStore, JobRecord, PauseState } from '../store/history-store.js'
-import { afterFailure, later, MAX_ATTEMPTS } from '../watch/failures.js'
+import { afterFailure, MAX_ATTEMPTS, rateLimitPause } from '../watch/failures.js'
+import { later } from '../watch/time.js'
 import { pickNext, RATE_WINDOW_MS } from '../watch/next-job.js'
 import { planCycle } from '../watch/plan-cycle.js'
 import type { CycleAction } from '../watch/plan-cycle.js'
@@ -10,6 +11,11 @@ import { errorMessage } from './error-message.js'
 import type { ReviewRun } from './review-and-publish.js'
 
 export const IDLE_INDEX_BUDGET_MS = 60_000
+
+export interface Failure {
+  kind: FailureKind
+  resetAt?: string
+}
 const MIN_SLEEP_MS = 1_000
 
 export interface WatchInput {
@@ -46,7 +52,7 @@ export interface WatchDeps {
   runJob(job: JobRecord): Promise<ReviewRun>
   recordRun(job: JobRecord, outcome: RunOutcome, startedAt: string): void
   refreshIndex(repo: string, budgetMs: number): Promise<'complete' | 'partial'>
-  classify(error: unknown): { kind: FailureKind; resetAt?: string }
+  classify(error: unknown): Failure
   now(): Date
   sleep(ms: number): Promise<void>
   stopRequested(): boolean
@@ -128,7 +134,7 @@ async function discover(
   } catch (error) {
     const { kind, resetAt } = deps.classify(error)
     if (kind === 'fatal') return { reason: 'fatal', error }
-    if (kind === 'rate-limit') pauseFor(deps, kind, resetAt)
+    if (kind === 'rate-limit') pauseQueue(deps, rateLimitPause(now, resetAt))
     deps.events.warning(`${repo.repo}: ${errorMessage(error)}`)
     history.saveRepo({ ...record, checkedAt: now })
     return undefined
@@ -198,7 +204,9 @@ async function runJob(job: JobRecord, deps: WatchDeps): Promise<WatchExit | unde
   try {
     run = await deps.runJob(running)
   } catch (error) {
-    return fail(running, error, deps, startedAt, true)
+    const failure = deps.classify(error)
+    deps.recordRun(running, { error, kind: failure.kind }, startedAt)
+    return fail(running, error, failure, deps)
   }
   deps.recordRun(running, { run }, startedAt)
   const finishedAt = iso(deps)
@@ -206,15 +214,15 @@ async function runJob(job: JobRecord, deps: WatchDeps): Promise<WatchExit | unde
   if (run.status === 'skipped') {
     history.updateJob(job.id, { status: 'skipped', reason: run.reason.kind, finishedAt })
   } else if (run.publication?.status === 'failed') {
-    return fail(running, run.publication.error, deps, startedAt, false)
+    return fail(running, run.publication.error, deps.classify(run.publication.error), deps)
   } else if (run.publication?.status === 'superseded') {
     history.updateJob(job.id, { status: 'superseded', finishedAt })
     const pull = history.pulls(job.repo).find((stored) => stored.number === job.number)
     if (pull !== undefined) {
       history.savePull({ ...pull, headSha: run.publication.headSha, headSeenAt: finishedAt })
     }
-  } else if (run.publication?.status === 'closed') {
-    history.updateJob(job.id, { status: 'skipped', reason: 'closed', finishedAt })
+  } else if (run.publication?.status === 'closed-or-draft') {
+    history.updateJob(job.id, { status: 'skipped', reason: 'closed-or-draft', finishedAt })
   } else {
     history.updateJob(job.id, { status: 'done', finishedAt })
   }
@@ -225,13 +233,10 @@ async function runJob(job: JobRecord, deps: WatchDeps): Promise<WatchExit | unde
 function fail(
   job: JobRecord,
   error: unknown,
+  { kind, resetAt }: Failure,
   deps: WatchDeps,
-  startedAt: string,
-  record: boolean,
 ): WatchExit | undefined {
   const { history, events } = deps
-  const { kind, resetAt } = deps.classify(error)
-  if (record) deps.recordRun(job, { error, kind }, startedAt)
   const pause = history.pause()
   const outcome = afterFailure({
     job,
@@ -241,10 +246,7 @@ function fail(
     ...(resetAt === undefined ? {} : { resetAt }),
   })
   history.updateJob(job.id, { ...outcome.job, error: errorMessage(error) })
-  if (outcome.pause !== undefined) {
-    history.setPause(outcome.pause)
-    events.paused(outcome.pause)
-  }
+  if (outcome.pause !== undefined) pauseQueue(deps, outcome.pause)
   if (outcome.stop) return { reason: 'fatal', error }
   if (outcome.job.status === 'failed') events.failed(job, error)
   else if (kind === 'transient' && outcome.job.notBefore !== undefined) {
@@ -253,14 +255,7 @@ function fail(
   return undefined
 }
 
-function pauseFor(deps: WatchDeps, kind: 'rate-limit', resetAt: string | undefined): void {
-  const pause = afterFailure({
-    job: {} as JobRecord,
-    kind,
-    now: iso(deps),
-    ...(resetAt === undefined ? {} : { resetAt }),
-  }).pause
-  if (pause === undefined) return
+function pauseQueue(deps: WatchDeps, pause: PauseState): void {
   deps.history.setPause(pause)
   deps.events.paused(pause)
 }

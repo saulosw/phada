@@ -191,7 +191,10 @@ describe('planCycle', () => {
   })
 
   it('queues again a commit whose job was skipped because the pull request was closed or a draft', () => {
-    const jobs = [job(7, 3, { status: 'skipped', reason: 'closed' })]
+    const jobs = [
+      job(7, 3, { status: 'skipped', reason: 'closed' }),
+      job(8, 3, { status: 'skipped', reason: 'closed-or-draft' }),
+    ]
 
     expect(planCycle(input({ pulls: [open(3)], stored: [stored(3)], jobs }))).toEqual([
       queued(3, A, at(-57)),

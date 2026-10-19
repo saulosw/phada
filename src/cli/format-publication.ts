@@ -3,7 +3,7 @@ import { shortSha } from './review-text.js'
 import { formatCount } from './units.js'
 
 export function formatSkipMessage(headSha: string, reason: SkipReason): string {
-  if (reason.kind === 'closed') {
+  if (reason.kind === 'closed-or-draft') {
     return `The pull request is closed or a draft now: skipping ${shortSha(headSha)}.`
   }
   if (reason.kind === 'already-reviewed') {

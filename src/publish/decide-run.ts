@@ -6,12 +6,12 @@ export interface RunOptions {
   headSha: string
   force: boolean
   dryRun: boolean
-  once?: boolean
+  skipReviewedCommits?: boolean
 }
 
 export function decideRun(state: PullRequestReviewState, options: RunOptions): RunDecision {
   if (options.force) return { action: 'run' }
-  const reason = options.once
+  const reason = options.skipReviewedCommits
     ? onceReason(state, options.headSha)
     : skipReason(state, options.headSha)
   if (reason === undefined) return { action: 'run' }

@@ -129,7 +129,9 @@ describe('decideRun', () => {
   it('skips any commit Phada already reviewed when asked to review it once', () => {
     const resolved = [thread({ isResolved: true })]
 
-    expect(decideRun(state([review(HEAD, 1)], resolved), { ...RUN, once: true })).toEqual({
+    expect(
+      decideRun(state([review(HEAD, 1)], resolved), { ...RUN, skipReviewedCommits: true }),
+    ).toEqual({
       action: 'skip',
       reason: { kind: 'already-reviewed' },
     })
@@ -137,7 +139,9 @@ describe('decideRun', () => {
   })
 
   it('reviews once a commit whose only marked review was written by someone else', () => {
-    expect(decideRun(state([review(HEAD, 0, 'mallory')]), { ...RUN, once: true })).toEqual({
+    expect(
+      decideRun(state([review(HEAD, 0, 'mallory')]), { ...RUN, skipReviewedCommits: true }),
+    ).toEqual({
       action: 'run',
     })
   })

@@ -12,7 +12,6 @@ create table watched_repo (
   pulls_etag text,
   baseline_at text,
   checked_at text,
-  default_branch text,
   branch_etag text,
   branch_checked_at text,
   indexed_sha text

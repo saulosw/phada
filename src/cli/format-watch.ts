@@ -71,7 +71,7 @@ function finishedText(job: JobRecord, run: ReviewRun): string {
       return `Reviewed ${ref(job)}; kept in the history, not published.`
     case 'superseded':
       return `${ref(job)} moved to ${shortSha(publication.headSha)} during the review; not published.`
-    case 'closed':
+    case 'closed-or-draft':
       return `${ref(job)} was closed during the review; not published.`
     case 'dry-run':
       return `Reviewed ${ref(job)}; nothing was posted.`

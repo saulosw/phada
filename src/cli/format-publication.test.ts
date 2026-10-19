@@ -50,8 +50,8 @@ describe('dismissed findings and already-reviewed', () => {
   })
 
   it('says a closed or draft pull request is skipped', () => {
-    expect(formatSkipMessage('a1b2c3d4e5f60718293a4b5c6d7e8f9012345678', { kind: 'closed' })).toBe(
-      'The pull request is closed or a draft now: skipping a1b2c3d.',
-    )
+    expect(
+      formatSkipMessage('a1b2c3d4e5f60718293a4b5c6d7e8f9012345678', { kind: 'closed-or-draft' }),
+    ).toBe('The pull request is closed or a draft now: skipping a1b2c3d.')
   })
 })

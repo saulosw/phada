@@ -155,7 +155,7 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
     })
 
     deps.stderr.write(`Fetching ${formatPullRequestRef(command.ref)}…\n`)
-    const startedAt = new Date().toISOString()
+    const startedAt = deps.clock().toISOString()
     const reviewRun = await reviewAndPublish(
       {
         ref: command.ref,
@@ -177,7 +177,7 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
     await saveRun(deps, userLayers, reviewRun, {
       source: 'manual',
       startedAt,
-      finishedAt: new Date().toISOString(),
+      finishedAt: deps.clock().toISOString(),
       provider: choice.provider,
       ...(choice.model === undefined ? {} : { model: choice.model }),
     })

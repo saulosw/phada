@@ -26,7 +26,6 @@ export interface RepoRecord {
   pullsEtag?: string
   baselineAt?: string
   checkedAt?: string
-  defaultBranch?: string
   branchEtag?: string
   branchCheckedAt?: string
   indexedSha?: string

@@ -26,7 +26,7 @@ import { pullRequestReviewDeps, renderReview, reviewRunJson } from './review-wir
 import type { Choice } from './review-wiring.js'
 import { printWatchEvents } from './watch-events.js'
 import { watchStatusText } from './watch-status.js'
-import { ABORTED_EXIT_CODE, createStopControl } from './watch-stop.js'
+import { ABORTED_EXIT_CODE, createStopControl, trackRunningJob } from './watch-stop.js'
 import type { StopControl } from './watch-stop.js'
 
 export { ABORTED_EXIT_CODE }
@@ -166,9 +166,9 @@ function watchDeps(
     now: () => deps.clock(),
     sleep: (ms) => deps.sleep(ms, stop.signal),
     stopRequested: () => stop.stopRequested(),
-    events: printWatchEvents(
-      (event) => deps.stderr.write(`${formatWatchEvent(event, deps.clock())}\n`),
-      stop.track,
+    events: trackRunningJob(
+      printWatchEvents((event) => deps.stderr.write(`${formatWatchEvent(event, deps.clock())}\n`)),
+      stop,
     ),
   }
 }
@@ -251,7 +251,7 @@ async function runJob(
         }),
       checkHead: async (pullRequest) => {
         const head = await deps.fetchPullRequestHead({ ...ref, token })
-        if (head.state === 'closed' || head.draft) return 'closed'
+        if (head.state === 'closed' || head.draft) return 'closed-or-draft'
         return head.headSha === pullRequest.headSha ? 'current' : { superseded: head.headSha }
       },
       events: { fetched: () => undefined, reviewed: () => undefined, publishing: () => undefined },

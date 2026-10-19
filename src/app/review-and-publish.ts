@@ -24,7 +24,7 @@ export type PublicationResult =
   | { status: 'dry-run' }
   | { status: 'not-published' }
   | { status: 'superseded'; headSha: string }
-  | { status: 'closed' }
+  | { status: 'closed-or-draft' }
   | { status: 'failed'; error: unknown }
 
 export type ReviewRun =
@@ -46,7 +46,7 @@ export type ReviewRun =
       wouldSkip?: SkipReason
     }
 
-export type HeadCheck = 'current' | 'closed' | { superseded: string }
+export type HeadCheck = 'current' | 'closed-or-draft' | { superseded: string }
 
 export interface ReviewAndPublishInput {
   ref: PullRequestRef
@@ -85,14 +85,14 @@ export async function reviewAndPublish(
   const pullRequest = await deps.fetchPullRequest(input.ref)
   deps.events.fetched(pullRequest)
   if (input.mode === 'watch' && (pullRequest.state === 'closed' || pullRequest.draft)) {
-    return { status: 'skipped', pullRequest, reason: { kind: 'closed' } }
+    return { status: 'skipped', pullRequest, reason: { kind: 'closed-or-draft' } }
   }
   const state = await deps.fetchReviewState(input.ref)
   const decision = decideRun(state, {
     headSha: pullRequest.headSha,
     force: input.force,
     dryRun: input.dryRun,
-    once: input.mode === 'watch',
+    skipReviewedCommits: input.mode === 'watch',
   })
   if (decision.action === 'skip') {
     return { status: 'skipped', pullRequest, reason: decision.reason }
@@ -152,7 +152,7 @@ async function publish(
   if (!input.publish) return { status: 'not-published' }
   try {
     const head = (await deps.checkHead?.(pullRequest)) ?? 'current'
-    if (head === 'closed') return { status: 'closed' }
+    if (head === 'closed-or-draft') return { status: 'closed-or-draft' }
     if (head !== 'current') return { status: 'superseded', headSha: head.superseded }
     deps.events.publishing()
     const created = await deps.createReview(pullRequest, rendered)

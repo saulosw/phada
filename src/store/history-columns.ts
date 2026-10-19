@@ -21,7 +21,6 @@ export const REPO_TABLE: HistoryTable = {
     pullsEtag: 'pulls_etag',
     baselineAt: 'baseline_at',
     checkedAt: 'checked_at',
-    defaultBranch: 'default_branch',
     branchEtag: 'branch_etag',
     branchCheckedAt: 'branch_checked_at',
     indexedSha: 'indexed_sha',

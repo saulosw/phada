@@ -60,8 +60,8 @@ function publicationFields(
       return { status: 'published', url: publication.url }
     case 'failed':
       return { status: 'failed', error: errorSummary(publication.error) }
-    case 'closed':
-      return { status: 'skipped', reason: 'closed' }
+    case 'closed-or-draft':
+      return { status: 'skipped', reason: 'closed-or-draft' }
     default:
       return { status: publication.status }
   }

@@ -1,4 +1,5 @@
 import type { FailureKind, JobRecord, PauseState } from '../store/history-store.js'
+import { later } from './time.js'
 
 export const MAX_ATTEMPTS = 3
 export const RETRY_DELAYS_MS: readonly number[] = [60_000, 300_000]
@@ -57,6 +58,10 @@ export function afterFailure({ job, kind, now, pause, resetAt }: FailureInput): 
   }
 }
 
-export function later(iso: string, ms: number): string {
-  return new Date(Date.parse(iso) + ms).toISOString()
+export function rateLimitPause(now: string, resetAt?: string): PauseState {
+  const until =
+    resetAt === undefined
+      ? later(now, RATE_LIMIT_FALLBACK_MS)
+      : later(resetAt, RATE_LIMIT_MARGIN_MS)
+  return { until, reason: 'rate-limit', streak: 1 }
 }
