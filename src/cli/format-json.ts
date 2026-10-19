@@ -22,6 +22,9 @@ export type Publication =
       wouldSkip?: SkipReason
     }
   | { status: 'skipped'; reason: SkipReason }
+  | { status: 'not-published' }
+  | { status: 'superseded'; headSha: string }
+  | { status: 'closed' }
 
 export function formatReviewJson(
   pr: PullRequest,
@@ -127,6 +130,11 @@ function publicationJson(publication: Publication) {
       }
     case 'skipped':
       return { status: publication.status, ...skipJson(publication.reason) }
+    case 'superseded':
+      return { status: publication.status, headSha: publication.headSha }
+    case 'not-published':
+    case 'closed':
+      return { status: publication.status }
   }
 }
 

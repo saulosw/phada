@@ -27,6 +27,9 @@ import type { GitMirror, GitMirrorOptions } from './repository/git-mirror.js'
 import { createExtractor } from './repo-map/extract.js'
 import { openIndexStore } from './store/index-store.js'
 import { openObservedStore } from './store/observed-store.js'
+import { HistoryVersionError, openHistoryStore } from './store/history-store.js'
+import type { HistoryStore } from './store/history-store.js'
+import { DatabaseSync } from 'node:sqlite'
 import { FINDING_MARKER, reviewMarker } from './publish/markers.js'
 import { createProvider, run } from './main.js'
 import type { MainDeps, ProviderOptions } from './main.js'
@@ -66,6 +69,7 @@ interface Harness {
   closed: () => number
   mirrors: GitMirrorOptions[]
   storePaths: string[]
+  historyFiles: string[]
 }
 
 const storeDir = mkdtempSync(join(tmpdir(), 'phada-main-index-'))
@@ -126,12 +130,14 @@ function harness(
     tree?: () => Promise<RepositoryTree>
     openMirror?: (options: GitMirrorOptions) => Promise<GitMirror>
     fetchRepository?: MainDeps['fetchRepository']
+    openHistoryStore?: MainDeps['openHistoryStore']
   } = {},
 ): Harness {
   const checkouts: (GitMirrorOptions & { sha: string; keepAs: string })[] = []
   const observedPaths: string[] = []
   const mirrors: GitMirrorOptions[] = []
   const storePaths: string[] = []
+  const historyFiles: string[] = []
   let closed = 0
   const files = overrides.files ?? memoryFiles()
   const repoFiles = overrides.repoFiles ?? {}
@@ -217,6 +223,13 @@ function harness(
       storeCount += 1
       return openObservedStore(join(storeDir, `observed-${storeCount}.sqlite`))
     },
+    openHistoryStore: (path) => {
+      if (overrides.openHistoryStore !== undefined) return overrides.openHistoryStore(path)
+      storeCount += 1
+      const file = join(storeDir, `history-${storeCount}.sqlite`)
+      historyFiles.push(`${path} → ${file}`)
+      return openHistoryStore(file)
+    },
     createExtractor: () => extractor,
     pathSize: async () => 2048,
     createProvider: (name, options) => {
@@ -245,6 +258,7 @@ function harness(
     closed: () => closed,
     mirrors,
     storePaths,
+    historyFiles,
     fetches,
     stateFetches,
     posts,
@@ -1432,5 +1446,103 @@ describe('run rules', () => {
 
     expect(await run(['rules', 'acme/shop'], h.deps)).toBe(1)
     expect(h.stderr()).toContain('phada: acme/shop is empty: there is no branch to read.')
+  })
+})
+
+describe('run history', () => {
+  const REVIEW = ['review', 'acme/shop#12', '--no-verify']
+  type Row = Record<string, unknown>
+  const runsOf = (h: Harness): Row[] => {
+    const file = h.historyFiles[0]?.split(' → ')[1]
+    if (file === undefined) return []
+    const db = new DatabaseSync(file)
+    const rows = db.prepare('select * from run order by id').all() as Row[]
+    db.close()
+    return rows
+  }
+
+  it('saves a published review in the history of the data folder', async () => {
+    const h = harness({
+      env: { GITHUB_TOKEN: TOKEN, PHADA_CONFIG_HOME: '/cfg', PHADA_DATA_HOME: '/data' },
+      review: () => Promise.resolve(WITH_FINDING),
+    })
+
+    expect(await run(REVIEW, h.deps)).toBe(0)
+
+    expect(h.historyFiles[0]?.startsWith('/data/history.sqlite → ')).toBe(true)
+    const [saved] = runsOf(h)
+    expect(saved).toMatchObject({
+      source: 'manual',
+      repo: 'acme/shop',
+      number: 12,
+      head_sha: HEAD_SHA,
+      status: 'published',
+      ai_called: 1,
+      url: REVIEW_URL,
+      findings: 1,
+      provider: 'claude',
+    })
+    const json = JSON.parse(String(saved?.result_json)) as {
+      pullRequest: Record<string, unknown>
+      review: unknown
+    }
+    expect(json.review).toBeDefined()
+    expect(JSON.stringify(json)).not.toContain('+export async function spend')
+  })
+
+  it('saves a dry run', async () => {
+    const h = harness({ review: () => Promise.resolve(WITH_FINDING) })
+
+    expect(await run([...REVIEW, '--dry-run'], h.deps)).toBe(0)
+    expect(runsOf(h)).toEqual([expect.objectContaining({ status: 'dry-run', ai_called: 1 })])
+  })
+
+  it('saves a skipped review without calling the AI', async () => {
+    const h = harness({ reviewState: () => Promise.resolve(phadaState([{}])) })
+
+    expect(await run(REVIEW, h.deps)).toBe(0)
+    expect(runsOf(h)).toEqual([
+      expect.objectContaining({ status: 'skipped', ai_called: 0, reason: 'open-threads' }),
+    ])
+  })
+
+  it('saves a failed publication and still fails', async () => {
+    const h = harness({
+      review: () => Promise.resolve(WITH_FINDING),
+      createReview: () => Promise.reject(new ReviewPermissionError('acme/shop#12')),
+    })
+
+    expect(await run(REVIEW, h.deps)).toBe(1)
+    expect(runsOf(h)).toEqual([
+      expect.objectContaining({ status: 'failed', ai_called: 1, error_kind: null }),
+    ])
+  })
+
+  it('saves nothing when the user config turns the history off', async () => {
+    let opened = 0
+    const h = harness({
+      files: memoryFiles({ '/cfg/config.yml': 'history: false' }),
+      openHistoryStore: () => {
+        opened += 1
+        return Promise.reject(new Error('should not open'))
+      },
+    })
+
+    expect(await run(REVIEW, h.deps)).toBe(0)
+    expect(opened).toBe(0)
+  })
+
+  it('warns and goes on when the history cannot be opened', async () => {
+    const h = harness({
+      openHistoryStore: () =>
+        Promise.reject(
+          new HistoryVersionError('/data/history.sqlite', 9, 1),
+        ) as Promise<HistoryStore>,
+    })
+
+    expect(await run(REVIEW, h.deps)).toBe(0)
+    expect(h.stderr()).toContain(
+      'Warning: /data/history.sqlite was written by a newer Phada (history version 9, this one knows 1); update Phada. This review is not saved in the history.',
+    )
   })
 })

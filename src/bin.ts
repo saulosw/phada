@@ -13,6 +13,7 @@ import { createExtractor } from './repo-map/extract.js'
 import { openGitMirror } from './repository/git-mirror.js'
 import { openIndexStore } from './store/index-store.js'
 import { openObservedStore } from './store/observed-store.js'
+import { openHistoryStore } from './store/history-store.js'
 import { createProvider, run } from './main.js'
 
 const packageJson = await readFile(new URL('../package.json', import.meta.url), 'utf8')
@@ -40,4 +41,5 @@ process.exitCode = await run(process.argv.slice(2), {
   createExtractor: () => createExtractor(),
   pathSize,
   createProvider,
+  openHistoryStore: (path) => openHistoryStore(path),
 })

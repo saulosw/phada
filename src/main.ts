@@ -1,9 +1,18 @@
 import { reviewAndPublish } from './app/review-and-publish.js'
 import type {
   PublicationResult,
+  RenderedReview,
   ReviewAndPublishDeps,
   ReviewRun,
 } from './app/review-and-publish.js'
+import { errorMessage } from './app/error-message.js'
+import { historyRun } from './cli/history-run.js'
+import type { RunMeta } from './cli/history-run.js'
+import { dataFiles } from './config/data-paths.js'
+import type { ConfigLayer } from './config/types.js'
+import { historyEnabled } from './config/watch-settings.js'
+import type { SkipReason } from './publish/types.js'
+import type { HistoryStore } from './store/history-store.js'
 import type { PullRequestReview, PullRequestReviewDeps } from './app/review-pull-request.js'
 import { parseCliArgs } from './cli/args.js'
 import type { CliCommand } from './cli/args.js'
@@ -56,12 +65,12 @@ import { OllamaProvider } from './providers/ollama.js'
 import type { ReviewProvider } from './providers/types.js'
 import type { ReviewOutcome } from './review/types.js'
 
-type ReviewedOutcome = Extract<ReviewOutcome, { status: 'reviewed' }>
 type PublishTarget = PullRequestRef & { token: string }
 
 export interface ProviderOptions {
   model?: string
   userMcpServers?: string[]
+  detached?: boolean
 }
 
 const PROVIDERS = ['claude', 'codex', 'ollama'] as const
@@ -94,6 +103,7 @@ export interface MainDeps {
   createExtractor: () => Extractor
   pathSize: (path: string) => Promise<number>
   createProvider: (name: string, options: ProviderOptions) => ReviewProvider
+  openHistoryStore: (path: string) => Promise<HistoryStore>
 }
 
 export function assertProviderChoice(name: string, options: ProviderOptions): void {
@@ -164,6 +174,7 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
     assertProviderChoice(choice.provider, { model: choice.model })
 
     deps.stderr.write(`Fetching ${formatPullRequestRef(command.ref)}…\n`)
+    const startedAt = new Date().toISOString()
     const reviewRun = await reviewAndPublish(
       {
         ref: command.ref,
@@ -182,6 +193,13 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
       },
       reviewAndPublishDeps(deps, token, choice, command),
     )
+    await saveRun(deps, userLayers, reviewRun, {
+      source: 'manual',
+      startedAt,
+      finishedAt: new Date().toISOString(),
+      provider: choice.provider,
+      ...(choice.model === undefined ? {} : { model: choice.model }),
+    })
     printRun(deps, command, reviewRun)
     return 0
   } catch (error) {
@@ -318,125 +336,136 @@ function printReviewed(
   }
 }
 
-function printRun(deps: MainDeps, command: ReviewCommand, run: ReviewRun): void {
-  const json = command.format === 'json'
+export function reviewRunJson(run: ReviewRun): string {
   const { pullRequest } = run
-  if (run.status === 'skipped') {
-    deps.stderr.write(`${formatSkipMessage(pullRequest.headSha, run.reason)}\n`)
-    if (json) deps.stdout.write(formatAlreadyReviewedJson(pullRequest, run.reason))
-    return
-  }
+  if (run.status === 'skipped') return formatAlreadyReviewedJson(pullRequest, run.reason)
   const { reviewed } = run
-  const messages = messagesFor(reviewed.language)
   const context = reviewed.context.report
   if (run.status === 'nothing') {
-    const { outcome } = reviewed
-    if (run.rendered === undefined || run.publication === undefined) {
-      if (json) deps.stdout.write(formatReviewJson(pullRequest, outcome, null, context))
-      return
-    }
     const note = run.rendered
-    finishPublication(deps, run.publication, {
-      json,
-      dryRun: () =>
-        deps.stdout.write(
-          json
-            ? formatReviewJson(
-                pullRequest,
-                outcome,
-                { status: 'dry-run', review: note, stillOpen: 0 },
-                context,
-              )
-            : formatGitHubPreview(note, messages),
-        ),
-      jsonOf: (publication) => formatReviewJson(pullRequest, outcome, publication, context),
-      comments: 0,
-      stillOpen: 0,
-      dismissed: 0,
-    })
-    return
+    const publication =
+      run.publication === undefined || note === undefined
+        ? null
+        : toPublication(run.publication, note, { comments: 0, stillOpen: 0, dismissed: 0 })
+    return formatReviewJson(pullRequest, reviewed.outcome, publication, context)
   }
-  const outcome = reviewed.outcome as ReviewedOutcome
   const { plan, rendered } = run
   const { investigation, impact, related } = reviewed
-  const full = (publication: Publication | null) =>
-    formatReviewJson(pullRequest, outcome, publication, context, investigation, impact, related)
-  finishPublication(deps, run.publication, {
-    json,
-    dryRun: () => {
-      deps.stdout.write(
-        json
-          ? full({
-              status: 'dry-run',
-              review: rendered,
-              stillOpen: plan.stillOpen.length,
-              dismissed: plan.dismissed.length,
-              ...(run.wouldSkip === undefined ? {} : { wouldSkip: run.wouldSkip }),
-            })
-          : `${formatGitHubPreview(rendered, messages)}\n${formatContextSection(context)}\n${formatImpactSection(impact, reviewed.impactText)}\n${related.status === 'none' ? '' : `${formatRelatedSection(related)}\n`}${formatInvestigationSection(investigation)}`,
-      )
-    },
-    afterDryRun: () => {
-      if (run.wouldSkip !== undefined) {
-        deps.stderr.write(
-          `Without --dry-run: ${formatSkipMessage(pullRequest.headSha, run.wouldSkip)}\n`,
-        )
-      }
-    },
-    jsonOf: full,
-    comments: rendered.comments.length,
-    stillOpen: plan.stillOpen.length,
-    dismissed: plan.dismissed.length,
-  })
+  return formatReviewJson(
+    pullRequest,
+    reviewed.outcome,
+    toPublication(
+      run.publication,
+      rendered,
+      {
+        comments: rendered.comments.length,
+        stillOpen: plan.stillOpen.length,
+        dismissed: plan.dismissed.length,
+      },
+      run.wouldSkip,
+    ),
+    context,
+    investigation,
+    impact,
+    related,
+  )
 }
 
-interface PublicationOutput {
-  json: boolean
-  dryRun: () => void
-  afterDryRun?: () => void
-  jsonOf: (publication: Publication) => string
+interface PublicationCounts {
   comments: number
   stillOpen: number
   dismissed: number
 }
 
-function finishPublication(
-  deps: MainDeps,
+function toPublication(
   publication: PublicationResult,
-  output: PublicationOutput,
-): void {
+  rendered: RenderedReview,
+  counts: PublicationCounts,
+  wouldSkip?: SkipReason,
+): Publication {
+  switch (publication.status) {
+    case 'published':
+      return { status: 'published', url: publication.url, ...counts }
+    case 'dry-run':
+      return {
+        status: 'dry-run',
+        review: rendered,
+        stillOpen: counts.stillOpen,
+        dismissed: counts.dismissed,
+        ...(wouldSkip === undefined ? {} : { wouldSkip }),
+      }
+    case 'failed':
+      return { status: 'failed', error: errorSummary(publication.error) }
+    default:
+      return publication
+  }
+}
+
+function printRun(deps: MainDeps, command: ReviewCommand, run: ReviewRun): void {
+  const json = command.format === 'json'
+  if (json) deps.stdout.write(reviewRunJson(run))
+  const { pullRequest } = run
+  if (run.status === 'skipped') {
+    deps.stderr.write(`${formatSkipMessage(pullRequest.headSha, run.reason)}\n`)
+    return
+  }
+  const { publication, rendered } = run
+  if (publication === undefined || rendered === undefined) return
+  const { reviewed } = run
+  const messages = messagesFor(reviewed.language)
+  const counts =
+    run.status === 'reviewed'
+      ? {
+          comments: rendered.comments.length,
+          stillOpen: run.plan.stillOpen.length,
+          dismissed: run.plan.dismissed.length,
+        }
+      : { comments: 0, stillOpen: 0, dismissed: 0 }
   switch (publication.status) {
     case 'dry-run':
-      output.dryRun()
+      if (!json) {
+        deps.stdout.write(
+          run.status === 'nothing'
+            ? formatGitHubPreview(rendered, messages)
+            : `${formatGitHubPreview(rendered, messages)}\n${formatContextSection(reviewed.context.report)}\n${formatImpactSection(reviewed.impact, reviewed.impactText)}\n${reviewed.related.status === 'none' ? '' : `${formatRelatedSection(reviewed.related)}\n`}${formatInvestigationSection(reviewed.investigation)}`,
+        )
+      }
       deps.stderr.write('Dry run: nothing was posted.\n')
-      output.afterDryRun?.()
+      if (run.status === 'reviewed' && run.wouldSkip !== undefined) {
+        deps.stderr.write(
+          `Without --dry-run: ${formatSkipMessage(pullRequest.headSha, run.wouldSkip)}\n`,
+        )
+      }
       return
     case 'failed':
-      if (output.json) {
-        deps.stdout.write(
-          output.jsonOf({ status: 'failed', error: errorSummary(publication.error) }),
-        )
-      }
       throw publication.error
-    case 'published': {
-      const { comments, stillOpen, dismissed } = output
-      if (output.json) {
-        deps.stdout.write(
-          output.jsonOf({
-            status: 'published',
-            url: publication.url,
-            comments,
-            stillOpen,
-            dismissed,
-          }),
-        )
-      }
+    case 'published':
       deps.stderr.write(
-        `${formatPublishedMessage(publication.url, comments, stillOpen, dismissed)}\n`,
+        `${formatPublishedMessage(publication.url, counts.comments, counts.stillOpen, counts.dismissed)}\n`,
       )
       return
-    }
     default:
       return
+  }
+}
+
+async function saveRun(
+  deps: MainDeps,
+  userLayers: readonly ConfigLayer[],
+  run: ReviewRun,
+  meta: RunMeta,
+): Promise<void> {
+  if (!historyEnabled(userLayers)) return
+  try {
+    const history = await deps.openHistoryStore(dataFiles(deps.env, deps.home).history)
+    try {
+      history.addRun(historyRun(run, reviewRunJson(run), meta))
+    } finally {
+      history.close()
+    }
+  } catch (error) {
+    deps.stderr.write(
+      `Warning: ${toTerminalText(errorMessage(error))}. This review is not saved in the history.\n`,
+    )
   }
 }
