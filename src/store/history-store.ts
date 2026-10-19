@@ -3,6 +3,17 @@ import { dirname } from 'node:path'
 import type { DatabaseSync, SQLInputValue } from 'node:sqlite'
 import { HISTORY_MIGRATIONS } from './history-migrations.js'
 import type { HistoryMigration } from './history-migrations.js'
+import {
+  fromRow,
+  insertStatement,
+  JOB_TABLE,
+  PULL_TABLE,
+  REPO_TABLE,
+  RUN_TABLE,
+  upsertStatement,
+  updateStatement,
+} from './history-columns.js'
+import type { Statement } from './history-columns.js'
 import { isNotADatabase } from './index-store.js'
 
 export type JobStatus = 'queued' | 'running' | 'done' | 'failed' | 'skipped' | 'superseded'
@@ -130,72 +141,6 @@ export interface OpenHistoryStoreOptions {
 const RECENT_FAILURES = 20
 const PAUSE_KEY = 'pause'
 
-const REPO_COLUMNS = {
-  repo: 'repo',
-  pullsEtag: 'pulls_etag',
-  baselineAt: 'baseline_at',
-  checkedAt: 'checked_at',
-  defaultBranch: 'default_branch',
-  branchEtag: 'branch_etag',
-  branchCheckedAt: 'branch_checked_at',
-  indexedSha: 'indexed_sha',
-} as const
-
-const PULL_COLUMNS = {
-  repo: 'repo',
-  number: 'number',
-  headSha: 'head_sha',
-  headSeenAt: 'head_seen_at',
-  baselineSha: 'baseline_sha',
-  eligible: 'eligible',
-  state: 'state',
-} as const
-
-const JOB_COLUMNS = {
-  id: 'id',
-  repo: 'repo',
-  number: 'number',
-  headSha: 'head_sha',
-  status: 'status',
-  attempts: 'attempts',
-  notBefore: 'not_before',
-  reason: 'reason',
-  errorKind: 'error_kind',
-  error: 'error',
-  createdAt: 'created_at',
-  startedAt: 'started_at',
-  finishedAt: 'finished_at',
-} as const
-
-const RUN_COLUMNS = {
-  id: 'id',
-  jobId: 'job_id',
-  source: 'source',
-  repo: 'repo',
-  number: 'number',
-  headSha: 'head_sha',
-  startedAt: 'started_at',
-  finishedAt: 'finished_at',
-  status: 'status',
-  aiCalled: 'ai_called',
-  provider: 'provider',
-  model: 'model',
-  score: 'score',
-  findings: 'findings',
-  url: 'url',
-  reason: 'reason',
-  errorKind: 'error_kind',
-  error: 'error',
-  resultJson: 'result_json',
-} as const
-
-const NUMBERS = new Set(['id', 'number', 'attempts', 'jobId', 'score', 'findings'])
-const BOOLEANS = new Set(['eligible', 'aiCalled'])
-const LOWERCASE = new Set(['repo'])
-
-type Columns = Readonly<Record<string, string>>
-type Row = Record<string, SQLInputValue>
-
 export async function openHistoryStore(
   path: string,
   options: OpenHistoryStoreOptions = {},
@@ -268,22 +213,22 @@ class SqliteHistoryStore implements HistoryStore {
     const row = this.#db
       .prepare('select * from watched_repo where repo = ?')
       .get(name.toLowerCase())
-    return row === undefined ? undefined : fromRow<RepoRecord>(row, REPO_COLUMNS)
+    return row === undefined ? undefined : fromRow<RepoRecord>(row, REPO_TABLE)
   }
 
   saveRepo(record: RepoRecord): void {
-    this.#upsert('watched_repo', REPO_COLUMNS, record)
+    this.#run(upsertStatement(REPO_TABLE, record))
   }
 
   pulls(repo: string): PullRecord[] {
     return this.#db
       .prepare('select * from watched_pull where repo = ? order by number')
       .all(repo.toLowerCase())
-      .map((row) => fromRow<PullRecord>(row, PULL_COLUMNS))
+      .map((row) => fromRow<PullRecord>(row, PULL_TABLE))
   }
 
   savePull(record: PullRecord): void {
-    this.#upsert('watched_pull', PULL_COLUMNS, record)
+    this.#run(upsertStatement(PULL_TABLE, record))
   }
 
   jobs(filter: { repo?: string; status?: readonly JobStatus[] }): JobRecord[] {
@@ -301,20 +246,16 @@ class SqliteHistoryStore implements HistoryStore {
     return this.#db
       .prepare(`select * from job${clause} order by not_before, id`)
       .all(...values)
-      .map((row) => fromRow<JobRecord>(row, JOB_COLUMNS))
+      .map((row) => fromRow<JobRecord>(row, JOB_TABLE))
   }
 
   addJob(job: Omit<JobRecord, 'id'>): number {
-    return this.#insert('job', JOB_COLUMNS, job)
+    return Number(this.#run(insertStatement(JOB_TABLE, job)).lastInsertRowid)
   }
 
   updateJob(id: number, changes: Partial<Omit<JobRecord, 'id'>>): void {
-    const entries = Object.entries(changes)
-    if (entries.length === 0) return
-    const sets = entries.map(([key]) => `${columnOf(JOB_COLUMNS, key)} = ?`)
-    this.#db
-      .prepare(`update job set ${sets.join(', ')} where id = ?`)
-      .run(...entries.map(([key, value]) => toColumn(key, value)), id)
+    const statement = updateStatement(JOB_TABLE, id, changes)
+    if (statement !== undefined) this.#run(statement)
   }
 
   recoverRunning(maxAttempts: number, now: string): JobRecord[] {
@@ -338,7 +279,7 @@ class SqliteHistoryStore implements HistoryStore {
   }
 
   addRun(run: RunRecord): number {
-    return this.#insert('run', RUN_COLUMNS, run)
+    return Number(this.#run(insertStatement(RUN_TABLE, run)).lastInsertRowid)
   }
 
   watchRunsSince(iso: string): string[] {
@@ -374,21 +315,21 @@ class SqliteHistoryStore implements HistoryStore {
         "select * from job where status = 'failed' order by finished_at desc, id desc limit ?",
       )
       .all(RECENT_FAILURES)
-      .map((row) => fromRow<JobRecord>(row, JOB_COLUMNS))
+      .map((row) => fromRow<JobRecord>(row, JOB_TABLE))
     const lastRuns = this.#db
       .prepare(
         'select * from run where id in (select max(id) from run group by repo) order by repo',
       )
       .all()
       .map((row) => {
-        const { resultJson: _json, ...run } = fromRow<RunRecord>(row, RUN_COLUMNS)
+        const { resultJson: _json, ...run } = fromRow<RunRecord>(row, RUN_TABLE)
         return run
       })
     return {
       repos: this.#db
         .prepare('select * from watched_repo order by repo')
         .all()
-        .map((row) => fromRow<RepoRecord>(row, REPO_COLUMNS)),
+        .map((row) => fromRow<RepoRecord>(row, REPO_TABLE)),
       queued: this.jobs({ status: ['queued'] }),
       running: this.jobs({ status: ['running'] }),
       failed,
@@ -401,54 +342,7 @@ class SqliteHistoryStore implements HistoryStore {
     this.#db.close()
   }
 
-  #insert(table: string, columns: Columns, record: object): number {
-    const entries = Object.entries(record).filter(([, value]) => value !== undefined)
-    const names = entries.map(([key]) => columnOf(columns, key))
-    const result = this.#db
-      .prepare(
-        `insert into ${table} (${names.join(', ')}) values (${names.map(() => '?').join(', ')})`,
-      )
-      .run(...entries.map(([key, value]) => toColumn(key, value)))
-    return Number(result.lastInsertRowid)
+  #run({ sql, values }: Statement) {
+    return this.#db.prepare(sql).run(...values)
   }
-
-  #upsert(table: string, columns: Columns, record: object): void {
-    const names = Object.keys(columns)
-    const keys = table === 'watched_repo' ? ['repo'] : ['repo', 'number']
-    const values = names.map((key) => toColumn(key, (record as Record<string, unknown>)[key]))
-    const updates = names
-      .filter((key) => !keys.includes(key))
-      .map((key) => `${columnOf(columns, key)} = excluded.${columnOf(columns, key)}`)
-    this.#db
-      .prepare(
-        `insert into ${table} (${names.map((key) => columnOf(columns, key)).join(', ')}) values (${names.map(() => '?').join(', ')}) on conflict (${keys.join(', ')}) do update set ${updates.join(', ')}`,
-      )
-      .run(...values)
-  }
-}
-
-function columnOf(columns: Columns, key: string): string {
-  const column = columns[key]
-  if (column === undefined) throw new HistoryStoreError(`Unknown history field ${key}`)
-  return column
-}
-
-function toColumn(key: string, value: unknown): SQLInputValue {
-  if (value === undefined || value === null) return null
-  if (BOOLEANS.has(key)) return value === true ? 1 : 0
-  if (LOWERCASE.has(key)) return String(value).toLowerCase()
-  if (typeof value === 'number' || typeof value === 'string') return value
-  return String(value)
-}
-
-function fromRow<T>(row: Row, columns: Columns): T {
-  const record: Record<string, unknown> = {}
-  for (const [key, column] of Object.entries(columns)) {
-    const value = row[column]
-    if (value === null || value === undefined) continue
-    if (BOOLEANS.has(key)) record[key] = Number(value) === 1
-    else if (NUMBERS.has(key)) record[key] = Number(value)
-    else record[key] = String(value)
-  }
-  return record as T
 }
