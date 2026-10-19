@@ -10,7 +10,7 @@ import { CheckoutError } from '../repository/checkout.js'
 import type { TreeFile } from '../repository/git-mirror.js'
 import { openIndexStore } from '../store/index-store.js'
 import type { IndexStore } from '../store/index-store.js'
-import { indexCommit, indexRepository } from './index-repository.js'
+import { indexCommit, indexRepository, refreshIndex } from './index-repository.js'
 import type { IndexRepositoryDeps } from './index-repository.js'
 
 const dir = mkdtempSync(join(tmpdir(), 'phada-index-'))
@@ -112,6 +112,35 @@ function deps(
 }
 
 const INPUT = { owner: 'acme', repo: 'shop', userLayers: [] as ConfigLayer[] }
+
+describe('refreshIndex', () => {
+  const twoFiles = () =>
+    fakeMirror({
+      'src/a.ts': { content: 'export function a() { b() }\n' },
+      'src/b.ts': { content: 'export function b() {}\n' },
+    })
+
+  it('stops at the deadline and says the index is partial', async () => {
+    const { mirror } = twoFiles()
+    const h = deps(mirror, storePath())
+
+    expect(await refreshIndex({ ...INPUT, deadline: -1 }, h.deps)).toEqual({
+      complete: false,
+      commit: SHA,
+    })
+    expect(h.closed).toHaveLength(1)
+  })
+
+  it('indexes the default branch when there is time', async () => {
+    const { mirror, fetched } = twoFiles()
+    const path = storePath()
+
+    expect(
+      await refreshIndex({ ...INPUT, deadline: Number.POSITIVE_INFINITY }, deps(mirror, path).deps),
+    ).toEqual({ complete: true, commit: SHA })
+    expect(fetched).toEqual([{ ref: 'HEAD', keepAs: 'refs/phada/index' }])
+  })
+})
 
 describe('indexRepository', () => {
   it('fetches the default branch, indexes code and says why the rest is left out', async () => {

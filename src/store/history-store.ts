@@ -344,7 +344,7 @@ class SqliteHistoryStore implements HistoryStore {
   watchRunsSince(iso: string): string[] {
     return this.#db
       .prepare(
-        "select started_at from run where source = 'watch' and ai_called = 1 and started_at >= ? order by started_at",
+        "select started_at from run where source = 'watch' and ai_called = 1 and started_at > ? order by started_at",
       )
       .all(iso)
       .map((row) => String(row.started_at))

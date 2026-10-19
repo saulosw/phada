@@ -154,6 +154,26 @@ export async function indexRepository(
   }
 }
 
+export async function refreshIndex(
+  input: IndexRepositoryInput & { deadline: number },
+  deps: IndexRepositoryDeps,
+): Promise<{ complete: boolean; commit: string }> {
+  const sha = await deps.mirror.fetch(input.ref ?? 'HEAD', INDEX_REF)
+  const files = await deps.mirror.listFiles(sha)
+  const isIgnored = await ignoreMatcher(input.userLayers, files, deps, sha, [])
+  const store = await deps.openStore()
+  try {
+    const result = await indexCommit(
+      { sha, ref: input.ref ?? 'HEAD', files, ignore: isIgnored, deadline: input.deadline },
+      { mirror: deps.mirror, store, extractor: deps.extractor, now: deps.now, events: deps.events },
+    )
+    if (result.complete) store.prune(KEEP_COMMITS)
+    return { complete: result.complete, commit: sha }
+  } finally {
+    store.close()
+  }
+}
+
 export type ReviewIndexResult =
   Extract<IndexCommitResult, { complete: true }> | { complete: false; progress: string }
 
