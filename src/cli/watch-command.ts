@@ -11,6 +11,7 @@ import { loadTopLevelUserLayers, loadUserLayers } from '../config/user-config.js
 import { historyEnabled, resolveWatchSettings } from '../config/watch-settings.js'
 import type { WatchSettings } from '../config/watch-settings.js'
 import { splitRepoName } from '../github/pull-request-ref.js'
+import type { ConfigLayer } from '../config/types.js'
 import type { MainDeps } from '../main.js'
 import { MirrorLockTimeoutError } from '../repository/mirror-lock.js'
 import type { HistoryStore, JobRecord } from '../store/history-store.js'
@@ -64,6 +65,14 @@ export async function runWatch(command: WatchCommand, deps: MainDeps): Promise<n
   }
   const token = deps.env.GITHUB_TOKEN?.trim() || deps.env.GH_TOKEN?.trim()
   if (!token) throw new MissingGitHubTokenError()
+  for (const { repo } of settings.repos) {
+    try {
+      await jobSetup(repo, deps)
+    } catch (error) {
+      if (!(error instanceof UsageError)) throw error
+      throw new UsageError(`${repo}: ${error.message}`)
+    }
+  }
   let locked = false
   try {
     return await deps.withLock(files.lock, () => {
@@ -129,12 +138,13 @@ function watchDeps(
     branchHead: (repo, branch, etag) =>
       deps.fetchBranchHead({ ...splitRepoName(repo), branch, token, ...withEtag(etag) }),
     runJob: async (job) => {
-      const { run, choice } = await runJob(job, settings, token, deps)
-      choices.set(job.id, choice)
-      return run
+      const setup = await jobSetup(job.repo, deps)
+      choices.set(job.id, setup.choice)
+      return runJob(job, setup, settings, token, deps)
     },
     recordRun: (job, outcome, startedAt) => {
       const choice = choices.get(job.id)
+      choices.delete(job.id)
       const meta = {
         source: 'watch' as const,
         jobId: job.id,
@@ -186,24 +196,36 @@ async function refreshDefaultBranch(
   return result.complete ? 'complete' : 'partial'
 }
 
+interface JobSetup {
+  userLayers: ConfigLayer[]
+  choice: Choice
+  mcp: string[]
+}
+
+async function jobSetup(repo: string, deps: MainDeps): Promise<JobSetup> {
+  const userLayers = await loadUserLayers({ ...deps, ...splitRepoName(repo) })
+  const choice = resolveProvider({}, userLayers)
+  const mcp = userMcpServers(userLayers)
+  assertProviderChoice(
+    choice.provider,
+    { ...(choice.model === undefined ? {} : { model: choice.model }), userMcpServers: mcp },
+    'config',
+  )
+  return { userLayers, choice, mcp }
+}
+
 async function runJob(
   job: JobRecord,
+  { userLayers, choice, mcp }: JobSetup,
   settings: WatchSettings,
   token: string,
   deps: MainDeps,
-): Promise<{ run: ReviewRun; choice: Choice }> {
+): Promise<ReviewRun> {
   const target = splitRepoName(job.repo)
-  const userLayers = await loadUserLayers({ ...deps, ...target })
-  const choice = resolveProvider({}, userLayers)
-  const mcp = userMcpServers(userLayers)
-  assertProviderChoice(choice.provider, {
-    ...(choice.model === undefined ? {} : { model: choice.model }),
-    userMcpServers: mcp,
-  })
   const repo = settings.repos.find((entry) => entry.repo === job.repo)
   const ref = { ...target, number: job.number }
   const publishTarget = { ...ref, token }
-  const run = await reviewAndPublish(
+  return reviewAndPublish(
     {
       ref,
       mode: 'watch',
@@ -235,5 +257,4 @@ async function runJob(
       events: { fetched: () => undefined, reviewed: () => undefined, publishing: () => undefined },
     },
   )
-  return { run, choice }
 }

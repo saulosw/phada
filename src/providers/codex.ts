@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { MCP_SERVER_NAME, serveMcp } from '../investigation/mcp/mcp-server.js'
 import type { McpLaunch } from '../investigation/mcp/mcp-server.js'
 import type { RunCommandResult } from '../process/run-command.js'
-import { runCli, snippet, withTempDir } from './cli-run.js'
+import { runCli, snippet, USAGE_LIMIT, withTempDir } from './cli-run.js'
 import type { CliNames } from './cli-run.js'
 import { resolveCodexModel } from './codex-model.js'
 import { ProviderError } from './types.js'
@@ -55,7 +55,6 @@ const BASE_ARGS: readonly string[] = [
   '--json',
 ]
 const NOT_AUTHENTICATED = /401 Unauthorized|missing bearer|not logged in|codex login/i
-const USAGE_LIMIT = /usage limit|hit your (usage )?limit|limit reached|rate.?limit/i
 
 const CodexEvent = z.discriminatedUnion('type', [
   z.object({

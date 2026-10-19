@@ -7,6 +7,9 @@ import type { RunCommandResult } from '../process/run-command.js'
 import { redactSecrets } from './redact-secrets.js'
 import { ProviderError } from './types.js'
 
+export const USAGE_LIMIT =
+  /usage limit|hit your (usage )?limit|\b\d+-hour limit|weekly limit|rate limit (exceeded|reached)/i
+
 const GITHUB_TOKEN_KEYS: ReadonlySet<string> = new Set(['GITHUB_TOKEN', 'GH_TOKEN'])
 
 export interface CliNames {

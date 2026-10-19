@@ -114,7 +114,13 @@ describe('formatWatchEvent', () => {
 
 const STATUS: HistoryStatus = {
   repos: [
-    { repo: 'acme/shop', checkedAt: local(14, 0).toISOString(), indexedSha: SHA },
+    {
+      repo: 'acme/shop',
+      checkedAt: local(14, 0).toISOString(),
+      indexedSha: SHA,
+      pullsEtag: 'W/"1"',
+      branchEtag: '"2"',
+    },
     { repo: 'acme/web' },
   ],
   queued: [{ ...JOB, attempts: 1 }],
@@ -208,7 +214,10 @@ describe('formatWatchStatusJson', () => {
       running: { pid: 123 },
       pause: STATUS.pause,
       reviewsLastHour: { count: 6, max: 6 },
-      repos: STATUS.repos,
+      repos: [
+        { repo: 'acme/shop', checkedAt: STATUS.repos[0]?.checkedAt, indexedSha: SHA },
+        { repo: 'acme/web' },
+      ],
       queue: STATUS.queued,
       inProgress: STATUS.running,
       failed: STATUS.failed,

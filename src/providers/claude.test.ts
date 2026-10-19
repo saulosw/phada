@@ -252,6 +252,14 @@ describe('ClaudeCliProvider', () => {
     },
   )
 
+  it('reports failed, not usage-limit, for a context limit', async () => {
+    const error = await reviewError(
+      provider('is_error', { env: { FAKE_CLAUDE_DETAIL: 'context limit reached for this model' } }),
+    )
+
+    expect(error.reason).toBe('failed')
+  })
+
   it('reports usage-limit when the limit only shows up on stderr', async () => {
     const error = await reviewError(provider('usage_limit_stderr'))
 

@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { MCP_SERVER_NAME, serveMcp } from '../investigation/mcp/mcp-server.js'
 import type { McpServer } from '../investigation/mcp/mcp-server.js'
 import type { RunCommandResult } from '../process/run-command.js'
-import { runCli, snippet, withTempDir } from './cli-run.js'
+import { runCli, snippet, USAGE_LIMIT, withTempDir } from './cli-run.js'
 import type { CliNames } from './cli-run.js'
 import { resolveClaudeModel } from './claude-model.js'
 import { ProviderError } from './types.js'
@@ -32,7 +32,6 @@ const MAX_TURNS_SUBTYPE = 'error_max_turns'
 const PHADA_TOOL_PREFIX = `mcp__${MCP_SERVER_NAME}__`
 const MCP_TOOL = /^mcp__(.+?)__(.+)$/
 const NOT_AUTHENTICATED = /not logged in|\/login|authenticat|api key/i
-const USAGE_LIMIT = /usage limit|hit your (usage )?limit|limit reached|rate.?limit/i
 
 const ClaudeUsage = z.object({
   input_tokens: z.number().optional(),

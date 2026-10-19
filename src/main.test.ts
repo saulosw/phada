@@ -1735,4 +1735,39 @@ describe('phada watch', () => {
       repos: [expect.objectContaining({ repo: 'acme/shop' })],
     })
   })
+
+  it('records the provider of a review that failed', async () => {
+    const h = harness({
+      files: withConfig(),
+      listPulls: listed,
+      review: () => Promise.reject(new ProviderError('claude-cli', 'timeout', 'slow')),
+    })
+
+    expect(await run(['watch', '--once', '--backfill'], h.deps)).toBe(0)
+    const file = h.historyFiles[0]?.split(' → ')[1] ?? ''
+    const db = new DatabaseSync(file)
+    const rows = db.prepare('select provider, status, error_kind from run').all()
+    db.close()
+    expect(rows).toEqual([{ provider: 'claude', status: 'failed', error_kind: 'transient' }])
+  })
+
+  it('refuses to start when the provider of a watched repository cannot work', async () => {
+    let listedRepos = 0
+    const h = harness({
+      files: memoryFiles({
+        '/cfg/config.yml': WATCH_CONFIG,
+        '/cfg/repos/acme/shop/config.yml': 'provider: ollama\n',
+      }),
+      listPulls: () => {
+        listedRepos += 1
+        return listed()
+      },
+    })
+
+    expect(await run(['watch'], h.deps)).toBe(2)
+    expect(h.stderr()).toContain(
+      'phada: acme/shop: provider ollama needs a model: set model: in your config',
+    )
+    expect(listedRepos).toBe(0)
+  })
 })
