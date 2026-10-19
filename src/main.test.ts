@@ -27,6 +27,7 @@ import type { GitMirror, GitMirrorOptions } from './repository/git-mirror.js'
 import { createExtractor } from './repo-map/extract.js'
 import { openIndexStore } from './store/index-store.js'
 import { openObservedStore } from './store/observed-store.js'
+import { MirrorLockTimeoutError } from './repository/mirror-lock.js'
 import { HistoryVersionError, openHistoryStore } from './store/history-store.js'
 import type { HistoryStore } from './store/history-store.js'
 import { DatabaseSync } from 'node:sqlite'
@@ -70,6 +71,9 @@ interface Harness {
   mirrors: GitMirrorOptions[]
   storePaths: string[]
   historyFiles: string[]
+  signal: () => void
+  kills: () => number
+  aborts: number[]
 }
 
 const storeDir = mkdtempSync(join(tmpdir(), 'phada-main-index-'))
@@ -131,6 +135,10 @@ function harness(
     openMirror?: (options: GitMirrorOptions) => Promise<GitMirror>
     fetchRepository?: MainDeps['fetchRepository']
     openHistoryStore?: MainDeps['openHistoryStore']
+    listPulls?: MainDeps['listOpenPullRequests']
+    pullHead?: MainDeps['fetchPullRequestHead']
+    withLock?: MainDeps['withLock']
+    lockHolder?: number
   } = {},
 ): Harness {
   const checkouts: (GitMirrorOptions & { sha: string; keepAs: string })[] = []
@@ -138,6 +146,12 @@ function harness(
   const mirrors: GitMirrorOptions[] = []
   const storePaths: string[] = []
   const historyFiles: string[] = []
+  storeCount += 1
+  const historyFile = join(storeDir, `history-${storeCount}.sqlite`)
+  const signalHandlers: (() => void)[] = []
+  const aborts: number[] = []
+  let kills = 0
+  let clock = Date.parse('2026-10-18T12:00:00.000Z')
   let closed = 0
   const files = overrides.files ?? memoryFiles()
   const repoFiles = overrides.repoFiles ?? {}
@@ -225,11 +239,26 @@ function harness(
     },
     openHistoryStore: (path) => {
       if (overrides.openHistoryStore !== undefined) return overrides.openHistoryStore(path)
-      storeCount += 1
-      const file = join(storeDir, `history-${storeCount}.sqlite`)
-      historyFiles.push(`${path} → ${file}`)
-      return openHistoryStore(file)
+      historyFiles.push(`${path} → ${historyFile}`)
+      return openHistoryStore(historyFile)
     },
+    listOpenPullRequests:
+      overrides.listPulls ?? (() => Promise.resolve({ status: 'ok' as const, pulls: [] })),
+    fetchPullRequestHead:
+      overrides.pullHead ??
+      (() => Promise.resolve({ state: 'open' as const, draft: false, headSha: HEAD_SHA })),
+    fetchBranchHead: () => Promise.resolve({ status: 'not-modified' as const }),
+    withLock: overrides.withLock ?? ((_path, work) => work()),
+    lockHolder: async () => overrides.lockHolder,
+    onSignal: (handler) => signalHandlers.push(handler),
+    killDetachedChildren: () => {
+      kills += 1
+    },
+    abort: (code) => aborts.push(code),
+    sleep: async (ms) => {
+      clock += ms
+    },
+    clock: () => new Date(clock),
     createExtractor: () => extractor,
     pathSize: async () => 2048,
     createProvider: (name, options) => {
@@ -259,6 +288,11 @@ function harness(
     mirrors,
     storePaths,
     historyFiles,
+    signal: () => {
+      for (const handler of signalHandlers) handler()
+    },
+    kills: () => kills,
+    aborts,
     fetches,
     stateFetches,
     posts,
@@ -1544,5 +1578,161 @@ describe('run history', () => {
     expect(h.stderr()).toContain(
       'Warning: /data/history.sqlite was written by a newer Phada (history version 9, this one knows 1); update Phada. This review is not saved in the history.',
     )
+  })
+})
+
+describe('phada watch', () => {
+  const WATCH_CONFIG = 'verify: false\nwatch:\n  repos: [acme/shop]\n'
+  const OPEN_PULL = {
+    number: 12,
+    headSha: HEAD_SHA,
+    draft: false,
+    author: 'octocat',
+    authorIsBot: false,
+    association: 'OWNER',
+    labels: [],
+    baseRef: 'main',
+    private: false,
+  }
+  const listed = () => Promise.resolve({ status: 'ok' as const, pulls: [OPEN_PULL] })
+  const withConfig = (text = WATCH_CONFIG) => memoryFiles({ '/cfg/config.yml': text })
+
+  it('asks for repositories when the config has no watch block', async () => {
+    const h = harness()
+
+    expect(await run(['watch'], h.deps)).toBe(2)
+    expect(h.stderr()).toContain('phada: Nothing to watch: list the repositories under watch:')
+  })
+
+  it('refuses to watch without the history', async () => {
+    const h = harness({ files: withConfig(`${WATCH_CONFIG}history: false\n`) })
+
+    expect(await run(['watch'], h.deps)).toBe(2)
+    expect(h.stderr()).toContain('phada watch needs the history')
+  })
+
+  it('says another watch is running when the lock is taken', async () => {
+    const h = harness({
+      files: withConfig(),
+      lockHolder: 123,
+      withLock: () => Promise.reject(new MirrorLockTimeoutError('/data/watch.lock')),
+    })
+
+    expect(await run(['watch'], h.deps)).toBe(1)
+    expect(h.stderr()).toContain('phada: Another phada watch is running (PID 123).')
+  })
+
+  it('reviews and publishes the open pull requests with --once --backfill', async () => {
+    const h = harness({
+      files: withConfig(),
+      listPulls: listed,
+      review: () => Promise.resolve(WITH_FINDING),
+    })
+
+    expect(await run(['watch', '--once', '--backfill'], h.deps)).toBe(0)
+    expect(h.posts).toHaveLength(1)
+    expect(h.providers[0]?.options).toMatchObject({ detached: true })
+    expect(h.stderr()).toMatch(/\[\d\d:\d\d\] Reviewing acme\/shop#12 at a1b2c3d…/)
+    expect(h.stderr()).toContain(`Published acme/shop#12: ${REVIEW_URL}`)
+  })
+
+  it('records the open pull requests without reviewing them on the first run', async () => {
+    const h = harness({ files: withConfig(), listPulls: listed })
+
+    expect(await run(['watch', '--once'], h.deps)).toBe(0)
+    expect(h.posts).toHaveLength(0)
+    expect(h.stderr()).toContain('acme/shop: 1 open pull request recorded as they are')
+  })
+
+  it('does not publish a review whose pull request moved on', async () => {
+    const h = harness({
+      files: withConfig(),
+      listPulls: listed,
+      pullHead: () => Promise.resolve({ state: 'open', draft: false, headSha: 'f'.repeat(40) }),
+    })
+
+    expect(await run(['watch', '--once', '--backfill'], h.deps)).toBe(0)
+    expect(h.posts).toHaveLength(0)
+    expect(h.stderr()).toContain('acme/shop#12 moved to fffffff during the review; not published.')
+  })
+
+  it('keeps the review in the history only with publish: false', async () => {
+    const h = harness({
+      files: withConfig(
+        'verify: false\nwatch:\n  repos:\n    - repo: acme/shop\n      publish: false\n',
+      ),
+      listPulls: listed,
+    })
+
+    expect(await run(['watch', '--once', '--backfill'], h.deps)).toBe(0)
+    expect(h.posts).toHaveLength(0)
+    expect(h.stderr()).toContain('Reviewed acme/shop#12; kept in the history, not published.')
+  })
+
+  it('lets the running review finish on the first Ctrl-C and stops', async () => {
+    const h = harness({
+      files: withConfig(),
+      listPulls: listed,
+      review: () => {
+        h.signal()
+        return Promise.resolve(WITH_FINDING)
+      },
+    })
+
+    expect(await run(['watch', '--backfill'], h.deps)).toBe(0)
+    expect(h.stderr()).toContain('Stopping after the current review (Ctrl-C again to abort).')
+    expect(h.posts).toHaveLength(1)
+    expect(h.stderr()).toContain('Stopped.')
+  })
+
+  it('stops at once on Ctrl-C while idle', async () => {
+    const h = harness({ files: withConfig() })
+    h.deps.sleep = async () => h.signal()
+
+    expect(await run(['watch'], h.deps)).toBe(0)
+    expect(h.stderr()).toContain('Stopping…\nStopped.\n')
+  })
+
+  it('aborts on the second Ctrl-C, stops the AI and puts the job back', async () => {
+    const h = harness({
+      files: withConfig(),
+      listPulls: listed,
+      review: () => {
+        h.signal()
+        h.signal()
+        return new Promise<ReviewOutput>(() => undefined)
+      },
+    })
+
+    expect(await run(['watch', '--backfill'], h.deps)).toBe(130)
+    expect(h.kills()).toBe(1)
+    expect(h.aborts).toEqual([130])
+    expect(h.stderr()).toContain('Aborted.')
+    expect(h.posts).toHaveLength(0)
+  })
+
+  it('stops with the error when the AI CLI is not logged in', async () => {
+    const h = harness({
+      files: withConfig(),
+      listPulls: listed,
+      review: () =>
+        Promise.reject(new ProviderError('claude-cli', 'not-authenticated', 'Not logged in')),
+    })
+
+    expect(await run(['watch', '--backfill'], h.deps)).toBe(1)
+    expect(h.stderr()).toContain('phada: Claude Code is not logged in.')
+  })
+
+  it('prints the status from the history', async () => {
+    const h = harness({ files: withConfig(), listPulls: listed, lockHolder: 77 })
+    await run(['watch', '--once'], h.deps)
+
+    expect(await run(['watch', '--status', '--format', 'json'], h.deps)).toBe(0)
+    const status = JSON.parse(h.stdout()) as Record<string, unknown>
+    expect(status).toMatchObject({
+      schemaVersion: 1,
+      running: { pid: 77 },
+      repos: [expect.objectContaining({ repo: 'acme/shop' })],
+    })
   })
 })

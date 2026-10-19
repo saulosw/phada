@@ -11,6 +11,7 @@ export type SkipReason =
   | { kind: 'open-threads'; openThreads: number }
   | { kind: 'nothing-found' }
   | { kind: 'already-reviewed' }
+  | { kind: 'closed' }
 
 export type RunDecision =
   { action: 'run'; wouldSkip?: SkipReason } | { action: 'skip'; reason: SkipReason }

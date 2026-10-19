@@ -78,3 +78,10 @@ async function removeIfHeld(lockPath: string, content: string): Promise<void> {
   const current = await readFile(lockPath, 'utf8').catch(() => undefined)
   if (current === content) await rm(lockPath, { force: true })
 }
+
+export async function lockHolder(lockPath: string): Promise<number | undefined> {
+  const content = await readFile(lockPath, 'utf8').catch(() => undefined)
+  if (content === undefined) return undefined
+  const holder = Number(content.split(' ')[0])
+  return Number.isInteger(holder) && holder > 0 && isAlive(holder) ? holder : undefined
+}

@@ -26,6 +26,14 @@ export type CliCommand =
   | { kind: 'index'; repo: RepositoryName; ref?: string; format: IndexFormat; debug: boolean }
   | { kind: 'rules'; target: RulesTarget; format: IndexFormat; debug: boolean }
   | {
+      kind: 'watch'
+      once: boolean
+      backfill: boolean
+      status: boolean
+      format: IndexFormat
+      debug: boolean
+    }
+  | {
       kind: 'review'
       ref: PullRequestRef
       provider?: string
@@ -49,6 +57,7 @@ Commands:
   init                   Create config files for Phada
   index <owner/repo>     Build a map of a repository's code on this machine
   rules <owner/repo[#N]> Show the rules and docs a review would read
+  watch                  Review new pull requests and pushes on its own
 
 Options:
   -h, --help             Show this help
@@ -148,6 +157,47 @@ Environment:
   GH_TOKEN           Used when GITHUB_TOKEN is not set
   PHADA_CONFIG_HOME  Folder of your own config (default: ~/.config/phada)`
 
+export const WATCH_USAGE = `Usage: phada watch [options]
+
+Follows the repositories listed under watch: in your own config and reviews new
+pull requests and new pushes on its own, one at a time, after a settle time. It
+publishes like phada review and keeps every review in a local history. Pull
+requests already open when the watch first sees a repository are recorded as
+they are, not reviewed. Runs in the foreground: Ctrl-C once lets the running
+review finish, twice stops it.
+
+Options:
+  --once             Run one cycle and exit (for cron)
+  --backfill         Also review the pull requests already open the first time
+                     a repository is seen
+  --status           Show the queue, the reviews in progress, failures and the
+                     last review of each repository, then exit
+  --format <name>    Output of --status: text or json (default: text)
+  --debug            Show error details
+  -h, --help         Show this help
+
+Config (in ~/.config/phada/config.yml):
+  watch:
+    interval: 5m           # how often to look for changes, 60s at least
+    settle: 3m             # wait after the last push before reviewing
+    maxReviewsPerHour: 6
+    repos:
+      - owner/repo
+      - repo: owner/other
+        publish: false     # keep the review in the history only
+        allowExternal: true
+        authors: [alice]
+        labels: [phada]
+        baseBranches: [main]
+
+Environment:
+  GITHUB_TOKEN       GitHub token that can read the pull requests and the
+                     repository contents and write reviews
+  GH_TOKEN           Used when GITHUB_TOKEN is not set
+  PHADA_CONFIG_HOME  Folder of your own config (default: ~/.config/phada)
+  PHADA_DATA_HOME    Folder of the history (default: ~/.local/share/phada)
+  PHADA_CACHE_HOME   Folder of the mirrors and indexes (default: ~/.cache/phada)`
+
 const REPOSITORY_NAME = /^([\w.-]+)\/([\w.-]+)$/
 
 export function parseCliArgs(argv: readonly string[]): CliCommand {
@@ -156,6 +206,7 @@ export function parseCliArgs(argv: readonly string[]): CliCommand {
   if (command === 'init') return parseInitArgs(rest)
   if (command === 'index') return parseIndexArgs(rest)
   if (command === 'rules') return parseRulesArgs(rest)
+  if (command === 'watch') return parseWatchArgs(rest)
   if (command !== undefined && !command.startsWith('-')) throw unknownCommand(command)
 
   const { values } = parseOptions(argv, {
@@ -171,7 +222,9 @@ function unknownCommand(command: string): UsageError {
   if (isPullRequestRef(command)) {
     return new UsageError(`Unknown command "${command}". Did you mean "phada review ${command}"?`)
   }
-  return new UsageError(`Unknown command "${command}". Available: review, init, index, rules.`)
+  return new UsageError(
+    `Unknown command "${command}". Available: review, init, index, rules, watch.`,
+  )
 }
 
 function isPullRequestRef(input: string): boolean {
@@ -306,6 +359,39 @@ function parseRulesArgs(argv: readonly string[]): CliCommand {
     ? { kind: 'pull', ref: parsePullRequestRef(input) }
     : { kind: 'repo', repo: parseRepositoryName(input) }
   return { kind: 'rules', target, format: values.format, debug: values.debug }
+}
+
+function parseWatchArgs(argv: readonly string[]): CliCommand {
+  const { values, positionals } = parseOptions(argv, {
+    once: { type: 'boolean', default: false },
+    backfill: { type: 'boolean', default: false },
+    status: { type: 'boolean', default: false },
+    format: { type: 'string' },
+    debug: { type: 'boolean', default: false },
+    help: { type: 'boolean', short: 'h', default: false },
+  })
+  if (values.help) return { kind: 'help', text: WATCH_USAGE }
+  if (positionals.length > 0) {
+    throw new UsageError('phada watch takes no repository; list them under watch: in your config.')
+  }
+  if (values.format !== undefined && !values.status) {
+    throw new UsageError('--format only works with --status.')
+  }
+  if (values.status && (values.once || values.backfill)) {
+    throw new UsageError('Use --status alone, without --once or --backfill.')
+  }
+  const format = values.format ?? 'text'
+  if (format !== 'text' && format !== 'json') {
+    throw new UsageError(`Invalid --format "${format}". Use text or json.`)
+  }
+  return {
+    kind: 'watch',
+    once: values.once,
+    backfill: values.backfill,
+    status: values.status,
+    format,
+    debug: values.debug,
+  }
 }
 
 function parseRepositoryName(name: string): RepositoryName {

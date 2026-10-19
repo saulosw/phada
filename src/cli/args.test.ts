@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import { InvalidPullRequestRefError } from '../github/errors.js'
-import { INDEX_USAGE, INIT_USAGE, parseCliArgs, REVIEW_USAGE, RULES_USAGE, USAGE } from './args.js'
+import {
+  parseCliArgs,
+  INDEX_USAGE,
+  INIT_USAGE,
+  REVIEW_USAGE,
+  RULES_USAGE,
+  USAGE,
+  WATCH_USAGE,
+} from './args.js'
 import { UsageError } from './errors.js'
 
 const REF = { owner: 'acme', repo: 'shop', number: 12 }
@@ -31,7 +39,7 @@ describe('parseCliArgs', () => {
     ],
     [
       ['reveiw', 'acme/shop#12'],
-      'Unknown command "reveiw". Available: review, init, index, rules.',
+      'Unknown command "reveiw". Available: review, init, index, rules, watch.',
     ],
     [['--verify'], "Unknown option '--verify'."],
   ])('rejects the command line %j with a usage error', (argv, message) => {
@@ -313,5 +321,51 @@ describe('parseCliArgs rules', () => {
     [['rules', 'a/b', '--format', 'yaml'], 'Invalid --format "yaml". Use text or json.'],
   ])('rejects %j', (argv, message) => {
     expect(() => parseCliArgs(argv)).toThrow(new UsageError(message))
+  })
+})
+
+describe('parseCliArgs watch', () => {
+  it('watches in the foreground by default', () => {
+    expect(parseCliArgs(['watch'])).toEqual({
+      kind: 'watch',
+      once: false,
+      backfill: false,
+      status: false,
+      format: 'text',
+      debug: false,
+    })
+  })
+
+  it('reads --once and --backfill', () => {
+    expect(parseCliArgs(['watch', '--once', '--backfill', '--debug'])).toMatchObject({
+      once: true,
+      backfill: true,
+      debug: true,
+    })
+  })
+
+  it('reads --status with a format', () => {
+    expect(parseCliArgs(['watch', '--status', '--format', 'json'])).toMatchObject({
+      status: true,
+      format: 'json',
+    })
+  })
+
+  it.each([
+    [['watch', '--format', 'json'], '--format only works with --status.'],
+    [['watch', '--status', '--once'], 'Use --status alone, without --once or --backfill.'],
+    [['watch', '--status', '--format', 'yaml'], 'Invalid --format "yaml". Use text or json.'],
+    [
+      ['watch', 'acme/shop'],
+      'phada watch takes no repository; list them under watch: in your config.',
+    ],
+  ])('refuses %j', (argv, message) => {
+    expect(() => parseCliArgs(argv)).toThrow(message)
+  })
+
+  it('prints its help', () => {
+    expect(parseCliArgs(['watch', '--help'])).toEqual({ kind: 'help', text: WATCH_USAGE })
+    expect(WATCH_USAGE.startsWith('Usage: phada watch [options]')).toBe(true)
+    expect(USAGE).toContain('watch                  Review new pull requests and pushes on its own')
   })
 })

@@ -231,4 +231,17 @@ describe('reviewAndPublish', () => {
     expect(calls.posts).toEqual([`ignored ${PR.headSha}`])
     expect(calls.reviews).toBe(0)
   })
+
+  it.each([
+    ['closed', pullRequestFixture({ state: 'closed' })],
+    ['back to draft', pullRequestFixture({ draft: true })],
+  ])('skips in watch mode a pull request that is %s', async (_case, pullRequest) => {
+    const { deps, calls } = setup({}, pullRequest)
+
+    expect(await reviewAndPublish({ ...INPUT, mode: 'watch' }, deps)).toMatchObject({
+      status: 'skipped',
+      reason: { kind: 'closed' },
+    })
+    expect(calls.reviews).toBe(0)
+  })
 })

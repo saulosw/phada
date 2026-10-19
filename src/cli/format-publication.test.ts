@@ -48,4 +48,10 @@ describe('dismissed findings and already-reviewed', () => {
       formatSkipMessage('a1b2c3d4e5f60718293a4b5c6d7e8f9012345678', { kind: 'already-reviewed' }),
     ).toBe('a1b2c3d already reviewed by Phada: skipping.')
   })
+
+  it('says a closed or draft pull request is skipped', () => {
+    expect(formatSkipMessage('a1b2c3d4e5f60718293a4b5c6d7e8f9012345678', { kind: 'closed' })).toBe(
+      'The pull request is closed or a draft now: skipping a1b2c3d.',
+    )
+  })
 })

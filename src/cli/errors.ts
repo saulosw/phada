@@ -13,3 +13,7 @@ export class MissingGitHubTokenError extends Error {
     )
   }
 }
+
+export class WatchRunningError extends Error {
+  override readonly name = 'WatchRunningError'
+}

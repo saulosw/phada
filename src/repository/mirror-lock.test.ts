@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSyn
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { MirrorLockTimeoutError, withMirrorLock } from './mirror-lock.js'
+import { lockHolder, MirrorLockTimeoutError, withMirrorLock } from './mirror-lock.js'
 
 const dir = mkdtempSync(join(tmpdir(), 'phada-lock-'))
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
@@ -108,5 +108,26 @@ describe('withMirrorLock', () => {
     )
     expect(error).toBeInstanceOf(MirrorLockTimeoutError)
     expect(existsSync(lock)).toBe(true)
+  })
+})
+
+describe('lockHolder', () => {
+  const lockDir = mkdtempSync(join(tmpdir(), 'phada-holder-'))
+  afterAll(() => rmSync(lockDir, { recursive: true, force: true }))
+
+  it('gives the PID of a live holder', async () => {
+    const path = join(lockDir, 'live.lock')
+    writeFileSync(path, `${process.pid} 2026-10-18T12:00:00.000Z x`)
+
+    expect(await lockHolder(path)).toBe(process.pid)
+  })
+
+  it('gives nothing without a lock or with a dead holder', async () => {
+    const dead = spawnSync(process.execPath, ['-e', '0']).pid
+    const path = join(lockDir, 'dead.lock')
+    writeFileSync(path, `${dead} 2026-10-18T12:00:00.000Z x`)
+
+    expect(await lockHolder(join(lockDir, 'none.lock'))).toBeUndefined()
+    expect(await lockHolder(path)).toBeUndefined()
   })
 })

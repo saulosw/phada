@@ -4,9 +4,7 @@ import { homedir } from 'node:os'
 import { nodeFileSystem } from './config/local-files.js'
 import { createReview } from './github/create-review.js'
 import { fetchReviewState } from './github/pull-request-reviews.js'
-import { fetchPullRequest } from './github/pull-request.js'
 import { fetchRepositoryFile, fetchRepositoryTree } from './github/repository-files.js'
-import { fetchRepository } from './github/repository.js'
 import { suppressSqliteWarning } from './cli/suppress-sqlite-warning.js'
 import { pathSize } from './config/cache-paths.js'
 import { createExtractor } from './repo-map/extract.js'
@@ -14,6 +12,12 @@ import { openGitMirror } from './repository/git-mirror.js'
 import { openIndexStore } from './store/index-store.js'
 import { openObservedStore } from './store/observed-store.js'
 import { openHistoryStore } from './store/history-store.js'
+import { setTimeout as wait } from 'node:timers/promises'
+import { listOpenPullRequests } from './github/list-pull-requests.js'
+import { fetchPullRequest, fetchPullRequestHead } from './github/pull-request.js'
+import { fetchBranchHead, fetchRepository } from './github/repository.js'
+import { killDetachedChildren } from './process/run-command.js'
+import { lockHolder, withMirrorLock } from './repository/mirror-lock.js'
 import { createProvider, run } from './main.js'
 
 const packageJson = await readFile(new URL('../package.json', import.meta.url), 'utf8')
@@ -42,4 +46,21 @@ process.exitCode = await run(process.argv.slice(2), {
   pathSize,
   createProvider,
   openHistoryStore: (path) => openHistoryStore(path),
+  listOpenPullRequests,
+  fetchPullRequestHead,
+  fetchBranchHead,
+  withLock: (path, work) =>
+    withMirrorLock(path, { timeoutMs: 0, staleMs: Number.POSITIVE_INFINITY }, work),
+  lockHolder,
+  onSignal: (handler) => {
+    process.on('SIGINT', handler)
+    process.on('SIGTERM', handler)
+  },
+  killDetachedChildren,
+  abort: (code) => {
+    killDetachedChildren()
+    process.exit(code)
+  },
+  sleep: (ms, signal) => wait(ms, undefined, { signal }).catch(() => undefined),
+  clock: () => new Date(),
 })

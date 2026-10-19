@@ -84,6 +84,9 @@ export async function reviewAndPublish(
 ): Promise<ReviewRun> {
   const pullRequest = await deps.fetchPullRequest(input.ref)
   deps.events.fetched(pullRequest)
+  if (input.mode === 'watch' && (pullRequest.state === 'closed' || pullRequest.draft)) {
+    return { status: 'skipped', pullRequest, reason: { kind: 'closed' } }
+  }
   const state = await deps.fetchReviewState(input.ref)
   const decision = decideRun(state, {
     headSha: pullRequest.headSha,

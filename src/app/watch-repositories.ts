@@ -29,7 +29,7 @@ export interface WatchEvents {
   superseded(job: JobRecord): void
   started(job: JobRecord): void
   finished(job: JobRecord, run: ReviewRun): void
-  retry(job: JobRecord, at: string): void
+  retry(job: JobRecord, at: string, error: unknown): void
   paused(pause: PauseState): void
   failed(job: JobRecord, error: unknown): void
   indexed(repo: string, sha: string): void
@@ -224,7 +224,7 @@ function fail(
   if (outcome.stop) return { reason: 'fatal', error }
   if (outcome.job.status === 'failed') events.failed(job, error)
   else if (kind === 'transient' && outcome.job.notBefore !== undefined) {
-    events.retry(job, outcome.job.notBefore)
+    events.retry(job, outcome.job.notBefore, error)
   }
   return undefined
 }

@@ -3,8 +3,9 @@ import { DiffTooLargeError, GitHubError, InvalidPullRequestRefError } from '../g
 import { ProviderError } from '../providers/types.js'
 import { CheckoutUnavailableError } from '../repository/git-checkout.js'
 import { InvalidReviewReportError } from '../review/errors.js'
+import { HistoryStoreError } from '../store/history-store.js'
 import { IndexStoreError } from '../store/index-store.js'
-import { MissingGitHubTokenError, UsageError } from './errors.js'
+import { MissingGitHubTokenError, UsageError, WatchRunningError } from './errors.js'
 import { toTerminalText } from './terminal-text.js'
 
 export interface FormattedError {
@@ -53,6 +54,9 @@ function describe(error: unknown): { summary: string; exitCode: 1 | 2 } {
   if (error instanceof ConfigError) return { summary: error.message, exitCode: 2 }
   if (error instanceof InvalidPullRequestRefError) return { summary: error.message, exitCode: 2 }
   if (error instanceof MissingGitHubTokenError) return { summary: error.message, exitCode: 1 }
+  if (error instanceof WatchRunningError || error instanceof HistoryStoreError) {
+    return { summary: error.message, exitCode: 1 }
+  }
   if (error instanceof DiffTooLargeError) {
     return { summary: `${error.message} Phada never truncates a diff.`, exitCode: 1 }
   }
