@@ -365,6 +365,73 @@ describe('formatGitHubReview comments', () => {
     ])
   })
 
+  describe('with a suggestion', () => {
+    const one = { startLine: 3, endLine: 3, original: 'a', replacement: 'b(user.id)' }
+
+    it('adds a suggestion block after the fix, anchored on the last line', () => {
+      const [comment] = formatGitHubReview(
+        RESULT,
+        plan([findingFixture({ line: 3, suggestion: one })]),
+      ).comments
+
+      expect(comment).toEqual({
+        path: 'src/shop.ts',
+        line: 3,
+        body: [
+          '**P1** · spend has no auth · confidence 90',
+          'Anyone can spend crystals for any user.',
+          '**Fix:** Use the authenticated user id.',
+          '```suggestion\nb(user.id)\n```',
+          '<!-- phada:finding -->',
+        ].join('\n\n'),
+      })
+    })
+
+    it('starts a comment of several lines on the first line of the suggestion', () => {
+      const several = { startLine: 2, endLine: 4, original: 'a\nb\nc', replacement: 'd' }
+      const [comment] = formatGitHubReview(
+        RESULT,
+        plan([findingFixture({ line: 3, suggestion: several })]),
+      ).comments
+
+      expect(comment).toMatchObject({ path: 'src/shop.ts', startLine: 2, line: 4 })
+    })
+
+    it('uses a fence longer than any backtick run in the code', () => {
+      const fenced = { ...one, replacement: 'const md = "```js"\nconst x = "````"' }
+      const [comment] = formatGitHubReview(
+        RESULT,
+        plan([findingFixture({ line: 3, suggestion: fenced })]),
+      ).comments
+
+      expect(comment?.body).toContain(`\`\`\`\`\`suggestion\n${fenced.replacement}\n\`\`\`\`\``)
+    })
+
+    it('drops the suggestion when the comment cannot fit it', () => {
+      const huge = { ...one, replacement: 'x'.repeat(600) }
+      const [comment] = formatGitHubReview(
+        RESULT,
+        plan([findingFixture({ line: 3, suggestion: huge })]),
+        500,
+      ).comments
+
+      expect(comment?.body.length).toBeLessThanOrEqual(500)
+      expect(comment?.body).not.toContain('```suggestion')
+      expect(comment).not.toHaveProperty('startLine')
+      expect(comment?.line).toBe(3)
+    })
+
+    it('never shows a suggestion in the body of the review', () => {
+      const suggested = findingFixture({ line: 20, title: 'Balance has no auth', suggestion: one })
+      const { body } = formatGitHubReview(
+        result({ worthChecking: [suggested] }),
+        plan([], [suggested]),
+      )
+
+      expect(body).not.toContain('suggestion')
+    })
+  })
+
   it('names the sources and the rule a finding is based on', () => {
     const ruled = findingFixture({
       rule: 'orm-only',

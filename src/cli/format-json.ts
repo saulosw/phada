@@ -163,6 +163,7 @@ function reviewJson(result: ReviewResult) {
       rejected: dropped.rejected,
     },
     verification: result.verification === undefined ? null : verificationJson(result.verification),
+    suggestions: result.suggestions ?? null,
     provider: {
       id: result.providerId,
       model: result.model ?? null,
@@ -191,7 +192,8 @@ function usageJson(usage: TokenUsage | undefined) {
 }
 
 function findingJson(finding: Finding) {
-  const { severity, confidence, file, line, title, why, fix, rule, sources, reason } = finding
+  const { severity, confidence, file, line, title, why, fix, rule, sources, reason, suggestion } =
+    finding
   return {
     severity,
     confidence,
@@ -203,6 +205,7 @@ function findingJson(finding: Finding) {
     rule: rule ?? null,
     sources: sources ?? [],
     reason: reason ?? null,
+    suggestion: suggestion ?? null,
   }
 }
 

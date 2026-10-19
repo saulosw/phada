@@ -71,6 +71,25 @@ describe('createReview', () => {
     })
   })
 
+  it('starts a comment of several lines on the RIGHT side of its first line', async () => {
+    const { result, calls } = publish([{ status: 200, body: fixture('create-review.json') }], {
+      comments: [{ path: 'src/a.ts', startLine: 4, line: 6, body: 'Several' }],
+    })
+
+    await result
+
+    expect(JSON.parse(calls[0]?.body ?? '').comments).toEqual([
+      {
+        path: 'src/a.ts',
+        start_line: 4,
+        start_side: 'RIGHT',
+        line: 6,
+        side: 'RIGHT',
+        body: 'Several',
+      },
+    ])
+  })
+
   it('posts a review without comments', async () => {
     const { result, calls } = publish([{ status: 200, body: fixture('create-review.json') }], {
       comments: [],

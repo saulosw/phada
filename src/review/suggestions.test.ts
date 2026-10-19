@@ -142,6 +142,25 @@ describe('checkSuggestion', () => {
     ).toBeUndefined()
   })
 
+  it('refuses a replacement with control or bidirectional characters', () => {
+    expect(
+      check({
+        startLine: 2,
+        endLine: 2,
+        original: 'const LIMIT = 20',
+        replacement: 'const LIMIT = 20 /* \u202E */',
+      }),
+    ).toBeUndefined()
+    expect(
+      check({
+        startLine: 2,
+        endLine: 2,
+        original: 'const LIMIT = 20',
+        replacement: '\tconst LIMIT = 5',
+      }),
+    ).toBeDefined()
+  })
+
   it('returns nothing for a finding without a suggestion', () => {
     expect(checkSuggestion(findingFixture({ file: 'src/shop.ts', line: 2 }), FILES)).toBeUndefined()
   })

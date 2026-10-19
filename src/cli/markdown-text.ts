@@ -68,3 +68,8 @@ function escapeText(text: string): string {
 function escapeHtml(text: string): string {
   return text.replace(/(\\*)</g, '$1$1\\<')
 }
+
+export function codeFence(code: string): string {
+  const longest = Math.max(0, ...[...code.matchAll(/`+/g)].map(([run]) => run.length))
+  return '`'.repeat(Math.max(3, longest + 1))
+}

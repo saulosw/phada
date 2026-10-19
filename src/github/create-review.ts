@@ -24,6 +24,7 @@ const DEFAULT_TIMEOUT_MS = 30_000
 
 export interface ReviewComment {
   path: string
+  startLine?: number
   line: number
   body: string
 }
@@ -56,6 +57,9 @@ export async function createReview(options: CreateReviewOptions): Promise<Create
     body: options.body,
     comments: options.comments.map((comment) => ({
       path: comment.path,
+      ...(comment.startLine === undefined
+        ? {}
+        : { start_line: comment.startLine, start_side: 'RIGHT' }),
       line: comment.line,
       side: 'RIGHT',
       body: comment.body,

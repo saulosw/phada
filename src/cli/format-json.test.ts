@@ -37,6 +37,25 @@ function parse(output: string): unknown {
 }
 
 describe('formatReviewJson', () => {
+  it('prints the suggestion of a finding and the suggestion counts', () => {
+    const suggestion = { startLine: 3, endLine: 3, original: 'a', replacement: 'b' }
+    const output = formatReviewJson(pullRequestFixture(), {
+      status: 'reviewed',
+      result: {
+        ...RESULT,
+        findings: [findingFixture({ line: 3, suggestion })],
+        suggestions: { valid: 1, invalid: 2, dropped: 0 },
+      },
+    })
+
+    expect(parse(output)).toMatchObject({
+      review: {
+        findings: [{ suggestion }],
+        suggestions: { valid: 1, invalid: 2, dropped: 0 },
+      },
+    })
+  })
+
   it('prints the whole review as JSON with a schema version', () => {
     const output = formatReviewJson(pullRequestFixture(), { status: 'reviewed', result: RESULT })
 
@@ -55,6 +74,7 @@ describe('formatReviewJson', () => {
             rule: null,
             sources: [],
             reason: null,
+            suggestion: null,
           },
         ],
         worthChecking: [
@@ -63,11 +83,13 @@ describe('formatReviewJson', () => {
             rule: null,
             sources: [],
             reason: null,
+            suggestion: null,
           },
         ],
         worthCheckingOmitted: 2,
         minConfidence: 75,
         dropped: { invalid: 0, belowFloor: 1, outsideDiff: 2, duplicate: 0, rejected: 0 },
+        suggestions: null,
         verification: null,
         provider: { id: 'codex-cli', model: 'gpt-6-astra', additionalModels: ['gpt-6-mini'] },
         durationMs: 16_400,

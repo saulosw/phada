@@ -6,7 +6,7 @@ import type { FileChange, Finding, ReviewResult, Severity } from '../review/type
 import { findingReferences, leftOutLine } from './finding-references.js'
 import { english } from './i18n/en.js'
 import type { Messages } from './i18n/messages.js'
-import { githubBlock, githubCell, githubLine } from './markdown-text.js'
+import { codeFence, githubBlock, githubCell, githubLine } from './markdown-text.js'
 import { modelLabel, shortSha } from './review-text.js'
 
 export const GITHUB_BODY_LIMIT = 65_536
@@ -41,11 +41,7 @@ export function formatGitHubReview(
   }
   return {
     body: reviewBody(result, plan, limit, messages),
-    comments: plan.comments.map((finding) => ({
-      path: finding.file,
-      line: finding.line,
-      body: commentBody(finding, limit, messages),
-    })),
+    comments: plan.comments.map((finding) => findingComment(finding, limit, messages)),
   }
 }
 
@@ -205,7 +201,25 @@ function footer(result: ReviewResult, model: string, messages: Messages): string
   return parts.join(' · ')
 }
 
-function commentBody(finding: Finding, limit: number, messages: Messages): string {
+function findingComment(finding: Finding, limit: number, messages: Messages): ReviewComment {
+  const { suggestion } = finding
+  if (suggestion !== undefined) {
+    const fence = codeFence(suggestion.replacement)
+    const block = `${fence}suggestion\n${suggestion.replacement.replace(/\r/g, '')}\n${fence}`
+    const body = commentBody(finding, limit, messages, block)
+    if (body.length <= limit) {
+      return {
+        path: finding.file,
+        ...(suggestion.startLine === suggestion.endLine ? {} : { startLine: suggestion.startLine }),
+        line: suggestion.endLine,
+        body,
+      }
+    }
+  }
+  return { path: finding.file, line: finding.line, body: commentBody(finding, limit, messages) }
+}
+
+function commentBody(finding: Finding, limit: number, messages: Messages, suggestion = ''): string {
   const parts = { title: finding.title, why: finding.why, fix: finding.fix ?? '' }
   const references = findingReferences(finding, messages, { withLocalFiles: false })
   const render = () => {
@@ -214,6 +228,7 @@ function commentBody(finding: Finding, limit: number, messages: Messages): strin
       `**${finding.severity}** · ${githubLine(parts.title)} · ${messages.confidence} ${finding.confidence}`,
       githubBlock(parts.why),
       ...(fix === '' ? [] : [`**${messages.fix}:** ${fix}`]),
+      ...(suggestion === '' ? [] : [suggestion]),
       ...(references === '' ? [] : [`<sub>${references}</sub>`]),
       FINDING_MARKER,
     ].join('\n\n')
