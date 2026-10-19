@@ -7,8 +7,24 @@ output can change between minor versions.
 
 ## Unreleased
 
+## 0.5.0 - 2026-10-18
+
 ### Added
 
+- `phada watch` follows the repositories listed under `watch:` in your own config and reviews
+  new pull requests and new pushes on its own, one at a time, after a settle time (`interval`,
+  `settle`, `maxReviewsPerHour`; per repository `publish`, `allowExternal`, `authors`, `labels`,
+  `baseBranches`). Pull requests already open are recorded, not reviewed, unless `--backfill`.
+  Drafts, bots and outside authors on public repositories are left out.
+- The watch keeps one job per pull request (the newest commit wins), retries transient failures
+  twice, pauses on a provider usage limit or the GitHub rate limit, stops when the AI CLI is not
+  logged in, never publishes a review of a commit the pull request moved away from, and updates
+  the index of each default branch when idle. `--once` runs one cycle for cron; `--status`
+  (`--format json`) shows the queue, failures and last reviews; the first Ctrl-C lets the running
+  review finish.
+- A local history in `~/.local/share/phada/history.sqlite` (`PHADA_DATA_HOME`) keeps every
+  review, from the watch and from `phada review`, with its JSON and without the diff;
+  `history: false` turns it off.
 - Reviews read the instruction files a repository keeps for other AI tools as reference docs:
   `.github/copilot-instructions.md`, `.github/instructions/*.instructions.md`,
   `.cursor/rules/*.mdc`, `.cursorrules`, `.windsurfrules` and `GEMINI.md` at the root, and
@@ -22,6 +38,9 @@ output can change between minor versions.
 
 ### Changed
 
+- A finding that matches a Phada thread someone resolved is no longer posted again on the next
+  review of that pull request; stderr and the JSON publication (`dismissed`) count them. The JSON
+  keeps `schemaVersion: 1`.
 - The context report (`--dry-run` and the `context` block of the JSON) shows the scope and
   severity of each rule, the scope of each instruction file and why one was left out
   (`out-of-scope`, `manual`, `excluded`). The JSON keeps `schemaVersion: 1` and only gains fields.

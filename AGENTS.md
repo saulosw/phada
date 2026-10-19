@@ -32,9 +32,9 @@ src/
   bin.ts                 # entry point of the `phada` command: reads the package version, drops the
                          #   SQLite ExperimentalWarning (suppressSqliteWarning), calls run()
   main.ts                # run(argv, deps): CLI flow — flags, token, user config, provider choice,
-                         #   pull request and review state, run/skip, then the review use case,
-                         #   then print or publish; createProvider()
-  architecture.test.ts   # allowed imports of src/review/, src/publish/, src/context/,
+                         #   then reviewAndPublish(), printing and saving the run in the history;
+                         #   createProvider()
+  architecture.test.ts   # allowed imports of src/review/, src/publish/, src/watch/, src/context/,
                          #   src/investigation/, src/repository/, src/repo-map/, src/store/,
                          #   src/graph/ and src/app/
   app/                   # use cases any caller can run (CLI today), with injected readers
@@ -42,7 +42,12 @@ src/
                          #   (60 s budget) → related repositories → graph and impact of the diff
                          #   across them → investigation → review → observed relations → reports;
                          #   progress through typed events
+    review-and-publish.ts # reviewAndPublish(): fetch → decideRun → reviewPullRequest → plan →
+                         #   render (injected) → [checkHead] → createReview; never prints
+    watch-repositories.ts # watchRepositories(): the watch loop — discovery with ETags, planCycle,
+                         #   the next job, failures and pauses, the idle index refresh; events
     index-repository.ts  #   indexRepository(): mirror → files left out and why → indexCommit();
+                         #   refreshIndex(): the same within a deadline (idle watch);
                          #   indexCommit(): extract new blobs (optional deadline) → store the commit
     related-repositories.ts # openRelatedRepositories(): metadata → selection → fetch of the default
                          #   branch → manifests and links → index of the linked ones (60 s in total)
@@ -56,18 +61,27 @@ src/
   cli/                   # terminal edge
     args.ts              #   parseCliArgs(): `review` (--dry-run, --force, --verify/--no-verify,
                          #   --investigate/--no-investigate), `init`, `index` (--ref, --format
-                         #   text|json) and `rules` (--format text|json) commands, --help,
-                         #   --version; USAGE, REVIEW_USAGE, INIT_USAGE, INDEX_USAGE, RULES_USAGE
+                         #   text|json), `rules` (--format text|json) and `watch` (--once,
+                         #   --backfill, --status) commands, --help, --version; USAGE,
+                         #   REVIEW_USAGE, INIT_USAGE, INDEX_USAGE, RULES_USAGE, WATCH_USAGE
     init.ts              #   runInit(): .phada/ in the repository, or the user's own config
     init-templates.ts    #   the commented files phada init writes
     index-command.ts     #   runIndex(): token, cache folder, mirror, progress, the map's report
     rules-command.ts     #   runRules(): token, user config, the context of a pull request or of
                          #   the default branch, printed as text or JSON
+    watch-command.ts     #   runWatch(): settings, history, lock, signals (Ctrl-C once/twice),
+                         #   the watch deps and its events; --status
+    format-watch.ts      #   formatWatchEvent(), formatWatchStatus(), formatWatchStatusJson()
+    classify-failure.ts  #   classifyFailure(): an error → transient, usage-limit, rate-limit,
+                         #   definitive or fatal
+    review-wiring.ts     #   pullRequestReviewDeps(), renderReview, reviewRunJson(),
+                         #   assertProviderChoice(): shared by review and watch
+    history-run.ts       #   historyRun(): a ReviewRun → the history record
     format-rules.ts      #   formatRulesText(), formatRulesJson() (schemaVersion 1)
     context-sources.ts   #   contextSourcesAt(): the repository at a commit and the local files
     format-index.ts      #   formatIndexText(), formatIndexJson() (schemaVersion 1)
     suppress-sqlite-warning.ts # drops Node's ExperimentalWarning for the built-in SQLite
-    errors.ts            #   UsageError, MissingGitHubTokenError
+    errors.ts            #   UsageError, MissingGitHubTokenError, WatchRunningError
     format-review.ts     #   pull request summary (stderr) and the Markdown review (stdout)
     format-github.ts     #   the review as GitHub Markdown: body, line comments, markers, truncation;
                          #   formatGitHubPreview() for --dry-run
@@ -93,10 +107,14 @@ src/
     parse-config.ts      #   parseConfigText(): YAML → config or an error naming the key
     merge-config.ts      #   mergeConfig(): layers → options, rules, files, ignore with origins (pure);
                          #   resolveProvider(): provider and model as a pair
-    user-config.ts       #   the user's folder (PHADA_CONFIG_HOME › XDG › ~/.config/phada), loadUserLayers()
+    user-config.ts       #   the user's folder (PHADA_CONFIG_HOME › XDG › ~/.config/phada),
+                         #   loadUserLayers(), loadTopLevelUserLayers()
     local-files.ts       #   LocalFileSystem and its node:fs implementation
     cache-paths.ts       #   the cache folder (PHADA_CACHE_HOME › XDG › ~/.cache/phada),
                          #   repositoryCache(): mirror, index and observed paths; pathSize()
+    data-paths.ts        #   the data folder (PHADA_DATA_HOME › XDG › ~/.local/share/phada):
+                         #   history.sqlite and watch.lock
+    watch-settings.ts    #   resolveWatchSettings() with the defaults, historyEnabled(), durationMs()
     errors.ts            #   ConfigError
   context/               # what the review sends besides the diff, with injected readers
     phada-paths.ts       #   .phada/ folders from the root to each changed file
@@ -117,11 +135,12 @@ src/
     request.ts           #   method, body, headers, timeout, status → error, token redaction
     json-fields.ts       #   typed reads of fields in GitHub answers
     graphql.ts           #   sendGraphQL(): errors in an HTTP 200 become GitHubGraphQLError
-    pull-request.ts      #   fetchPullRequest()
+    pull-request.ts      #   fetchPullRequest(), fetchPullRequestHead()
     pull-request-reviews.ts # fetchReviewState(): viewer, reviews and threads, paginated
     create-review.ts     #   createReview(): one COMMENT review with line comments
     repository-files.ts  #   fetchRepositoryTree(), fetchRepositoryFile(): the repository at a commit
-    repository.ts        #   fetchRepository(): visibility, default branch, empty
+    repository.ts        #   fetchRepository(): visibility, default branch, empty; fetchBranchHead()
+    list-pull-requests.ts #  listOpenPullRequests(): open pull requests, ETag of the first page
   graph/                 # the repository graph, resolved on demand from the index of a commit
     types.ts             #   RepositoryGraph, GraphSymbol, Site, Dependency, …
     project-config.ts    #   tsconfig/jsconfig paths, package.json of the repository's own
@@ -156,7 +175,8 @@ src/
       mcp-server.ts      #     the tools as a local MCP server (JSON-RPC over a socket)
       mcp-bridge.ts      #     what the AI CLI starts: stdio ↔ the socket of mcp-server.ts
   process/               # safe subprocess runner (stdin, timeout, typed errors)
-    run-command.ts       #   runCommand(), runCommandBytes(): return the exit code, never interpret it
+    run-command.ts       #   runCommand(), runCommandBytes(): return the exit code, never interpret it;
+                         #   detached children in their own process group, killDetachedChildren()
   providers/             # ReviewProvider and its implementations
     types.ts             #   ReviewProvider, ReviewPrompt, ReviewOutput, ProviderError
     cli-run.ts           #   shared by AI CLIs: temp dir, env without GitHub tokens, typed errors
@@ -168,7 +188,8 @@ src/
     markers.ts           #   the review and finding markers, read only at the end of a body
     phada-state.ts       #   Phada's own reviews and open threads (author = token owner + marker)
     decide-run.ts        #   decideRun(): review, or skip a commit Phada already reviewed
-    plan-publication.ts  #   planPublication(): new comments vs findings still open in a thread
+    plan-publication.ts  #   planPublication(): new comments vs findings still open in a thread vs
+                         #   findings whose thread someone resolved
     types.ts             #   PublicationPlan, RunDecision, SkipReason
   repository/            # the repository through git objects, in a persistent mirror
     checkout.ts          #   Checkout (read, grep, list, history), CheckoutError
@@ -192,6 +213,14 @@ src/
     index-store.ts       #   openIndexStore(): blobs, commits, summary, prune, reader()
     index-reader.ts      #   IndexReader: the files, symbols, calls and uses of one commit
     observed-store.ts    #   openObservedStore(): relations learned from reviews (own schema)
+    history-store.ts     #   openHistoryStore(): the review history, never rebuilt; watched
+                         #   repositories and pull requests, jobs, runs, pause
+    history-migrations.ts #  versioned migrations (PRAGMA user_version); a newer file is refused
+  watch/                 # pure: what the watch does, data in, decision out
+    filters.ts           #   eligibility(): draft, bot, outside author, authors, labels, base
+    plan-cycle.ts        #   planCycle(): baseline, seen, enqueue, supersede, gone
+    next-job.ts          #   pickNext(): the next ready job, or until when to wait (pause, limit)
+    failures.ts          #   afterFailure(): retries, pauses, failed, stop
   review/                # the engine: data in, result out
     types.ts             #   ReviewRequest, Finding, ReviewResult, ReviewOutcome, …
     prompt-parts.ts      #   text shared by the review and verification prompts: rules section,
@@ -231,7 +260,9 @@ environment. `src/context/` reads nothing itself: `loadContext()` gets the reade
 repository and of the local disk as data, and its only value imports from outside the folder are
 `picomatch`, `node:path` and the pure config helpers (`parse-config.ts`, `merge-config.ts`).
 `src/publish/` imports only types from outside the folder (`src/review/types.ts`,
-`src/github/pull-request-reviews.ts`). `src/repository/` runs `git` through
+`src/github/pull-request-reviews.ts`). `src/watch/` imports only types from outside the folder
+(the watch settings, the listed pull requests and the history records) and never reads the
+clock: `now` comes in as data. `src/repository/` runs `git` through
 `src/process/run-command.ts`. `src/investigation/` reads the repository only through a `Checkout`
 (`src/repository/checkout.ts`) and a `RepositoryGraph` (`src/graph/types.ts`) the caller passes
 in, and never imports the mirror, the store, the CLI, the engine or a concrete provider; the
