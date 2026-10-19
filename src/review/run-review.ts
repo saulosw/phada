@@ -109,7 +109,9 @@ export async function runReview(
         rejected: checked?.verification.rejected.length ?? 0,
       },
       ...(checked === undefined ? {} : { verification: checked.verification }),
-      ...(suggested.counts === undefined ? {} : { suggestions: suggested.counts }),
+      ...(suggested.counts === undefined
+        ? {}
+        : { suggestions: { ...suggested.counts, dropped: checked?.droppedSuggestions ?? 0 } }),
       ...(ignored.length === 0 ? {} : { ignored: [...ignored] }),
       ...(externalCalls.length === 0 ? {} : { externalCalls }),
       ...(warnings.length === 0 ? {} : { warnings }),

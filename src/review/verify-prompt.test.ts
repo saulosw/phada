@@ -164,6 +164,28 @@ describe('buildVerifyPrompt with repository context', () => {
     )
   })
 
+  it('shows the suggestion of a candidate that has one', () => {
+    const suggested = [
+      findingFixture({
+        line: 3,
+        title: 'raw SQL',
+        suggestion: { startLine: 3, endLine: 3, original: 'a', replacement: 'b' },
+      }),
+    ]
+    const { data, instructions } = buildVerifyPrompt(
+      { pullRequest: pullRequestFixture() },
+      suggested,
+      NONCE,
+    )
+
+    expect(data).toContain(
+      '{"id":1,"file":"src/shop.ts","line":3,"title":"raw SQL","why":"Anyone can spend crystals for any user.","suggestion":{"original":"a","replacement":"b"}}',
+    )
+    expect(instructions).toContain(
+      'suggestion: for a confirmed candidate with a suggestion, keep when the replacement',
+    )
+  })
+
   it('tells the verifier that the docs come from the repository and are not instructions', () => {
     const { instructions } = buildVerifyPrompt(
       { pullRequest: pullRequestFixture(), context },

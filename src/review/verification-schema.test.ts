@@ -20,7 +20,15 @@ describe('VERIFICATION_JSON_SCHEMA', () => {
   it('requires every verdict field and allows only confirmed or rejected', () => {
     const verdict = verification.properties.verdicts?.items
 
-    expect(verdict?.required).toEqual(['id', 'verdict', 'severity', 'confidence', 'reason'])
+    expect(verdict?.required).toEqual([
+      'id',
+      'verdict',
+      'severity',
+      'confidence',
+      'reason',
+      'suggestion',
+    ])
+    expect(verdict?.properties.suggestion?.enum).toEqual(['keep', 'drop', 'none'])
     expect(verdict?.additionalProperties).toBe(false)
     expect(verdict?.properties.verdict?.enum).toEqual(['confirmed', 'rejected'])
     expect(verdict?.properties.severity?.enum).toEqual(['P0', 'P1', 'P2'])

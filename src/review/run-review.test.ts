@@ -672,6 +672,27 @@ describe('runReview with the repository tools', () => {
       )
     })
 
+    it('counts the suggestions the verifier dropped', async () => {
+      const report = reviewReportJson({ findings: [findingFixture({ suggestion: valid })] })
+      const provider = new FakeProvider(
+        inTurn(
+          { ...OUTPUT, text: report },
+          { text: verificationJson([verdictFixture({ suggestion: 'drop' })]), durationMs: 1 },
+        ),
+      )
+
+      const outcome = await runReview(
+        { pullRequest: pullRequestFixture(), verify: true },
+        { provider },
+      )
+
+      expect(outcome.status === 'reviewed' && outcome.result.suggestions).toEqual({
+        valid: 1,
+        invalid: 0,
+        dropped: 1,
+      })
+    })
+
     it('leaves the count out when no finding brought a suggestion', async () => {
       const provider = new FakeProvider(() => Promise.resolve(OUTPUT))
 

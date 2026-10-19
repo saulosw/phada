@@ -50,9 +50,12 @@ const LINE_NUMBERS = `${DIFF_LINE_NUMBERS}
 The line of a candidate is one of those numbers.`
 
 const OUTPUT_FORMAT = `The verification is a single JSON object shaped like this:
-{"verdicts": [{"id": <number>, "verdict": "confirmed", "severity": "P1", "confidence": 85, "reason": "..."}]}
+{"verdicts": [{"id": <number>, "verdict": "confirmed", "severity": "P1", "confidence": 85, "reason": "...", "suggestion": "none"}]}
 - verdicts: one entry per candidate; id is the number of the candidate.
 - reason explains the verdict in one or two sentences.
+- suggestion: for a confirmed candidate with a suggestion, keep when the replacement
+  fixes the problem without breaking anything else, drop otherwise; none when the
+  candidate has no suggestion.
 - For a rejected candidate, give the severity and confidence it would have if it were real.
 No markdown.`
 
@@ -115,7 +118,10 @@ function instructionsFor(
   return [...sections, [UNTRUSTED_DATA, ...languageLine].join('\n')].join('\n\n')
 }
 
-function candidateLine({ file, line, title, why, rule }: Finding, index: number): string {
+function candidateLine(
+  { file, line, title, why, rule, suggestion }: Finding,
+  index: number,
+): string {
   return JSON.stringify({
     id: index + 1,
     file,
@@ -123,5 +129,8 @@ function candidateLine({ file, line, title, why, rule }: Finding, index: number)
     title,
     why,
     ...(rule === undefined ? {} : { rule }),
+    ...(suggestion === undefined
+      ? {}
+      : { suggestion: { original: suggestion.original, replacement: suggestion.replacement } }),
   })
 }

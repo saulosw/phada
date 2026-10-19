@@ -7,9 +7,13 @@ const VERDICT_SHAPE = {
   severity: SeveritySchema,
   confidence: ConfidenceSchema,
   reason: z.string().min(1),
+  suggestion: z.enum(['keep', 'drop', 'none']),
 }
 
-export const VerdictSchema = z.object(VERDICT_SHAPE)
+export const VerdictSchema = z.object({
+  ...VERDICT_SHAPE,
+  suggestion: VERDICT_SHAPE.suggestion.catch('keep'),
+})
 
 export type Verdict = z.infer<typeof VerdictSchema>
 
