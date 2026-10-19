@@ -26,6 +26,17 @@ const PUBLISH: Boundary = {
   types: new Set(['../review/types.js', '../github/pull-request-reviews.js']),
   expected: ['decide-run.ts', 'markers.ts', 'plan-publication.ts'],
 }
+const WATCH: Boundary = {
+  dir: 'watch',
+  values: new Set(),
+  types: new Set([
+    '../config/watch-settings.js',
+    '../github/list-pull-requests.js',
+    '../store/history-store.js',
+  ]),
+  expected: ['failures.ts', 'filters.ts', 'next-job.ts', 'plan-cycle.ts'],
+  globals: ['process', 'console', 'Date.now', 'setTimeout'],
+}
 const CONTEXT: Boundary = {
   dir: 'context',
   values: new Set([
@@ -287,6 +298,31 @@ describe('publish boundary rules', () => {
   })
 })
 
+describe('watch boundary rules', () => {
+  it('accepts type-only imports of the settings, the listing and the history records', () => {
+    const code = [
+      "import type { WatchedRepoSettings } from '../config/watch-settings.js'",
+      "import type { OpenPull } from '../github/list-pull-requests.js'",
+      "import type { JobRecord } from '../store/history-store.js'",
+      "import { later } from './failures.js'",
+    ].join('\n')
+
+    expect(boundaryViolations(code, WATCH)).toEqual([])
+  })
+
+  it.each([
+    [
+      'a value import of the history store',
+      "import { openHistoryStore } from '../store/history-store.js'",
+    ],
+    ['the GitHub client', "import { listOpenPullRequests } from '../github/list-pull-requests.js'"],
+    ['the clock', 'const now = Date.now()'],
+    ['a timer', 'setTimeout(() => {}, 10)'],
+  ])('flags %s', (_case, code) => {
+    expect(boundaryViolations(code, WATCH)).not.toEqual([])
+  })
+})
+
 describe('context boundary rules', () => {
   it('accepts picomatch, path, the pure config helpers and type-only imports', () => {
     const code = [
@@ -409,17 +445,25 @@ describe('store boundary rules', () => {
   })
 })
 
-describe.each([REVIEW, PUBLISH, CONTEXT, INVESTIGATION, REPOSITORY, REPO_MAP, STORE, GRAPH, APP])(
-  '$dir boundary',
-  (boundary) => {
-    const sources = sourcesOf(boundary)
+describe.each([
+  REVIEW,
+  PUBLISH,
+  WATCH,
+  CONTEXT,
+  INVESTIGATION,
+  REPOSITORY,
+  REPO_MAP,
+  STORE,
+  GRAPH,
+  APP,
+])('$dir boundary', (boundary) => {
+  const sources = sourcesOf(boundary)
 
-    it('has source files to check', () => {
-      expect(sources.map(({ name }) => name)).toEqual(expect.arrayContaining(boundary.expected))
-    })
+  it('has source files to check', () => {
+    expect(sources.map(({ name }) => name)).toEqual(expect.arrayContaining(boundary.expected))
+  })
 
-    it.each(sources)('$name stays inside the boundary', ({ name, code }) => {
-      expect(boundaryViolations(code, boundary, name)).toEqual([])
-    })
-  },
-)
+  it.each(sources)('$name stays inside the boundary', ({ name, code }) => {
+    expect(boundaryViolations(code, boundary, name)).toEqual([])
+  })
+})
