@@ -69,8 +69,10 @@ src/
     index-command.ts     #   runIndex(): token, cache folder, mirror, progress, the map's report
     rules-command.ts     #   runRules(): token, user config, the context of a pull request or of
                          #   the default branch, printed as text or JSON
-    watch-command.ts     #   runWatch(): settings, history, lock, the watch deps, one job's review
-    watch-stop.ts        #   createStopControl(): Ctrl-C once (finish the review) or twice (abort)
+    watch-command.ts     #   runWatch(): settings, providers checked on start, history, lock, the
+                         #   watch deps, one job's review
+    watch-stop.ts        #   createStopControl(): Ctrl-C once (finish the review) or twice (abort);
+                         #   trackRunningJob(): which job a second Ctrl-C puts back
     watch-events.ts      #   printWatchEvents(): the watch events as terminal lines
     watch-status.ts      #   watchStatusText(): --status in text or JSON
     format-watch.ts      #   formatWatchEvent(), formatWatchStatus(), formatWatchStatusJson()
@@ -118,7 +120,8 @@ src/
                          #   repositoryCache(): mirror, index and observed paths; pathSize()
     data-paths.ts        #   the data folder (PHADA_DATA_HOME › XDG › ~/.local/share/phada):
                          #   history.sqlite and watch.lock
-    watch-settings.ts    #   resolveWatchSettings() with the defaults, historyEnabled(), durationMs()
+    watch-settings.ts    #   resolveWatchSettings() with the defaults, historyEnabled()
+    duration.ts          #   durationMs(): 90s, 5m, 1h
     errors.ts            #   ConfigError
   context/               # what the review sends besides the diff, with injected readers
     phada-paths.ts       #   .phada/ folders from the root to each changed file
@@ -225,7 +228,9 @@ src/
     filters.ts           #   eligibility(): draft, bot, outside author, authors, labels, base
     plan-cycle.ts        #   planCycle(): baseline, seen, enqueue, supersede, gone
     next-job.ts          #   pickNext(): the next ready job, or until when to wait (pause, limit)
-    failures.ts          #   afterFailure(): retries, pauses, failed, stop
+    failures.ts          #   afterFailure(): retries, pauses, failed, stop; rateLimitPause()
+    time.ts              #   later(): an ISO time plus a duration
+    types.ts             #   JobRecord, PullRecord, PauseState, JobStatus, FailureKind
   review/                # the engine: data in, result out
     types.ts             #   ReviewRequest, Finding, ReviewResult, ReviewOutcome, …
     prompt-parts.ts      #   text shared by the review and verification prompts: rules section,
@@ -266,8 +271,10 @@ repository and of the local disk as data, and its only value imports from outsid
 `picomatch`, `node:path` and the pure config helpers (`parse-config.ts`, `merge-config.ts`).
 `src/publish/` imports only types from outside the folder (`src/review/types.ts`,
 `src/github/pull-request-reviews.ts`). `src/watch/` imports only types from outside the folder
-(the watch settings, the listed pull requests and the history records) and never reads the
-clock: `now` comes in as data. `src/repository/` runs `git` through
+(the watch settings and the listed pull requests) and never reads the clock: `now` comes in as
+data. Its records (`src/watch/types.ts`) are the watch's own; `src/store/` stores them.
+`src/cli/review-wiring.ts` and `src/cli/watch-command.ts` declare the deps they need
+(`ReviewWiringDeps`, `WatchCommandDeps`); `MainDeps` extends them. `src/repository/` runs `git` through
 `src/process/run-command.ts`. `src/investigation/` reads the repository only through a `Checkout`
 (`src/repository/checkout.ts`) and a `RepositoryGraph` (`src/graph/types.ts`) the caller passes
 in, and never imports the mirror, the store, the CLI, the engine or a concrete provider; the

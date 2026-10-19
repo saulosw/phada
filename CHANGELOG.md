@@ -21,7 +21,8 @@ output can change between minor versions.
   logged in, never publishes a review of a commit the pull request moved away from, and updates
   the index of each default branch when idle. `--once` runs one cycle for cron; `--status`
   (`--format json`) shows the queue, failures and last reviews; the first Ctrl-C lets the running
-  review finish.
+  review finish. The watch does not start when the provider set for a watched repository cannot
+  work (ollama without a model, `mcp` with a provider other than Claude).
 - A local history in `~/.local/share/phada/history.sqlite` (`PHADA_DATA_HOME`) keeps every
   review, from the watch and from `phada review`, with its JSON and without the diff;
   `history: false` turns it off.
