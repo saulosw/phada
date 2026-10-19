@@ -82,7 +82,8 @@ prints:
   the findings.
 - **Summary** of what the pull request changes and a **table of the changed files**.
 - **Findings grouped by severity**, each with file, line, confidence (0–100), why it matters and
-  a suggested fix. Confidence is how sure the AI is that the problem is real and happens as
+  a suggested fix (with the exact code change when the fix is a local edit, see
+  [Suggested changes](#suggested-changes)). Confidence is how sure the AI is that the problem is real and happens as
   described; how often it happens and how much it costs go into the severity, so a real but rare
   bug is a sure finding with a lower severity (a P0 stays P0 however rarely it happens). Only
   findings at the confidence cut or above are shown here (60 by default, see `--min-confidence`):
@@ -108,6 +109,18 @@ tokens; the time and tokens shown are the total of both calls.
 
 If the AI's answer is not a valid review, Phada stops with an error instead of printing it;
 `--debug` shows the start of the answer.
+
+### Suggested changes
+
+When the fix of a finding is a local edit, the AI also gives the lines it replaces and the code
+that takes their place. Phada keeps that suggestion only when the lines are added or context
+lines of one `@@` section of the diff, at most 20 of them, include the line of the finding, are
+quoted exactly as they are in the diff, and the new code differs from them and holds no hidden
+control or bidirectional characters. Otherwise the finding keeps only its fix in words. The
+verifier sees the suggestion too and drops it when the new code would not fix the problem or
+would break something else. A kept suggestion shows as a `diff` block in the terminal and is
+published as a GitHub suggestion that the author applies with one click (`suggestion` in the
+JSON, and a `suggestions` count of valid, invalid and dropped ones).
 
 ## Publishing
 
@@ -140,6 +153,31 @@ still open, Phada posts only a short note saying there is nothing new and how ma
 open. A finding with the same title as a Phada thread someone resolved in that file is not posted
 again either (a different finding near it still is): the run says how many findings were
 dismissed earlier and left out (`dismissed` in the JSON).
+
+### Comments fixed in a new commit
+
+On a new commit, Phada first rechecks its own open comments from earlier commits, one AI call
+for all of them. For each comment it sends what changed in that file since the comment was
+posted (GitHub's comparison of the two commits) and lets the AI read the file at the new head;
+a comment whose file did not change stays open without asking the AI. The AI answers `fixed`,
+`still-valid` or `unsure` for each one, and Phada only acts on `fixed`: right before posting the
+new review, it replies on the thread "Fixed in `abc1234`: …" with the reason and resolves it. A
+comment that is still valid or unsure stays open, Phada never reopens a thread, never touches
+threads of other people, and a failure on one thread does not stop the others (the run says
+"Resolved N of M comments found fixed"). The new review does not post again a finding of a
+comment found fixed in the same run; if the problem comes back in a later commit, it is posted
+again, while a finding whose thread a person resolved is never posted again. `--dry-run` says
+what it would resolve and resolves nothing, and nothing is resolved when publishing is off.
+Turn it off with `resolveThreads: false` in a config file or `--no-resolve`. The JSON has a
+`recheck` block with every verdict and `resolved` counts in the `publication` block.
+
+### Pushes that change nothing to review
+
+Every review keeps a fingerprint of the reviewed diff, without the files left out of the review,
+hunk positions or context lines. A new commit whose diff has the same fingerprint as the last
+Phada review of the pull request is skipped without calling the AI: a push that only touches
+ignored files, or a merge of the base branch that only moves the changed lines, does not trigger
+a new review. `--force` reviews anyway and `--dry-run` says it would skip.
 
 Text written by the AI cannot mention anyone, link other issues or pull requests (`#12`, `owner/repo#12`), add HTML or forge Phada's own markers, and a body
 longer than GitHub allows is shortened with a visible "(truncated)". Two runs on the same pull
@@ -523,6 +561,7 @@ your own stops Phada with an error that names the file and the key.
 | `--format <name>`      | Output: `markdown` (default) or `json`. The JSON (`schemaVersion: 1`) carries the same review as data: score, summary, every changed file, findings, findings worth checking, dropped counts, the verification (unless `--no-verify`), provider, model, time and tokens, a `publication` block (`published` with the URL, `failed`, `dry-run` with the exact body and comments, or `skipped`; with the number of findings `stillOpen` and `dismissed`), a `context` block (see [Rules and repository context](#rules-and-repository-context)), an `investigation` block (see [Repository investigation](#repository-investigation)) and an `impact` block (see [Repository graph](#repository-graph)) |
 | `--no-investigate`     | Reviews without letting the AI read the rest of the repository (see [Repository investigation](#repository-investigation)); `--investigate` turns it back on when the config turns it off                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `--verify`             | Checks every finding with a second call to the AI before scoring (see above). On by default; `--no-verify` (or `verify: false`) turns it off, `--verify` turns it back on when the config turns it off                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `--no-resolve`         | Neither rechecks Phada's comments from earlier commits nor resolves the fixed ones (see [Comments fixed in a new commit](#comments-fixed-in-a-new-commit)); same as `resolveThreads: false`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `--dry-run`            | Prints exactly what would be published (the review body and every comment) and posts nothing                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `--force`              | Reviews and publishes even when Phada already reviewed this commit (see [Publishing](#publishing))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `--debug`              | Shows error details                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |

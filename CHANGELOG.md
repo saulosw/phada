@@ -7,6 +7,22 @@ output can change between minor versions.
 
 ## Unreleased
 
+### Added
+
+- Findings can carry a code suggestion, kept only when it replaces up to 20 lines of one `@@`
+  section of the diff that it quotes exactly; the verifier can drop it. It is published as a
+  GitHub suggestion that applies with one click, shown as a `diff` block in the terminal, and
+  listed in the JSON (`suggestion`, `suggestions`).
+- On a new commit, Phada rechecks its own open comments from earlier commits with one AI call,
+  using what changed in each file since the comment. Comments found fixed get a reply naming the
+  commit and are resolved before the new review is posted; still valid or unsure ones stay open.
+  A finding of a comment Phada resolved comes back if the problem returns; one a person resolved
+  never does. `resolveThreads: false` or `--no-resolve` turns it off; the JSON has a `recheck`
+  block and `resolved` counts.
+- A new commit whose filtered diff has the same fingerprint as the last Phada review is skipped
+  without calling the AI (`same-diff`), including pushes that only touch ignored files and base
+  branch merges that only move lines.
+
 ## 0.5.0 - 2026-10-18
 
 ### Added

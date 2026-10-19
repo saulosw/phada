@@ -40,10 +40,13 @@ src/
   app/                   # use cases any caller can run (CLI today), with injected readers
     review-pull-request.ts # reviewPullRequest(): repository context → mirror → index of the head
                          #   (60 s budget) → related repositories → graph and impact of the diff
-                         #   across them → investigation → review → observed relations → reports;
-                         #   progress through typed events
-    review-and-publish.ts # reviewAndPublish(): fetch → decideRun → reviewPullRequest → plan →
-                         #   render (injected) → [checkHead] → createReview; never prints
+                         #   across them → investigation → recheck of earlier comments → review →
+                         #   observed relations → reports; progress through typed events;
+                         #   loadPullRequestContext()
+    review-and-publish.ts # reviewAndPublish(): fetch → decideRun → context → decideRun with the
+                         #   diff fingerprint → threads to recheck (compare) → reviewPullRequest →
+                         #   plan → render (injected) → [checkHead] → reply and resolve the fixed
+                         #   threads → createReview; never prints
     watch-repositories.ts # watchRepositories(): the watch loop — discovery with ETags, planCycle,
                          #   the next job, failures and pauses, the idle index refresh; events
     index-repository.ts  #   indexRepository(): mirror → files left out and why → indexCommit();
@@ -60,8 +63,8 @@ src/
                          #   without a review
   cli/                   # terminal edge
     args.ts              #   parseCliArgs(): `review` (--dry-run, --force, --verify/--no-verify,
-                         #   --investigate/--no-investigate), `init`, `index` (--ref, --format
-                         #   text|json), `rules` (--format text|json) and `watch` (--once,
+                         #   --investigate/--no-investigate, --no-resolve), `init`, `index` (--ref,
+                         #   --format text|json), `rules` (--format text|json) and `watch` (--once,
                          #   --backfill, --status) commands, --help, --version; USAGE,
                          #   REVIEW_USAGE, INIT_USAGE, INDEX_USAGE, RULES_USAGE, WATCH_USAGE
     init.ts              #   runInit(): .phada/ in the repository, or the user's own config
@@ -89,17 +92,19 @@ src/
     suppress-sqlite-warning.ts # drops Node's ExperimentalWarning for the built-in SQLite
     errors.ts            #   UsageError, MissingGitHubTokenError, WatchRunningError
     format-review.ts     #   pull request summary (stderr) and the Markdown review (stdout)
-    format-github.ts     #   the review as GitHub Markdown: body, line comments, markers, truncation;
-                         #   formatGitHubPreview() for --dry-run
-    format-publication.ts #  skip and "Published" messages
+    format-github.ts     #   the review as GitHub Markdown: body, line comments, suggestion blocks,
+                         #   markers, truncation; formatResolvedReply(); formatGitHubPreview() for
+                         #   --dry-run
+    format-publication.ts #  skip, "Published", recheck and "Resolved" messages
     format-context.ts    #   the "Context:" line and the context section of --dry-run
     format-investigation.ts # the "Investigated:" line and the investigation section of --dry-run
     format-related.ts    #   the "Related:" line and the related repositories section of --dry-run
     format-impact.ts     #   the "Impact:" line and the impact section of --dry-run
     finding-references.ts #  the "Based on" line: sources and rule of a finding
     format-json.ts       #   formatReviewJson(): schemaVersion 1, with the publication, context,
-                         #   investigation and impact blocks
-    markdown-text.ts     #   escapes AI text: block markers; for GitHub also HTML and mentions
+                         #   investigation, impact and recheck blocks
+    markdown-text.ts     #   escapes AI text: block markers; for GitHub also HTML and mentions;
+                         #   codeFence()
     review-text.ts       #   model label and short SHA
     i18n/                #   fixed review text per language: messages.ts (Messages, messagesFor()),
                          #   en.ts, pt.ts; unknown languages fall back to English
@@ -143,8 +148,12 @@ src/
     json-fields.ts       #   typed reads of fields in GitHub answers
     graphql.ts           #   sendGraphQL(): errors in an HTTP 200 become GitHubGraphQLError
     pull-request.ts      #   fetchPullRequest(), fetchPullRequestHead()
-    pull-request-reviews.ts # fetchReviewState(): viewer, reviews and threads, paginated
-    create-review.ts     #   createReview(): one COMMENT review with line comments
+    pull-request-reviews.ts # fetchReviewState(): viewer, reviews and threads (id, first comment,
+                         #   last 20 replies), paginated
+    create-review.ts     #   createReview(): one COMMENT review with line comments (start_line for
+                         #   several lines)
+    compare-commits.ts   #   fetchComparison(): the files changed between two commits, with patches
+    resolve-thread.ts    #   replyAndResolve(): reply on a review thread, then resolve it
     repository-files.ts  #   fetchRepositoryTree(), fetchRepositoryFile(): the repository at a commit
     repository.ts        #   fetchRepository(): visibility, default branch, empty; fetchBranchHead()
     list-pull-requests.ts #  listOpenPullRequests(): open pull requests, ETag of the first page
@@ -192,11 +201,17 @@ src/
     codex.ts             #   CodexCliProvider (+ codex-model.ts: model resolution)
     ollama.ts            #   OllamaProvider over HTTP (+ ollama-host.ts, node-http-fetch.ts)
   publish/               # pure: what to publish, data in, decision out
-    markers.ts           #   the review and finding markers, read only at the end of a body
-    phada-state.ts       #   Phada's own reviews and open threads (author = token owner + marker)
-    decide-run.ts        #   decideRun(): review, or skip a commit Phada already reviewed
+    markers.ts           #   the review (with the diff fingerprint), finding and resolved markers,
+                         #   read only at the end of a body; findingTitle()
+    phada-state.ts       #   Phada's own reviews and open threads (author = token owner + marker);
+                         #   resolvedByPhada()
+    decide-run.ts        #   decideRun(): review, or skip a commit Phada already reviewed or whose
+                         #   filtered diff did not change (same-diff)
+    recheck-candidates.ts #  threadsToRecheck(), withChanges(): Phada's open threads of older commits
+                         #   and what changed in their files
     plan-publication.ts  #   planPublication(): new comments vs findings still open in a thread vs
-                         #   findings whose thread someone resolved
+                         #   findings whose thread a person resolved vs findings of a thread found
+                         #   fixed in this run
     types.ts             #   PublicationPlan, RunDecision, SkipReason
   repository/            # the repository through git objects, in a persistent mirror
     checkout.ts          #   Checkout (read, grep, list, history), CheckoutError
@@ -238,10 +253,17 @@ src/
                          #   block, diff scope and tools
     impact-text.ts       #   renderImpact(): the impact of the diff within its 4 KB budget
     prompt.ts            #   buildReviewPrompt(): instructions + nonce-delimited data + output schema
+    nonce.ts             #   newNonce(): the random id of the data blocks
     verify-prompt.ts     #   buildVerifyPrompt(): the second, skeptical pass (--verify)
     report-schema.ts     #   Zod schemas of the AI report + the JSON schema sent to providers
     verification-schema.ts # Zod schema of the verification verdicts
-    diff-lines.ts        #   unified diff parsing and line numbering
+    diff-lines.ts        #   unified diff parsing and line numbering; the text and @@ section of
+                         #   each new-side line
+    diff-fingerprint.ts  #   diffFingerprint(): paths and +/- lines of the filtered diff, hashed
+    suggestions.ts       #   checkSuggestion(), checkSuggestions(): a code suggestion against the diff
+    recheck-prompt.ts    #   buildRecheckPrompt(): earlier comments and what changed since them
+    recheck-schema.ts    #   Zod schema of the recheck verdicts (fixed, still-valid, unsure)
+    recheck-threads.ts   #   recheckThreads(): one call for the changed threads, verdicts per thread
     json-objects.ts      #   top-level JSON objects found in a text
     parse-report.ts      #   parseReviewReport()
     parse-verification.ts #  parseVerification()
@@ -250,7 +272,8 @@ src/
     select-findings.ts   #   candidate filtering, confidence cut, worth checking, ordering
     score.ts             #   scoreFindings(): the 0–5 score, computed by Phada
     errors.ts            #   InvalidReviewReportError
-    run-review.ts        #   runReview(): prompt → provider → parse → [verify] → select → score
+    run-review.ts        #   runReview(): prompt → provider → parse → suggestions → [verify] →
+                         #   select → score
 scripts/smoke.ts         # packs the package, installs the tarball, runs the installed `phada`
 scripts/copy-grammars.ts # build step: the tree-sitter grammars into dist/grammars/
 test/fixtures/bin/       # fake AI CLIs used by the provider tests
@@ -270,7 +293,7 @@ environment. `src/context/` reads nothing itself: `loadContext()` gets the reade
 repository and of the local disk as data, and its only value imports from outside the folder are
 `picomatch`, `node:path` and the pure config helpers (`parse-config.ts`, `merge-config.ts`).
 `src/publish/` imports only types from outside the folder (`src/review/types.ts`,
-`src/github/pull-request-reviews.ts`). `src/watch/` imports only types from outside the folder
+`src/github/pull-request-reviews.ts`, `src/github/compare-commits.ts`). `src/watch/` imports only types from outside the folder
 (the watch settings and the listed pull requests) and never reads the clock: `now` comes in as
 data. Its records (`src/watch/types.ts`) are the watch's own; `src/store/` stores them.
 `src/cli/review-wiring.ts` and `src/cli/watch-command.ts` declare the deps they need
