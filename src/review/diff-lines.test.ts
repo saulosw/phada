@@ -85,6 +85,21 @@ describe('parseDiffFiles', () => {
     expect([...(file?.removedAt ?? [])]).toEqual([2, 22])
   })
 
+  it('keeps the text and the @@ section of each line on the new side', () => {
+    const [file] = parseDiffFiles(MODIFIED)
+
+    expect([...(file?.newText ?? new Map())]).toEqual([
+      [1, { text: "import { db } from './db'", hunk: 0 }],
+      [2, { text: 'const LIMIT = 20', hunk: 0 }],
+      [3, { text: 'const FEE = 1', hunk: 0 }],
+      [4, { text: '', hunk: 0 }],
+      [5, { text: 'export function spend() {', hunk: 0 }],
+      [21, { text: '  const user = db.find()', hunk: 1 }],
+      [22, { text: '  return { user }', hunk: 1 }],
+      [23, { text: '}', hunk: 1 }],
+    ])
+  })
+
   it('reads added, deleted, renamed and binary files', () => {
     const files = parseDiffFiles(MODIFIED + ADDED + DELETED + RENAMED + BINARY)
 
@@ -112,7 +127,14 @@ describe('parseDiffFiles', () => {
     )
 
     expect(files).toEqual([
-      { path: 'b.ts', status: 'renamed', lines: new Set(), added: new Set(), removedAt: new Set() },
+      {
+        path: 'b.ts',
+        status: 'renamed',
+        lines: new Set(),
+        added: new Set(),
+        removedAt: new Set(),
+        newText: new Map(),
+      },
     ])
   })
 

@@ -6,6 +6,12 @@ export interface DiffFile {
   lines: ReadonlySet<number>
   added: ReadonlySet<number>
   removedAt: ReadonlySet<number>
+  newText: ReadonlyMap<number, NewSideLine>
+}
+
+export interface NewSideLine {
+  text: string
+  hunk: number
 }
 
 type DiffLine =
@@ -22,6 +28,8 @@ interface FileDraft {
   lines: Set<number>
   added: Set<number>
   removedAt: Set<number>
+  newText: Map<number, NewSideLine>
+  hunks: number
 }
 
 interface WalkState {
@@ -50,6 +58,7 @@ export function parseDiffFiles(diff: string): DiffFile[] {
     lines: draft.lines,
     added: draft.added,
     removedAt: draft.removedAt,
+    newText: draft.newText,
   }))
 }
 
@@ -98,6 +107,7 @@ function hunkLine(state: WalkState, text: string): DiffLine | undefined {
   state.newLeft--
   state.file?.lines.add(state.next)
   if (added) state.file?.added.add(state.next)
+  state.file?.newText.set(state.next, { text: text.slice(1), hunk: state.file.hunks - 1 })
   return { kind: 'numbered', text, number: state.next++ }
 }
 
@@ -108,6 +118,7 @@ function headerLine(state: WalkState, files: FileDraft[], text: string): DiffLin
     state.oldLeft = hunkCount(hunk[1])
     state.next = Number(hunk[2])
     state.newLeft = hunkCount(hunk[3])
+    if (state.file !== undefined) state.file.hunks++
   } else if (text.startsWith(GIT_HEADER)) {
     state.file = newDraft(text.slice(GIT_HEADER.length))
     files.push(state.file)
@@ -133,6 +144,8 @@ function newDraft(paths: string): FileDraft {
     lines: new Set(),
     added: new Set(),
     removedAt: new Set(),
+    newText: new Map(),
+    hunks: 0,
   }
 }
 

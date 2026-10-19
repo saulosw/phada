@@ -107,6 +107,14 @@ export interface Finding {
   rule?: string
   sources?: string[]
   reason?: string
+  suggestion?: Suggestion
+}
+
+export interface Suggestion {
+  startLine: number
+  endLine: number
+  original: string
+  replacement: string
 }
 
 export interface RejectedFinding extends Finding {
