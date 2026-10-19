@@ -62,6 +62,7 @@ export async function watchRepositories(input: WatchInput, deps: WatchDeps): Pro
   for (;;) {
     if (deps.stopRequested()) return { reason: 'stopped' }
     for (const repo of settings.repos) {
+      if (deps.stopRequested()) return { reason: 'stopped' }
       const exit = await discover(repo, input, deps)
       if (exit !== undefined) return exit
     }

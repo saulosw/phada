@@ -28,10 +28,13 @@ export function planCycle(input: CycleInput): CycleAction[] {
     return [
       {
         kind: 'baseline',
-        pulls: input.pulls.map((pull) => ({
-          ...record(repo.repo, pull, now, eligibility(pull, repo).eligible),
-          baselineSha: pull.headSha,
-        })),
+        pulls: input.pulls.map((pull) => {
+          const eligible = eligibility(pull, repo).eligible
+          return {
+            ...record(repo.repo, pull, now, eligible),
+            ...(eligible ? { baselineSha: pull.headSha } : {}),
+          }
+        }),
       },
     ]
   }
@@ -54,7 +57,7 @@ export function planCycle(input: CycleInput): CycleAction[] {
         actions.push({ kind: 'supersede', jobId: job.id })
       }
     }
-    const known = jobs.some((job) => job.headSha === pull.headSha)
+    const known = jobs.some((job) => job.headSha === pull.headSha && blocks(job))
     if (!eligible || known || current.baselineSha === pull.headSha) continue
     const becameEligible = !newCommit && before?.eligible === false
     const notBefore = backfilling
@@ -89,4 +92,9 @@ export function planCycle(input: CycleInput): CycleAction[] {
 
 function record(repo: string, pull: OpenPull, headSeenAt: string, eligible: boolean): PullRecord {
   return { repo, number: pull.number, headSha: pull.headSha, headSeenAt, eligible, state: 'open' }
+}
+
+function blocks(job: JobRecord): boolean {
+  if (job.status === 'superseded') return false
+  return !(job.status === 'skipped' && job.reason === 'closed')
 }

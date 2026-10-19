@@ -244,4 +244,15 @@ describe('reviewAndPublish', () => {
     })
     expect(calls.reviews).toBe(0)
   })
+
+  it('returns a failed publication when checking the head fails after the review', async () => {
+    const error = new Error('GitHub 502')
+    const { deps, calls } = setup({ checkHead: () => Promise.reject(error) })
+
+    expect(await reviewAndPublish({ ...INPUT, mode: 'watch' }, deps)).toMatchObject({
+      status: 'reviewed',
+      publication: { status: 'failed', error },
+    })
+    expect(calls.reviews).toBe(1)
+  })
 })

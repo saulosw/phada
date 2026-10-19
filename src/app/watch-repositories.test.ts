@@ -397,4 +397,33 @@ describe('watchRepositories', () => {
       'baseline acme/web 0',
     ])
   })
+
+  it('stops between repositories when asked during discovery', async () => {
+    let stop = false
+    const h = await setup({
+      settings: {
+        ...SETTINGS,
+        repos: [...SETTINGS.repos, { repo: 'acme/web', publish: true, allowExternal: false }],
+      },
+      stopWhen: () => stop,
+    })
+    const listed: string[] = []
+    h.deps.listPulls = async (repo) => {
+      listed.push(repo)
+      stop = true
+      return { status: 'ok', pulls: [] }
+    }
+
+    await watchRepositories(
+      input({
+        settings: {
+          ...SETTINGS,
+          repos: [...SETTINGS.repos, { repo: 'acme/web', publish: true, allowExternal: false }],
+        },
+      }),
+      h.deps,
+    )
+
+    expect(listed).toEqual(['acme/shop'])
+  })
 })

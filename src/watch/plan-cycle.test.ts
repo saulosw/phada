@@ -78,7 +78,7 @@ describe('planCycle', () => {
         kind: 'baseline',
         pulls: [
           { ...stored(1), headSeenAt: NOW, baselineSha: A },
-          { ...stored(2), headSha: B, headSeenAt: NOW, baselineSha: B, eligible: false },
+          { ...stored(2), headSha: B, headSeenAt: NOW, eligible: false },
         ],
       },
     ])
@@ -115,7 +115,7 @@ describe('planCycle', () => {
     ])
   })
 
-  it.each(['done', 'failed', 'skipped', 'superseded', 'running'] as const)(
+  it.each(['done', 'failed', 'running'] as const)(
     'does nothing for a commit that already has a %s job',
     (status) => {
       expect(
@@ -174,5 +174,33 @@ describe('planCycle', () => {
       { kind: 'seen', pull: { ...stored(3), headSha: B, headSeenAt: NOW } },
       queued(3, B, at(3)),
     ])
+  })
+
+  it('queues a pull request that was a draft at the baseline once it is ready', () => {
+    const [baseline] = planCycle(
+      input({ baselineDone: false, pulls: [open(3, A, { draft: true })] }),
+    )
+    const stored = baseline?.kind === 'baseline' ? baseline.pulls : []
+
+    expect(stored).toEqual([{ ...stored[0], eligible: false }])
+    expect(stored[0]?.baselineSha).toBeUndefined()
+    expect(planCycle(input({ pulls: [open(3)], stored }))).toEqual([
+      { kind: 'seen', pull: { ...stored[0], eligible: true } },
+      queued(3, A, at(3)),
+    ])
+  })
+
+  it('queues again a commit whose job was skipped because the pull request was closed or a draft', () => {
+    const jobs = [job(7, 3, { status: 'skipped', reason: 'closed' })]
+
+    expect(planCycle(input({ pulls: [open(3)], stored: [stored(3)], jobs }))).toEqual([
+      queued(3, A, at(-57)),
+    ])
+  })
+
+  it('never queues again a commit skipped because Phada already reviewed it', () => {
+    const jobs = [job(7, 3, { status: 'skipped', reason: 'already-reviewed' })]
+
+    expect(planCycle(input({ pulls: [open(3)], stored: [stored(3)], jobs }))).toEqual([])
   })
 })

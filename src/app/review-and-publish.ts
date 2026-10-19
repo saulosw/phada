@@ -150,11 +150,11 @@ async function publish(
 ): Promise<PublicationResult> {
   if (input.dryRun) return { status: 'dry-run' }
   if (!input.publish) return { status: 'not-published' }
-  const head = (await deps.checkHead?.(pullRequest)) ?? 'current'
-  if (head === 'closed') return { status: 'closed' }
-  if (head !== 'current') return { status: 'superseded', headSha: head.superseded }
-  deps.events.publishing()
   try {
+    const head = (await deps.checkHead?.(pullRequest)) ?? 'current'
+    if (head === 'closed') return { status: 'closed' }
+    if (head !== 'current') return { status: 'superseded', headSha: head.superseded }
+    deps.events.publishing()
     const created = await deps.createReview(pullRequest, rendered)
     return { status: 'published', url: created.url }
   } catch (error) {
