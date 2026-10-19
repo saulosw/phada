@@ -25,7 +25,10 @@ export function pickNext(input: NextJobInput): NextJob {
     return { waitUntil: later(oldest, RATE_WINDOW_MS), reason: 'hourly-limit' }
   }
   const ordered = [...queued].sort(
-    (a, b) => compare(a.notBefore, b.notBefore) || compare(a.createdAt, b.createdAt) || a.id - b.id,
+    (first, second) =>
+      compareText(first.notBefore, second.notBefore) ||
+      compareText(first.createdAt, second.createdAt) ||
+      first.id - second.id,
   )
   const first = ordered[0]
   if (first === undefined) return {}
@@ -34,6 +37,6 @@ export function pickNext(input: NextJobInput): NextJob {
     : { waitUntil: first.notBefore, reason: 'not-ready' }
 }
 
-function compare(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0
+function compareText(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0
 }

@@ -69,14 +69,18 @@ src/
     index-command.ts     #   runIndex(): token, cache folder, mirror, progress, the map's report
     rules-command.ts     #   runRules(): token, user config, the context of a pull request or of
                          #   the default branch, printed as text or JSON
-    watch-command.ts     #   runWatch(): settings, history, lock, signals (Ctrl-C once/twice),
-                         #   the watch deps and its events; --status
+    watch-command.ts     #   runWatch(): settings, history, lock, the watch deps, one job's review
+    watch-stop.ts        #   createStopControl(): Ctrl-C once (finish the review) or twice (abort)
+    watch-events.ts      #   printWatchEvents(): the watch events as terminal lines
+    watch-status.ts      #   watchStatusText(): --status in text or JSON
     format-watch.ts      #   formatWatchEvent(), formatWatchStatus(), formatWatchStatusJson()
+    provider-choice.ts   #   assertProviderChoice(): known provider, model for ollama, mcp only
+                         #   with claude
     classify-failure.ts  #   classifyFailure(): an error → transient, usage-limit, rate-limit,
                          #   definitive or fatal
-    review-wiring.ts     #   pullRequestReviewDeps(), renderReview, reviewRunJson(),
-                         #   assertProviderChoice(): shared by review and watch
-    history-run.ts       #   historyRun(): a ReviewRun → the history record
+    review-wiring.ts     #   pullRequestReviewDeps(), renderReview, reviewRunJson(): shared by
+                         #   review and watch
+    history-run.ts       #   historyRun(), watchRun(): a run or a failure → the history record
     format-rules.ts      #   formatRulesText(), formatRulesJson() (schemaVersion 1)
     context-sources.ts   #   contextSourcesAt(): the repository at a commit and the local files
     format-index.ts      #   formatIndexText(), formatIndexJson() (schemaVersion 1)
@@ -130,7 +134,7 @@ src/
     list-context.ts      #   listContext(): every .phada/ folder, rule and candidate doc of a branch
     types.ts             #   ContextReport, ContextSources, LoadedContext
   github/                # GitHub REST and GraphQL
-    pull-request-ref.ts  #   parse/format "owner/repo#N" or a pull request URL
+    pull-request-ref.ts  #   parse/format "owner/repo#N" or a pull request URL; splitRepoName()
     errors.ts            #   GitHubError and typed errors
     request.ts           #   method, body, headers, timeout, status → error, token redaction
     json-fields.ts       #   typed reads of fields in GitHub answers
@@ -215,6 +219,7 @@ src/
     observed-store.ts    #   openObservedStore(): relations learned from reviews (own schema)
     history-store.ts     #   openHistoryStore(): the review history, never rebuilt; watched
                          #   repositories and pull requests, jobs, runs, pause
+    history-columns.ts   #   the history tables (columns, keys) and their insert/upsert/update
     history-migrations.ts #  versioned migrations (PRAGMA user_version); a newer file is refused
   watch/                 # pure: what the watch does, data in, decision out
     filters.ts           #   eligibility(): draft, bot, outside author, authors, labels, base
