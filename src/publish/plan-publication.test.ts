@@ -77,6 +77,22 @@ describe('planPublication', () => {
     })
   })
 
+  it('posts a different finding near a resolved thread', () => {
+    const nearby = findingFixture({ line: 12, title: 'Balance can go negative' })
+
+    expect(planPublication([nearby], state([thread({ isResolved: true })])).comments).toEqual([
+      nearby,
+    ])
+  })
+
+  it('holds back the same finding of a resolved thread wherever it moved in the file', () => {
+    const moved = findingFixture({ line: 40, title: 'Spend has no auth' })
+
+    expect(planPublication([moved], state([thread({ isResolved: true })])).dismissed).toEqual([
+      moved,
+    ])
+  })
+
   it('keeps a finding that matches an open and a resolved thread as still open', () => {
     const finding = findingFixture({ line: 10 })
     const threads = [thread({ isResolved: true }), thread({ line: 11 })]

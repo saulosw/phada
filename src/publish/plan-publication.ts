@@ -22,7 +22,7 @@ export function planPublication(
   for (const finding of findings) {
     const target = open.some((thread) => matches(thread, finding))
       ? plan.stillOpen
-      : resolved.some((thread) => matches(thread, finding))
+      : resolved.some((thread) => sameTitle(thread, finding))
         ? plan.dismissed
         : plan.comments
     target.push(finding)
@@ -37,6 +37,11 @@ export function normalizeTitle(title: string): string {
 function matches(thread: ReviewThread, finding: Finding): boolean {
   if (thread.path !== finding.file) return false
   if (thread.line !== null && Math.abs(thread.line - finding.line) <= LINE_WINDOW) return true
+  return sameTitle(thread, finding)
+}
+
+function sameTitle(thread: ReviewThread, finding: Finding): boolean {
+  if (thread.path !== finding.file) return false
   const title = threadTitle(thread.body)
   return title !== undefined && title !== '' && title === normalizeTitle(finding.title)
 }
