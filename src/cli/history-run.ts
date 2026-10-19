@@ -1,5 +1,9 @@
+import { errorMessage } from '../app/error-message.js'
 import type { PublicationResult, ReviewRun } from '../app/review-and-publish.js'
-import type { FailureKind, RunRecord, RunStatus } from '../store/history-store.js'
+import type { RunOutcome } from '../app/watch-repositories.js'
+import { ProviderError } from '../providers/types.js'
+import { InvalidReviewReportError } from '../review/errors.js'
+import type { FailureKind, JobRecord, RunRecord, RunStatus } from '../store/history-store.js'
 import { errorSummary } from './format-error.js'
 
 export interface RunMeta {
@@ -60,5 +64,30 @@ function publicationFields(
       return { status: 'skipped', reason: 'closed' }
     default:
       return { status: publication.status }
+  }
+}
+
+export function watchRun(
+  job: JobRecord,
+  outcome: RunOutcome,
+  meta: RunMeta,
+  runJson: (run: ReviewRun) => string,
+): RunRecord {
+  if ('run' in outcome) return historyRun(outcome.run, runJson(outcome.run), meta)
+  return {
+    jobId: job.id,
+    source: meta.source,
+    repo: job.repo,
+    number: job.number,
+    headSha: job.headSha,
+    startedAt: meta.startedAt,
+    finishedAt: meta.finishedAt,
+    status: 'failed',
+    aiCalled:
+      outcome.error instanceof ProviderError || outcome.error instanceof InvalidReviewReportError,
+    provider: meta.provider,
+    ...(meta.model === undefined ? {} : { model: meta.model }),
+    errorKind: outcome.kind,
+    error: errorMessage(outcome.error),
   }
 }

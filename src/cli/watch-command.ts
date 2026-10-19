@@ -3,34 +3,32 @@ import { refreshIndex } from '../app/index-repository.js'
 import { reviewAndPublish } from '../app/review-and-publish.js'
 import type { ReviewRun } from '../app/review-and-publish.js'
 import { watchRepositories } from '../app/watch-repositories.js'
-import { RATE_WINDOW_MS } from '../watch/next-job.js'
-import type { RunOutcome, WatchDeps, WatchEvents } from '../app/watch-repositories.js'
+import type { WatchDeps } from '../app/watch-repositories.js'
 import { repositoryCache } from '../config/cache-paths.js'
 import { dataFiles } from '../config/data-paths.js'
 import { resolveProvider, userMcpServers } from '../config/merge-config.js'
 import { loadTopLevelUserLayers, loadUserLayers } from '../config/user-config.js'
 import { historyEnabled, resolveWatchSettings } from '../config/watch-settings.js'
 import type { WatchSettings } from '../config/watch-settings.js'
+import { splitRepoName } from '../github/pull-request-ref.js'
 import type { MainDeps } from '../main.js'
-import { ProviderError } from '../providers/types.js'
 import { MirrorLockTimeoutError } from '../repository/mirror-lock.js'
-import { InvalidReviewReportError } from '../review/errors.js'
-import type { HistoryStore, JobRecord, RunRecord } from '../store/history-store.js'
+import type { HistoryStore, JobRecord } from '../store/history-store.js'
 import type { IndexFormat } from './args.js'
 import { classifyFailure } from './classify-failure.js'
 import { MissingGitHubTokenError, UsageError, WatchRunningError } from './errors.js'
 import { formatError } from './format-error.js'
-import { formatWatchEvent, formatWatchStatus, formatWatchStatusJson } from './format-watch.js'
-import type { WatchEventView } from './format-watch.js'
-import { historyRun } from './history-run.js'
-import {
-  assertProviderChoice,
-  pullRequestReviewDeps,
-  renderReview,
-  reviewRunJson,
-  splitRepo,
-} from './review-wiring.js'
+import { formatWatchEvent } from './format-watch.js'
+import { watchRun } from './history-run.js'
+import { assertProviderChoice } from './provider-choice.js'
+import { pullRequestReviewDeps, renderReview, reviewRunJson } from './review-wiring.js'
 import type { Choice } from './review-wiring.js'
+import { printWatchEvents } from './watch-events.js'
+import { watchStatusText } from './watch-status.js'
+import { ABORTED_EXIT_CODE, createStopControl } from './watch-stop.js'
+import type { StopControl } from './watch-stop.js'
+
+export { ABORTED_EXIT_CODE }
 
 export interface WatchCommand {
   once: boolean
@@ -40,42 +38,25 @@ export interface WatchCommand {
   debug: boolean
 }
 
-export const ABORTED_EXIT_CODE = 130
-
 export async function runWatch(command: WatchCommand, deps: MainDeps): Promise<number> {
   const layers = await loadTopLevelUserLayers(deps)
   const files = dataFiles(deps.env, deps.home)
   if (command.status) {
     const history = await deps.openHistoryStore(files.history)
     try {
-      const status = history.status()
       const holder = await deps.lockHolder(files.lock)
-      const running = holder === undefined ? undefined : { pid: holder }
-      const now = deps.clock()
-      const max = resolveWatchSettings(layers)?.maxReviewsPerHour
-      const hourly =
-        max === undefined
-          ? undefined
-          : {
-              count: history.watchRunsSince(new Date(now.getTime() - RATE_WINDOW_MS).toISOString())
-                .length,
-              max,
-            }
-      deps.stdout.write(
-        command.format === 'json'
-          ? formatWatchStatusJson(status, running, now, hourly)
-          : formatWatchStatus(status, running, now, hourly),
-      )
+      deps.stdout.write(watchStatusText(history, layers, holder, deps.clock(), command.format))
     } finally {
       history.close()
     }
     return 0
   }
   const settings = resolveWatchSettings(layers)
-  if (settings === undefined)
+  if (settings === undefined) {
     throw new UsageError(
       'Nothing to watch: list the repositories under watch: in your own config, e.g. watch: { repos: [owner/repo] } in ~/.config/phada/config.yml.',
     )
+  }
   if (!historyEnabled(layers)) {
     throw new UsageError(
       'phada watch needs the history to know what it already reviewed; remove history: false from your config.',
@@ -83,10 +64,14 @@ export async function runWatch(command: WatchCommand, deps: MainDeps): Promise<n
   }
   const token = deps.env.GITHUB_TOKEN?.trim() || deps.env.GH_TOKEN?.trim()
   if (!token) throw new MissingGitHubTokenError()
+  let locked = false
   try {
-    return await deps.withLock(files.lock, () => watchUnderLock(command, settings, token, deps))
+    return await deps.withLock(files.lock, () => {
+      locked = true
+      return watchUnderLock(command, settings, token, deps)
+    })
   } catch (error) {
-    if (!(error instanceof MirrorLockTimeoutError)) throw error
+    if (locked || !(error instanceof MirrorLockTimeoutError)) throw error
     const holder = await deps.lockHolder(files.lock)
     throw new WatchRunningError(
       `Another phada watch is running${holder === undefined ? '' : ` (PID ${holder})`}.`,
@@ -101,118 +86,18 @@ async function watchUnderLock(
   deps: MainDeps,
 ): Promise<number> {
   const history = await deps.openHistoryStore(dataFiles(deps.env, deps.home).history)
-  const controller = new AbortController()
-  let signals = 0
-  let current: JobRecord | undefined
-  let finishAborted: (code: number) => void = () => undefined
-  const aborted = new Promise<number>((resolve) => {
-    finishAborted = resolve
+  const stop = createStopControl({
+    onSignal: deps.onSignal,
+    write: (text) => deps.stderr.write(text),
+    killChildren: deps.killDetachedChildren,
+    putBack: (job) => history.updateJob(job.id, { status: 'queued' }),
+    close: () => history.close(),
   })
-  deps.onSignal(() => {
-    signals += 1
-    if (signals === 1) {
-      deps.stderr.write(
-        current === undefined
-          ? 'Stopping…\n'
-          : 'Stopping after the current review (Ctrl-C again to abort).\n',
-      )
-      controller.abort()
-      return
-    }
-    deps.killDetachedChildren()
-    if (current !== undefined) history.updateJob(current.id, { status: 'queued' })
-    deps.stderr.write('Aborted.\n')
-    history.close()
-    finishAborted(ABORTED_EXIT_CODE)
-  })
-
-  const print = (event: WatchEventView) =>
-    deps.stderr.write(`${formatWatchEvent(event, deps.clock())}\n`)
-  const choices = new Map<number, Choice>()
-  const events: WatchEvents = {
-    cycle: () => undefined,
-    baseline: (repo, count) => print({ kind: 'baseline', repo, count }),
-    queued: (job) => print({ kind: 'queued', job }),
-    superseded: (job) => print({ kind: 'superseded', job }),
-    started: (job) => {
-      current = job
-      print({ kind: 'started', job })
-    },
-    finished: (job, run) => {
-      current = undefined
-      print({ kind: 'finished', job, run })
-    },
-    retry: (job, at, error) => {
-      current = undefined
-      print({ kind: 'retry', job, at, error })
-    },
-    paused: (pause) => {
-      current = undefined
-      print({ kind: 'paused', pause })
-    },
-    failed: (job, error) => {
-      current = undefined
-      print({ kind: 'failed', job, error })
-    },
-    indexed: (repo, sha) => print({ kind: 'indexed', repo, sha }),
-    indexPartial: (repo) => print({ kind: 'indexPartial', repo }),
-    warning: (message) => print({ kind: 'warning', message }),
-    limited: (count, until) => print({ kind: 'limited', count, until }),
-  }
-
-  const watchDeps: WatchDeps = {
-    history,
-    listPulls: (repo, etag) =>
-      deps.listOpenPullRequests({
-        ...splitRepo(repo),
-        token,
-        ...(etag === undefined ? {} : { etag }),
-      }),
-    defaultBranch: async (repo) =>
-      (await deps.fetchRepository({ ...splitRepo(repo), token })).defaultBranch,
-    branchHead: (repo, branch, etag) =>
-      deps.fetchBranchHead({
-        ...splitRepo(repo),
-        branch,
-        token,
-        ...(etag === undefined ? {} : { etag }),
-      }),
-    runJob: async (job) => {
-      const run = await runJob(job, settings, token, deps)
-      choices.set(job.id, run.choice)
-      return run.run
-    },
-    recordRun: (job, outcome, startedAt) =>
-      recordRun(history, job, outcome, startedAt, choices.get(job.id), deps),
-    refreshIndex: async (repo, budgetMs) => {
-      const target = splitRepo(repo)
-      const cache = repositoryCache(deps.env, deps.home, target.owner, target.repo)
-      const userLayers = await loadUserLayers({ ...deps, ...target })
-      const mirror = await deps.openMirror({ dir: cache.mirror, ...target, token, env: deps.env })
-      const result = await refreshIndex(
-        { ...target, userLayers, deadline: performance.now() + budgetMs },
-        {
-          mirror,
-          openStore: () => deps.openIndexStore(cache.index, deps.version),
-          extractor: deps.createExtractor(),
-          now: () => performance.now(),
-          events: { extracting: () => undefined, extracted: () => undefined },
-        },
-      )
-      return result.complete ? 'complete' : 'partial'
-    },
-    classify: (error) => classifyFailure(error, deps.clock()),
-    now: () => deps.clock(),
-    sleep: (ms) => deps.sleep(ms, controller.signal),
-    stopRequested: () => signals > 0,
-    events,
-  }
-
   const watched = watchRepositories(
     { settings, backfill: command.backfill, once: command.once },
-    watchDeps,
+    watchDeps(settings, token, history, stop, deps),
   ).then((exit) => {
-    if (signals > 1) return ABORTED_EXIT_CODE
+    if (stop.abortedTwice()) return ABORTED_EXIT_CODE
     history.close()
     if (exit.reason === 'fatal') {
       deps.stderr.write(`${formatError(exit.error, { debug: command.debug }).message}\n`)
@@ -221,9 +106,84 @@ async function watchUnderLock(
     if (exit.reason === 'stopped') deps.stderr.write('Stopped.\n')
     return 0
   })
-  const code = await Promise.race([watched, aborted])
+  const code = await Promise.race([watched, stop.aborted])
   if (code === ABORTED_EXIT_CODE) deps.abort(ABORTED_EXIT_CODE)
   return code
+}
+
+function watchDeps(
+  settings: WatchSettings,
+  token: string,
+  history: HistoryStore,
+  stop: StopControl,
+  deps: MainDeps,
+): WatchDeps {
+  const choices = new Map<number, Choice>()
+  const withEtag = (etag: string | undefined) => (etag === undefined ? {} : { etag })
+  return {
+    history,
+    listPulls: (repo, etag) =>
+      deps.listOpenPullRequests({ ...splitRepoName(repo), token, ...withEtag(etag) }),
+    defaultBranch: async (repo) =>
+      (await deps.fetchRepository({ ...splitRepoName(repo), token })).defaultBranch,
+    branchHead: (repo, branch, etag) =>
+      deps.fetchBranchHead({ ...splitRepoName(repo), branch, token, ...withEtag(etag) }),
+    runJob: async (job) => {
+      const { run, choice } = await runJob(job, settings, token, deps)
+      choices.set(job.id, choice)
+      return run
+    },
+    recordRun: (job, outcome, startedAt) => {
+      const choice = choices.get(job.id)
+      const meta = {
+        source: 'watch' as const,
+        jobId: job.id,
+        startedAt,
+        finishedAt: deps.clock().toISOString(),
+        provider: choice?.provider ?? 'unknown',
+        ...(choice?.model === undefined ? {} : { model: choice.model }),
+      }
+      try {
+        history.addRun(watchRun(job, outcome, meta, reviewRunJson))
+      } catch (error) {
+        deps.stderr.write(
+          `Warning: could not save the run in the history (${errorMessage(error)}).\n`,
+        )
+      }
+    },
+    refreshIndex: (repo, budgetMs) => refreshDefaultBranch(repo, budgetMs, token, deps),
+    classify: (error) => classifyFailure(error, deps.clock()),
+    now: () => deps.clock(),
+    sleep: (ms) => deps.sleep(ms, stop.signal),
+    stopRequested: () => stop.stopRequested(),
+    events: printWatchEvents(
+      (event) => deps.stderr.write(`${formatWatchEvent(event, deps.clock())}\n`),
+      stop.track,
+    ),
+  }
+}
+
+async function refreshDefaultBranch(
+  repo: string,
+  budgetMs: number,
+  token: string,
+  deps: MainDeps,
+): Promise<'complete' | 'partial'> {
+  const target = splitRepoName(repo)
+  const cache = repositoryCache(deps.env, deps.home, target.owner, target.repo)
+  const userLayers = await loadUserLayers({ ...deps, ...target })
+  const mirror = await deps.openMirror({ dir: cache.mirror, ...target, token, env: deps.env })
+  const result = await refreshIndex(
+    { ...target, userLayers, deadline: performance.now() + budgetMs },
+    {
+      mirror,
+      openStore: () => deps.openIndexStore(cache.index, deps.version),
+      extractor: deps.createExtractor(),
+      now: () => performance.now(),
+      events: { extracting: () => undefined, extracted: () => undefined },
+    },
+  )
+  return result.complete ? 'complete' : 'partial'
 }
 
 async function runJob(
@@ -232,10 +192,14 @@ async function runJob(
   token: string,
   deps: MainDeps,
 ): Promise<{ run: ReviewRun; choice: Choice }> {
-  const target = splitRepo(job.repo)
+  const target = splitRepoName(job.repo)
   const userLayers = await loadUserLayers({ ...deps, ...target })
   const choice = resolveProvider({}, userLayers)
-  assertProviderChoice(choice.provider, choice.model === undefined ? {} : { model: choice.model })
+  const mcp = userMcpServers(userLayers)
+  assertProviderChoice(choice.provider, {
+    ...(choice.model === undefined ? {} : { model: choice.model }),
+    userMcpServers: mcp,
+  })
   const repo = settings.repos.find((entry) => entry.repo === job.repo)
   const ref = { ...target, number: job.number }
   const publishTarget = { ...ref, token }
@@ -248,7 +212,7 @@ async function runJob(
       publish: repo?.publish ?? true,
       options: {},
       userLayers,
-      userMcpServers: userMcpServers(userLayers),
+      userMcpServers: mcp,
     },
     {
       fetchPullRequest: (pull) => deps.fetchPullRequest({ ...pull, token }),
@@ -272,47 +236,4 @@ async function runJob(
     },
   )
   return { run, choice }
-}
-
-function recordRun(
-  history: HistoryStore,
-  job: JobRecord,
-  outcome: RunOutcome,
-  startedAt: string,
-  choice: Choice | undefined,
-  deps: MainDeps,
-): void {
-  const meta = {
-    source: 'watch' as const,
-    jobId: job.id,
-    startedAt,
-    finishedAt: deps.clock().toISOString(),
-    provider: choice?.provider ?? 'unknown',
-    ...(choice?.model === undefined ? {} : { model: choice.model }),
-  }
-  try {
-    if ('run' in outcome) {
-      history.addRun(historyRun(outcome.run, reviewRunJson(outcome.run), meta))
-      return
-    }
-    const failed: RunRecord = {
-      jobId: job.id,
-      source: 'watch',
-      repo: job.repo,
-      number: job.number,
-      headSha: job.headSha,
-      startedAt,
-      finishedAt: meta.finishedAt,
-      status: 'failed',
-      aiCalled:
-        outcome.error instanceof ProviderError || outcome.error instanceof InvalidReviewReportError,
-      provider: meta.provider,
-      ...(choice?.model === undefined ? {} : { model: choice.model }),
-      errorKind: outcome.kind,
-      error: errorMessage(outcome.error),
-    }
-    history.addRun(failed)
-  } catch (error) {
-    deps.stderr.write(`Warning: could not save the run in the history (${errorMessage(error)}).\n`)
-  }
 }

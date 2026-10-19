@@ -10,7 +10,7 @@ import type { HistoryStore } from './store/history-store.js'
 import type { PullRequestReview } from './app/review-pull-request.js'
 import { parseCliArgs } from './cli/args.js'
 import type { CliCommand } from './cli/args.js'
-import { MissingGitHubTokenError, UsageError } from './cli/errors.js'
+import { MissingGitHubTokenError } from './cli/errors.js'
 import { formatError } from './cli/format-error.js'
 import { formatGitHubPreview } from './cli/format-github.js'
 import { formatContextSection } from './cli/format-context.js'
@@ -23,13 +23,11 @@ import { messagesFor } from './cli/i18n/messages.js'
 import { runIndex } from './cli/index-command.js'
 import { runInit } from './cli/init.js'
 import { runRules } from './cli/rules-command.js'
-import {
-  assertProviderChoice,
-  pullRequestReviewDeps,
-  renderReview,
-  reviewRunJson,
-} from './cli/review-wiring.js'
-export { assertProviderChoice } from './cli/review-wiring.js'
+import { pullRequestReviewDeps, renderReview, reviewRunJson } from './cli/review-wiring.js'
+import { assertProviderChoice } from './cli/provider-choice.js'
+import type { ProviderOptions } from './cli/provider-choice.js'
+export { assertProviderChoice } from './cli/provider-choice.js'
+export type { ProviderOptions } from './cli/provider-choice.js'
 import type { Choice } from './cli/review-wiring.js'
 import { toTerminalText } from './cli/terminal-text.js'
 import type { TextOutput } from './cli/progress.js'
@@ -55,12 +53,6 @@ import { ClaudeCliProvider } from './providers/claude.js'
 import { CodexCliProvider } from './providers/codex.js'
 import { OllamaProvider } from './providers/ollama.js'
 import type { ReviewProvider } from './providers/types.js'
-
-export interface ProviderOptions {
-  model?: string
-  userMcpServers?: string[]
-  detached?: boolean
-}
 
 export interface MainDeps {
   env: NodeJS.ProcessEnv
@@ -157,10 +149,10 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
     })
     const choice = resolveProvider({ provider: command.provider, model: command.model }, userLayers)
     const mcp = userMcpServers(userLayers)
-    if (mcp.length > 0 && choice.provider !== 'claude') {
-      throw new UsageError('mcp in your config works only with --provider claude for now.')
-    }
-    assertProviderChoice(choice.provider, { model: choice.model })
+    assertProviderChoice(choice.provider, {
+      ...(choice.model === undefined ? {} : { model: choice.model }),
+      userMcpServers: mcp,
+    })
 
     deps.stderr.write(`Fetching ${formatPullRequestRef(command.ref)}…\n`)
     const startedAt = new Date().toISOString()

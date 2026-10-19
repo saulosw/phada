@@ -31,6 +31,11 @@ export function parsePullRequestRef(input: string): PullRequestRef {
   return { owner, repo, number }
 }
 
+export function splitRepoName(name: string): { owner: string; repo: string } {
+  const [owner = '', repo = ''] = name.split('/')
+  return { owner, repo }
+}
+
 export function formatPullRequestRef(ref: PullRequestRef): string {
   return `${ref.owner}/${ref.repo}#${ref.number}`
 }

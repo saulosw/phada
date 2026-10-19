@@ -1,6 +1,7 @@
 import type { PullRequestReviewDeps } from '../app/review-pull-request.js'
 import type { PublicationResult, RenderedReview, ReviewRun } from '../app/review-and-publish.js'
 import { repositoryCache } from '../config/cache-paths.js'
+import { splitRepoName } from '../github/pull-request-ref.js'
 import type { PullRequestRef } from '../github/pull-request-ref.js'
 import type { PullRequest } from '../github/pull-request.js'
 import { RepositoryAccessError } from '../github/repository.js'
@@ -20,11 +21,6 @@ import { formatRelatedLine } from './format-related.js'
 import { messagesFor } from './i18n/messages.js'
 import { indexProgress, withProgress } from './progress.js'
 import { toTerminalText } from './terminal-text.js'
-
-import { UsageError } from './errors.js'
-import type { ProviderOptions } from '../main.js'
-
-const PROVIDERS = ['claude', 'codex', 'ollama'] as const
 
 export type PublishTarget = PullRequestRef & { token: string }
 export type Choice = { provider: string; model?: string }
@@ -67,12 +63,12 @@ export function pullRequestReviewDeps(
     watchProvider: (provider, pass) => withProgress(provider, deps.stderr, PROGRESS_LABELS[pass]),
     related: {
       readRepository: (name) =>
-        deps.fetchRepository({ ...splitRepo(name), token }).catch((error: unknown) => {
+        deps.fetchRepository({ ...splitRepoName(name), token }).catch((error: unknown) => {
           if (error instanceof RepositoryAccessError) return 'no-access' as const
           throw error
         }),
       openRelated: (name) => {
-        const target = splitRepo(name)
+        const target = splitRepoName(name)
         const paths = repositoryCache(deps.env, deps.home, target.owner, target.repo)
         return {
           openMirror: () => deps.openMirror({ dir: paths.mirror, ...target, token, env: deps.env }),
@@ -165,21 +161,5 @@ function toPublication(
       return { status: 'failed', error: errorSummary(publication.error) }
     default:
       return publication
-  }
-}
-
-export function splitRepo(name: string): { owner: string; repo: string } {
-  const [owner = '', repo = ''] = name.split('/')
-  return { owner, repo }
-}
-
-export function assertProviderChoice(name: string, options: ProviderOptions): void {
-  if (!(PROVIDERS as readonly string[]).includes(name)) {
-    throw new UsageError(`Unknown provider "${name}". Available: ${PROVIDERS.join(', ')}.`)
-  }
-  if (name === 'ollama' && options.model === undefined) {
-    throw new UsageError(
-      '--provider ollama needs --model, e.g. qwen2.5-coder:7b, llama3.1:8b or gpt-oss:120b-cloud (see "ollama list").',
-    )
   }
 }
