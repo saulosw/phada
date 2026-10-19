@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { DURATION, durationMs } from './duration.js'
 
 export const LANGUAGE_TAG = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/
 
@@ -36,6 +37,42 @@ const RelatedRepoSchema = z.union([
   }),
 ])
 
+export const MIN_WATCH_INTERVAL_MS = 60_000
+
+const Duration = z.string().trim().regex(DURATION, 'use a duration like 90s, 5m or 1h')
+
+const WatchedRepoSchema = z.union([
+  RepoName,
+  z.strictObject({
+    repo: RepoName,
+    publish: z.boolean().optional(),
+    allowExternal: z.boolean().optional(),
+    authors: z.array(z.string().trim().min(1)).optional(),
+    labels: z.array(z.string().trim().min(1)).optional(),
+    baseBranches: z.array(z.string().trim().min(1)).optional(),
+  }),
+])
+
+const WatchSchema = z.strictObject({
+  interval: Duration.refine(
+    (text) => !DURATION.test(text) || durationMs(text) >= MIN_WATCH_INTERVAL_MS,
+    'must be at least 60s',
+  ).optional(),
+  settle: Duration.optional(),
+  maxReviewsPerHour: z.number().int().min(1).max(60).optional(),
+  repos: z
+    .array(WatchedRepoSchema)
+    .min(1, 'list at least one owner/repo')
+    .superRefine((repos, context) => {
+      const seen = new Set<string>()
+      for (const entry of repos) {
+        const name = (typeof entry === 'string' ? entry : entry.repo).toLowerCase()
+        if (seen.has(name)) context.addIssue({ code: 'custom', message: `${name} is listed twice` })
+        seen.add(name)
+      }
+    }),
+})
+
 const ContextFileSchema = z.strictObject({
   path: Pattern,
   description: z.string().optional(),
@@ -68,7 +105,10 @@ export const ConfigFileSchema = z.strictObject({
       privateOnPublic: z.boolean().optional(),
     })
     .optional(),
+  history: z.boolean().optional(),
+  watch: WatchSchema.optional(),
 })
 
 export type ConfigFile = z.infer<typeof ConfigFileSchema>
 export type ConfigRule = z.infer<typeof RuleSchema>
+export type WatchConfig = z.infer<typeof WatchSchema>

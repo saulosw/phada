@@ -51,7 +51,8 @@ export interface ProviderChoice {
 const DEFAULT_PROVIDER = 'claude'
 const OPTION_PRECEDENCE: readonly LayerKind[] = ['user-repo', 'repo-root', 'user']
 const OPTIONS = ['language', 'minConfidence', 'verify', 'investigate'] as const
-const USER_ONLY = ['provider', 'model', 'localFiles', 'mcp'] as const
+const USER_ONLY = ['provider', 'model', 'localFiles', 'mcp', 'watch', 'history'] as const
+const TOP_LEVEL_ONLY = ['watch', 'history'] as const
 const HTML_COMMENT = /<!--[\s\S]*?-->/g
 const GLOB_SYNTAX = /[()[\]{}*?!+@\\]/g
 const GLOB_CHARS = /[*?[\]{}!]/
@@ -161,7 +162,8 @@ function disabledInFolders(layers: readonly ConfigLayer[]): Map<string, string[]
 }
 
 function withoutMisplacedKeys(layer: ConfigLayer, warnings: string[]): ConfigLayer {
-  if (layer.kind === 'user' || layer.kind === 'user-repo') return layer
+  if (layer.kind === 'user') return layer
+  if (layer.kind === 'user-repo') return withoutTopLevelKeys(layer, warnings)
   const config: ConfigFile = { ...layer.config }
   if (layer.kind === 'repo-dir') {
     for (const key of OPTIONS) {
@@ -191,6 +193,19 @@ function withoutMisplacedKeys(layer: ConfigLayer, warnings: string[]): ConfigLay
   for (const key of USER_ONLY) {
     if (config[key] !== undefined) {
       warnings.push(`${layer.configLabel}: ${key} is only read from your own config; ignored.`)
+      delete config[key]
+    }
+  }
+  return { ...layer, config }
+}
+
+function withoutTopLevelKeys(layer: ConfigLayer, warnings: string[]): ConfigLayer {
+  const config: ConfigFile = { ...layer.config }
+  for (const key of TOP_LEVEL_ONLY) {
+    if (config[key] !== undefined) {
+      warnings.push(
+        `${layer.configLabel}: ${key} is only read from your top-level config; ignored.`,
+      )
       delete config[key]
     }
   }

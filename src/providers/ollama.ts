@@ -252,7 +252,7 @@ export class OllamaProvider implements ReviewProvider {
     }
     return new ProviderError(
       PROVIDER_ID,
-      'failed',
+      status === 429 ? 'usage-limit' : 'failed',
       message === ''
         ? `Ollama returned HTTP ${status}.`
         : `Ollama returned HTTP ${status}: ${message}`,

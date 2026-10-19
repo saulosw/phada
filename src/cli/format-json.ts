@@ -12,10 +12,19 @@ import type { GitHubReview } from './format-github.js'
 const SCHEMA_VERSION = 1
 
 export type Publication =
-  | { status: 'published'; url: string; comments: number; stillOpen: number }
+  | { status: 'published'; url: string; comments: number; stillOpen: number; dismissed?: number }
   | { status: 'failed'; error: string }
-  | { status: 'dry-run'; review: GitHubReview; stillOpen: number; wouldSkip?: SkipReason }
+  | {
+      status: 'dry-run'
+      review: GitHubReview
+      stillOpen: number
+      dismissed?: number
+      wouldSkip?: SkipReason
+    }
   | { status: 'skipped'; reason: SkipReason }
+  | { status: 'not-published' }
+  | { status: 'superseded'; headSha: string }
+  | { status: 'closed-or-draft' }
 
 export function formatReviewJson(
   pr: PullRequest,
@@ -106,7 +115,7 @@ function publicationJson(publication: Publication) {
   switch (publication.status) {
     case 'published': {
       const { status, url, comments, stillOpen } = publication
-      return { status, url, comments, stillOpen }
+      return { status, url, comments, stillOpen, dismissed: publication.dismissed ?? 0 }
     }
     case 'failed':
       return { status: publication.status, error: publication.error }
@@ -116,10 +125,16 @@ function publicationJson(publication: Publication) {
         body: publication.review.body,
         comments: publication.review.comments.map(({ path, line, body }) => ({ path, line, body })),
         stillOpen: publication.stillOpen,
+        dismissed: publication.dismissed ?? 0,
         wouldSkip: publication.wouldSkip === undefined ? null : skipJson(publication.wouldSkip),
       }
     case 'skipped':
       return { status: publication.status, ...skipJson(publication.reason) }
+    case 'superseded':
+      return { status: publication.status, headSha: publication.headSha }
+    case 'not-published':
+    case 'closed-or-draft':
+      return { status: publication.status }
   }
 }
 

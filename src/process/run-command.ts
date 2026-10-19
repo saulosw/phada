@@ -9,12 +9,26 @@ import {
 const DEFAULT_TIMEOUT_MS = 600_000
 const DEFAULT_MAX_OUTPUT_LENGTH = 10_000_000
 
+const detachedChildren = new Set<number>()
+
+export function killDetachedChildren(): void {
+  for (const pid of detachedChildren) {
+    try {
+      process.kill(-pid, 'SIGTERM')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error
+    }
+  }
+  detachedChildren.clear()
+}
+
 export interface RunCommandOptions {
   stdin?: string
   cwd?: string
   env?: NodeJS.ProcessEnv
   timeoutMs?: number
   maxOutputLength?: number
+  detached?: boolean
 }
 
 export interface RunCommandResult {
@@ -63,7 +77,7 @@ async function execute(
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const maxOutputLength = options.maxOutputLength ?? DEFAULT_MAX_OUTPUT_LENGTH
   const startedAt = performance.now()
-  const result = await execa(command, args, {
+  const child = execa(command, args, {
     input: options.stdin ?? '',
     cwd: options.cwd,
     env: options.env ?? {},
@@ -73,6 +87,12 @@ async function execute(
     reject: false,
     stripFinalNewline: false,
     encoding,
+    detached: options.detached ?? false,
+  })
+  const pid = options.detached === true ? child.pid : undefined
+  if (pid !== undefined) detachedChildren.add(pid)
+  const result = await child.finally(() => {
+    if (pid !== undefined) detachedChildren.delete(pid)
   })
   const durationMs = performance.now() - startedAt
 

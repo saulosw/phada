@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { ConfigError } from './errors.js'
 import type { LocalFileSystem } from './local-files.js'
-import { expandHome, loadUserLayers, userConfigDir, userRepoDir } from './user-config.js'
+import {
+  expandHome,
+  loadTopLevelUserLayers,
+  loadUserLayers,
+  userConfigDir,
+  userRepoDir,
+} from './user-config.js'
 
 function memoryFiles(files: Record<string, string>): LocalFileSystem {
   return {
@@ -87,5 +93,27 @@ describe('loadUserLayers', () => {
     expect((error as Error).message).toMatch(
       /^Invalid config \/cfg\/repos\/acme\/shop\/config\.yml: minConfidence: /,
     )
+  })
+})
+
+describe('loadTopLevelUserLayers', () => {
+  it('reads only the top-level user config', async () => {
+    const files = memoryFiles({ '/cfg/config.yml': 'watch:\n  repos: [a/b]\n' })
+
+    const layers = await loadTopLevelUserLayers({
+      env: { PHADA_CONFIG_HOME: '/cfg' },
+      home: '/h',
+      files,
+    })
+
+    expect(layers).toEqual([
+      expect.objectContaining({ kind: 'user', config: { watch: { repos: ['a/b'] } } }),
+    ])
+  })
+
+  it('is empty without a config', async () => {
+    const layers = await loadTopLevelUserLayers({ env: {}, home: '/h', files: memoryFiles({}) })
+
+    expect(layers).toEqual([])
   })
 })

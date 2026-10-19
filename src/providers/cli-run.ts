@@ -7,6 +7,9 @@ import type { RunCommandResult } from '../process/run-command.js'
 import { redactSecrets } from './redact-secrets.js'
 import { ProviderError } from './types.js'
 
+export const USAGE_LIMIT =
+  /usage limit|hit your (usage )?limit|\b\d+-hour limit|weekly limit|rate limit (exceeded|reached)/i
+
 const GITHUB_TOKEN_KEYS: ReadonlySet<string> = new Set(['GITHUB_TOKEN', 'GH_TOKEN'])
 
 export interface CliNames {
@@ -23,6 +26,7 @@ export interface RunCliOptions {
   cwd: string
   env: NodeJS.ProcessEnv
   timeoutMs: number
+  detached?: boolean
 }
 
 export async function runCli(options: RunCliOptions): Promise<RunCommandResult> {
@@ -32,6 +36,7 @@ export async function runCli(options: RunCliOptions): Promise<RunCommandResult> 
       cwd: options.cwd,
       env: withoutGitHubTokens(options.env),
       timeoutMs: options.timeoutMs,
+      ...(options.detached === undefined ? {} : { detached: options.detached }),
     })
   } catch (error) {
     throw toProviderError(error, options)

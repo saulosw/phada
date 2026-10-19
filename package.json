@@ -1,6 +1,6 @@
 {
   "name": "phada",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Review GitHub pull requests with the AI you already use: Claude Code, Codex or Ollama.",
   "keywords": [
     "code-review",

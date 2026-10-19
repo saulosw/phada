@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { MCP_SERVER_NAME, serveMcp } from '../investigation/mcp/mcp-server.js'
 import type { McpServer } from '../investigation/mcp/mcp-server.js'
 import type { RunCommandResult } from '../process/run-command.js'
-import { runCli, snippet, withTempDir } from './cli-run.js'
+import { runCli, snippet, USAGE_LIMIT, withTempDir } from './cli-run.js'
 import type { CliNames } from './cli-run.js'
 import { resolveClaudeModel } from './claude-model.js'
 import { ProviderError } from './types.js'
@@ -64,6 +64,7 @@ export interface ClaudeCliProviderOptions {
   command?: string
   model?: string
   timeoutMs?: number
+  detached?: boolean
   env?: NodeJS.ProcessEnv
   homeDir?: string
   userMcpServers?: string[]
@@ -85,11 +86,13 @@ export class ClaudeCliProvider implements ReviewProvider {
   readonly #env: NodeJS.ProcessEnv
   readonly #homeDir: string | undefined
   readonly #userMcpServers: readonly string[]
+  readonly #detached: boolean
 
   constructor(options: ClaudeCliProviderOptions = {}) {
     this.#command = options.command ?? DEFAULT_COMMAND
     this.#model = options.model
     this.#timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
+    this.#detached = options.detached ?? false
     this.#env = options.env ?? process.env
     this.#homeDir = options.homeDir
     this.#userMcpServers = options.userMcpServers ?? []
@@ -113,6 +116,7 @@ export class ClaudeCliProvider implements ReviewProvider {
           providerId: PROVIDER_ID,
           names: NAMES,
           command: this.#command,
+          detached: this.#detached,
           args: [
             '-p',
             '--output-format',
@@ -273,5 +277,6 @@ function unreadableOutputError({ stdout, stderr, exitCode }: RunCommandResult): 
 }
 
 function reasonFor(detail: string): ProviderErrorReason {
-  return NOT_AUTHENTICATED.test(detail) ? 'not-authenticated' : 'failed'
+  if (NOT_AUTHENTICATED.test(detail)) return 'not-authenticated'
+  return USAGE_LIMIT.test(detail) ? 'usage-limit' : 'failed'
 }

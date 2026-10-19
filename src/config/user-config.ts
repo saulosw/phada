@@ -44,6 +44,15 @@ export async function loadUserLayers(options: {
   return layers.filter((layer) => layer !== undefined)
 }
 
+export async function loadTopLevelUserLayers(options: {
+  env: NodeJS.ProcessEnv
+  home: string
+  files: LocalFileSystem
+}): Promise<ConfigLayer[]> {
+  const layer = await loadLayer(options.files, 'user', userConfigDir(options.env, options.home), '')
+  return layer === undefined ? [] : [layer]
+}
+
 async function loadLayer(
   files: LocalFileSystem,
   kind: LayerKind,

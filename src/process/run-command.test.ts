@@ -7,7 +7,7 @@ import {
   CommandOutputTooLargeError,
   CommandTimeoutError,
 } from './errors.js'
-import { runCommand, runCommandBytes } from './run-command.js'
+import { killDetachedChildren, runCommand, runCommandBytes } from './run-command.js'
 
 const NODE = process.execPath
 
@@ -186,5 +186,27 @@ describe('runCommandBytes', () => {
     await expect(
       runCommandBytes(...node('process.stdout.write("x".repeat(100))'), { maxOutputLength: 10 }),
     ).rejects.toBeInstanceOf(CommandOutputTooLargeError)
+  })
+})
+
+describe('detached children', () => {
+  it('stops a detached child and its group with killDetachedChildren', async () => {
+    const started = performance.now()
+    const running = captureError(
+      runCommand(...node('setTimeout(() => {}, 30_000)'), { detached: true }),
+    )
+    await new Promise((done) => setTimeout(done, 200))
+
+    killDetachedChildren()
+
+    expect(await running).toBeInstanceOf(CommandError)
+    expect(performance.now() - started).toBeLessThan(5_000)
+  })
+
+  it('forgets a detached child once it exits', async () => {
+    const result = await runCommand(...node('process.exit(0)'), { detached: true })
+
+    expect(result.exitCode).toBe(0)
+    expect(() => killDetachedChildren()).not.toThrow()
   })
 })

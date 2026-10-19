@@ -10,7 +10,7 @@ import {
   GitHubRequestError,
   PullRequestNotFoundError,
 } from './errors.js'
-import { fetchPullRequest } from './pull-request.js'
+import { fetchPullRequest, fetchPullRequestHead } from './pull-request.js'
 import type { FetchPullRequestOptions } from './pull-request.js'
 import { ACCEPT_DIFF, ACCEPT_JSON } from './request.js'
 
@@ -325,5 +325,27 @@ describe('fetchPullRequest never leaks the token', () => {
     expect((error as Error).message).not.toContain(TOKEN)
     expect(JSON.stringify(error)).not.toContain(TOKEN)
     expect(inspect(error, { depth: 5 })).not.toContain(TOKEN)
+  })
+})
+
+describe('fetchPullRequestHead', () => {
+  it('reads the state, draft flag and head commit without the diff', async () => {
+    const { fetch, calls } = fakeGitHub([ok(METADATA_JSON)])
+    const meta = metadata()
+
+    const head = await fetchPullRequestHead({
+      owner: 'saulosw',
+      repo: 'phada-dev-web',
+      number: 3,
+      token: TOKEN,
+      fetch,
+    })
+
+    expect(head).toEqual({
+      state: meta.state,
+      draft: meta.draft,
+      headSha: (meta.head as Json).sha,
+    })
+    expect(calls).toHaveLength(1)
   })
 })

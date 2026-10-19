@@ -87,6 +87,30 @@ describe('mergeConfig options', () => {
   })
 })
 
+describe('mergeConfig watch and history', () => {
+  it('ignores watch and history in the repository with a warning', () => {
+    const merged = mergeConfig([root({ watch: { repos: ['a/b'] }, history: false })])
+
+    expect(merged.warnings).toEqual([
+      '.phada/config.yml: watch is only read from your own config; ignored.',
+      '.phada/config.yml: history is only read from your own config; ignored.',
+    ])
+  })
+
+  it('ignores watch and history in a per-repository user config with a warning', () => {
+    const merged = mergeConfig([userRepo({ watch: { repos: ['a/b'] }, history: false })])
+
+    expect(merged.warnings).toEqual([
+      'user:repos/acme/shop/config.yml: watch is only read from your top-level config; ignored.',
+      'user:repos/acme/shop/config.yml: history is only read from your top-level config; ignored.',
+    ])
+  })
+
+  it('reads watch and history from the top-level user config without a warning', () => {
+    expect(mergeConfig([user({ watch: { repos: ['a/b'] }, history: false })]).warnings).toEqual([])
+  })
+})
+
 describe('mergeConfig rules', () => {
   it('adds rules from every layer with keys, scopes and origins', () => {
     const merged = mergeConfig([

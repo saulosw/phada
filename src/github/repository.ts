@@ -1,6 +1,13 @@
 import { GitHubAuthError, GitHubError } from './errors.js'
 import { booleanField, field, stringField } from './json-fields.js'
-import { ACCEPT_JSON, ensureOk, readJson, sendGitHubRequest } from './request.js'
+import {
+  ACCEPT_JSON,
+  ACCEPT_SHA,
+  ensureOk,
+  readJson,
+  readText,
+  sendGitHubRequest,
+} from './request.js'
 import type { GitHubRequestContext } from './request.js'
 import type { RepositoryFilesOptions } from './repository-files.js'
 
@@ -53,4 +60,29 @@ export async function fetchRepository(options: RepositoryFilesOptions): Promise<
     ...(defaultBranch === undefined ? {} : { defaultBranch }),
     empty: defaultBranch === undefined,
   }
+}
+
+export type BranchHead = { status: 'not-modified' } | { status: 'ok'; sha: string; etag?: string }
+
+export async function fetchBranchHead(
+  options: RepositoryFilesOptions & { branch: string; etag?: string },
+): Promise<BranchHead> {
+  const name = `${options.owner}/${options.repo}`
+  const ctx: GitHubRequestContext = {
+    token: options.token,
+    fetch: options.fetch ?? globalThis.fetch,
+    timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+  }
+  const response = await sendGitHubRequest(
+    ctx,
+    `/repos/${encodeURIComponent(options.owner)}/${encodeURIComponent(options.repo)}/commits/${encodeURIComponent(options.branch)}`,
+    ACCEPT_SHA,
+    options.etag === undefined ? {} : { ifNoneMatch: options.etag },
+  )
+  if (response.status === 304) return { status: 'not-modified' }
+  if (response.status === 404) throw new RepositoryAccessError(name, 404)
+  await ensureOk(response, ctx)
+  const sha = (await readText(response, ctx)).trim()
+  const etag = response.headers.get('etag')
+  return { status: 'ok', sha, ...(etag === null ? {} : { etag }) }
 }
