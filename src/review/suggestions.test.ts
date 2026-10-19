@@ -109,6 +109,29 @@ describe('checkSuggestion', () => {
     ).toBeUndefined()
   })
 
+  it('refuses a range over two adjacent @@ sections', () => {
+    const files = parseDiffFiles(
+      diffOf(
+        'diff --git a/src/a.ts b/src/a.ts',
+        '--- a/src/a.ts',
+        '+++ b/src/a.ts',
+        '@@ -2 +2 @@',
+        '-old b',
+        '+new b',
+        '@@ -3 +3 @@',
+        '-old c',
+        '+new c',
+      ),
+    )
+    const finding = findingFixture({
+      file: 'src/a.ts',
+      line: 2,
+      suggestion: { startLine: 2, endLine: 3, original: 'new b\nnew c', replacement: 'x' },
+    })
+
+    expect(checkSuggestion(finding, files)).toBeUndefined()
+  })
+
   it('refuses lines that are not in the diff', () => {
     expect(
       check({ startLine: 7, endLine: 7, original: 'anything', replacement: 'x' }),
