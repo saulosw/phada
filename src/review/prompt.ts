@@ -39,7 +39,7 @@ Use that number for line. Removed lines have no number: point
 to the nearest numbered line.`
 
 const OUTPUT_FORMAT = `The review is a single JSON object shaped like this:
-{"summary": "...", "files": [{"path": "src/app.ts", "change": "..."}], "findings": [{"severity": "P1", "confidence": 90, "file": "src/app.ts", "line": <number>, "title": "...", "why": "...", "fix": "...", "rule": null, "sources": []}]}
+{"summary": "...", "files": [{"path": "src/app.ts", "change": "..."}], "findings": [{"severity": "P1", "confidence": 90, "file": "src/app.ts", "line": <number>, "title": "...", "why": "...", "fix": "...", "rule": null, "sources": [], "suggestion": null}]}
 - summary: two to four sentences on what the pull request changes.
 - files: one entry per changed file worth mentioning, with a one-line description of its change.
 - findings: one entry per problem. file is the path shown in the diff;
@@ -47,7 +47,12 @@ const OUTPUT_FORMAT = `The review is a single JSON object shaped like this:
   why explains the impact; fix is a concrete fix, or null;
   rule is the key of the repository rule the finding breaks, or null;
   sources lists the documents or files that support the finding (paths from the
-  documentation, the rules or the diff), or an empty list.
+  documentation, the rules or the diff), or an empty list;
+  suggestion replaces lines startLine..endLine of the head with replacement:
+  numbered lines of one @@ section of the diff, at most 20, including line;
+  original copies those lines exactly as shown, without the numbers;
+  replacement is the code that takes their place, with the same indentation.
+  Use null when the fix is not a local edit of those lines.
 Use an empty findings array when nothing reaches the bar. No markdown, no praise.`
 
 const UNTRUSTED_DATA = `The user message holds the pull request metadata, the repository documentation

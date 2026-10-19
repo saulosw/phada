@@ -30,12 +30,28 @@ describe('REVIEW_REPORT_JSON_SCHEMA', () => {
       'fix',
       'rule',
       'sources',
+      'suggestion',
     ])
     expect(finding?.additionalProperties).toBe(false)
     expect(finding?.properties.fix?.type).toEqual(['string', 'null'])
     expect(finding?.properties.rule?.type).toEqual(['string', 'null'])
     expect(finding?.properties.sources?.type).toBe('array')
     expect(finding?.properties.why?.type).toBe('string')
+  })
+
+  it('describes the suggestion as a strict object or null', () => {
+    const suggestion = report.properties.findings?.items?.properties.suggestion as unknown as {
+      anyOf: [ObjectSchema, { type: string }]
+    }
+
+    expect(suggestion.anyOf[1]).toEqual({ type: 'null' })
+    expect(suggestion.anyOf[0].required).toEqual([
+      'startLine',
+      'endLine',
+      'original',
+      'replacement',
+    ])
+    expect(suggestion.anyOf[0].additionalProperties).toBe(false)
   })
 
   it('requires every file field', () => {

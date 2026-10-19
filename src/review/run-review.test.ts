@@ -635,6 +635,52 @@ describe('runReview with the repository tools', () => {
     ])
   })
 
+  describe('suggestions', () => {
+    const valid = {
+      startLine: 1,
+      endLine: 1,
+      original: "import { db } from './db'",
+      replacement: "import { db } from './db.js'",
+    }
+
+    it('keeps a suggestion that matches the diff and counts it', async () => {
+      const report = reviewReportJson({ findings: [findingFixture({ suggestion: valid })] })
+      const provider = new FakeProvider(() => Promise.resolve({ ...OUTPUT, text: report }))
+
+      const outcome = await runReview({ pullRequest: pullRequestFixture() }, { provider })
+
+      expect(outcome.status === 'reviewed' && outcome.result).toMatchObject({
+        findings: [findingFixture({ suggestion: valid })],
+        suggestions: { valid: 1, invalid: 0, dropped: 0 },
+      })
+    })
+
+    it('drops a suggestion that does not match the diff and keeps the fix', async () => {
+      const report = reviewReportJson({
+        findings: [findingFixture({ suggestion: { ...valid, original: 'import db' } })],
+      })
+      const provider = new FakeProvider(() => Promise.resolve({ ...OUTPUT, text: report }))
+
+      const outcome = await runReview({ pullRequest: pullRequestFixture() }, { provider })
+
+      expect(outcome.status === 'reviewed' && outcome.result).toMatchObject({
+        findings: [findingFixture()],
+        suggestions: { valid: 0, invalid: 1, dropped: 0 },
+      })
+      expect(outcome.status === 'reviewed' && outcome.result.findings[0]).not.toHaveProperty(
+        'suggestion',
+      )
+    })
+
+    it('leaves the count out when no finding brought a suggestion', async () => {
+      const provider = new FakeProvider(() => Promise.resolve(OUTPUT))
+
+      const outcome = await runReview({ pullRequest: pullRequestFixture() }, { provider })
+
+      expect(outcome.status === 'reviewed' && outcome.result).not.toHaveProperty('suggestions')
+    })
+  })
+
   it('returns the warnings of the provider', async () => {
     const provider = new FakeProvider(() =>
       Promise.resolve({ ...OUTPUT, warnings: ['model cannot call tools'] }),

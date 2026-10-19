@@ -117,6 +117,12 @@ export interface Suggestion {
   replacement: string
 }
 
+export interface SuggestionCounts {
+  valid: number
+  invalid: number
+  dropped: number
+}
+
 export interface RejectedFinding extends Finding {
   reason: string
 }
@@ -167,6 +173,7 @@ export interface ReviewResult {
   score: Score
   dropped: DroppedFindings
   verification?: Verification
+  suggestions?: SuggestionCounts
   ignored?: string[]
   externalCalls?: ExternalToolCall[]
   warnings?: string[]

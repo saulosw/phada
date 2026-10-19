@@ -1,7 +1,12 @@
 import type { z } from 'zod'
 import { InvalidReviewReportError } from './errors.js'
 import { jsonObjects, preview } from './json-objects.js'
-import { ReportEnvelopeSchema, ReportFileSchema, ReportFindingSchema } from './report-schema.js'
+import {
+  ReportEnvelopeSchema,
+  ReportFileSchema,
+  ReportFindingSchema,
+  SuggestionSchema,
+} from './report-schema.js'
 import type { Finding } from './types.js'
 
 export type ReportFile = z.infer<typeof ReportFileSchema>
@@ -27,7 +32,8 @@ export function parseReviewReport(text: string): ParsedReport {
   const findings = envelope.data.findings.flatMap((item): Finding[] => {
     const parsed = ReportFindingSchema.safeParse(item)
     if (!parsed.success) return []
-    const { rule, sources, ...finding } = parsed.data
+    const { rule, sources, suggestion, ...finding } = parsed.data
+    const fix = SuggestionSchema.safeParse(suggestion)
     const ruleKey = typeof rule === 'string' ? rule.trim() : ''
     const texts = (Array.isArray(sources) ? sources : [])
       .filter((source): source is string => typeof source === 'string')
@@ -38,6 +44,7 @@ export function parseReviewReport(text: string): ParsedReport {
         ...finding,
         ...(ruleKey === '' ? {} : { rule: ruleKey }),
         ...(texts.length === 0 ? {} : { sources: texts }),
+        ...(fix.success ? { suggestion: fix.data } : {}),
       },
     ]
   })

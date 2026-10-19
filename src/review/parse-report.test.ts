@@ -118,6 +118,27 @@ describe('parseReviewReport', () => {
     ])
   })
 
+  it('reads a suggestion and keeps the finding without one that has the wrong shape', () => {
+    const suggestion = { startLine: 1, endLine: 1, original: 'a', replacement: 'b' }
+    const text = reviewReportJson({
+      findings: [
+        { ...findingFixture(), suggestion },
+        { ...findingFixture({ line: 2 }), suggestion: { startLine: 'x' } },
+        { ...findingFixture({ line: 3 }), suggestion: null },
+      ],
+    })
+
+    expect(parseReviewReport(text)).toMatchObject({
+      findings: [
+        findingFixture({ suggestion }),
+        findingFixture({ line: 2 }),
+        findingFixture({ line: 3 }),
+      ],
+      invalid: 0,
+    })
+    expect(parseReviewReport(text).findings[1]).not.toHaveProperty('suggestion')
+  })
+
   it('ignores file entries with the wrong shape', () => {
     const files = [{ path: 'a.ts', change: 'x' }, { path: '', change: 'y' }, { path: 'b.ts' }]
 

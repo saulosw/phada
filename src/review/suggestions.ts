@@ -1,6 +1,6 @@
 import { findDiffFile } from './diff-lines.js'
 import type { DiffFile } from './diff-lines.js'
-import type { Finding, Suggestion } from './types.js'
+import type { Finding, Suggestion, SuggestionCounts } from './types.js'
 
 export const MAX_SUGGESTION_LINES = 20
 
@@ -30,4 +30,26 @@ export function checkSuggestion(
 
 export function normalize(code: string): string {
   return code.replace(/\r/g, '').replace(/\n$/, '')
+}
+
+export function checkSuggestions(
+  findings: readonly Finding[],
+  files: readonly DiffFile[],
+): { findings: Finding[]; counts?: SuggestionCounts } {
+  let valid = 0
+  let invalid = 0
+  const checked = findings.map((finding) => {
+    if (finding.suggestion === undefined) return finding
+    const { suggestion, ...rest } = finding
+    const kept = checkSuggestion(finding, files)
+    if (kept === undefined) {
+      invalid++
+      return rest
+    }
+    valid++
+    return { ...rest, suggestion }
+  })
+  return valid + invalid === 0
+    ? { findings: checked }
+    : { findings: checked, counts: { valid, invalid, dropped: 0 } }
 }

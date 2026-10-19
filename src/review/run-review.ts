@@ -6,6 +6,7 @@ import { parseDiffFiles } from './diff-lines.js'
 import { parseReviewReport } from './parse-report.js'
 import { buildReviewPrompt } from './prompt.js'
 import { scoreFindings } from './score.js'
+import { checkSuggestions } from './suggestions.js'
 import {
   CONFIDENCE_FLOOR,
   isConfidenceCut,
@@ -51,8 +52,9 @@ export async function runReview(
   const report = parseReviewReport(text)
   const diffFiles = parseDiffFiles(pullRequest.diff)
   const verify = request.verify === true
+  const suggested = checkSuggestions(report.findings, diffFiles)
   const reported = withKnownReferences(
-    report.findings,
+    suggested.findings,
     request.context,
     diffFiles.map((file) => file.path),
     {
@@ -107,6 +109,7 @@ export async function runReview(
         rejected: checked?.verification.rejected.length ?? 0,
       },
       ...(checked === undefined ? {} : { verification: checked.verification }),
+      ...(suggested.counts === undefined ? {} : { suggestions: suggested.counts }),
       ...(ignored.length === 0 ? {} : { ignored: [...ignored] }),
       ...(externalCalls.length === 0 ? {} : { externalCalls }),
       ...(warnings.length === 0 ? {} : { warnings }),
