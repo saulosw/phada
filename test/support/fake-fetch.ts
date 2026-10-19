@@ -49,7 +49,8 @@ export function createFakeFetch(
     }
     if (answer === 'network-error') throw new TypeError('fetch failed')
     if (answer === 'hang') return hang(init?.signal)
-    return new Response(answer.body ?? '', { status: answer.status, headers: answer.headers })
+    const body = answer.status === 204 || answer.status === 304 ? null : (answer.body ?? '')
+    return new Response(body, { status: answer.status, headers: answer.headers })
   }
 
   return { fetch, calls }

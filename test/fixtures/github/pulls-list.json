@@ -1,0 +1,100 @@
+[
+  {
+    "url": "https://api.github.com/repos/acme/shop/pulls/12",
+    "number": 12,
+    "state": "open",
+    "title": "Change 12",
+    "user": {
+      "login": "alice",
+      "type": "User"
+    },
+    "labels": [
+      {
+        "name": "phada"
+      }
+    ],
+    "draft": false,
+    "head": {
+      "ref": "feature-12",
+      "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "repo": {
+        "full_name": "acme/shop"
+      }
+    },
+    "base": {
+      "ref": "main",
+      "sha": "0000000000000000000000000000000000000000",
+      "repo": {
+        "full_name": "acme/shop",
+        "private": false,
+        "default_branch": "main"
+      }
+    },
+    "author_association": "MEMBER",
+    "updated_at": "2026-10-18T12:00:00Z"
+  },
+  {
+    "url": "https://api.github.com/repos/acme/shop/pulls/11",
+    "number": 11,
+    "state": "open",
+    "title": "Change 11",
+    "user": {
+      "login": "dependabot[bot]",
+      "type": "Bot"
+    },
+    "labels": [
+      {
+        "name": "dependencies"
+      }
+    ],
+    "draft": false,
+    "head": {
+      "ref": "feature-11",
+      "sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "repo": {
+        "full_name": "acme/shop"
+      }
+    },
+    "base": {
+      "ref": "main",
+      "sha": "0000000000000000000000000000000000000000",
+      "repo": {
+        "full_name": "acme/shop",
+        "private": false,
+        "default_branch": "main"
+      }
+    },
+    "author_association": "NONE",
+    "updated_at": "2026-10-18T12:00:00Z"
+  },
+  {
+    "url": "https://api.github.com/repos/acme/shop/pulls/10",
+    "number": 10,
+    "state": "open",
+    "title": "Change 10",
+    "user": {
+      "login": "renovate[bot]",
+      "type": "User"
+    },
+    "labels": [],
+    "draft": true,
+    "head": {
+      "ref": "feature-10",
+      "sha": "cccccccccccccccccccccccccccccccccccccccc",
+      "repo": {
+        "full_name": "acme/shop"
+      }
+    },
+    "base": {
+      "ref": "dev",
+      "sha": "0000000000000000000000000000000000000000",
+      "repo": {
+        "full_name": "acme/shop",
+        "private": false,
+        "default_branch": "main"
+      }
+    },
+    "author_association": "CONTRIBUTOR",
+    "updated_at": "2026-10-18T12:00:00Z"
+  }
+]

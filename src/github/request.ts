@@ -11,10 +11,13 @@ const TOKEN_FORMAT = /^[\x21-\x7E]+$/
 
 export const ACCEPT_JSON = 'application/vnd.github+json'
 export const ACCEPT_DIFF = 'application/vnd.github.diff'
+export const ACCEPT_SHA = 'application/vnd.github.sha'
+export const API_ORIGIN = API_BASE_URL
 
 export interface GitHubRequestInit {
   method?: 'GET' | 'POST'
   body?: string
+  ifNoneMatch?: string
 }
 
 export interface GitHubRequestContext {
@@ -43,6 +46,7 @@ export async function sendGitHubRequest(
         Authorization: `Bearer ${ctx.token}`,
         Accept: accept,
         ...(init.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        ...(init.ifNoneMatch === undefined ? {} : { 'If-None-Match': init.ifNoneMatch }),
         'X-GitHub-Api-Version': API_VERSION,
         'User-Agent': USER_AGENT,
       },

@@ -70,6 +70,24 @@ export async function fetchPullRequest(options: FetchPullRequestOptions): Promis
   return { ...metadata, diff }
 }
 
+export async function fetchPullRequestHead(
+  options: FetchPullRequestOptions,
+): Promise<{ state: 'open' | 'closed'; draft: boolean; headSha: string }> {
+  const { owner, repo, number } = options
+  const ctx: GitHubRequestContext = {
+    token: options.token,
+    fetch: options.fetch ?? globalThis.fetch,
+    timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+  }
+  const path = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${number}`
+  const { state, draft, headSha } = await fetchMetadata(
+    ctx,
+    path,
+    formatPullRequestRef({ owner, repo, number }),
+  )
+  return { state, draft, headSha }
+}
+
 async function fetchMetadata(
   ctx: GitHubRequestContext,
   path: string,

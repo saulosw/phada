@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createFakeFetch } from '../../test/support/fake-fetch.js'
 import { GitHubRateLimitError } from './errors.js'
-import { fetchRepository, RepositoryAccessError } from './repository.js'
+import { fetchBranchHead, fetchRepository, RepositoryAccessError } from './repository.js'
 
 const TOKEN = `ghp_${'A1b2C3d4E5'.repeat(4)}`
 const JSON_ACCEPT = 'application/vnd.github+json'
@@ -77,5 +77,43 @@ describe('fetchRepository', () => {
     await expect(
       fetchRepository({ owner: 'acme', repo: 'web', token: TOKEN, fetch }),
     ).rejects.toBeInstanceOf(GitHubRateLimitError)
+  })
+})
+
+describe('fetchBranchHead', () => {
+  const SHA_ACCEPT = 'application/vnd.github.sha'
+
+  it('reads the commit at the tip of a branch', async () => {
+    const { fetch, calls } = createFakeFetch({
+      [SHA_ACCEPT]: [{ status: 200, body: 'd'.repeat(40), headers: { etag: '"tip"' } }],
+    })
+
+    const head = await fetchBranchHead({
+      owner: 'acme',
+      repo: 'web',
+      branch: 'main',
+      token: TOKEN,
+      fetch,
+    })
+
+    expect(head).toEqual({ status: 'ok', sha: 'd'.repeat(40), etag: '"tip"' })
+    expect(calls[0]?.url).toBe('https://api.github.com/repos/acme/web/commits/main')
+  })
+
+  it('answers not-modified when the ETag still matches', async () => {
+    const { fetch, calls } = createFakeFetch({ [SHA_ACCEPT]: [{ status: 304 }] })
+
+    const head = await fetchBranchHead({
+      owner: 'acme',
+      repo: 'web',
+      branch: 'release/1.0',
+      token: TOKEN,
+      fetch,
+      etag: '"tip"',
+    })
+
+    expect(head).toEqual({ status: 'not-modified' })
+    expect(calls[0]?.url).toBe('https://api.github.com/repos/acme/web/commits/release%2F1.0')
+    expect(calls[0]?.headers['if-none-match']).toBe('"tip"')
   })
 })
