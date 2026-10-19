@@ -51,6 +51,7 @@ export type Choice = { provider: string; model?: string }
 const PROGRESS_LABELS: Readonly<Record<ReviewPass, string>> = {
   review: 'Reviewing',
   verify: 'Verifying findings',
+  recheck: 'Rechecking open comments',
 }
 
 export const renderReview = {

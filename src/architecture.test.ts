@@ -23,8 +23,12 @@ const REVIEW: Boundary = {
 const PUBLISH: Boundary = {
   dir: 'publish',
   values: new Set(),
-  types: new Set(['../review/types.js', '../github/pull-request-reviews.js']),
-  expected: ['decide-run.ts', 'markers.ts', 'plan-publication.ts'],
+  types: new Set([
+    '../review/types.js',
+    '../github/pull-request-reviews.js',
+    '../github/compare-commits.js',
+  ]),
+  expected: ['decide-run.ts', 'markers.ts', 'plan-publication.ts', 'recheck-candidates.ts'],
 }
 const WATCH: Boundary = {
   dir: 'watch',

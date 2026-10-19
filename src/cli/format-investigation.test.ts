@@ -96,6 +96,24 @@ describe('formatInvestigationSection', () => {
     )
   })
 
+  it('marks the calls of the recheck of earlier comments', () => {
+    const recheck = {
+      ...used,
+      calls: [
+        {
+          pass: 'recheck' as const,
+          tool: 'read_file',
+          target: 'src/a.ts',
+          bytes: 10,
+          error: null,
+          inSources: false,
+        },
+      ],
+    }
+
+    expect(formatInvestigationSection(recheck)).toContain('- read_file src/a.ts (10 B) · recheck')
+  })
+
   it('lists the MCP calls and strips control characters', () => {
     expect(
       formatInvestigationSection({

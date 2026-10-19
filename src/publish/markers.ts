@@ -2,6 +2,7 @@ export const FINDING_MARKER = '<!-- phada:finding -->'
 
 const REVIEW_MARKER =
   /<!-- phada:review sha=([0-9a-f]{40}) findings=(\d+)(?: diff=([0-9a-f]{16}))? -->\s*$/
+const THREAD_TITLE = /^\*\*P[0-2]\*\* · (.+) · [^·]+ \d+$/
 const TRAILING_FINDING_MARKER = /<!-- phada:finding -->\s*$/
 const TRAILING_RESOLVED_MARKER = /<!-- phada:resolved sha=[0-9a-f]{40} -->\s*$/
 
@@ -33,4 +34,9 @@ export function resolvedMarker(sha: string): string {
 
 export function hasResolvedMarker(body: string): boolean {
   return TRAILING_RESOLVED_MARKER.test(body)
+}
+
+export function findingTitle(body: string): string | undefined {
+  const firstLine = body.split('\n', 1)[0]?.trim() ?? ''
+  return THREAD_TITLE.exec(firstLine)?.[1]
 }

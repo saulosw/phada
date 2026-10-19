@@ -1,10 +1,10 @@
 import type { PullRequestReviewState, ReviewThread } from '../github/pull-request-reviews.js'
 import type { Finding } from '../review/types.js'
+import { findingTitle } from './markers.js'
 import { phadaThreads, resolvedByPhada } from './phada-state.js'
 import type { PublicationPlan } from './types.js'
 
 const LINE_WINDOW = 3
-const THREAD_TITLE = /^\*\*P[0-2]\*\* · (.+) · [^·]+ \d+$/
 
 export function planPublication(
   findings: readonly Finding[],
@@ -52,7 +52,6 @@ function sameTitle(thread: ReviewThread, finding: Finding): boolean {
 }
 
 function threadTitle(body: string): string | undefined {
-  const firstLine = body.split('\n', 1)[0]?.trim() ?? ''
-  const title = THREAD_TITLE.exec(firstLine)?.[1]
+  const title = findingTitle(body)
   return title === undefined ? undefined : normalizeTitle(title)
 }
