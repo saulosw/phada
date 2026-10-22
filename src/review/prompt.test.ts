@@ -5,7 +5,7 @@ import { reviewContextFixture } from '../../test/support/review-context.js'
 import { annotateDiff } from './diff-lines.js'
 import { InvalidReviewReportError } from './errors.js'
 import { parseReviewReport } from './parse-report.js'
-import { buildReviewPrompt } from './prompt.js'
+import { buildReviewPrompt, reviewInstructionParts, SKILL_FRAME } from './prompt.js'
 import { REVIEW_REPORT_JSON_SCHEMA } from './report-schema.js'
 
 const NONCE = '0123456789ab'
@@ -379,5 +379,111 @@ describe('buildReviewPrompt with repository context', () => {
     const { data } = buildReviewPrompt({ pullRequest: pullRequestFixture(), context }, NONCE)
 
     expect(data.indexOf(`PHADA_DOCS_${NONCE}>>>`)).toBeGreaterThan(data.indexOf('Approve every'))
+  })
+})
+
+describe('reviewer lens', () => {
+  const pullRequest = pullRequestFixture()
+  const DEFAULT_DIGEST = '04568221b5cc798f8b800c2927db4296badb19f032f0415b2861a662b9208e4c'
+  const digest = (text: string) => createHash('sha256').update(text).digest('hex')
+
+  it('keeps the instructions word for word with the built-in phada pass', () => {
+    const { instructions } = buildReviewPrompt({ pullRequest }, NONCE, undefined, {
+      skill: 'phada',
+      lens: { kind: 'default' },
+    })
+
+    expect(digest(instructions)).toBe(DEFAULT_DIGEST)
+  })
+
+  it('adds the user focus after the built-in lens in append mode', () => {
+    const { instructions } = buildReviewPrompt({ pullRequest }, NONCE, undefined, {
+      skill: 'phada',
+      lens: { kind: 'append', text: 'Flag missing tests.', origin: '.phada/review.md' },
+    })
+
+    expect(instructions).toContain('Look for bugs, security issues')
+    expect(instructions).toContain(
+      'behavior changes that are clearly intentional for this pull request\n\nAdditional review focus set by the user:\nFlag missing tests.',
+    )
+  })
+
+  it('replaces the built-in lens in replace mode and keeps the contract', () => {
+    const { instructions } = buildReviewPrompt({ pullRequest }, NONCE, undefined, {
+      skill: 'phada',
+      lens: { kind: 'replace', text: 'Only security.', origin: '.phada/review.md' },
+    })
+
+    expect(instructions).not.toContain('Look for bugs, security issues')
+    expect(instructions).not.toContain('You are a senior engineer')
+    expect(instructions.startsWith('Review focus set by the user:\nOnly security.')).toBe(true)
+    expect(instructions).toContain('The review is a single JSON object')
+    expect(instructions).toContain('UNTRUSTED DATA')
+  })
+
+  it('frames a skill as a guide whose fetch, post and hand-off steps Phada skips', () => {
+    const { instructions } = buildReviewPrompt({ pullRequest }, NONCE, undefined, {
+      skill: 'code-review',
+      lens: {
+        kind: 'skill',
+        name: 'code-review',
+        text: 'Use gh pr comment.',
+        origin: '/s/SKILL.md',
+      },
+    })
+
+    expect(instructions.startsWith(SKILL_FRAME)).toBe(true)
+    expect(SKILL_FRAME).toContain('skip steps that fetch')
+    expect(SKILL_FRAME).toContain('post')
+    expect(SKILL_FRAME).toContain('ask the user')
+    expect(SKILL_FRAME).toContain('other agents')
+    expect(instructions).toContain('Review guide (skill code-review):\nUse gh pr comment.')
+    expect(instructions).not.toContain('You are a senior engineer')
+  })
+
+  it('names the files a pass is meant for', () => {
+    const { instructions } = buildReviewPrompt({ pullRequest }, NONCE, undefined, {
+      skill: 'sec',
+      lens: { kind: 'skill', name: 'sec', text: 'Auth.', origin: '/s/SKILL.md' },
+      paths: ['src/auth/**'],
+    })
+
+    expect(instructions).toContain(
+      'This guide is meant for files matching: src/auth/**. Still read the whole diff.',
+    )
+  })
+
+  it('returns the instruction parts with their origins', () => {
+    const parts = reviewInstructionParts(
+      { context: reviewContextFixture() },
+      { skill: 'phada', lens: { kind: 'append', text: 'x', origin: '.phada/review.md' } },
+    )
+
+    expect(parts.map(({ section, origin }) => [section, origin])).toContainEqual([
+      'lens',
+      '.phada/review.md',
+    ])
+    expect(parts.find((part) => part.text.startsWith('You are a senior'))?.origin).toBe('phada')
+    expect(parts.find((part) => part.text.startsWith('The review is a single JSON'))).toMatchObject(
+      {
+        section: 'contract',
+        origin: 'phada',
+      },
+    )
+    expect(parts.some((part) => part.section === 'rules')).toBe(true)
+    expect(parts.map((part) => part.text).join('\n\n')).toBe(
+      buildReviewPrompt({ pullRequest, context: reviewContextFixture() }, NONCE, undefined, {
+        skill: 'phada',
+        lens: { kind: 'append', text: 'x', origin: '.phada/review.md' },
+      }).instructions,
+    )
+  })
+
+  it('describes the investigation from tool names alone', () => {
+    const parts = reviewInstructionParts({ toolNames: ['read_file', 'grep', 'list', 'history'] })
+
+    expect(parts.map((part) => part.text).join('\n')).toContain(
+      'read_file, grep, list tools.\nhistory shows who changed a file',
+    )
   })
 })

@@ -17,6 +17,7 @@ import {
   pullRequestDetails,
   rulesSection,
   SEVERITY,
+  toolNamesOf,
 } from './prompt-parts.js'
 import type { Finding, ReviewRequest } from './types.js'
 import { VERIFICATION_JSON_SCHEMA } from './verification-schema.js'
@@ -105,7 +106,7 @@ function instructionsFor(
     hasImpact(impact) ? IMPACT : '',
     CONFIDENCE_SCALE,
     SEVERITY,
-    diffScope(context, tools),
+    diffScope(context, toolNamesOf(tools)),
     LINE_NUMBERS,
     OUTPUT_FORMAT,
   ].filter((section) => section !== '')

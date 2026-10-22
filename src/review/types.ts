@@ -78,6 +78,17 @@ export interface RelatedSummary {
   graph: boolean
 }
 
+export type ReviewerLens =
+  | { kind: 'default' }
+  | { kind: 'append' | 'replace'; text: string; origin: string }
+  | { kind: 'skill'; name: string; text: string; origin: string }
+
+export interface SkillPass {
+  skill: string
+  lens: ReviewerLens
+  paths?: string[]
+}
+
 export interface ReviewRequest {
   pullRequest: PullRequest
   language?: string
@@ -86,6 +97,7 @@ export interface ReviewRequest {
   context?: ReviewContext
   impact?: DiffImpact
   related?: RelatedSummary[]
+  passes?: SkillPass[]
 }
 
 export interface ReviewTarget {
@@ -109,6 +121,7 @@ export interface Finding {
   sources?: string[]
   reason?: string
   suggestion?: Suggestion
+  skill?: string
 }
 
 export interface Suggestion {
@@ -158,6 +171,16 @@ export interface DroppedFindings {
   rejected: number
 }
 
+export interface PassReport {
+  skill: string
+  origin: string
+  status: 'reviewed' | 'skipped' | 'failed'
+  durationMs: number
+  usage?: TokenUsage
+  findings: number
+  reason?: string
+}
+
 export interface ReviewResult {
   target: ReviewTarget
   providerId: string
@@ -178,6 +201,7 @@ export interface ReviewResult {
   ignored?: string[]
   externalCalls?: ExternalToolCall[]
   warnings?: string[]
+  passes?: PassReport[]
 }
 
 export interface RecheckThread {

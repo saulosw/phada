@@ -97,9 +97,16 @@ export function hasContext(context: ReviewContext | undefined): boolean {
   return context !== undefined && (context.rules.length > 0 || context.docs.length > 0)
 }
 
-export function diffScope(context: ReviewContext | undefined, tools?: Toolbox): string {
-  if (tools !== undefined) return investigation(tools.definitions.map(({ name }) => name))
+export function diffScope(
+  context: ReviewContext | undefined,
+  toolNames?: readonly string[],
+): string {
+  if (toolNames !== undefined) return investigation(toolNames)
   return hasContext(context) ? DIFF_WITH_CONTEXT : DIFF_ONLY
+}
+
+export function toolNamesOf(tools: Toolbox | undefined): string[] | undefined {
+  return tools?.definitions.map(({ name }) => name)
 }
 
 const GRAPH_TOOL_NAMES: ReadonlySet<string> = new Set([
