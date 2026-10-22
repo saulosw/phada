@@ -30,6 +30,16 @@ export class ComparisonNotFoundError extends GitHubError {
   }
 }
 
+export class ComparisonDivergedError extends GitHubError {
+  override readonly name = 'ComparisonDivergedError'
+
+  constructor(base: string, head: string) {
+    super(`${base.slice(0, 7)} is not an ancestor of ${head.slice(0, 7)}`)
+  }
+}
+
+const LINEAR = new Set(['ahead', 'identical'])
+
 export async function fetchComparison(options: CompareOptions): Promise<ComparedFile[]> {
   const ctx: GitHubRequestContext = {
     token: options.token,
@@ -45,6 +55,9 @@ export async function fetchComparison(options: CompareOptions): Promise<Compared
   if (response.status === 404) throw new ComparisonNotFoundError(options.base, options.head)
   await ensureOk(response, ctx)
   const json = await readJson(response, ctx)
+  if (!LINEAR.has(stringField(json, 'status'))) {
+    throw new ComparisonDivergedError(options.base, options.head)
+  }
   return arrayField(json, 'files').map(toComparedFile)
 }
 
