@@ -162,6 +162,7 @@ const APP: Boundary = {
     '../investigation/create-investigation.js',
     '../investigation/tools/report.js',
     '../publish/decide-run.js',
+    '../publish/feedback.js',
     '../publish/markers.js',
     '../publish/plan-publication.js',
     '../publish/recheck-candidates.js',
@@ -212,6 +213,7 @@ const APP: Boundary = {
   ]),
   expected: [
     'error-message.ts',
+    'feedback.ts',
     'review-and-publish.ts',
     'watch-repositories.ts',
     'index-repository.ts',

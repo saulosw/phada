@@ -200,6 +200,24 @@ const INPUT: ReviewAndPublishInput = {
 }
 
 describe('reviewAndPublish', () => {
+  it('returns the review state it read with every result', async () => {
+    const read = state({ reviewedHead: true })
+    const skipped = setup({ fetchReviewState: async () => read })
+    const reviewed = setup()
+
+    expect((await reviewAndPublish(INPUT, skipped.deps)).reviewState).toEqual(read)
+    expect((await reviewAndPublish(INPUT, reviewed.deps)).reviewState).toEqual(state())
+  })
+
+  it('returns no review state for a closed pull request skipped by the watch', async () => {
+    const { deps } = setup({}, { ...PR, state: 'closed' })
+
+    const run = await reviewAndPublish({ ...INPUT, mode: 'watch' }, deps)
+
+    expect(run.status).toBe('skipped')
+    expect(run.reviewState).toBeUndefined()
+  })
+
   it('reviews and publishes a pull request', async () => {
     const { deps, calls } = setup()
 
@@ -222,6 +240,7 @@ describe('reviewAndPublish', () => {
       status: 'skipped',
       pullRequest: PR,
       reason: { kind: 'open-threads', openThreads: 1 },
+      reviewState: state({ reviewedHead: true }),
     })
     expect(calls.reviews).toBe(0)
   })
@@ -261,6 +280,7 @@ describe('reviewAndPublish', () => {
         status: 'skipped',
         pullRequest: PR,
         reason: { kind: 'same-diff', since: OLD },
+        reviewState: await reviewedBefore(),
       })
       expect(calls.reviews).toBe(0)
     })
