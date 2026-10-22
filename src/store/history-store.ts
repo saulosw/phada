@@ -15,7 +15,28 @@ import {
 } from './history-columns.js'
 import type { Statement } from './history-columns.js'
 import { isNotADatabase } from './index-store.js'
+import { feedbackDue, findings, observeFeedback, recordPublished } from './history-feedback.js'
+import type {
+  DueFilter,
+  DuePull,
+  FeedbackObservation,
+  FindingFilter,
+  FindingRecord,
+  PublishedFinding,
+} from './history-feedback.js'
 import type { FailureKind, JobRecord, JobStatus, PauseState, PullRecord } from '../watch/types.js'
+
+export type {
+  DueFilter,
+  DuePull,
+  FeedbackObservation,
+  FindingFilter,
+  FindingRecord,
+  PublishedFinding,
+  PullState,
+  SignalRecord,
+  SignalSource,
+} from './history-feedback.js'
 
 export type RunStatus =
   'published' | 'dry-run' | 'not-published' | 'superseded' | 'skipped' | 'nothing' | 'failed'
@@ -76,6 +97,10 @@ export interface HistoryStore {
   pause(): PauseState | undefined
   setPause(state: PauseState | undefined): void
   status(): HistoryStatus
+  recordPublished(findings: readonly PublishedFinding[]): void
+  observeFeedback(observation: FeedbackObservation): void
+  findings(filter: FindingFilter): FindingRecord[]
+  feedbackDue(filter: DueFilter, before: string, limit?: number): DuePull[]
   close(): void
 }
 
@@ -302,6 +327,22 @@ class SqliteHistoryStore implements HistoryStore {
       lastRuns,
       ...(pause === undefined ? {} : { pause }),
     }
+  }
+
+  recordPublished(published: readonly PublishedFinding[]): void {
+    recordPublished(this.#db, published)
+  }
+
+  observeFeedback(observation: FeedbackObservation): void {
+    observeFeedback(this.#db, observation)
+  }
+
+  findings(filter: FindingFilter): FindingRecord[] {
+    return findings(this.#db, filter)
+  }
+
+  feedbackDue(filter: DueFilter, before: string, limit?: number): DuePull[] {
+    return feedbackDue(this.#db, filter, before, limit)
   }
 
   close(): void {

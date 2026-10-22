@@ -60,7 +60,16 @@ describe('openHistoryStore migrations', () => {
       .map((row) => row.name)
     db.close()
     expect(userVersion(path)).toBe(HISTORY_MIGRATIONS.length)
-    expect(tables).toEqual(['job', 'run', 'watch_state', 'watched_pull', 'watched_repo'])
+    expect(tables).toEqual([
+      'feedback_pull',
+      'finding',
+      'job',
+      'run',
+      'signal',
+      'watch_state',
+      'watched_pull',
+      'watched_repo',
+    ])
   })
 
   it('keeps what is stored across openings', async () => {

@@ -109,7 +109,13 @@ const REPO_MAP: Boundary = {
 const STORE: Boundary = {
   dir: 'store',
   values: new Set(['node:fs/promises', 'node:path', 'node:sqlite']),
-  types: new Set(['../repo-map/types.js', '../repo-map/languages.js', '../watch/types.js']),
+  types: new Set([
+    '../repo-map/types.js',
+    '../repo-map/languages.js',
+    '../watch/types.js',
+    '../publish/feedback.js',
+    '../review/types.js',
+  ]),
   expected: ['index-store.ts', 'schema.ts'],
 }
 const GRAPH: Boundary = {

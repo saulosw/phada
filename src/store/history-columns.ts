@@ -87,8 +87,66 @@ export const RUN_TABLE: HistoryTable = {
   },
 }
 
-const NUMBERS = new Set(['id', 'number', 'attempts', 'jobId', 'score', 'findings'])
-const BOOLEANS = new Set(['eligible', 'aiCalled'])
+export const FEEDBACK_PULL_TABLE: HistoryTable = {
+  name: 'feedback_pull',
+  keys: ['repo', 'number'],
+  columns: {
+    repo: 'repo',
+    number: 'number',
+    observedAt: 'observed_at',
+    pullState: 'pull_state',
+  },
+}
+
+export const FINDING_TABLE: HistoryTable = {
+  name: 'finding',
+  keys: ['id'],
+  columns: {
+    id: 'id',
+    repo: 'repo',
+    number: 'number',
+    commitSha: 'commit_sha',
+    fingerprint: 'fingerprint',
+    file: 'file',
+    line: 'line',
+    title: 'title',
+    severity: 'severity',
+    confidence: 'confidence',
+    rule: 'rule',
+    runId: 'run_id',
+    threadId: 'thread_id',
+    threadUrl: 'thread_url',
+    outdated: 'outdated',
+    publishedAt: 'published_at',
+  },
+}
+
+export const SIGNAL_TABLE: HistoryTable = {
+  name: 'signal',
+  keys: ['id'],
+  columns: {
+    id: 'id',
+    findingId: 'finding_id',
+    kind: 'kind',
+    source: 'source',
+    observedAt: 'observed_at',
+    clearedAt: 'cleared_at',
+  },
+}
+
+const NUMBERS = new Set([
+  'id',
+  'number',
+  'attempts',
+  'jobId',
+  'score',
+  'findings',
+  'line',
+  'confidence',
+  'runId',
+  'findingId',
+])
+const BOOLEANS = new Set(['eligible', 'aiCalled', 'outdated'])
 const LOWERCASE = new Set(['repo'])
 
 export class UnknownHistoryFieldError extends Error {
