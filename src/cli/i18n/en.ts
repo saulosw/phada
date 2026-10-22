@@ -73,8 +73,8 @@ export const english: Messages = {
     preview: (index, total, place) => `===== Inline comment ${index}/${total} · ${place} =====`,
     fixedThreads: (count, sha) =>
       count === 1
-        ? `1 comment from previous reviews is fixed in ${sha} and was resolved.`
-        : `${count} comments from previous reviews are fixed in ${sha} and were resolved.`,
+        ? `1 comment from previous reviews is fixed in ${sha}.`
+        : `${count} comments from previous reviews are fixed in ${sha}.`,
     resolvedReply: (sha, reason) => `Fixed in \`${sha}\`: ${reason}`,
   },
 }

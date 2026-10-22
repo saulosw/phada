@@ -167,10 +167,10 @@ describe('formatGitHubReview body', () => {
     const onlyOpen = { ...plan([], [OPEN]), fixedThreads: 1 }
 
     expect(formatGitHubReview(RESULT, fixed).body).toContain(
-      '2 comments from previous reviews are fixed in a1b2c3d and were resolved.',
+      '2 comments from previous reviews are fixed in a1b2c3d.',
     )
     expect(formatGitHubReview(RESULT, onlyOpen).body).toContain(
-      '1 comment from previous reviews is fixed in a1b2c3d and was resolved.',
+      '1 comment from previous reviews is fixed in a1b2c3d.',
     )
     expect(formatGitHubReview(RESULT, plan([P1])).body).not.toContain('previous reviews is fixed')
   })

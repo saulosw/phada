@@ -90,8 +90,8 @@ export const portuguese: Messages = {
       `===== Comentário na linha ${index}/${total} · ${place} =====`,
     fixedThreads: (value, sha) =>
       value === 1
-        ? `1 comentário de revisões anteriores foi corrigido em ${sha} e resolvido.`
-        : `${value} comentários de revisões anteriores foram corrigidos em ${sha} e resolvidos.`,
+        ? `1 comentário de revisões anteriores está corrigido em ${sha}.`
+        : `${value} comentários de revisões anteriores estão corrigidos em ${sha}.`,
     resolvedReply: (sha, reason) => `Corrigido em \`${sha}\`: ${reason}`,
   },
 }
