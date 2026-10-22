@@ -192,7 +192,15 @@ describe('runHistory', () => {
 
     await runHistory({ ...COMMAND, stats: true }, h.deps)
 
-    expect(h.stdout()).toBe('No published comments in the history yet.\n')
+    expect(h.stdout()).toContain('No published comments in the history yet.\n')
+  })
+
+  it('says the history is empty for --stats without a file', async () => {
+    const h = harness()
+
+    await runHistory({ ...COMMAND, stats: true }, h.deps)
+
+    expect(h.stdout()).toBe('No reviews in the history yet.\n')
   })
 
   it('--refresh refuses without a token', async () => {

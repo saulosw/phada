@@ -239,7 +239,9 @@ describe('formatStatsText', () => {
   })
 
   it('says when nothing was published', () => {
-    expect(formatStatsText([], undefined)).toBe('No published comments in the history yet.\n')
+    expect(formatStatsText([], undefined)).toBe(
+      'No published comments in the history yet.\n\nSignals, not verdicts: a dismissed finding may still have been right.\n',
+    )
   })
 })
 

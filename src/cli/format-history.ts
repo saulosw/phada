@@ -68,9 +68,9 @@ export function feedbackStats(findings: readonly FindingRecord[]): RepoStats[] {
 }
 
 export function formatStatsText(stats: readonly RepoStats[], since: string | undefined): string {
-  if (stats.length === 0) return 'No published comments in the history yet.\n'
   const lines = [
     ...(since === undefined ? [] : [`Since ${localDate(since).slice(0, 10)}.`]),
+    ...(stats.length === 0 ? ['No published comments in the history yet.'] : []),
     ...stats.map(statsLine),
     '',
     WARNING,

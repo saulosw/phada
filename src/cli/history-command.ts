@@ -58,7 +58,11 @@ export async function runHistory(command: HistoryCommand, deps: HistoryCommandDe
       : new Date(now.getTime() - command.sinceMs).toISOString()
   const path = dataFiles(deps.env, deps.home).history
   if (token === undefined && !(await deps.files.exists(path))) {
-    deps.stdout.write(render(command, since, undefined))
+    deps.stdout.write(
+      command.format === 'json'
+        ? render(command, since, undefined)
+        : 'No reviews in the history yet.\n',
+    )
     return
   }
   const history = await deps.openHistoryStore(path)
