@@ -7,6 +7,7 @@ import {
   formatGitHubPreview,
   formatGitHubReview,
   formatIgnoredOnlyReview,
+  formatResolvedReply,
   GITHUB_BODY_LIMIT,
 } from './format-github.js'
 import { messagesFor } from './i18n/messages.js'
@@ -56,6 +57,8 @@ const PLAN: PublicationPlan = {
   comments: [P1, P2],
   stillOpen: [OPEN],
   dismissed: [],
+  fixedAgain: [],
+  fixedThreads: 0,
   openThreads: 1,
 }
 
@@ -76,7 +79,7 @@ function plan(
   stillOpen: Finding[] = [],
   openThreads = stillOpen.length,
 ): PublicationPlan {
-  return { comments, stillOpen, dismissed: [], openThreads }
+  return { comments, stillOpen, dismissed: [], fixedAgain: [], fixedThreads: 0, openThreads }
 }
 
 describe('formatGitHubReview body', () => {
@@ -148,6 +151,28 @@ describe('formatGitHubReview body', () => {
 
     expect(body.match(/no problems found/gi)).toEqual(['No problems found'])
     expect(parseReviewMarker(body)).toEqual({ sha: SHA, findings: 0 })
+  })
+
+  it('writes the fingerprint of the reviewed diff in the marker', () => {
+    const target = { ...RESULT.target, diffFingerprint: '0123456789abcdef' }
+    const full = formatGitHubReview(result({ target }), PLAN).body
+    const short = formatGitHubReview(result({ target }), plan([], [OPEN])).body
+
+    expect(parseReviewMarker(full)).toEqual({ sha: SHA, findings: 3, diff: '0123456789abcdef' })
+    expect(parseReviewMarker(short)).toMatchObject({ diff: '0123456789abcdef' })
+  })
+
+  it('says how many comments from previous reviews were found fixed', () => {
+    const fixed = { ...plan([P1]), fixedThreads: 2 }
+    const onlyOpen = { ...plan([], [OPEN]), fixedThreads: 1 }
+
+    expect(formatGitHubReview(RESULT, fixed).body).toContain(
+      '2 comments from previous reviews are fixed in a1b2c3d.',
+    )
+    expect(formatGitHubReview(RESULT, onlyOpen).body).toContain(
+      '1 comment from previous reviews is fixed in a1b2c3d.',
+    )
+    expect(formatGitHubReview(RESULT, plan([P1])).body).not.toContain('previous reviews is fixed')
   })
 
   it('starts the reason line with a capital letter', () => {
@@ -365,6 +390,85 @@ describe('formatGitHubReview comments', () => {
     ])
   })
 
+  describe('with a suggestion', () => {
+    const one = { startLine: 3, endLine: 3, original: 'a', replacement: 'b(user.id)' }
+
+    it('adds a suggestion block after the fix, anchored on the last line', () => {
+      const [comment] = formatGitHubReview(
+        RESULT,
+        plan([findingFixture({ line: 3, suggestion: one })]),
+      ).comments
+
+      expect(comment).toEqual({
+        path: 'src/shop.ts',
+        line: 3,
+        body: [
+          '**P1** · spend has no auth · confidence 90',
+          'Anyone can spend crystals for any user.',
+          '**Fix:** Use the authenticated user id.',
+          '```suggestion\nb(user.id)\n```',
+          '<!-- phada:finding -->',
+        ].join('\n\n'),
+      })
+    })
+
+    it('publishes an empty block that deletes the lines and never adds a blank line', () => {
+      const comment = (replacement: string) =>
+        formatGitHubReview(
+          RESULT,
+          plan([findingFixture({ line: 3, suggestion: { ...one, replacement } })]),
+        ).comments[0]?.body
+
+      expect(comment('')).toContain('```suggestion\n```')
+      expect(comment('b(user.id)\n')).toContain('```suggestion\nb(user.id)\n```')
+      expect(comment('a\r\nb\r\n')).toContain('```suggestion\na\nb\n```')
+    })
+
+    it('starts a comment of several lines on the first line of the suggestion', () => {
+      const several = { startLine: 2, endLine: 4, original: 'a\nb\nc', replacement: 'd' }
+      const [comment] = formatGitHubReview(
+        RESULT,
+        plan([findingFixture({ line: 3, suggestion: several })]),
+      ).comments
+
+      expect(comment).toMatchObject({ path: 'src/shop.ts', startLine: 2, line: 4 })
+    })
+
+    it('uses a fence longer than any backtick run in the code', () => {
+      const fenced = { ...one, replacement: 'const md = "```js"\nconst x = "````"' }
+      const [comment] = formatGitHubReview(
+        RESULT,
+        plan([findingFixture({ line: 3, suggestion: fenced })]),
+      ).comments
+
+      expect(comment?.body).toContain(`\`\`\`\`\`suggestion\n${fenced.replacement}\n\`\`\`\`\``)
+    })
+
+    it('drops the suggestion when the comment cannot fit it', () => {
+      const huge = { ...one, replacement: 'x'.repeat(600) }
+      const [comment] = formatGitHubReview(
+        RESULT,
+        plan([findingFixture({ line: 3, suggestion: huge })]),
+        500,
+      ).comments
+
+      expect(comment?.body.length).toBeLessThanOrEqual(500)
+      expect(comment?.body).not.toContain('```suggestion')
+      expect(comment).not.toHaveProperty('startLine')
+      expect(comment?.line).toBe(3)
+    })
+
+    it('never shows a suggestion in the body of the review', () => {
+      const suggested = findingFixture({ line: 20, title: 'Balance has no auth', suggestion: one })
+      const { body } = formatGitHubReview(
+        result({ worthChecking: [suggested] }),
+        plan([], [suggested]),
+      )
+
+      expect(body).not.toContain('suggestion')
+    })
+  })
+
   it('names the sources and the rule a finding is based on', () => {
     const ruled = findingFixture({
       rule: 'orm-only',
@@ -440,6 +544,17 @@ describe('formatGitHubReview comments', () => {
   })
 })
 
+describe('formatResolvedReply', () => {
+  it('names the commit and escapes the reason of the AI', () => {
+    expect(formatResolvedReply(SHA, 'Now checks @admin <b>auth</b>.')).toBe(
+      'Fixed in `a1b2c3d`: Now checks @\u200badmin \\<b>auth\\</b>.',
+    )
+    expect(formatResolvedReply(SHA, 'Ok.', messagesFor('pt-BR'))).toBe(
+      'Corrigido em `a1b2c3d`: Ok.',
+    )
+  })
+})
+
 describe('formatGitHubPreview', () => {
   it('shows the body and then every comment with its place', () => {
     const review = formatGitHubReview(RESULT, PLAN)
@@ -458,6 +573,12 @@ describe('formatGitHubPreview', () => {
 
 describe('formatIgnoredOnlyReview', () => {
   const SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
+
+  it('writes the fingerprint of the filtered diff in the marker', () => {
+    const { body } = formatIgnoredOnlyReview(SHA, ['yarn.lock'], undefined, '0123456789abcdef')
+
+    expect(parseReviewMarker(body)).toEqual({ sha: SHA, findings: 0, diff: '0123456789abcdef' })
+  })
 
   it('posts a short note that names the files left out and counts zero findings', () => {
     expect(formatIgnoredOnlyReview(SHA, ['package-lock.json', 'app.min.js'])).toEqual({

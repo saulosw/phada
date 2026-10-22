@@ -285,6 +285,13 @@ describe('resolveProvider', () => {
 })
 
 describe('investigation options', () => {
+  it('takes resolveThreads like verify, from the most specific layer', () => {
+    expect(
+      mergeConfig([user({ resolveThreads: true }), root({ resolveThreads: false })]).resolveThreads,
+    ).toBe(false)
+    expect(mergeConfig([user({})]).resolveThreads).toBeUndefined()
+  })
+
   it('takes investigate like verify, from the most specific layer', () => {
     expect(
       mergeConfig([user({ investigate: true }), root({ investigate: false })]).investigate,

@@ -49,6 +49,15 @@ describe('dismissed findings and already-reviewed', () => {
     ).toBe('a1b2c3d already reviewed by Phada: skipping.')
   })
 
+  it('says a commit whose diff did not change is skipped', () => {
+    const head = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
+    const since = '0123456789abcdef0123456789abcdef01234567'
+
+    expect(formatSkipMessage(head, { kind: 'same-diff', since })).toBe(
+      'a1b2c3d: the reviewed diff did not change since 0123456, which Phada reviewed (files left out of the review do not count). Use --force to review again.',
+    )
+  })
+
   it('says a closed or draft pull request is skipped', () => {
     expect(
       formatSkipMessage('a1b2c3d4e5f60718293a4b5c6d7e8f9012345678', { kind: 'closed-or-draft' }),

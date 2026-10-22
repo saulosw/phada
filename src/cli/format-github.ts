@@ -2,11 +2,12 @@ import type { ReviewComment } from '../github/create-review.js'
 import { FINDING_MARKER, reviewMarker } from '../publish/markers.js'
 import type { PublicationPlan } from '../publish/types.js'
 import { scoreFocus } from '../review/score.js'
+import { normalize } from '../review/suggestions.js'
 import type { FileChange, Finding, ReviewResult, Severity } from '../review/types.js'
 import { findingReferences, leftOutLine } from './finding-references.js'
 import { english } from './i18n/en.js'
 import type { Messages } from './i18n/messages.js'
-import { githubBlock, githubCell, githubLine } from './markdown-text.js'
+import { codeFence, githubBlock, githubCell, githubLine } from './markdown-text.js'
 import { modelLabel, shortSha } from './review-text.js'
 
 export const GITHUB_BODY_LIMIT = 65_536
@@ -41,11 +42,7 @@ export function formatGitHubReview(
   }
   return {
     body: reviewBody(result, plan, limit, messages),
-    comments: plan.comments.map((finding) => ({
-      path: finding.file,
-      line: finding.line,
-      body: commentBody(finding, limit, messages),
-    })),
+    comments: plan.comments.map((finding) => findingComment(finding, limit, messages)),
   }
 }
 
@@ -53,6 +50,7 @@ export function formatIgnoredOnlyReview(
   headSha: string,
   ignored: readonly string[],
   messages: Messages = english,
+  diff?: string,
 ): GitHubReview {
   const sha = shortSha(headSha)
   const body = [
@@ -60,11 +58,19 @@ export function formatIgnoredOnlyReview(
     messages.github.allIgnored(sha),
     leftOutLine(ignored, messages),
     `---\n<sub>${messages.github.generatedWith} · ${sha}</sub>`,
-    reviewMarker({ sha: headSha, findings: 0 }),
+    reviewMarker({ sha: headSha, findings: 0, ...(diff === undefined ? {} : { diff }) }),
   ]
     .filter((section) => section !== '')
     .join('\n\n')
   return { body, comments: [] }
+}
+
+export function formatResolvedReply(
+  headSha: string,
+  reason: string,
+  messages: Messages = english,
+): string {
+  return messages.github.resolvedReply(shortSha(headSha), githubBlock(reason))
 }
 
 export function formatGitHubPreview(
@@ -87,9 +93,12 @@ function onlyStillOpenBody(
   return [
     `## ${messages.github.heading}: ${messages.github.onlyStillOpenTitle}`,
     messages.github.onlyStillOpen(plan.openThreads, sha),
+    fixedLine(result, plan, messages),
     `---\n<sub>${footer(result, githubLine(modelLabel(result)), messages)}</sub>`,
-    reviewMarker({ sha: result.target.headSha, findings: result.findings.length }),
-  ].join('\n\n')
+    markerOf(result),
+  ]
+    .filter((section) => section !== '')
+    .join('\n\n')
 }
 
 function reviewBody(
@@ -133,6 +142,7 @@ function renderBody(
     summary === '' ? '' : `### ${messages.summary}\n\n${summary}`,
     parts.files,
     countsLine(plan, messages),
+    fixedLine(result, plan, messages),
     findingList(messages.github.stillOpen, parts.stillOpen, parts.stillOpenOmitted, messages),
     findingList(
       messages.worthChecking(result.minConfidence),
@@ -143,10 +153,20 @@ function renderBody(
     messages.dropped(result.dropped),
     leftOutLine(result.ignored ?? [], messages),
     `---\n<sub>${footer(result, githubLine(parts.model), messages)}</sub>`,
-    reviewMarker({ sha: result.target.headSha, findings: result.findings.length }),
+    markerOf(result),
   ]
     .filter((section) => section !== '')
     .join('\n\n')
+}
+
+function fixedLine(result: ReviewResult, plan: PublicationPlan, messages: Messages): string {
+  if (plan.fixedThreads === 0) return ''
+  return messages.github.fixedThreads(plan.fixedThreads, shortSha(result.target.headSha))
+}
+
+function markerOf({ target, findings }: ReviewResult): string {
+  const { headSha: sha, diffFingerprint: diff } = target
+  return reviewMarker({ sha, findings: findings.length, ...(diff === undefined ? {} : { diff }) })
 }
 
 function filesDetails(files: readonly FileChange[], messages: Messages): string {
@@ -205,7 +225,27 @@ function footer(result: ReviewResult, model: string, messages: Messages): string
   return parts.join(' · ')
 }
 
-function commentBody(finding: Finding, limit: number, messages: Messages): string {
+function findingComment(finding: Finding, limit: number, messages: Messages): ReviewComment {
+  const { suggestion } = finding
+  if (suggestion !== undefined) {
+    const fence = codeFence(suggestion.replacement)
+    const code = normalize(suggestion.replacement)
+    const block =
+      code === '' ? `${fence}suggestion\n${fence}` : `${fence}suggestion\n${code}\n${fence}`
+    const body = commentBody(finding, limit, messages, block)
+    if (body.length <= limit) {
+      return {
+        path: finding.file,
+        ...(suggestion.startLine === suggestion.endLine ? {} : { startLine: suggestion.startLine }),
+        line: suggestion.endLine,
+        body,
+      }
+    }
+  }
+  return { path: finding.file, line: finding.line, body: commentBody(finding, limit, messages) }
+}
+
+function commentBody(finding: Finding, limit: number, messages: Messages, suggestion = ''): string {
   const parts = { title: finding.title, why: finding.why, fix: finding.fix ?? '' }
   const references = findingReferences(finding, messages, { withLocalFiles: false })
   const render = () => {
@@ -214,6 +254,7 @@ function commentBody(finding: Finding, limit: number, messages: Messages): strin
       `**${finding.severity}** · ${githubLine(parts.title)} · ${messages.confidence} ${finding.confidence}`,
       githubBlock(parts.why),
       ...(fix === '' ? [] : [`**${messages.fix}:** ${fix}`]),
+      ...(suggestion === '' ? [] : [suggestion]),
       ...(references === '' ? [] : [`<sub>${references}</sub>`]),
       FINDING_MARKER,
     ].join('\n\n')

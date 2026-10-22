@@ -1,17 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import { findingFixture } from '../../test/support/finding.js'
 import type { PullRequestReviewState, ReviewThread } from '../github/pull-request-reviews.js'
-import { FINDING_MARKER } from './markers.js'
+import { FINDING_MARKER, resolvedMarker } from './markers.js'
 import { normalizeTitle, planPublication } from './plan-publication.js'
 
 function thread(overrides: Partial<ReviewThread> = {}): ReviewThread {
   return {
+    id: 'T1',
     isResolved: false,
     path: 'src/shop.ts',
     line: 10,
     author: 'me',
     body: `**P1** · Spend has no auth · confidence 90\n\nWhy.\n\n${FINDING_MARKER}`,
     reviewId: 'R1',
+    replies: [],
     ...overrides,
   }
 }
@@ -28,6 +30,8 @@ describe('planPublication', () => {
       comments: findings,
       stillOpen: [],
       dismissed: [],
+      fixedAgain: [],
+      fixedThreads: 0,
       openThreads: 0,
     })
   })
@@ -40,6 +44,8 @@ describe('planPublication', () => {
       comments: [far],
       stillOpen: [near],
       dismissed: [],
+      fixedAgain: [],
+      fixedThreads: 0,
       openThreads: 1,
     })
   })
@@ -73,6 +79,8 @@ describe('planPublication', () => {
       comments: [],
       stillOpen: [],
       dismissed: [finding],
+      fixedAgain: [],
+      fixedThreads: 0,
       openThreads: 0,
     })
   })
@@ -129,6 +137,8 @@ describe('planPublication', () => {
       comments: [other],
       stillOpen: [same],
       dismissed: [],
+      fixedAgain: [],
+      fixedThreads: 0,
       openThreads: 1,
     })
   })
@@ -142,7 +152,57 @@ describe('planPublication', () => {
       comments: [sameTitleFar],
       stillOpen: [near],
       dismissed: [],
+      fixedAgain: [],
+      fixedThreads: 0,
       openThreads: 1,
+    })
+  })
+
+  describe('threads Phada resolved', () => {
+    const HEAD = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
+    const byPhada = (overrides: Partial<ReviewThread> = {}) =>
+      thread({
+        isResolved: true,
+        replies: [
+          { author: 'me', body: `Fixed in \`a1b2c3d\`: checked.\n\n${resolvedMarker(HEAD)}` },
+        ],
+        ...overrides,
+      })
+
+    it('posts the finding again when the problem comes back after Phada resolved it', () => {
+      const back = findingFixture({ line: 10 })
+
+      expect(planPublication([back], state([byPhada()])).comments).toEqual([back])
+    })
+
+    it('holds back the finding of a thread a person resolved even after a Phada reply', () => {
+      const replied = byPhada({
+        replies: [{ author: 'mallory', body: `Done\n\n${resolvedMarker(HEAD)}` }],
+      })
+      const same = findingFixture({ line: 10 })
+
+      expect(planPublication([same], state([replied])).dismissed).toEqual([same])
+    })
+
+    it('reopened thread is open again', () => {
+      const reopened = byPhada({ isResolved: false })
+      const same = findingFixture({ line: 10 })
+
+      expect(planPublication([same], state([reopened])).stillOpen).toEqual([same])
+    })
+
+    it('holds back a finding of a thread found fixed in this run', () => {
+      const same = findingFixture({ line: 40 })
+      const other = findingFixture({ line: 80, title: 'Another problem' })
+
+      expect(planPublication([same, other], state([thread()]), new Set(['T1']))).toEqual({
+        comments: [other],
+        stillOpen: [],
+        dismissed: [],
+        fixedAgain: [same],
+        fixedThreads: 1,
+        openThreads: 0,
+      })
     })
   })
 

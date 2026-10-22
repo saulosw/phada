@@ -74,15 +74,37 @@ describe('fetchReviewState', () => {
       ],
       threads: [
         {
+          id: 'PRRT_kwDOQNCyRM5c8pXa',
           isResolved: false,
           path: 'api/src/routes/users.ts',
           line: 63,
           author: 'saulosw',
           body: "**P0** · Any user can spend another user's crystals · confidence 95\n\nThe user id comes from the request body.\n\n<!-- phada:finding -->",
           reviewId: REVIEW_ID,
+          replies: [
+            {
+              author: 'saulosw',
+              body: "**P0** · Any user can spend another user's crystals · confidence 95\n\nThe user id comes from the request body.\n\n<!-- phada:finding -->",
+            },
+            { author: 'octocat', body: 'Still happens on main.' },
+          ],
         },
       ],
     })
+  })
+
+  it('asks for the thread id, its first comment and its last 20 replies', async () => {
+    const { fetch, calls } = fakeGitHub(
+      [ok(fixture('graphql-reviews.json'))],
+      [ok(fixture('graphql-threads.json'))],
+    )
+
+    await fetchWith(fetch)
+
+    const query = String(JSON.parse(calls[1]?.body ?? '{}').query)
+    expect(query).toContain('id\n')
+    expect(query).toContain('comments(first: 1)')
+    expect(query).toContain('replies: comments(last: 20)')
   })
 
   it('sends the owner, repo and number as variables', async () => {
@@ -142,12 +164,13 @@ describe('fetchReviewState', () => {
   it('reads a thread without comments as one without author, body or review', async () => {
     const threads = withPage(fixture('graphql-threads.json'), 'reviewThreads', (root) => {
       ;(root.nodes as Json[])[0]!.comments = { nodes: [] }
+      ;(root.nodes as Json[])[0]!.replies = { nodes: [] }
     })
     const { fetch } = fakeGitHub([ok(fixture('graphql-reviews.json'))], [ok(threads)])
 
     const [thread] = (await fetchWith(fetch)).threads
 
-    expect(thread).toMatchObject({ author: '', body: '', reviewId: null })
+    expect(thread).toMatchObject({ author: '', body: '', reviewId: null, replies: [] })
   })
 
   it('reads an outdated thread line and a review without commit as null', async () => {

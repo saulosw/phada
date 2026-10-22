@@ -5,6 +5,13 @@ export const SeveritySchema = z.enum(['P0', 'P1', 'P2'])
 
 export const ConfidenceSchema = z.number().int().min(0).max(100)
 
+export const SuggestionSchema = z.strictObject({
+  startLine: z.number().int().positive(),
+  endLine: z.number().int().positive(),
+  original: z.string(),
+  replacement: z.string(),
+})
+
 const FINDING_SHAPE = {
   severity: SeveritySchema,
   confidence: ConfidenceSchema,
@@ -18,6 +25,7 @@ const FINDING_SHAPE = {
 const REFERENCE_SHAPE = {
   rule: z.string().nullable(),
   sources: z.array(z.string()),
+  suggestion: SuggestionSchema.nullable(),
 }
 
 const FILE_SHAPE = { path: z.string().min(1), change: z.string() }
@@ -26,6 +34,7 @@ export const ReportFindingSchema = z.object({
   ...FINDING_SHAPE,
   rule: z.unknown().optional(),
   sources: z.unknown().optional(),
+  suggestion: z.unknown().optional(),
 })
 
 export const ReportFileSchema = z.object(FILE_SHAPE)

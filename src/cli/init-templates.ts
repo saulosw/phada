@@ -3,6 +3,7 @@ const SHARED_OPTIONS = `# Review options. Flags given on the command line win.
 # minConfidence: 60            # findings below this confidence go to "worth checking"
 # verify: true                 # check every finding with a second call to the AI
 # investigate: true            # let the AI read the rest of the repository at the head
+# resolveThreads: true         # recheck Phada's earlier comments and resolve the fixed ones
 `
 
 const RULES = `# Rules the review enforces. Each one is sent to the AI as an instruction.

@@ -10,11 +10,13 @@ export interface AppliedVerdicts {
   rejected: RejectedFinding[]
   confirmed: number
   unverified: number
+  droppedSuggestions: number
 }
 
 export interface CheckedCandidates {
   findings: Finding[]
   verification: Verification
+  droppedSuggestions: number
   externalCalls?: ExternalToolCall[]
   warnings?: string[]
 }
@@ -30,12 +32,13 @@ export async function verifyCandidates(
     return {
       findings: [],
       verification: { candidates: 0, confirmed: 0, unverified: 0, rejected: [], durationMs: 0 },
+      droppedSuggestions: 0,
     }
   }
   const { text, durationMs, usage, externalCalls, warnings } = await verifier.review(
     buildVerifyPrompt(request, candidates, nonce, tools),
   )
-  const { findings, rejected, confirmed, unverified } = applyVerdicts(
+  const { findings, rejected, confirmed, unverified, droppedSuggestions } = applyVerdicts(
     candidates,
     parseVerification(text),
   )
@@ -49,6 +52,7 @@ export async function verifyCandidates(
       durationMs,
       ...(usage === undefined ? {} : { usage }),
     },
+    droppedSuggestions,
     ...(externalCalls === undefined ? {} : { externalCalls }),
     ...(warnings === undefined ? {} : { warnings }),
   }
@@ -62,7 +66,13 @@ export function applyVerdicts(
   for (const verdict of verdicts) {
     if (!byId.has(verdict.id)) byId.set(verdict.id, verdict)
   }
-  const applied: AppliedVerdicts = { findings: [], rejected: [], confirmed: 0, unverified: 0 }
+  const applied: AppliedVerdicts = {
+    findings: [],
+    rejected: [],
+    confirmed: 0,
+    unverified: 0,
+    droppedSuggestions: 0,
+  }
   candidates.forEach((candidate, index) => {
     const verdict = byId.get(index + 1)
     if (verdict === undefined) {
@@ -72,8 +82,11 @@ export function applyVerdicts(
       applied.rejected.push({ ...candidate, reason: verdict.reason })
     } else {
       applied.confirmed++
+      const { suggestion, ...rest } = candidate
+      const drop = suggestion !== undefined && verdict.suggestion === 'drop'
+      if (drop) applied.droppedSuggestions++
       applied.findings.push({
-        ...candidate,
+        ...(drop ? rest : candidate),
         severity: verdict.severity,
         confidence: verdict.confidence,
         reason: verdict.reason,

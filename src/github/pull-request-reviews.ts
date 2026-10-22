@@ -33,10 +33,12 @@ const THREADS_QUERY = `query($owner: String!, $repo: String!, $number: Int!, $af
       reviewThreads(first: 100, after: $after) {
         pageInfo { hasNextPage endCursor }
         nodes {
+          id
           isResolved
           path
           line
           comments(first: 1) { nodes { body author { login } pullRequestReview { id } } }
+          replies: comments(last: 20) { nodes { body author { login } } }
         }
       }
     }
@@ -50,13 +52,20 @@ export interface PublishedReview {
   commitSha: string | null
 }
 
+export interface ThreadComment {
+  author: string
+  body: string
+}
+
 export interface ReviewThread {
+  id: string
   isResolved: boolean
   path: string
   line: number | null
   author: string
   body: string
   reviewId: string | null
+  replies: ThreadComment[]
 }
 
 export interface PullRequestReviewState {
@@ -152,6 +161,7 @@ function toReview(node: unknown): PublishedReview {
 function toThread(node: unknown): ReviewThread {
   const [comment] = arrayField(node, 'comments.nodes')
   return {
+    id: stringField(node, 'id'),
     isResolved: booleanField(node, 'isResolved'),
     path: stringField(node, 'path'),
     line: nullableNumberField(node, 'line'),
@@ -161,6 +171,10 @@ function toThread(node: unknown): ReviewThread {
       comment === undefined || field(comment, 'pullRequestReview') === null
         ? null
         : stringField(comment, 'pullRequestReview.id'),
+    replies: arrayField(node, 'replies.nodes').map((reply) => ({
+      author: login(reply, 'author'),
+      body: stringField(reply, 'body'),
+    })),
   }
 }
 

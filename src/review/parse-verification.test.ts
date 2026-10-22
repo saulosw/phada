@@ -52,6 +52,14 @@ describe('parseVerification', () => {
     expect(verdicts).toEqual([verdictFixture()])
   })
 
+  it('reads a verdict without a suggestion field as keep', () => {
+    const { suggestion: _suggestion, ...verdict } = verdictFixture()
+
+    expect(parseVerification(verificationJson([verdict]))).toEqual([
+      verdictFixture({ suggestion: 'keep' }),
+    ])
+  })
+
   it('reads an empty list of verdicts', () => {
     expect(parseVerification(verificationJson([]))).toEqual([])
   })

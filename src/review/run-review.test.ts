@@ -6,6 +6,7 @@ import { reviewReportJson } from '../../test/support/review-report.js'
 import { verdictFixture, verificationJson } from '../../test/support/verification.js'
 import type { ReviewOutput, ReviewPrompt, ReviewProvider } from '../providers/types.js'
 import type { Toolbox } from '../investigation/toolbox.js'
+import { diffFingerprint } from './diff-fingerprint.js'
 import { InvalidReviewReportError } from './errors.js'
 import { buildReviewPrompt } from './prompt.js'
 import { REVIEW_REPORT_JSON_SCHEMA } from './report-schema.js'
@@ -61,6 +62,7 @@ describe('runReview', () => {
           repo: 'acme/shop',
           number: 12,
           headSha: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
+          diffFingerprint: diffFingerprint(pullRequestFixture().diff),
         },
         providerId: 'fake-cli',
         model: 'claude-fake-1',
@@ -217,6 +219,7 @@ describe('runReview', () => {
         repo: 'acme/shop',
         number: 12,
         headSha: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
+        diffFingerprint: diffFingerprint(pullRequestFixture().diff),
       },
       providerId: 'fake-cli',
       model: 'claude-fake-1',
@@ -633,6 +636,73 @@ describe('runReview with the repository tools', () => {
       'claude.ai Linear: ENG-12',
       'claude_ai_Linear: ENG-13',
     ])
+  })
+
+  describe('suggestions', () => {
+    const valid = {
+      startLine: 1,
+      endLine: 1,
+      original: "import { db } from './db'",
+      replacement: "import { db } from './db.js'",
+    }
+
+    it('keeps a suggestion that matches the diff and counts it', async () => {
+      const report = reviewReportJson({ findings: [findingFixture({ suggestion: valid })] })
+      const provider = new FakeProvider(() => Promise.resolve({ ...OUTPUT, text: report }))
+
+      const outcome = await runReview({ pullRequest: pullRequestFixture() }, { provider })
+
+      expect(outcome.status === 'reviewed' && outcome.result).toMatchObject({
+        findings: [findingFixture({ suggestion: valid })],
+        suggestions: { valid: 1, invalid: 0, dropped: 0 },
+      })
+    })
+
+    it('drops a suggestion that does not match the diff and keeps the fix', async () => {
+      const report = reviewReportJson({
+        findings: [findingFixture({ suggestion: { ...valid, original: 'import db' } })],
+      })
+      const provider = new FakeProvider(() => Promise.resolve({ ...OUTPUT, text: report }))
+
+      const outcome = await runReview({ pullRequest: pullRequestFixture() }, { provider })
+
+      expect(outcome.status === 'reviewed' && outcome.result).toMatchObject({
+        findings: [findingFixture()],
+        suggestions: { valid: 0, invalid: 1, dropped: 0 },
+      })
+      expect(outcome.status === 'reviewed' && outcome.result.findings[0]).not.toHaveProperty(
+        'suggestion',
+      )
+    })
+
+    it('counts the suggestions the verifier dropped', async () => {
+      const report = reviewReportJson({ findings: [findingFixture({ suggestion: valid })] })
+      const provider = new FakeProvider(
+        inTurn(
+          { ...OUTPUT, text: report },
+          { text: verificationJson([verdictFixture({ suggestion: 'drop' })]), durationMs: 1 },
+        ),
+      )
+
+      const outcome = await runReview(
+        { pullRequest: pullRequestFixture(), verify: true },
+        { provider },
+      )
+
+      expect(outcome.status === 'reviewed' && outcome.result.suggestions).toEqual({
+        valid: 1,
+        invalid: 0,
+        dropped: 1,
+      })
+    })
+
+    it('leaves the count out when no finding brought a suggestion', async () => {
+      const provider = new FakeProvider(() => Promise.resolve(OUTPUT))
+
+      const outcome = await runReview({ pullRequest: pullRequestFixture() }, { provider })
+
+      expect(outcome.status === 'reviewed' && outcome.result).not.toHaveProperty('suggestions')
+    })
   })
 
   it('returns the warnings of the provider', async () => {

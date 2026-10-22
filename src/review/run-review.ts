@@ -1,11 +1,13 @@
-import { randomBytes } from 'node:crypto'
 import type { ReviewProvider, TokenUsage } from '../providers/types.js'
 import type { Toolbox } from '../investigation/toolbox.js'
 import { withKnownReferences, withRuleSeverity } from './context-findings.js'
+import { diffFingerprint } from './diff-fingerprint.js'
 import { parseDiffFiles } from './diff-lines.js'
+import { newNonce } from './nonce.js'
 import { parseReviewReport } from './parse-report.js'
 import { buildReviewPrompt } from './prompt.js'
 import { scoreFindings } from './score.js'
+import { checkSuggestions } from './suggestions.js'
 import {
   CONFIDENCE_FLOOR,
   isConfidenceCut,
@@ -42,7 +44,7 @@ export async function runReview(
     return { status: 'skipped', reason: allIgnored ? 'all-ignored' : 'empty-diff' }
   }
 
-  const createNonce = deps.createNonce ?? randomNonce
+  const createNonce = deps.createNonce ?? newNonce
   const reviewTools = deps.tools?.('review')
   const reviewOutput = await deps.provider.review(
     buildReviewPrompt(request, createNonce(), reviewTools),
@@ -51,8 +53,9 @@ export async function runReview(
   const report = parseReviewReport(text)
   const diffFiles = parseDiffFiles(pullRequest.diff)
   const verify = request.verify === true
+  const suggested = checkSuggestions(report.findings, diffFiles)
   const reported = withKnownReferences(
-    report.findings,
+    suggested.findings,
     request.context,
     diffFiles.map((file) => file.path),
     {
@@ -86,7 +89,12 @@ export async function runReview(
   return {
     status: 'reviewed',
     result: {
-      target: { repo: pullRequest.repo, number: pullRequest.number, headSha: pullRequest.headSha },
+      target: {
+        repo: pullRequest.repo,
+        number: pullRequest.number,
+        headSha: pullRequest.headSha,
+        diffFingerprint: diffFingerprint(pullRequest.diff),
+      },
       providerId: deps.provider.id,
       ...(model === undefined ? {} : { model }),
       ...(additionalModels === undefined ? {} : { additionalModels }),
@@ -107,6 +115,9 @@ export async function runReview(
         rejected: checked?.verification.rejected.length ?? 0,
       },
       ...(checked === undefined ? {} : { verification: checked.verification }),
+      ...(suggested.counts === undefined
+        ? {}
+        : { suggestions: { ...suggested.counts, dropped: checked?.droppedSuggestions ?? 0 } }),
       ...(ignored.length === 0 ? {} : { ignored: [...ignored] }),
       ...(externalCalls.length === 0 ? {} : { externalCalls }),
       ...(warnings.length === 0 ? {} : { warnings }),
@@ -123,8 +134,4 @@ function sumUsage(
     inputTokens: review.inputTokens + verification.inputTokens,
     outputTokens: review.outputTokens + verification.outputTokens,
   }
-}
-
-function randomNonce(): string {
-  return randomBytes(6).toString('hex')
 }

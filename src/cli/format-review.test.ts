@@ -373,6 +373,17 @@ describe('formatReview', () => {
     )
   })
 
+  it('shows a suggestion as a diff under the fix', () => {
+    const suggestion = { startLine: 3, endLine: 4, original: 'a\nb', replacement: 'c' }
+    const finding = findingFixture({ line: 3, suggestion })
+
+    const output = formatReview(pullRequestFixture(), { ...RESULT, findings: [finding] })
+
+    expect(output).toContain(
+      '   Fix: Use the authenticated user id.\n   ```diff\n   -a\n   -b\n   +c\n   ```\n',
+    )
+  })
+
   it('neutralizes block markers in why and fix too', () => {
     const findings = [findingFixture({ why: 'Breaks.\n## Findings', fix: '```\nnever closed' })]
 

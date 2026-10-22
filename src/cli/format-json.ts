@@ -5,14 +5,34 @@ import type { InvestigationReport } from '../investigation/tools/report.js'
 import type { PullRequest } from '../github/pull-request.js'
 import type { TokenUsage } from '../providers/types.js'
 import type { SkipReason } from '../publish/types.js'
-import type { Finding, ReviewOutcome, ReviewResult, Verification } from '../review/types.js'
+import type {
+  Finding,
+  RecheckReport,
+  RecheckVerdict,
+  ReviewOutcome,
+  ReviewResult,
+  Verification,
+} from '../review/types.js'
 
 import type { GitHubReview } from './format-github.js'
 
 const SCHEMA_VERSION = 1
 
+export interface ResolvedCounts {
+  resolved: number
+  failed: number
+  total: number
+}
+
 export type Publication =
-  | { status: 'published'; url: string; comments: number; stillOpen: number; dismissed?: number }
+  | {
+      status: 'published'
+      url: string
+      comments: number
+      stillOpen: number
+      dismissed?: number
+      resolved?: ResolvedCounts
+    }
   | { status: 'failed'; error: string }
   | {
       status: 'dry-run'
@@ -20,6 +40,7 @@ export type Publication =
       stillOpen: number
       dismissed?: number
       wouldSkip?: SkipReason
+      wouldResolve?: RecheckVerdict[]
     }
   | { status: 'skipped'; reason: SkipReason }
   | { status: 'not-published' }
@@ -34,6 +55,7 @@ export function formatReviewJson(
   investigation: InvestigationReport | null = null,
   impact: ImpactReport | null = null,
   related: RelatedReport | null = null,
+  recheck: RecheckReport | null = null,
 ): string {
   const pullRequest = pullRequestJson(pr)
   const publicationBlock = publication === null ? null : publicationJson(publication)
@@ -50,6 +72,7 @@ export function formatReviewJson(
           investigation,
           impact,
           related: relatedJson(related),
+          recheck: recheckJson(recheck),
         }
       : {
           schemaVersion: SCHEMA_VERSION,
@@ -61,6 +84,7 @@ export function formatReviewJson(
           investigation,
           impact,
           related: relatedJson(related),
+          recheck: recheckJson(recheck),
         }
   return `${JSON.stringify(body, null, 2)}\n`
 }
@@ -76,6 +100,7 @@ export function formatAlreadyReviewedJson(pr: PullRequest, reason: SkipReason): 
     investigation: null,
     impact: null,
     related: null,
+    recheck: null,
   }
   return `${JSON.stringify(body, null, 2)}\n`
 }
@@ -115,7 +140,14 @@ function publicationJson(publication: Publication) {
   switch (publication.status) {
     case 'published': {
       const { status, url, comments, stillOpen } = publication
-      return { status, url, comments, stillOpen, dismissed: publication.dismissed ?? 0 }
+      return {
+        status,
+        url,
+        comments,
+        stillOpen,
+        dismissed: publication.dismissed ?? 0,
+        resolved: publication.resolved ?? { resolved: 0, failed: 0, total: 0 },
+      }
     }
     case 'failed':
       return { status: publication.status, error: publication.error }
@@ -123,10 +155,16 @@ function publicationJson(publication: Publication) {
       return {
         status: publication.status,
         body: publication.review.body,
-        comments: publication.review.comments.map(({ path, line, body }) => ({ path, line, body })),
+        comments: publication.review.comments.map(({ path, startLine, line, body }) => ({
+          path,
+          ...(startLine === undefined ? {} : { startLine }),
+          line,
+          body,
+        })),
         stillOpen: publication.stillOpen,
         dismissed: publication.dismissed ?? 0,
         wouldSkip: publication.wouldSkip === undefined ? null : skipJson(publication.wouldSkip),
+        wouldResolve: (publication.wouldResolve ?? []).map(verdictJson),
       }
     case 'skipped':
       return { status: publication.status, ...skipJson(publication.reason) }
@@ -142,6 +180,7 @@ function skipJson(reason: SkipReason) {
   return {
     reason: reason.kind,
     openThreads: reason.kind === 'open-threads' ? reason.openThreads : 0,
+    ...(reason.kind === 'same-diff' ? { since: reason.since } : {}),
   }
 }
 
@@ -163,6 +202,7 @@ function reviewJson(result: ReviewResult) {
       rejected: dropped.rejected,
     },
     verification: result.verification === undefined ? null : verificationJson(result.verification),
+    suggestions: result.suggestions ?? null,
     provider: {
       id: result.providerId,
       model: result.model ?? null,
@@ -171,6 +211,23 @@ function reviewJson(result: ReviewResult) {
     durationMs: result.durationMs,
     usage: usageJson(result.usage),
   }
+}
+
+function recheckJson(recheck: RecheckReport | null) {
+  if (recheck === null) return null
+  return {
+    threads: recheck.threads,
+    fixed: recheck.fixed,
+    stillValid: recheck.stillValid,
+    unsure: recheck.unsure,
+    verdicts: recheck.verdicts.map(verdictJson),
+    durationMs: recheck.durationMs,
+    usage: usageJson(recheck.usage),
+  }
+}
+
+function verdictJson({ threadId, file, line, title, verdict, reason, by }: RecheckVerdict) {
+  return { threadId, file, line, title, verdict, reason, by }
 }
 
 function verificationJson(verification: Verification) {
@@ -191,7 +248,8 @@ function usageJson(usage: TokenUsage | undefined) {
 }
 
 function findingJson(finding: Finding) {
-  const { severity, confidence, file, line, title, why, fix, rule, sources, reason } = finding
+  const { severity, confidence, file, line, title, why, fix, rule, sources, reason, suggestion } =
+    finding
   return {
     severity,
     confidence,
@@ -203,6 +261,7 @@ function findingJson(finding: Finding) {
     rule: rule ?? null,
     sources: sources ?? [],
     reason: reason ?? null,
+    suggestion: suggestion ?? null,
   }
 }
 

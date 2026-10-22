@@ -43,6 +43,7 @@ export type CliCommand =
       format: OutputFormat
       verify?: boolean
       investigate?: boolean
+      resolveThreads?: boolean
       dryRun: boolean
       force: boolean
       debug: boolean
@@ -87,6 +88,8 @@ Options:
   --no-investigate      Review the diff and the context only, without letting the AI
                         read the rest of the repository
   --investigate         Let the AI read the repository, even if your config turns it off
+  --no-resolve          Do not recheck Phada's comments from previous commits, nor
+                        resolve the ones whose problem was fixed
   --dry-run             Print what would be published and post nothing
   --force               Review again even if Phada already reviewed this commit
   --debug               Show error details
@@ -273,6 +276,7 @@ function parseReviewArgs(argv: readonly string[]): CliCommand {
     format: values.format,
     ...(verify === undefined ? {} : { verify }),
     ...(investigate === undefined ? {} : { investigate }),
+    ...(values['no-resolve'] === true ? { resolveThreads: false } : {}),
     dryRun: values['dry-run'],
     force: values.force,
     debug: values.debug,
@@ -289,6 +293,7 @@ const REVIEW_OPTIONS = {
   'no-verify': { type: 'boolean' },
   investigate: { type: 'boolean' },
   'no-investigate': { type: 'boolean' },
+  'no-resolve': { type: 'boolean' },
   'dry-run': { type: 'boolean', default: false },
   force: { type: 'boolean', default: false },
   debug: { type: 'boolean', default: false },

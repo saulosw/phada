@@ -35,7 +35,26 @@ describe('applyVerdicts', () => {
       rejected: [],
       confirmed: 1,
       unverified: 0,
+      droppedSuggestions: 0,
     })
+  })
+
+  it('drops the suggestion of a confirmed candidate when the verifier says drop', () => {
+    const suggestion = { startLine: 3, endLine: 3, original: 'a', replacement: 'b' }
+    const applied = applyVerdicts(
+      [
+        { ...FIRST, suggestion },
+        { ...SECOND, suggestion },
+      ],
+      [
+        verdictFixture({ id: 1, suggestion: 'drop' }),
+        verdictFixture({ id: 2, suggestion: 'keep' }),
+      ],
+    )
+
+    expect(applied.findings[0]).not.toHaveProperty('suggestion')
+    expect(applied.findings[1]?.suggestion).toEqual(suggestion)
+    expect(applied.droppedSuggestions).toBe(1)
   })
 
   it('moves a rejected candidate, with the rating of the review, to the rejected list', () => {
@@ -85,6 +104,7 @@ describe('applyVerdicts', () => {
       rejected: [],
       confirmed: 1,
       unverified: 0,
+      droppedSuggestions: 0,
     })
   })
 })
@@ -121,6 +141,7 @@ describe('verifyCandidates', () => {
         durationMs: 900,
         usage: { inputTokens: 100, outputTokens: 20 },
       },
+      droppedSuggestions: 0,
     })
   })
 
@@ -133,6 +154,7 @@ describe('verifyCandidates', () => {
     expect(checked).toEqual({
       findings: [],
       verification: { candidates: 0, confirmed: 0, unverified: 0, rejected: [], durationMs: 0 },
+      droppedSuggestions: 0,
     })
   })
 

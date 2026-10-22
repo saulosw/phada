@@ -70,6 +70,15 @@ describe('parseCliArgs', () => {
     ).toThrow(new UsageError('Use either --investigate or --no-investigate.'))
   })
 
+  it('turns the recheck of earlier comments off with --no-resolve', () => {
+    expect(parseCliArgs(['review', 'acme/shop#12', '--no-resolve'])).toMatchObject({
+      kind: 'review',
+      resolveThreads: false,
+    })
+    expect(parseCliArgs(['review', 'acme/shop#12'])).not.toHaveProperty('resolveThreads')
+    expect(REVIEW_USAGE).toContain('--no-resolve')
+  })
+
   it('turns verification off with --no-verify', () => {
     expect(parseCliArgs(['review', 'acme/shop#12', '--no-verify'])).toMatchObject({
       verify: false,

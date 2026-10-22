@@ -92,6 +92,7 @@ export interface ReviewTarget {
   repo: string
   number: number
   headSha: string
+  diffFingerprint?: string
 }
 
 export type Severity = 'P0' | 'P1' | 'P2'
@@ -107,6 +108,20 @@ export interface Finding {
   rule?: string
   sources?: string[]
   reason?: string
+  suggestion?: Suggestion
+}
+
+export interface Suggestion {
+  startLine: number
+  endLine: number
+  original: string
+  replacement: string
+}
+
+export interface SuggestionCounts {
+  valid: number
+  invalid: number
+  dropped: number
 }
 
 export interface RejectedFinding extends Finding {
@@ -159,9 +174,42 @@ export interface ReviewResult {
   score: Score
   dropped: DroppedFindings
   verification?: Verification
+  suggestions?: SuggestionCounts
   ignored?: string[]
   externalCalls?: ExternalToolCall[]
   warnings?: string[]
+}
+
+export interface RecheckThread {
+  id: string
+  file: string
+  line: number | null
+  title: string
+  body: string
+  patch?: string
+  changed: boolean
+}
+
+export type RecheckVerdictKind = 'fixed' | 'still-valid' | 'unsure'
+
+export interface RecheckVerdict {
+  threadId: string
+  file: string
+  line: number | null
+  title: string
+  verdict: RecheckVerdictKind
+  reason: string
+  by: 'ai' | 'unchanged' | 'no-access'
+}
+
+export interface RecheckReport {
+  threads: number
+  fixed: number
+  stillValid: number
+  unsure: number
+  verdicts: RecheckVerdict[]
+  durationMs: number
+  usage?: TokenUsage
 }
 
 export type SkipReviewReason = 'empty-diff' | 'all-ignored'

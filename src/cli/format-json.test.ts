@@ -37,6 +37,25 @@ function parse(output: string): unknown {
 }
 
 describe('formatReviewJson', () => {
+  it('prints the suggestion of a finding and the suggestion counts', () => {
+    const suggestion = { startLine: 3, endLine: 3, original: 'a', replacement: 'b' }
+    const output = formatReviewJson(pullRequestFixture(), {
+      status: 'reviewed',
+      result: {
+        ...RESULT,
+        findings: [findingFixture({ line: 3, suggestion })],
+        suggestions: { valid: 1, invalid: 2, dropped: 0 },
+      },
+    })
+
+    expect(parse(output)).toMatchObject({
+      review: {
+        findings: [{ suggestion }],
+        suggestions: { valid: 1, invalid: 2, dropped: 0 },
+      },
+    })
+  })
+
   it('prints the whole review as JSON with a schema version', () => {
     const output = formatReviewJson(pullRequestFixture(), { status: 'reviewed', result: RESULT })
 
@@ -55,6 +74,7 @@ describe('formatReviewJson', () => {
             rule: null,
             sources: [],
             reason: null,
+            suggestion: null,
           },
         ],
         worthChecking: [
@@ -63,11 +83,13 @@ describe('formatReviewJson', () => {
             rule: null,
             sources: [],
             reason: null,
+            suggestion: null,
           },
         ],
         worthCheckingOmitted: 2,
         minConfidence: 75,
         dropped: { invalid: 0, belowFloor: 1, outsideDiff: 2, duplicate: 0, rejected: 0 },
+        suggestions: null,
         verification: null,
         provider: { id: 'codex-cli', model: 'gpt-6-astra', additionalModels: ['gpt-6-mini'] },
         durationMs: 16_400,
@@ -78,6 +100,7 @@ describe('formatReviewJson', () => {
       investigation: null,
       impact: null,
       related: null,
+      recheck: null,
     })
   })
 
@@ -256,6 +279,7 @@ describe('formatReviewJson', () => {
       investigation: null,
       impact: null,
       related: null,
+      recheck: null,
     })
   })
 
@@ -312,6 +336,7 @@ describe('publication', () => {
       comments: 2,
       stillOpen: 1,
       dismissed: 3,
+      resolved: { resolved: 0, failed: 0, total: 0 },
     })
     expect(parse(output)).toMatchObject({ status: 'reviewed', review: { summary: RESULT.summary } })
   })
@@ -349,6 +374,7 @@ describe('publication', () => {
       stillOpen: 0,
       dismissed: 0,
       wouldSkip: null,
+      wouldResolve: [],
     })
     expect(
       publicationOf(
@@ -375,12 +401,23 @@ describe('publication', () => {
       investigation: null,
       impact: null,
       related: null,
+      recheck: null,
     })
     expect(
       parse(
         formatAlreadyReviewedJson(pullRequestFixture(), { kind: 'open-threads', openThreads: 3 }),
       ),
     ).toMatchObject({ publication: { reason: 'open-threads', openThreads: 3 } })
+    expect(
+      parse(
+        formatAlreadyReviewedJson(pullRequestFixture(), {
+          kind: 'same-diff',
+          since: '0'.repeat(40),
+        }),
+      ),
+    ).toMatchObject({
+      publication: { reason: 'same-diff', since: '0'.repeat(40) },
+    })
   })
 
   it('adds the investigation report', () => {
@@ -446,7 +483,7 @@ describe('publication', () => {
     )
 
     expect(output).toMatchObject({ impact })
-    expect(Object.keys(output as object).slice(-2)).toEqual(['impact', 'related'])
+    expect(Object.keys(output as object).slice(-3)).toEqual(['impact', 'related', 'recheck'])
   })
 
   it('adds the related repositories, with null for what is missing', () => {

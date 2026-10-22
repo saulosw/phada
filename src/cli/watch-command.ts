@@ -12,7 +12,9 @@ import { historyEnabled, resolveWatchSettings } from '../config/watch-settings.j
 import type { WatchSettings } from '../config/watch-settings.js'
 import { splitRepoName } from '../github/pull-request-ref.js'
 import type { ConfigLayer } from '../config/types.js'
+import type { ComparedFile, CompareOptions } from '../github/compare-commits.js'
 import type { CreatedReview, CreateReviewOptions } from '../github/create-review.js'
+import type { ReplyAndResolveOptions } from '../github/resolve-thread.js'
 import type { PullListing } from '../github/list-pull-requests.js'
 import type {
   FetchReviewStateOptions,
@@ -46,6 +48,8 @@ export interface WatchCommandDeps extends ReviewWiringDeps {
   fetchPullRequest: (options: FetchPullRequestOptions) => Promise<PullRequest>
   fetchReviewState: (options: FetchReviewStateOptions) => Promise<PullRequestReviewState>
   createReview: (options: CreateReviewOptions) => Promise<CreatedReview>
+  fetchComparison: (options: CompareOptions) => Promise<ComparedFile[]>
+  replyAndResolve: (options: ReplyAndResolveOptions) => Promise<void>
   openHistoryStore: (path: string) => Promise<HistoryStore>
   listOpenPullRequests: (
     options: RepositoryFilesOptions & { etag?: string },
@@ -283,12 +287,20 @@ async function runJob(
           body: rendered.body,
           comments: rendered.comments,
         }),
+      compare: (pullRequest, base) =>
+        deps.fetchComparison({ ...target, token, base, head: pullRequest.headSha }),
+      replyAndResolve: (threadId, body) => deps.replyAndResolve({ token, threadId, body }),
       checkHead: async (pullRequest) => {
         const head = await deps.fetchPullRequestHead({ ...ref, token })
         if (head.state === 'closed' || head.draft) return 'closed-or-draft'
         return head.headSha === pullRequest.headSha ? 'current' : { superseded: head.headSha }
       },
-      events: { fetched: () => undefined, reviewed: () => undefined, publishing: () => undefined },
+      events: {
+        fetched: () => undefined,
+        reviewed: () => undefined,
+        publishing: () => undefined,
+        warning: () => undefined,
+      },
     },
   )
 }

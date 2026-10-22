@@ -60,7 +60,7 @@ function callLine({
 }: InvestigationCallReport): string {
   const notes = [
     error === null ? `(${formatBytes(bytes)})` : '',
-    pass === 'verify' ? '· verification' : '',
+    pass === 'verify' ? '· verification' : pass === 'recheck' ? '· recheck' : '',
     inSources ? '· used in a finding' : '',
     error === null ? '' : `· error: ${toTerminalText(error)}`,
   ].filter((note) => note !== '')

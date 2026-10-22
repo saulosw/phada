@@ -4,6 +4,8 @@ export interface PublicationPlan {
   comments: Finding[]
   stillOpen: Finding[]
   dismissed: Finding[]
+  fixedAgain: Finding[]
+  fixedThreads: number
   openThreads: number
 }
 
@@ -11,6 +13,7 @@ export type SkipReason =
   | { kind: 'open-threads'; openThreads: number }
   | { kind: 'nothing-found' }
   | { kind: 'already-reviewed' }
+  | { kind: 'same-diff'; since: string }
   | { kind: 'closed-or-draft' }
 
 export type RunDecision =
