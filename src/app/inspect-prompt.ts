@@ -43,6 +43,7 @@ export async function inspectPrompt(input: {
   loaded: LoadedContext
   cliSkills?: readonly string[]
   investigate: boolean
+  native?: boolean
   skills: SkillCatalog
   readRepoFile(path: string): Promise<string | null>
   readLocalFile(path: string): Promise<string | null>
@@ -55,6 +56,7 @@ export async function inspectPrompt(input: {
     readRepoFile: input.readRepoFile,
     readLocalFile: input.readLocalFile,
     skills: input.skills,
+    native: input.native ?? false,
   })
   const request = { pullRequest: { ...pullRequest, diff: loaded.diff }, context: loaded.context }
   const data = reviewDataBlocks(request).map(({ name, content }) => ({
@@ -70,7 +72,7 @@ export async function inspectPrompt(input: {
   const passes = planned.passes ?? [{ skill: BUILT_IN_SKILL, lens: { kind: 'default' } }]
   const plans: PassPlan[] =
     planned.passes === undefined
-      ? [{ skill: BUILT_IN_SKILL, origin: BUILT_IN_SKILL, status: 'planned' }]
+      ? [{ skill: BUILT_IN_SKILL, origin: BUILT_IN_SKILL, status: 'planned', mode: 'text' }]
       : planned.plan
   return {
     pullRequest: {

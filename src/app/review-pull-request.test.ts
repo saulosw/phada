@@ -156,7 +156,19 @@ function setup(overrides: Partial<PullRequestReviewDeps> = {}, outputs: ReviewOu
     skills: {
       find: async (name) => {
         if (name !== 'code-review') throw new SkillError(`Skill "${name}" is not installed.`)
-        return { name, origin: '/skills/code-review/SKILL.md', text: 'Find bugs.', omitted: [] }
+        return {
+          name,
+          origin: '/skills/code-review/SKILL.md',
+          text: 'Find bugs.',
+          omitted: [],
+          native: {
+            kind: 'file',
+            fileKind: 'skill',
+            path: '/s/code-review/SKILL.md',
+            dir: '/s/code-review',
+            name,
+          },
+        }
       },
     },
     events: {

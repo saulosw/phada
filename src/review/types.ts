@@ -86,6 +86,7 @@ export type ReviewerLens =
 export interface SkillPass {
   skill: string
   lens: ReviewerLens
+  mode?: 'native'
   paths?: string[]
   skip?: string
 }

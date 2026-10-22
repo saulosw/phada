@@ -30,7 +30,13 @@ function loaded(overrides: Partial<LoadedContext> = {}): LoadedContext {
 const skills: SkillCatalog = {
   find: async (name) => {
     if (name !== 'sec') throw new SkillError(`Skill "${name}" is not installed.`)
-    return { name, origin: '/s/sec/SKILL.md', text: 'Auth.', omitted: [] }
+    return {
+      name,
+      origin: '/s/sec/SKILL.md',
+      text: 'Auth.',
+      omitted: [],
+      native: { kind: 'file', fileKind: 'skill', path: '/s/sec/SKILL.md', dir: '/s/sec', name },
+    }
   },
 }
 

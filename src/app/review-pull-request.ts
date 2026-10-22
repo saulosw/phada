@@ -86,6 +86,7 @@ export interface PullRequestReviewDeps {
   watchProvider?: (provider: ReviewProvider, pass: ReviewPass) => ReviewProvider
   related?: RelatedDeps
   skills: SkillCatalog
+  runsSkills?: boolean
   events: PullRequestReviewEvents
 }
 
@@ -139,6 +140,7 @@ export async function reviewPullRequest(
     readRepoFile: (path) => deps.contextSources.readRepoFile(path),
     readLocalFile: (path) => deps.contextSources.readLocalFile(path),
     skills: deps.skills,
+    native: deps.runsSkills ?? false,
   })
   for (const warning of planned.warnings) deps.events.warning(warning)
   if (planned.passes !== undefined) deps.events.passesPlanned?.(planned.plan)

@@ -5,12 +5,13 @@ describe('formatPassesLine', () => {
   it('lists the planned skills and the skipped ones with the reason', () => {
     expect(
       formatPassesLine([
-        { skill: 'phada', origin: 'phada', status: 'planned' },
-        { skill: 'code-review', origin: '/s/SKILL.md', status: 'planned' },
+        { skill: 'phada', origin: 'phada', status: 'planned', mode: 'text' },
+        { skill: 'code-review', origin: '/s/SKILL.md', status: 'planned', mode: 'text' },
         {
           skill: 'sec',
           origin: '/s/sec/SKILL.md',
           status: 'skipped',
+          mode: 'text',
           reason: 'no changed file matches src/auth/**',
         },
       ]),

@@ -9,6 +9,11 @@ export interface ReviewPrompt {
   tools?: Toolbox
 }
 
+export type NativeSkillRef =
+  | { kind: 'plugin'; pluginDir: string; invoke: string }
+  | { kind: 'file'; fileKind: 'skill' | 'command'; path: string; dir: string; name: string }
+  | { kind: 'builtin'; invoke: string }
+
 export interface ExternalToolCall {
   server: string
   tool: string
