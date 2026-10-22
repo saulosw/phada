@@ -23,6 +23,7 @@ export const portuguese: Messages = {
   basedOn: 'Com base em',
   leftOut: 'Fora do review',
   rule: 'regra',
+  skill: 'skill',
   summary: 'Resumo',
   files: 'Arquivos',
   fileColumns: ['Arquivo', 'Alteração', 'Problemas'],

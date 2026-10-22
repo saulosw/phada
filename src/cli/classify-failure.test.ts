@@ -15,6 +15,7 @@ import { ProviderError } from '../providers/types.js'
 import type { ProviderErrorReason } from '../providers/types.js'
 import { MirrorLockTimeoutError } from '../repository/mirror-lock.js'
 import { InvalidReviewReportError } from '../review/errors.js'
+import { SkillError } from '../skills/errors.js'
 import { classifyFailure } from './classify-failure.js'
 
 const NOW = new Date('2026-10-18T12:00:00.000Z')
@@ -66,6 +67,7 @@ describe('classifyFailure', () => {
     ['a rejected review', new ReviewRejectedError('acme/shop#3', 'too long')],
     ['an invalid review', new InvalidReviewReportError('no report', '')],
     ['a broken config', new ConfigError('Invalid config')],
+    ['a missing skill', new SkillError('Skill "nope" is not installed.')],
     ['anything else', new Error('boom')],
   ])('fails the job on %s', (_case, error) => {
     expect(classifyFailure(error, NOW)).toEqual({ kind: 'definitive' })

@@ -133,6 +133,7 @@ function setup(
     openMirror: () => Promise.reject(new Error('no mirror in this test')),
     openIndexStore: () => Promise.reject(new Error('no index in this test')),
     openObservedStore: () => Promise.reject(new Error('no observed store in this test')),
+    skills: { find: () => Promise.reject(new Error('no skills in this test')) },
     extractor: { extract: async () => 'timeout', close: () => undefined } as never,
     now: () => 0,
     createProvider: () => provider,

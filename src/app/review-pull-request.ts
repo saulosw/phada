@@ -1,5 +1,6 @@
 import type { ConfigLayer } from '../config/types.js'
 import { loadContext } from '../context/load-context.js'
+import { splitDiff } from '../context/split-diff.js'
 import type { ContextReport, ContextSources, LoadedContext } from '../context/types.js'
 import type { PullRequest } from '../github/pull-request.js'
 import { changedLines, computeImpact } from '../graph/impact.js'
@@ -39,6 +40,8 @@ import {
   relatedSummaries,
 } from './related-report.js'
 import type { RankedRelated, RelatedReport } from './related-report.js'
+import { buildPasses } from './review-passes.js'
+import type { PassPlan, SkillCatalog } from './review-passes.js'
 import type { SkippedRepository } from './select-related.js'
 
 export const REVIEW_INDEX_BUDGET_MS = 60_000
@@ -49,6 +52,7 @@ export interface ReviewOptions {
   verify?: boolean
   investigate?: boolean
   resolveThreads?: boolean
+  skills?: string[]
 }
 
 export interface PullRequestReviewInput {
@@ -67,6 +71,8 @@ export interface PullRequestReviewEvents {
   indexed(done: number, total: number): void
   impactReady(report: ImpactReport): void
   relatedReady(report: RelatedReport): void
+  passesPlanned?(plan: PassPlan[]): void
+  passStarted?(skill: string, index: number, total: number): void
 }
 
 export interface PullRequestReviewDeps {
@@ -79,6 +85,7 @@ export interface PullRequestReviewDeps {
   createProvider: (userMcpServers: readonly string[]) => ReviewProvider
   watchProvider?: (provider: ReviewProvider, pass: ReviewPass) => ReviewProvider
   related?: RelatedDeps
+  skills: SkillCatalog
   events: PullRequestReviewEvents
 }
 
@@ -91,6 +98,7 @@ export interface PullRequestReview {
   impactText?: string
   related: RelatedReport
   recheck?: RecheckReport
+  passes?: PassPlan[]
 }
 
 export async function loadPullRequestContext(
@@ -124,6 +132,16 @@ export async function reviewPullRequest(
   const language = options.language ?? loaded.options.language
   const investigate = options.investigate ?? loaded.options.investigate ?? true
   const keepAs = `refs/phada/pull/${pullRequest.number}`
+  const planned = await buildPasses({
+    ...(loaded.options.review === undefined ? {} : { review: loaded.options.review }),
+    ...(options.skills === undefined ? {} : { cliSkills: options.skills }),
+    changedFiles: splitDiff(loaded.diff).sections.map((section) => section.path),
+    readRepoFile: (path) => deps.contextSources.readRepoFile(path),
+    readLocalFile: (path) => deps.contextSources.readLocalFile(path),
+    skills: deps.skills,
+  })
+  for (const warning of planned.warnings) deps.events.warning(warning)
+  if (planned.passes !== undefined) deps.events.passesPlanned?.(planned.plan)
 
   let investigation: Investigation | undefined
   let unavailable: string | undefined
@@ -246,11 +264,16 @@ export async function reviewPullRequest(
         context: loaded.context,
         ...(impact === undefined ? {} : { impact }),
         ...(kept.length === 0 ? {} : { related: relatedSummaries(kept, graphTools) }),
+        ...(planned.passes === undefined ? {} : { passes: planned.passes }),
       },
       {
         provider: watch(provider, 'review'),
         verifier: watch(provider, 'verify'),
         ...(investigation === undefined ? {} : { tools: investigation.tools }),
+        events: {
+          passStarted: (pass, index) =>
+            deps.events.passStarted?.(pass.skill, index, planned.passes?.length ?? 1),
+        },
       },
     )
 
@@ -275,6 +298,7 @@ export async function reviewPullRequest(
           : { ...impactReport, learned: buildImpactReport({ status: 'used', learned }).learned },
       related: relatedReport,
       ...(recheck === undefined ? {} : { recheck }),
+      ...(planned.passes === undefined ? {} : { passes: planned.plan }),
     }
   } finally {
     await investigation?.close()

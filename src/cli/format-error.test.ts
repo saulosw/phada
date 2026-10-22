@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { ConfigError } from '../config/errors.js'
+import { SkillError } from '../skills/errors.js'
 import {
   DiffTooLargeError,
   GitHubAuthError,
@@ -39,6 +40,11 @@ describe('formatError', () => {
     [
       new ConfigError('Invalid config /home/u/.config/phada/config.yml: colour: Unrecognized key'),
       'phada: Invalid config /home/u/.config/phada/config.yml: colour: Unrecognized key',
+      2,
+    ],
+    [
+      new SkillError('Skill "nope" is not installed. Phada looked in /home/u/.claude/skills.'),
+      'phada: Skill "nope" is not installed. Phada looked in /home/u/.claude/skills.',
       2,
     ],
     [

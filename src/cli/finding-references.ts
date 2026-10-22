@@ -14,6 +14,7 @@ export function findingReferences(
   const references = [
     ...sources.map(codeSpan),
     ...(finding.rule === undefined ? [] : [`${messages.rule} ${codeSpan(finding.rule)}`]),
+    ...(finding.skill === undefined ? [] : [`${messages.skill} ${codeSpan(finding.skill)}`]),
   ]
   return references.length === 0 ? '' : `${messages.basedOn}: ${references.join(' · ')}`
 }

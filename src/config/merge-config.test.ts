@@ -368,3 +368,77 @@ describe('related repositories', () => {
     ])
   })
 })
+
+describe('mergeConfig review', () => {
+  it('takes the prompt and the skills each from the most specific layer that sets them', () => {
+    const merged = mergeConfig([
+      user({ review: { prompt: { file: '/cfg/user.md' }, skills: ['a'] } }),
+      root({ review: { prompt: { file: '.phada/review.md', mode: 'replace' } } }),
+      userRepo({ review: { skills: ['b', { name: 'c', paths: ['src/**'] }] } }),
+    ])
+
+    expect(merged.review).toEqual({
+      prompt: {
+        file: '.phada/review.md',
+        mode: 'replace',
+        origin: '.phada/config.yml',
+        source: 'repository',
+      },
+      skills: {
+        entries: [{ name: 'b' }, { name: 'c', paths: ['src/**'] }],
+        origin: 'user:repos/acme/shop/config.yml',
+        source: 'local',
+      },
+    })
+  })
+
+  it('defaults the prompt mode to append and reads the user prompt as a local file', () => {
+    const merged = mergeConfig([user({ review: { prompt: { file: '/cfg/user.md' } } })])
+
+    expect(merged.review.prompt).toEqual({
+      file: '/cfg/user.md',
+      mode: 'append',
+      origin: 'user:config.yml',
+      source: 'local',
+    })
+  })
+
+  it('has no review settings without config', () => {
+    expect(mergeConfig([root({ language: 'en' })]).review).toEqual({})
+  })
+
+  it('ignores review in a subfolder with a warning', () => {
+    const merged = mergeConfig([sub('src/api', { review: { skills: ['a'] } })])
+
+    expect(merged.review).toEqual({})
+    expect(merged.warnings).toEqual([
+      'src/api/.phada/config.yml: review is only read from the root .phada/config.yml or your own config; ignored.',
+    ])
+  })
+
+  it('ignores a review prompt outside the repository', () => {
+    const merged = mergeConfig([root({ review: { prompt: { file: '../../outside.md' } } })])
+
+    expect(merged.review).toEqual({})
+    expect(merged.warnings).toEqual([
+      '.phada/config.yml: ../../outside.md is outside the repository; ignored.',
+    ])
+  })
+
+  it('reads a repository prompt path from the root of the repository', () => {
+    const merged = mergeConfig([root({ review: { prompt: { file: '/docs/review.md' } } })])
+
+    expect(merged.review.prompt?.file).toBe('docs/review.md')
+  })
+})
+
+describe('mergeConfig review skills that are empty', () => {
+  it('lets an empty list fall through to the next layer', () => {
+    const merged = mergeConfig([
+      user({ review: { skills: ['code-review'] } }),
+      root({ review: { skills: [] } }),
+    ])
+
+    expect(merged.review.skills?.entries).toEqual([{ name: 'code-review' }])
+  })
+})

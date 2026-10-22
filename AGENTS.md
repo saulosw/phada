@@ -36,7 +36,7 @@ src/
                          #   createProvider()
   architecture.test.ts   # allowed imports of src/review/, src/publish/, src/watch/, src/context/,
                          #   src/investigation/, src/repository/, src/repo-map/, src/store/,
-                         #   src/graph/ and src/app/
+                         #   src/graph/, src/app/ and src/skills/
   app/                   # use cases any caller can run (CLI today), with injected readers
     review-pull-request.ts # reviewPullRequest(): repository context → mirror → index of the head
                          #   (60 s budget) → related repositories → graph and impact of the diff
@@ -64,19 +64,28 @@ src/
     error-message.ts     #   errorMessage(): the message of any thrown value
     inspect-context.ts   #   inspectPullRequestContext(), inspectRepositoryContext(): the context
                          #   without a review
+    review-passes.ts     #   buildPasses(): review.prompt, review.skills or --skill → one SkillPass
+                         #   per skill (paths matched here), SkillCatalog, PassPlan
+    inspect-prompt.ts    #   inspectPrompt(), defaultPromptView(): the prompt of each pass and the
+                         #   size of its data blocks, without the AI
   cli/                   # terminal edge
     args.ts              #   parseCliArgs(): `review` (--dry-run, --force, --verify/--no-verify,
-                         #   --investigate/--no-investigate, --no-resolve), `init`, `index` (--ref,
-                         #   --format text|json), `rules` (--format text|json), `watch` (--once,
+                         #   --investigate/--no-investigate, --no-resolve, --skill), `init`, `index`
+                         #   (--ref, --format text|json), `rules` (--format text|json), `prompt`
+                         #   (--default, --skill, --format text|json), `watch` (--once,
                          #   --backfill, --status) and `history` (--since, --limit, --stats,
                          #   --refresh, prune --older-than) commands, --help, --version; USAGE,
-                         #   REVIEW_USAGE, INIT_USAGE, INDEX_USAGE, RULES_USAGE, WATCH_USAGE,
-                         #   HISTORY_USAGE
+                         #   REVIEW_USAGE, INIT_USAGE, INDEX_USAGE, RULES_USAGE, PROMPT_USAGE,
+                         #   WATCH_USAGE, HISTORY_USAGE
     init.ts              #   runInit(): .phada/ in the repository, or the user's own config
     init-templates.ts    #   the commented files phada init writes
     index-command.ts     #   runIndex(): token, cache folder, mirror, progress, the map's report
     rules-command.ts     #   runRules(): token, user config, the context of a pull request or of
                          #   the default branch, printed as text or JSON
+    prompt-command.ts    #   runPrompt(): the built-in prompt, or the prompt of a pull request
+    format-prompt.ts     #   formatPromptText(), formatPromptJson() (schemaVersion 1)
+    skill-catalog.ts     #   diskSkillCatalog(): the installed skills, listed once, found by name
+    format-passes.ts     #   the "Skills:" line and the skills section of --dry-run
     watch-command.ts     #   runWatch(): settings, providers checked on start, history, lock, the
                          #   watch deps, one job's review
     watch-stop.ts        #   createStopControl(): Ctrl-C once (finish the review) or twice (abort);
@@ -108,7 +117,7 @@ src/
     format-investigation.ts # the "Investigated:" line and the investigation section of --dry-run
     format-related.ts    #   the "Related:" line and the related repositories section of --dry-run
     format-impact.ts     #   the "Impact:" line and the impact section of --dry-run
-    finding-references.ts #  the "Based on" line: sources and rule of a finding
+    finding-references.ts #  the "Based on" line: sources, rule and skill of a finding
     format-json.ts       #   formatReviewJson(): schemaVersion 1, with the publication, context,
                          #   investigation, impact and recheck blocks
     markdown-text.ts     #   escapes AI text: block markers; for GitHub also HTML and mentions;
@@ -149,6 +158,15 @@ src/
                          #   ReviewContext + report
     list-context.ts      #   listContext(): every .phada/ folder, rule and candidate doc of a branch
     types.ts             #   ContextReport, ContextSources, LoadedContext
+  skills/                # skills installed for the AI CLIs, read from disk through LocalFileSystem
+    skill-locations.ts   #   skillRoots(): CLAUDE_CONFIG_DIR › ~/.claude, CODEX_HOME › ~/.codex,
+                         #   ~/.agents
+    installed-skills.ts  #   listInstalledSkills(): user skills and commands, plugin skills and
+                         #   commands (installed_plugins.json, plugin.json), Codex and agents skills
+    resolve-skill.ts     #   resolveSkill(): plugin:name, own skill › the only plugin, or SkillError
+    skill-text.ts        #   readSkillText(): body without front matter + the .md files it names,
+                         #   32 KB
+    errors.ts            #   SkillError (exit code 2)
   github/                # GitHub REST and GraphQL
     pull-request-ref.ts  #   parse/format "owner/repo#N" or a pull request URL; splitRepoName()
     errors.ts            #   GitHubError and typed errors
@@ -266,7 +284,9 @@ src/
                          #   docs block, related repositories (RELATED, relatedBlocks()), impact
                          #   block, diff scope and tools
     impact-text.ts       #   renderImpact(): the impact of the diff within its 4 KB budget
-    prompt.ts            #   buildReviewPrompt(): instructions + nonce-delimited data + output schema
+    prompt.ts            #   buildReviewPrompt(): instructions + nonce-delimited data + output schema;
+                         #   reviewInstructionParts(): the reviewer lens (built-in, append, replace,
+                         #   skill) and the fixed contract, with origins; reviewDataBlocks()
     nonce.ts             #   newNonce(): the random id of the data blocks
     verify-prompt.ts     #   buildVerifyPrompt(): the second, skeptical pass (--verify)
     report-schema.ts     #   Zod schemas of the AI report + the JSON schema sent to providers
@@ -286,8 +306,8 @@ src/
     select-findings.ts   #   candidate filtering, confidence cut, worth checking, ordering
     score.ts             #   scoreFindings(): the 0–5 score, computed by Phada
     errors.ts            #   InvalidReviewReportError
-    run-review.ts        #   runReview(): prompt → provider → parse → suggestions → [verify] →
-                         #   select → score
+    run-review.ts        #   runReview(): one pass per skill (prompt → provider → parse), merged →
+                         #   suggestions → [verify] → select → score
 scripts/smoke.ts         # packs the package, installs the tarball, runs the installed `phada`
 scripts/copy-grammars.ts # build step: the tree-sitter grammars into dist/grammars/
 test/fixtures/bin/       # fake AI CLIs used by the provider tests
@@ -320,6 +340,8 @@ engine sees its tools only as a `Toolbox` (`src/investigation/toolbox.ts`) that 
 in. `src/app/` orchestrates a review from injected readers and factories and never imports the
 CLI, a concrete provider or the GitHub client, nor prints: it reports through events, and
 `main.ts` turns them into terminal output.
+`src/skills/` reads the skills of the AI CLIs only through the `LocalFileSystem` it is given; its
+only value imports from outside the folder are `node:path` and `src/context/frontmatter.ts`.
 `src/architecture.test.ts` enforces the allowed imports of these folders and forbids
 `process`/`console` inside them (`console` only, in `src/investigation/`). `src/repo-map/` parses
 text it is given (`web-tree-sitter`, reading only its grammars) and `src/store/` only talks to

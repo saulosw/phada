@@ -16,6 +16,7 @@ function memoryFiles(files: Record<string, string>): LocalFileSystem {
     writeNew: async () => false,
     makeDir: async () => undefined,
     listDocs: async () => null,
+    listDir: async () => null,
   }
 }
 
@@ -115,5 +116,23 @@ describe('loadTopLevelUserLayers', () => {
     const layers = await loadTopLevelUserLayers({ env: {}, home: '/h', files: memoryFiles({}) })
 
     expect(layers).toEqual([])
+  })
+})
+
+describe('loadUserLayers review prompt', () => {
+  const base = { env: { PHADA_CONFIG_HOME: '/cfg' }, home: '/home/u', owner: 'Acme', repo: 'shop' }
+
+  it('resolves a relative review prompt against the folder of the config', async () => {
+    const files = memoryFiles({
+      '/cfg/config.yml': 'review:\n  prompt:\n    file: review.md',
+      '/cfg/repos/acme/shop/config.yml': 'review:\n  prompt:\n    file: ~/team.md',
+    })
+
+    const layers = await loadUserLayers({ ...base, files })
+
+    expect(layers.map((layer) => layer.config.review?.prompt?.file)).toEqual([
+      '/cfg/review.md',
+      '~/team.md',
+    ])
   })
 })

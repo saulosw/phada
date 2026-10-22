@@ -67,13 +67,24 @@ async function loadLayer(
   if (configText === null && rulesText === null) return undefined
   const parsed = parseConfigText(configText ?? '')
   if (!parsed.ok) throw new ConfigError(`Invalid config ${configPath}: ${parsed.message}`)
-  const { localFiles, ...config } = parsed.config
+  const { localFiles, review, ...config } = parsed.config
   return {
     kind,
     dir: '',
     configLabel: `user:${labelPrefix}config.yml`,
     config: {
       ...config,
+      ...(review === undefined
+        ? {}
+        : {
+            review:
+              review.prompt === undefined
+                ? review
+                : {
+                    ...review,
+                    prompt: { ...review.prompt, file: fromConfigDir(dir, review.prompt.file) },
+                  },
+          }),
       ...(localFiles === undefined
         ? {}
         : { localFiles: localFiles.map((path) => fromConfigDir(dir, path)) }),

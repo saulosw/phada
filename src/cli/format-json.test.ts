@@ -75,6 +75,7 @@ describe('formatReviewJson', () => {
             sources: [],
             reason: null,
             suggestion: null,
+            skill: 'phada',
           },
         ],
         worthChecking: [
@@ -84,6 +85,7 @@ describe('formatReviewJson', () => {
             sources: [],
             reason: null,
             suggestion: null,
+            skill: 'phada',
           },
         ],
         worthCheckingOmitted: 2,
@@ -94,6 +96,7 @@ describe('formatReviewJson', () => {
         provider: { id: 'codex-cli', model: 'gpt-6-astra', additionalModels: ['gpt-6-mini'] },
         durationMs: 16_400,
         usage: { inputTokens: 9700, outputTokens: 417 },
+        passes: null,
       },
       publication: null,
       context: null,
@@ -101,6 +104,51 @@ describe('formatReviewJson', () => {
       impact: null,
       related: null,
       recheck: null,
+    })
+  })
+
+  it('prints the skill of each finding and every pass', () => {
+    const result: ReviewResult = {
+      ...RESULT,
+      findings: [findingFixture({ skill: 'code-review' })],
+      passes: [
+        {
+          skill: 'code-review',
+          origin: '/s/SKILL.md',
+          status: 'reviewed',
+          durationMs: 5,
+          usage: { inputTokens: 1, outputTokens: 2 },
+          findings: 1,
+        },
+        {
+          skill: 'sec',
+          origin: '/s/sec.md',
+          status: 'skipped',
+          durationMs: 0,
+          findings: 0,
+          reason: 'no changed file matches x',
+        },
+      ],
+    }
+
+    const output = parse(formatReviewJson(pullRequestFixture(), { status: 'reviewed', result }))
+
+    expect(output).toMatchObject({
+      review: {
+        findings: [{ skill: 'code-review' }],
+        passes: [
+          {
+            skill: 'code-review',
+            origin: '/s/SKILL.md',
+            status: 'reviewed',
+            durationMs: 5,
+            usage: { inputTokens: 1, outputTokens: 2 },
+            findings: 1,
+            reason: null,
+          },
+          { skill: 'sec', status: 'skipped', usage: null, reason: 'no changed file matches x' },
+        ],
+      },
     })
   })
 

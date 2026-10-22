@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
+import { SkillError } from '../skills/errors.js'
 import { findingFixture } from '../../test/support/finding.js'
 import { pullRequestFixture } from '../../test/support/pull-request.js'
 import { reviewReportJson } from '../../test/support/review-report.js'
@@ -152,6 +153,12 @@ function setup(overrides: Partial<PullRequestReviewDeps> = {}, outputs: ReviewOu
       servers.push(userMcpServers)
       return provider
     },
+    skills: {
+      find: async (name) => {
+        if (name !== 'code-review') throw new SkillError(`Skill "${name}" is not installed.`)
+        return { name, origin: '/skills/code-review/SKILL.md', text: 'Find bugs.', omitted: [] }
+      },
+    },
     events: {
       contextLoaded: () => events.push('context'),
       warning: (message) => events.push(`warning: ${message}`),
@@ -159,6 +166,7 @@ function setup(overrides: Partial<PullRequestReviewDeps> = {}, outputs: ReviewOu
       indexed: () => {},
       impactReady: (report) => events.push(`impact ${report.status}`),
       relatedReady: () => {},
+      passesPlanned: (plan) => events.push(`passes ${plan.map(({ skill }) => skill).join(',')}`),
     },
     ...overrides,
   }
@@ -779,5 +787,49 @@ describe('reviewPullRequest with related repositories', () => {
     expect(reviewed?.findings[0]?.sources).toEqual(['acme/web:src/web.ts:2'])
     expect(result.impact.learned).toEqual([])
     expect(await h.observedEdges()).toEqual([])
+  })
+})
+
+describe('reviewPullRequest with skills', () => {
+  it('plans the passes before opening the mirror and runs one review per skill', async () => {
+    const h = setup({}, [OUTPUT, OUTPUT])
+
+    const result = await reviewPullRequest(
+      { ...input, options: { verify: false, skills: ['phada', 'code-review'] } },
+      h.deps,
+    )
+
+    expect(h.events.indexOf('passes phada,code-review')).toBeLessThan(h.events.indexOf('review'))
+    expect(h.prompts).toHaveLength(2)
+    expect(h.prompts[1]?.instructions).toContain('Review guide (skill code-review):\nFind bugs.')
+    expect(result.passes?.map(({ skill, status }) => [skill, status])).toEqual([
+      ['phada', 'planned'],
+      ['code-review', 'planned'],
+    ])
+  })
+
+  it('stops before the mirror and the AI when a skill the user asked for is missing', async () => {
+    let opened = 0
+    const h = setup({
+      openMirror: async () => {
+        opened += 1
+        return fakeMirror(() => {})
+      },
+    })
+
+    await expect(
+      reviewPullRequest({ ...input, options: { verify: false, skills: ['nope'] } }, h.deps),
+    ).rejects.toThrow(SkillError)
+    expect(opened).toBe(0)
+    expect(h.prompts).toHaveLength(0)
+  })
+
+  it('reviews as before without skills or a prompt', async () => {
+    const h = setup()
+
+    const result = await reviewPullRequest(input, h.deps)
+
+    expect(result.passes).toBeUndefined()
+    expect(h.events.some((event) => event.startsWith('passes'))).toBe(false)
   })
 })

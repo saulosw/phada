@@ -4,6 +4,7 @@ import { mergeConfig } from '../config/merge-config.js'
 import { parseConfigText } from '../config/parse-config.js'
 import { UsageError } from './errors.js'
 import { runInit } from './init.js'
+import { REPOSITORY_CONFIG_TEMPLATE, USER_CONFIG_TEMPLATE } from './init-templates.js'
 
 const ENV = { PHADA_CONFIG_HOME: '/cfg' }
 
@@ -88,5 +89,16 @@ describe('runInit', () => {
     expect(mergeConfig([{ ...layer, rulesMarkdown: { label: 'r', text: rules } }]).rules).toEqual(
       [],
     )
+  })
+})
+
+describe('config templates with review focus and skills', () => {
+  it.each([
+    ['the repository', REPOSITORY_CONFIG_TEMPLATE],
+    ['the user', USER_CONFIG_TEMPLATE],
+  ])('comment the review block in %s config', (_case, template) => {
+    expect(template).toContain('# review:')
+    expect(template).toContain('#   prompt:')
+    expect(template).toContain('#   skills: [phada, security-review]')
   })
 })

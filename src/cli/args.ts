@@ -5,7 +5,7 @@ import { parsePullRequestRef } from '../github/pull-request-ref.js'
 import type { PullRequestRef } from '../github/pull-request-ref.js'
 import { DEFAULT_MIN_CONFIDENCE } from '../review/run-review.js'
 import { CONFIDENCE_FLOOR, isConfidenceCut, MAX_CONFIDENCE } from '../review/select-findings.js'
-import { LANGUAGE_TAG } from '../config/schema.js'
+import { LANGUAGE_TAG, SKILL_NAME } from '../config/schema.js'
 import { DURATION, durationMs } from '../config/duration.js'
 import { UsageError } from './errors.js'
 
@@ -46,6 +46,13 @@ export type CliCommand =
     }
   | { kind: 'history-prune'; olderThanMs: number; debug: boolean }
   | {
+      kind: 'prompt'
+      target: { kind: 'pull'; ref: PullRequestRef } | { kind: 'default' }
+      skills?: string[]
+      format: IndexFormat
+      debug: boolean
+    }
+  | {
       kind: 'review'
       ref: PullRequestRef
       provider?: string
@@ -56,6 +63,7 @@ export type CliCommand =
       verify?: boolean
       investigate?: boolean
       resolveThreads?: boolean
+      skills?: string[]
       dryRun: boolean
       force: boolean
       debug: boolean
@@ -74,6 +82,7 @@ Commands:
   init                   Create config files for Phada
   index <owner/repo>     Build a map of a repository's code on this machine
   rules <owner/repo[#N]> Show the rules and docs a review would read
+  prompt <pull request>  Show the prompt a review would send, without the AI
   watch                  Review new pull requests and pushes on its own
   history                Show past reviews and what happened to Phada's comments
 
@@ -107,6 +116,9 @@ Options:
   --investigate         Let the AI read the repository, even if your config turns it off
   --no-resolve          Do not recheck Phada's comments from previous commits, nor
                         resolve the ones whose problem was fixed
+  --skill <name>        Review with this skill installed for your AI CLI (plugin:skill
+                        for a skill of a plugin; phada is the built-in reviewer);
+                        repeat it for several passes; replaces review.skills of the config
   --dry-run             Print what would be published and post nothing
   --force               Review again even if Phada already reviewed this commit
   --debug               Show error details
@@ -174,6 +186,28 @@ Options:
 
 Environment:
   GITHUB_TOKEN       GitHub token that can read the repository contents
+  GH_TOKEN           Used when GITHUB_TOKEN is not set
+  PHADA_CONFIG_HOME  Folder of your own config (default: ~/.config/phada)`
+
+export const PROMPT_USAGE = `Usage: phada prompt <owner/repo#N | pull request URL> [options]
+       phada prompt --default [options]
+
+Shows the prompt a review would send to the AI, without calling it: for each
+review pass (each skill), the instructions with where each part comes from (the
+built-in reviewer, review.prompt, a skill, the rules) and the size of the data
+blocks (pull request, docs, diff).
+
+Options:
+  --default          Show the built-in prompt, without a pull request or a token
+  --skill <name>     Show the passes of these skills instead of review.skills;
+                     repeat it for several
+  --format <name>    Output: text or json (default: text)
+  --debug            Show error details
+  -h, --help         Show this help
+
+Environment:
+  GITHUB_TOKEN       GitHub token that can read the pull request and the
+                     repository contents
   GH_TOKEN           Used when GITHUB_TOKEN is not set
   PHADA_CONFIG_HOME  Folder of your own config (default: ~/.config/phada)`
 
@@ -251,6 +285,7 @@ export function parseCliArgs(argv: readonly string[]): CliCommand {
   if (command === 'init') return parseInitArgs(rest)
   if (command === 'index') return parseIndexArgs(rest)
   if (command === 'rules') return parseRulesArgs(rest)
+  if (command === 'prompt') return parsePromptArgs(rest)
   if (command === 'watch') return parseWatchArgs(rest)
   if (command === 'history') return parseHistoryArgs(rest)
   if (command !== undefined && !command.startsWith('-')) throw unknownCommand(command)
@@ -269,7 +304,7 @@ function unknownCommand(command: string): UsageError {
     return new UsageError(`Unknown command "${command}". Did you mean "phada review ${command}"?`)
   }
   return new UsageError(
-    `Unknown command "${command}". Available: review, init, index, rules, watch, history.`,
+    `Unknown command "${command}". Available: review, init, index, rules, prompt, watch, history.`,
   )
 }
 
@@ -308,6 +343,7 @@ function parseReviewArgs(argv: readonly string[]): CliCommand {
   }
   const investigate =
     values.investigate === true ? true : values['no-investigate'] === true ? false : undefined
+  const skills = parseSkills(values.skill)
 
   return {
     kind: 'review',
@@ -320,6 +356,7 @@ function parseReviewArgs(argv: readonly string[]): CliCommand {
     ...(verify === undefined ? {} : { verify }),
     ...(investigate === undefined ? {} : { investigate }),
     ...(values['no-resolve'] === true ? { resolveThreads: false } : {}),
+    ...(skills === undefined ? {} : { skills }),
     dryRun: values['dry-run'],
     force: values.force,
     debug: values.debug,
@@ -337,11 +374,25 @@ const REVIEW_OPTIONS = {
   investigate: { type: 'boolean' },
   'no-investigate': { type: 'boolean' },
   'no-resolve': { type: 'boolean' },
+  skill: { type: 'string', multiple: true },
   'dry-run': { type: 'boolean', default: false },
   force: { type: 'boolean', default: false },
   debug: { type: 'boolean', default: false },
   help: { type: 'boolean', short: 'h', default: false },
 } as const satisfies ParseArgsOptionsConfig
+
+export function parseSkills(values: readonly string[] | undefined): string[] | undefined {
+  if (values === undefined || values.length === 0) return undefined
+  return values.map((value) => {
+    const name = value.trim()
+    if (!SKILL_NAME.test(name)) {
+      throw new UsageError(
+        `Invalid --skill "${value}". Use the skill name, or plugin:skill for a skill of a plugin.`,
+      )
+    }
+    return name
+  })
+}
 
 function parseInitArgs(argv: readonly string[]): CliCommand {
   const { values, positionals } = parseOptions(argv, {
@@ -407,6 +458,40 @@ function parseRulesArgs(argv: readonly string[]): CliCommand {
     ? { kind: 'pull', ref: parsePullRequestRef(input) }
     : { kind: 'repo', repo: parseRepositoryName(input) }
   return { kind: 'rules', target, format: values.format, debug: values.debug }
+}
+
+function parsePromptArgs(argv: readonly string[]): CliCommand {
+  const { values, positionals } = parseOptions(argv, {
+    default: { type: 'boolean', default: false },
+    skill: { type: 'string', multiple: true },
+    format: { type: 'string', default: 'text' },
+    debug: { type: 'boolean', default: false },
+    help: { type: 'boolean', short: 'h', default: false },
+  })
+  if (values.help) return { kind: 'help', text: PROMPT_USAGE }
+  const [input, ...extra] = positionals
+  if (values.default && input !== undefined) {
+    throw new UsageError('Use either a pull request or --default.')
+  }
+  if (!values.default && input === undefined) {
+    throw new UsageError(
+      'Missing the pull request, e.g. phada prompt owner/repo#123, or --default.',
+    )
+  }
+  if (extra.length > 0) throw new UsageError('Show one pull request at a time.')
+  if (values.format !== 'text' && values.format !== 'json') {
+    throw new UsageError(`Invalid --format "${values.format}". Use text or json.`)
+  }
+  const skills = parseSkills(values.skill)
+  if (values.default && skills !== undefined) throw new UsageError('--skill needs a pull request.')
+  return {
+    kind: 'prompt',
+    target:
+      input === undefined ? { kind: 'default' } : { kind: 'pull', ref: parsePullRequestRef(input) },
+    ...(skills === undefined ? {} : { skills }),
+    format: values.format,
+    debug: values.debug,
+  }
 }
 
 function parseWatchArgs(argv: readonly string[]): CliCommand {

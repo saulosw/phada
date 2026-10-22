@@ -17,6 +17,8 @@ import { formatContextSection } from './cli/format-context.js'
 import { formatImpactSection } from './cli/format-impact.js'
 import { formatInvestigationLine, formatInvestigationSection } from './cli/format-investigation.js'
 import { formatRelatedSection } from './cli/format-related.js'
+import { formatPassesSection } from './cli/format-passes.js'
+import type { ReviewOutcome } from './review/types.js'
 import {
   formatPublishedMessage,
   formatRecheckMessage,
@@ -28,6 +30,7 @@ import { formatPullRequestSummary, formatReview } from './cli/format-review.js'
 import { messagesFor } from './cli/i18n/messages.js'
 import { runIndex } from './cli/index-command.js'
 import { runInit } from './cli/init.js'
+import { runPrompt } from './cli/prompt-command.js'
 import { runRules } from './cli/rules-command.js'
 import { runHistory, runHistoryPrune } from './cli/history-command.js'
 import { pullRequestReviewDeps, renderReview, reviewRunJson } from './cli/review-wiring.js'
@@ -91,6 +94,10 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
       await runRules(command, deps)
       return 0
     }
+    if (command.kind === 'prompt') {
+      await runPrompt(command, deps)
+      return 0
+    }
     if (command.kind === 'watch') return await runWatch(command, deps)
     if (command.kind === 'history') {
       await runHistory(command, deps)
@@ -135,6 +142,7 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
           ...(command.resolveThreads === undefined
             ? {}
             : { resolveThreads: command.resolveThreads }),
+          ...(command.skills === undefined ? {} : { skills: command.skills }),
         },
         userLayers,
         userMcpServers: mcp,
@@ -204,11 +212,7 @@ function printReviewed(
 ): void {
   const { outcome } = reviewed
   if (outcome.status === 'skipped') {
-    deps.stderr.write(
-      outcome.reason === 'all-ignored'
-        ? 'Nothing to review: every changed file is ignored.\n'
-        : 'Nothing to review: the pull request has no changes.\n',
-    )
+    deps.stderr.write(`${toTerminalText(skipLine(outcome))}\n`)
     return
   }
   for (const warning of outcome.result.warnings ?? []) {
@@ -250,7 +254,7 @@ function printRun(deps: MainDeps, command: ReviewCommand, run: ReviewRun): void 
         deps.stdout.write(
           run.status === 'nothing'
             ? formatGitHubPreview(rendered, messages)
-            : `${formatGitHubPreview(rendered, messages)}\n${formatContextSection(reviewed.context.report)}\n${formatImpactSection(reviewed.impact, reviewed.impactText)}\n${reviewed.related.status === 'none' ? '' : `${formatRelatedSection(reviewed.related)}\n`}${formatInvestigationSection(reviewed.investigation)}`,
+            : `${formatGitHubPreview(rendered, messages)}\n${formatContextSection(reviewed.context.report)}\n${formatImpactSection(reviewed.impact, reviewed.impactText)}\n${reviewed.related.status === 'none' ? '' : `${formatRelatedSection(reviewed.related)}\n`}${passesSection(run)}${formatInvestigationSection(reviewed.investigation)}`,
         )
       }
       deps.stderr.write('Dry run: nothing was posted.\n')
@@ -277,6 +281,20 @@ function printRun(deps: MainDeps, command: ReviewCommand, run: ReviewRun): void 
     default:
       return
   }
+}
+
+function skipLine(outcome: Extract<ReviewOutcome, { status: 'skipped' }>): string {
+  if (outcome.reason === 'all-ignored') return 'Nothing to review: every changed file is ignored.'
+  if (outcome.reason === 'empty-diff') return 'Nothing to review: the pull request has no changes.'
+  const skipped = (outcome.passes ?? []).map(({ skill, reason }) => `${skill} — ${reason ?? ''}`)
+  return `Nothing to review: no skill applies to the changed files (${skipped.join('; ')}).`
+}
+
+function passesSection(run: ReviewRun): string {
+  if (run.status !== 'reviewed') return ''
+  const outcome = run.reviewed.outcome
+  const passes = outcome.status === 'reviewed' ? outcome.result.passes : undefined
+  return passes === undefined ? '' : `${formatPassesSection(passes)}\n`
 }
 
 async function saveRun(

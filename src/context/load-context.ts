@@ -68,6 +68,9 @@ export async function loadContext(input: {
       ...(merged.verify === undefined ? {} : { verify: merged.verify }),
       ...(merged.investigate === undefined ? {} : { investigate: merged.investigate }),
       ...(merged.resolveThreads === undefined ? {} : { resolveThreads: merged.resolveThreads }),
+      ...(merged.review.prompt === undefined && merged.review.skills === undefined
+        ? {}
+        : { review: merged.review }),
     },
     context: { rules: rules.applied, docs: docs.docs, ignored },
     ignore: [...merged.ignore],

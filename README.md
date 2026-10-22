@@ -49,8 +49,8 @@ request can take a few minutes. `phada review owner/repo#123 --dry-run` prints e
 be posted and posts nothing.
 
 `phada --help` lists the commands, and `phada review --help`, `phada init --help`,
-`phada index --help`, `phada rules --help`, `phada watch --help` and `phada history --help` list
-their options. To have new pull requests and pushes reviewed without running anything, see
+`phada index --help`, `phada rules --help`, `phada prompt --help`, `phada watch --help` and
+`phada history --help` list their options. To have new pull requests and pushes reviewed without running anything, see
 [Watch mode](#watch-mode); to see what happened to the comments Phada published, see
 [History](#history).
 
@@ -349,6 +349,82 @@ instruction file, and the ignore patterns. `--format json` prints the same with 
 and the `context` block of `phada review --format json`. It needs a token that can read the
 repository contents and never writes anything.
 
+## Review focus and skills
+
+By default the AI reviews as Phada's built-in reviewer: a senior engineer looking for bugs,
+security issues, data loss, performance problems and risky design, leaving out style nitpicks and
+what a linter or a test run would catch. You can change what it looks for, or have the review
+follow review skills you already use with your AI CLI. Whatever the focus, the output format,
+the line numbers, the confidence and severity scales and the rules about untrusted data stay
+Phada's, so every finding is still checked against the diff, verified and scored the same way.
+
+```yaml
+# .phada/config.yml, or your own config
+review:
+  prompt:
+    file: .phada/review.md # in your own config, relative to the folder of config.yml
+    mode: append # append (default) adds to the built-in focus; replace swaps it
+  skills:
+    - phada # the built-in reviewer
+    - security-review # a skill installed for your AI CLI
+    - name: my-plugin:api-review # a skill of a plugin
+      paths: ['src/api/**'] # only when a changed file matches
+```
+
+- **`review.prompt`** changes the built-in reviewer: `append` adds the text of the file as an
+  extra focus, `replace` uses it instead of the built-in role, scope and list of what not to
+  report. It is read like the rules: from the base commit for the repository's config, from your
+  disk for your own. A missing or empty file stops the review before the AI is called.
+- **`review.skills`** runs one review pass per skill, in order, and publishes one review with the
+  findings of every pass; a finding two passes report on the same line with the same title is
+  kept once. Each finding names the skill that found it, in the JSON and under each comment on
+  the pull request. `phada` is the built-in reviewer, with your `review.prompt` if there is one;
+  leave it out to review only with your skills. `paths` runs a skill only when a changed file
+  matches; otherwise the pass is skipped and the review says so. When no pass runs, nothing is
+  published and Phada says which skills did not apply. A pass whose answer is not a valid review
+  is left out with a warning and the others still publish; a provider failure (a usage or rate
+  limit, a timeout) fails the whole review, so it can run again later.
+- **`--skill <name>`** (repeatable) replaces the configured list for one run of `phada review` or
+  `phada prompt`. `phada watch` uses only the config.
+
+Phada looks for a skill where the AI CLIs install them: your Claude Code skills
+(`~/.claude/skills/<name>/SKILL.md`) and commands (`~/.claude/commands/<name>.md`), the skills
+and commands of your installed Claude Code plugins, and the skills of Codex
+(`~/.codex/skills/`) and `~/.agents/skills/` (`$CLAUDE_CONFIG_DIR` and `$CODEX_HOME` are
+followed). A plain name finds your own skill first, then the only plugin that has it; when
+several plugins have a skill with that name, use `plugin:skill`. A skill you ask for that is not
+installed stops the review before the AI is called and names the folders Phada looked in; one the
+repository's config asks for is skipped with a warning.
+
+The skill's text is sent as the reviewer's guide on every provider, without its front matter and
+with the `.md` files of its folder that it names, up to 32 KB per skill (cited files that do not
+fit are left out with a warning). The AI follows what the guide asks it to look for and to leave
+out; steps that fetch the pull request, post on it, ask you something or hand work to other
+agents are left to Phada, and the AI reads history, blame and other files with the
+[investigation tools](#repository-investigation). The verifier sees the guide each finding came
+from, so it does not reject a finding the guide asks for as a matter of style.
+
+With several skills each pass takes about as long as a review, and the stderr lines
+`Skills: …` and `Skill 2/3: …` show where it is. `--dry-run` ends with a section that lists
+each pass with its findings, time and tokens; the JSON has `skill` on every finding and a
+`passes` block (`null` when only the built-in reviewer ran without a custom prompt).
+
+### See the prompt
+
+`phada prompt` shows the prompt a review would send, without calling the AI:
+
+```bash
+phada prompt owner/repo#123                     # the prompt of each pass for this pull request
+phada prompt owner/repo#123 --skill security-review
+phada prompt --default                          # the built-in prompt, no token needed
+```
+
+For each pass it prints every part of the instructions with where it comes from (`phada`, the
+`review.prompt` file, the skill's file, the rules) and the size of the data blocks (the pull
+request, the docs and the diff). The tool sections are shown as a review sends them when the
+repository index is ready; the impact of the change and related repositories are computed during
+a review and are not shown. `--format json` prints the same with `schemaVersion: 1`.
+
 ## Repository investigation
 
 The AI can also read the rest of the repository while it reviews: who calls a function the
@@ -579,6 +655,8 @@ context:
 | `context.privateOnPublic` | `true` lets a private related repository be read for a public pull request                                                                   | your config             |
 | `ignore`                  | More files to leave out of the diff                                                                                                          | both                    |
 | `rules`                   | Rules with `rule`, and optionally `id`, `scope` (globs) and `severity` (`P0`, `P1` or `P2`)                                                  | both                    |
+| `review.prompt`           | `file` and `mode` (`append` or `replace`) of the reviewer's focus (see [Review focus and skills](#review-focus-and-skills))                  | both (root)             |
+| `review.skills`           | Skills to review with, one pass each, as names or `{ name, paths }`; `phada` is the built-in reviewer                                        | both (root)             |
 | `watch`                   | Repositories `phada watch` follows and how (see [Watch mode](#watch-mode))                                                                   | your config (top level) |
 | `history`                 | `false` keeps reviews out of the [history](#history)                                                                                         | your config (top level) |
 | `disabledRules`           | Ids of rules from other config files to turn off; from a subfolder's `.phada/`, only inside that folder                                      | both                    |
@@ -607,6 +685,7 @@ your own stops Phada with an error that names the file and the key.
 | `--no-investigate`     | Reviews without letting the AI read the rest of the repository (see [Repository investigation](#repository-investigation)); `--investigate` turns it back on when the config turns it off                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `--verify`             | Checks every finding with a second call to the AI before scoring (see above). On by default; `--no-verify` (or `verify: false`) turns it off, `--verify` turns it back on when the config turns it off                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `--no-resolve`         | Neither rechecks Phada's comments from earlier commits nor resolves the fixed ones (see [Comments fixed in a new commit](#comments-fixed-in-a-new-commit)); same as `resolveThreads: false`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `--skill <name>`       | Reviews with this skill, one pass each when repeated; replaces `review.skills` (see [Review focus and skills](#review-focus-and-skills))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `--dry-run`            | Prints exactly what would be published (the review body and every comment) and posts nothing                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `--force`              | Reviews and publishes even when Phada already reviewed this commit (see [Publishing](#publishing))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `--debug`              | Shows error details                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
@@ -617,10 +696,12 @@ your own stops Phada with an error that names the file and the key.
 | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 0    | The review was published (or printed with `--dry-run`), Phada skipped a commit it already reviewed, or the pull request has no changes to review (or only ignored files) |
 | 1    | Something failed: GitHub, the AI provider, an answer that is not a review, or publishing (the review is printed first)                                                   |
-| 2    | The command line or your own config is wrong (unknown option, invalid pull request reference, invalid `config.yml`, …)                                                   |
+| 2    | The command line or your own config is wrong (unknown option, invalid pull request reference, invalid `config.yml`, a skill that is not installed, …)                    |
 
 `phada index` exits with 0 when the map was built and 1 when fetching or writing it failed.
 `phada rules` exits with 0 when it printed the context and 1 when GitHub could not be read.
+`phada prompt` exits with 0 when it printed the prompt, 1 when GitHub could not be read and 2
+when a skill or the `review.prompt` file is missing.
 `phada history` exits with 0 when it printed the history and 1 when the file or, with `--refresh`,
 GitHub could not be read.
 `phada watch` exits with 0 when it stopped or `--once` finished, 1 when it stopped on an error
@@ -633,13 +714,14 @@ With Claude Code and Codex, the AI runs in an empty temporary directory and only
 that Phada sends: the pull request, its diff, the rules and docs described in
 [Rules and repository context](#rules-and-repository-context), and what it reads with Phada's
 tools from the pull request head and from the [related repositories](#related-repositories) (see [Repository investigation](#repository-investigation)). Rules from `.phada/` and your
-config are instructions; the pull request, the diff and the docs are data, and instructions
-hidden in them are reported as findings. Phada only reads the `model` from their settings. An
+config are instructions, and so are the `review.prompt` file and the text of the skills you
+name (see [Review focus and skills](#review-focus-and-skills)); the pull request, the diff and the
+docs are data, and instructions hidden in them are reported as findings. Phada only reads the `model` from their settings. An
 `AGENTS.md`/`CLAUDE.md` in or above that temporary directory is never loaded, and the GitHub
 token is removed from the environment of the AI process.
 
 Claude Code runs without its own tools or your personal settings (hooks, plugins, skills,
-`CLAUDE.md`). The only MCP servers it can use are Phada's and the ones your config names in
+`CLAUDE.md`); a skill named in `review.skills` reaches it only as text in the prompt. The only MCP servers it can use are Phada's and the ones your config names in
 `mcp`.
 
 Codex keeps a few built-in tools enabled that, with Codex CLI 0.160.0, can neither read your

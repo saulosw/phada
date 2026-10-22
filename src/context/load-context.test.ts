@@ -623,3 +623,33 @@ describe('loadContext', () => {
     })
   })
 })
+
+describe('loadContext review options', () => {
+  it('passes the review prompt and skills on', async () => {
+    const sources = fakeSources({
+      '.phada/config.yml': 'review:\n  prompt:\n    file: .phada/review.md',
+    })
+
+    const loaded = await loadContext({ diff: DIFF, baseSha: SHA, userLayers: [], sources })
+
+    expect(loaded.options.review).toEqual({
+      prompt: {
+        file: '.phada/review.md',
+        mode: 'append',
+        origin: '.phada/config.yml',
+        source: 'repository',
+      },
+    })
+  })
+
+  it('has no review options without review config', async () => {
+    const loaded = await loadContext({
+      diff: DIFF,
+      baseSha: SHA,
+      userLayers: [],
+      sources: fakeSources({}),
+    })
+
+    expect(loaded.options).not.toHaveProperty('review')
+  })
+})

@@ -26,6 +26,31 @@ export interface DeclaredRepository {
   origin: string
 }
 
+export interface SkillEntry {
+  name: string
+  paths?: string[]
+}
+
+export type ConfigSource = 'repository' | 'local'
+
+export interface ReviewPromptRef {
+  file: string
+  mode: 'append' | 'replace'
+  origin: string
+  source: ConfigSource
+}
+
+export interface ReviewSkillsRef {
+  entries: SkillEntry[]
+  origin: string
+  source: ConfigSource
+}
+
+export interface ReviewSettings {
+  prompt?: ReviewPromptRef
+  skills?: ReviewSkillsRef
+}
+
 export interface EffectiveConfig {
   language?: string
   minConfidence?: number
@@ -41,6 +66,7 @@ export interface EffectiveConfig {
   ignore: string[]
   repos: DeclaredRepository[]
   privateOnPublic: boolean
+  review: ReviewSettings
   warnings: string[]
 }
 
@@ -66,6 +92,8 @@ export function mergeConfig(layers: readonly ConfigLayer[]): EffectiveConfig {
   )
   const firstSet = <T>(read: (config: ConfigFile) => T | undefined): T | undefined =>
     bySpecificity.map((layer) => read(layer.config)).find((value) => value !== undefined)
+  const firstLayer = (read: (config: ConfigFile) => unknown): ConfigLayer | undefined =>
+    bySpecificity.find((layer) => read(layer.config) !== undefined)
 
   const language = firstSet((config) => config.language)
   const minConfidence = firstSet((config) => config.minConfidence)
@@ -91,6 +119,12 @@ export function mergeConfig(layers: readonly ConfigLayer[]): EffectiveConfig {
     ignore: [],
     repos: relatedRepositories(bySpecificity),
     privateOnPublic: firstSet((config) => config.context?.privateOnPublic) ?? false,
+    review: reviewSettings(
+      firstLayer((config) => config.review?.prompt),
+      firstLayer((config) =>
+        config.review?.skills?.length === 0 ? undefined : config.review?.skills,
+      ),
+    ),
     warnings,
   }
   for (const layer of usable) {
@@ -130,6 +164,46 @@ export function userMcpServers(userLayers: readonly ConfigLayer[]): string[] {
     userLayers.filter((layer) => layer.kind === kind).flatMap((layer) => layer.config.mcp ?? []),
   )
   return [...new Set(servers)]
+}
+
+function reviewSettings(
+  promptLayer: ConfigLayer | undefined,
+  skillsLayer: ConfigLayer | undefined,
+): ReviewSettings {
+  const prompt = promptLayer?.config.review?.prompt
+  const skills = skillsLayer?.config.review?.skills
+  return {
+    ...(promptLayer === undefined || prompt === undefined
+      ? {}
+      : {
+          prompt: {
+            file: prompt.file,
+            mode: prompt.mode ?? 'append',
+            origin: promptLayer.configLabel,
+            source: sourceOf(promptLayer),
+          },
+        }),
+    ...(skillsLayer === undefined || skills === undefined
+      ? {}
+      : {
+          skills: {
+            entries: skills.map((entry) =>
+              typeof entry === 'string'
+                ? { name: entry }
+                : {
+                    name: entry.name,
+                    ...(entry.paths === undefined ? {} : { paths: entry.paths }),
+                  },
+            ),
+            origin: skillsLayer.configLabel,
+            source: sourceOf(skillsLayer),
+          },
+        }),
+  }
+}
+
+function sourceOf(layer: ConfigLayer): ConfigSource {
+  return layer.kind === 'user' || layer.kind === 'user-repo' ? 'local' : 'repository'
 }
 
 function relatedRepositories(layers: readonly ConfigLayer[]): DeclaredRepository[] {
@@ -175,6 +249,10 @@ function withoutMisplacedKeys(layer: ConfigLayer, warnings: string[]): ConfigLay
         delete config[key]
       }
     }
+    if (config.review !== undefined) {
+      warnings.push(misplacedOption(layer, 'review'))
+      delete config.review
+    }
     if (config.context?.defaults !== undefined) {
       warnings.push(misplacedOption(layer, 'context.defaults'))
       const { defaults: _defaults, ...rest } = config.context
@@ -185,6 +263,11 @@ function withoutMisplacedKeys(layer: ConfigLayer, warnings: string[]): ConfigLay
       const { repos: _repos, ...rest } = config.context
       config.context = rest
     }
+  }
+  if (layer.kind === 'repo-root' && config.review?.prompt !== undefined) {
+    const file = inLayer(layer, config.review.prompt.file, warnings, false)
+    const { prompt, ...rest } = config.review
+    config.review = file === undefined ? rest : { ...rest, prompt: { ...prompt, file } }
   }
   if (config.context?.privateOnPublic !== undefined) {
     warnings.push(

@@ -38,9 +38,11 @@ import { formatContextLine } from './format-context.js'
 import { formatImpactLine } from './format-impact.js'
 import { formatAlreadyReviewedJson, formatReviewJson } from './format-json.js'
 import type { Publication } from './format-json.js'
+import { formatPassesLine } from './format-passes.js'
 import { formatRelatedLine } from './format-related.js'
 import { messagesFor } from './i18n/messages.js'
 import { indexProgress, withProgress } from './progress.js'
+import { diskSkillCatalog } from './skill-catalog.js'
 import { toTerminalText } from './terminal-text.js'
 
 export interface ReviewWiringDeps extends ContextReaders {
@@ -126,6 +128,7 @@ export function pullRequestReviewDeps(
         ...(servers.length === 0 ? {} : { userMcpServers: [...servers] }),
       }),
     watchProvider: (provider, pass) => withProgress(provider, deps.stderr, PROGRESS_LABELS[pass]),
+    skills: diskSkillCatalog(deps.files, deps.env, deps.home),
     related: {
       readRepository: (name) =>
         deps.fetchRepository({ ...splitRepoName(name), token }).catch((error: unknown) => {
@@ -159,6 +162,11 @@ export function pullRequestReviewDeps(
       relatedReady: (report) => {
         const line = formatRelatedLine(report)
         if (line !== undefined) deps.stderr.write(`${line}\n`)
+      },
+      passesPlanned: (plan) => deps.stderr.write(`${formatPassesLine(plan)}\n`),
+      passStarted: (skill, index, total) => {
+        if (total > 1)
+          deps.stderr.write(`${toTerminalText(`Skill ${index + 1}/${total}: ${skill}`)}\n`)
       },
     },
   }

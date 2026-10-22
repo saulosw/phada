@@ -5,6 +5,7 @@ import {
   HISTORY_USAGE,
   INDEX_USAGE,
   INIT_USAGE,
+  PROMPT_USAGE,
   REVIEW_USAGE,
   RULES_USAGE,
   USAGE,
@@ -40,7 +41,7 @@ describe('parseCliArgs', () => {
     ],
     [
       ['reveiw', 'acme/shop#12'],
-      'Unknown command "reveiw". Available: review, init, index, rules, watch, history.',
+      'Unknown command "reveiw". Available: review, init, index, rules, prompt, watch, history.',
     ],
     [['--verify'], "Unknown option '--verify'."],
   ])('rejects the command line %j with a usage error', (argv, message) => {
@@ -472,5 +473,64 @@ describe('parseCliArgs history', () => {
     })
     expect(HISTORY_USAGE.startsWith('Usage: phada history [<owner/repo[#N]>] [options]')).toBe(true)
     expect(USAGE).toContain('history                Show past reviews and what happened to')
+  })
+})
+
+describe('review --skill', () => {
+  it('reads every --skill in order', () => {
+    expect(
+      parseCliArgs(['review', 'acme/shop#12', '--skill', 'phada', '--skill', 'my-plugin:review']),
+    ).toMatchObject({ kind: 'review', skills: ['phada', 'my-plugin:review'] })
+  })
+
+  it('leaves skills unset without --skill', () => {
+    expect(parseCliArgs(['review', 'acme/shop#12'])).not.toHaveProperty('skills')
+  })
+
+  it('refuses a skill name with a space', () => {
+    expect(() => parseCliArgs(['review', 'acme/shop#12', '--skill', 'a b'])).toThrow(
+      new UsageError(
+        'Invalid --skill "a b". Use the skill name, or plugin:skill for a skill of a plugin.',
+      ),
+    )
+  })
+
+  it('documents --skill', () => {
+    expect(REVIEW_USAGE).toContain('--skill <name>')
+  })
+})
+
+describe('prompt command', () => {
+  it('reads a pull request, the skills and the format', () => {
+    expect(parseCliArgs(['prompt', 'acme/shop#12', '--skill', 'sec', '--format', 'json'])).toEqual({
+      kind: 'prompt',
+      target: { kind: 'pull', ref: REF },
+      skills: ['sec'],
+      format: 'json',
+      debug: false,
+    })
+  })
+
+  it('reads --default without a pull request', () => {
+    expect(parseCliArgs(['prompt', '--default'])).toEqual({
+      kind: 'prompt',
+      target: { kind: 'default' },
+      format: 'text',
+      debug: false,
+    })
+  })
+
+  it.each([
+    [['prompt'], 'Missing the pull request, e.g. phada prompt owner/repo#123, or --default.'],
+    [['prompt', '--default', 'acme/shop#12'], 'Use either a pull request or --default.'],
+    [['prompt', '--default', '--skill', 'sec'], '--skill needs a pull request.'],
+    [['prompt', 'acme/shop#12', '--format', 'yaml'], 'Invalid --format "yaml". Use text or json.'],
+  ])('rejects %j', (argv, message) => {
+    expect(() => parseCliArgs(argv)).toThrow(new UsageError(message))
+  })
+
+  it('shows its help and is listed in the general help', () => {
+    expect(parseCliArgs(['prompt', '--help'])).toEqual({ kind: 'help', text: PROMPT_USAGE })
+    expect(USAGE).toContain('prompt <pull request>')
   })
 })

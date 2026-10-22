@@ -36,5 +36,14 @@ export function memoryFiles(
         .sort()
         .map((file) => ({ path: file, size: new TextEncoder().encode(files.get(file)).length }))
     },
+    listDir: async (path) => {
+      const prefix = `${path}/`
+      const names = [...files.keys(), ...knownDirs]
+        .filter((entry) => entry.startsWith(prefix))
+        .map((entry) => entry.slice(prefix.length).split('/')[0] ?? '')
+        .filter((name) => name !== '')
+      if (names.length === 0 && !knownDirs.has(path)) return null
+      return [...new Set(names)].sort()
+    },
   }
 }

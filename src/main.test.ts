@@ -1980,3 +1980,105 @@ describe('phada watch', () => {
     expect(listedRepos).toBe(0)
   })
 })
+
+describe('run review with skills', () => {
+  const REVIEW = ['review', 'acme/shop#12', '--no-verify']
+  const SKILL = '/home/u/.claude/skills/code-review/SKILL.md'
+  const installed = () => memoryFiles({ [SKILL]: '---\nname: code-review\n---\nFind bugs.' })
+
+  it('runs one pass per skill and names them on stderr', async () => {
+    const h = harness({ files: installed() })
+
+    expect(await run([...REVIEW, '--skill', 'phada', '--skill', 'code-review'], h.deps)).toBe(0)
+    const reviews = h.prompts.filter((prompt) => prompt.outputSchema !== RECHECK_JSON_SCHEMA)
+    expect(reviews).toHaveLength(2)
+    expect(reviews[1]?.instructions).toContain('Review guide (skill code-review):\nFind bugs.')
+    expect(h.stderr()).toContain('Skills: phada, code-review\n')
+  })
+
+  it('shows the passes in --dry-run and the skill of each finding in the JSON', async () => {
+    const h = harness({ files: installed() })
+
+    await run([...REVIEW, '--skill', 'code-review', '--dry-run'], h.deps)
+    expect(h.stdout()).toContain('## Skills\n\n- code-review (' + SKILL + '): ')
+
+    const json = harness({ files: installed() })
+    await run([...REVIEW, '--skill', 'code-review', '--dry-run', '--format', 'json'], json.deps)
+    const parsed = JSON.parse(json.stdout()) as {
+      review: { findings: { skill: string }[]; passes: { skill: string }[] }
+    }
+    expect(parsed.review.passes.map(({ skill }) => skill)).toEqual(['code-review'])
+    expect(parsed.review.findings.every(({ skill }) => skill === 'code-review')).toBe(true)
+  })
+
+  it('stops before the AI when a skill is not installed', async () => {
+    const h = harness()
+
+    expect(await run([...REVIEW, '--skill', 'nope'], h.deps)).toBe(2)
+    expect(h.stderr()).toContain('phada: Skill "nope" is not installed. Phada looked in')
+    expect(h.prompts).toHaveLength(0)
+  })
+
+  it('refuses to start a watch whose config names a skill that is not installed', async () => {
+    const h = harness({
+      files: memoryFiles({
+        '/cfg/config.yml': 'watch:\n  repos: [acme/shop]\nreview:\n  skills: [nope]\n',
+      }),
+    })
+
+    expect(await run(['watch', '--once'], h.deps)).toBe(2)
+    expect(h.stderr()).toContain('phada: Skill "nope" is not installed.')
+  })
+})
+
+describe('run prompt', () => {
+  it('prints the built-in prompt without a token', async () => {
+    const h = harness({ env: { PHADA_CONFIG_HOME: '/cfg' } })
+
+    expect(await run(['prompt', '--default'], h.deps)).toBe(0)
+    expect(h.stdout()).toContain('Built-in prompt, without a pull request')
+    expect(h.stdout()).toContain('You are a senior engineer reviewing a pull request.')
+  })
+
+  it('prints the prompt of a pull request without calling the AI', async () => {
+    const h = harness({
+      repoFiles: {
+        '.phada/config.yml': 'review:\n  prompt:\n    file: .phada/review.md\n',
+        '.phada/review.md': 'Flag missing tests.',
+      },
+    })
+
+    expect(await run(['prompt', 'acme/shop#12'], h.deps)).toBe(0)
+    expect(h.stdout()).toContain('Prompt for acme/shop#12')
+    expect(h.stdout()).toContain('### lens — .phada/config.yml → .phada/review.md')
+    expect(h.stdout()).toContain('Additional review focus set by the user:\nFlag missing tests.')
+    expect(h.prompts).toHaveLength(0)
+  })
+
+  it('needs a token for a pull request', async () => {
+    const h = harness({ env: { PHADA_CONFIG_HOME: '/cfg' } })
+
+    expect(await run(['prompt', 'acme/shop#12'], h.deps)).toBe(1)
+  })
+})
+
+describe('run review when no skill applies', () => {
+  it('posts nothing and says why', async () => {
+    const h = harness({
+      files: memoryFiles({
+        '/home/u/.claude/skills/docs-review/SKILL.md': 'Check the docs.',
+        '/cfg/config.yml':
+          "review:\n  skills:\n    - name: docs-review\n      paths: ['docs/**']\n",
+      }),
+    })
+
+    expect(await run(['review', 'acme/shop#12', '--no-verify'], h.deps)).toBe(0)
+    expect(h.posts).toHaveLength(0)
+    expect(h.prompts.filter((prompt) => prompt.outputSchema !== RECHECK_JSON_SCHEMA)).toHaveLength(
+      0,
+    )
+    expect(h.stderr()).toContain(
+      'Nothing to review: no skill applies to the changed files (docs-review — no changed file matches docs/**).',
+    )
+  })
+})

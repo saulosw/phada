@@ -73,6 +73,25 @@ const WatchSchema = z.strictObject({
     }),
 })
 
+export const SKILL_NAME = /^[\w.-]+(:[\w.-]+)?$/
+
+const SkillName = z
+  .string()
+  .trim()
+  .regex(SKILL_NAME, 'use the skill name, or plugin:skill for a skill of a plugin')
+
+const ReviewSchema = z.strictObject({
+  prompt: z
+    .strictObject({
+      file: z.string().trim().min(1),
+      mode: z.enum(['append', 'replace']).optional(),
+    })
+    .optional(),
+  skills: z
+    .array(z.union([SkillName, z.strictObject({ name: SkillName, paths: Globs.optional() })]))
+    .optional(),
+})
+
 const ContextFileSchema = z.strictObject({
   path: Pattern,
   description: z.string().optional(),
@@ -107,9 +126,11 @@ export const ConfigFileSchema = z.strictObject({
     })
     .optional(),
   history: z.boolean().optional(),
+  review: ReviewSchema.optional(),
   watch: WatchSchema.optional(),
 })
 
 export type ConfigFile = z.infer<typeof ConfigFileSchema>
 export type ConfigRule = z.infer<typeof RuleSchema>
+export type ReviewConfig = z.infer<typeof ReviewSchema>
 export type WatchConfig = z.infer<typeof WatchSchema>
