@@ -112,6 +112,19 @@ describe('formatHistoryText', () => {
     expect(formatHistoryText([], 0, undefined)).toBe('No reviews in the history yet.\n')
   })
 
+  it('keeps each run and finding on one line', () => {
+    const failed: RunRecord = {
+      ...RUN,
+      status: 'failed',
+      url: undefined,
+      error: 'GitHub said no.\nDetails: 422',
+    }
+    const text = formatHistoryText([failed], 1, [finding({ title: 'Two\nlines', signals: [] })])
+
+    expect(text).toContain('GitHub said no. Details: 422')
+    expect(text).toContain('  P1  src/shop.ts:44  Two lines  open · outdated')
+  })
+
   it('strips control characters from titles', () => {
     const text = formatHistoryText([], 0, [finding({ title: 'Bad\u001b[31m title‮' })])
 

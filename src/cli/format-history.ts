@@ -2,6 +2,7 @@ import { destinationOf } from '../publish/feedback.js'
 import type { Destination, SignalKind } from '../publish/feedback.js'
 import type { FindingRecord, RunRecord } from '../store/history-store.js'
 import { toTerminalText } from './terminal-text.js'
+import { singleLine } from './markdown-text.js'
 import { shortSha } from './review-text.js'
 import { formatCount, formatLocalTime } from './units.js'
 
@@ -89,7 +90,7 @@ function runLine(run: RunRecord): string {
     run.score === undefined ? undefined : `score ${run.score}`,
     run.findings === undefined ? undefined : formatCount(run.findings, 'finding'),
     run.url ?? run.reason ?? run.error,
-  ].filter((part) => part !== undefined)
+  ].flatMap((part) => (part === undefined ? [] : [singleLine(part)]))
   return [
     formatLocalTime(new Date(run.startedAt)),
     `${run.repo}#${run.number}`,
@@ -109,7 +110,7 @@ function findingLine(finding: FindingRecord): string {
     ...(kinds.includes('human-reply') ? ['replied'] : []),
   ]
   const where = finding.line === undefined ? finding.file : `${finding.file}:${finding.line}`
-  return `  ${finding.severity ?? '--'}  ${where}  ${finding.title}  ${marks.join(' · ')}`
+  return `  ${finding.severity ?? '--'}  ${singleLine(where)}  ${singleLine(finding.title)}  ${marks.join(' · ')}`
 }
 
 function statsLine(stats: RepoStats): string {
