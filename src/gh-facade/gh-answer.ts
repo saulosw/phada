@@ -82,7 +82,7 @@ async function answer(command: GhCommand, data: GhPullData, read: ReadGitHub): P
               state: listState(command.state),
               per_page: String(command.limit ?? 30),
             })
-          : await searchItems(`${command.search} repo:${data.repo} is:pr`, command.limit, read)
+          : await searchItems(scopedQuery(command.search, data, 'is:pr'), command.limit, read)
       return ok(listing(asArray(items), command))
     }
     case 'issue-list': {
@@ -95,17 +95,13 @@ async function answer(command: GhCommand, data: GhPullData, read: ReadGitHub): P
                 per_page: String(command.limit ?? 30),
               }),
             ).filter((item) => !isRecord(item) || item.pull_request === undefined)
-          : await searchItems(`${command.search} repo:${data.repo} is:issue`, command.limit, read)
+          : await searchItems(scopedQuery(command.search, data, 'is:issue'), command.limit, read)
       return ok(listing(asArray(items), command))
     }
     case 'search': {
       checkRepo(command.repo, data)
       const kind = command.type === 'prs' ? 'is:pr' : 'is:issue'
-      const items = await searchItems(
-        `${command.query} repo:${data.repo} ${kind}`,
-        command.limit,
-        read,
-      )
+      const items = await searchItems(scopedQuery(command.query, data, kind), command.limit, read)
       return ok(listing(items, command))
     }
     case 'issue-view': {
@@ -166,8 +162,7 @@ async function api(
   if (command.method !== 'GET') return apiWrite(command, path, data)
   const query = Object.fromEntries(new URLSearchParams(rawQuery))
   if (path === 'search/issues') {
-    const q = query.q ?? ''
-    query.q = q.includes(`repo:${data.repo}`) ? q : `${q} repo:${data.repo}`.trim()
+    query.q = scopedQuery(query.q ?? '', data)
   } else if (!sameRepoPath(path, data)) {
     throw new GhFacadeError(`phada: only ${data.repo} can be read during this review.`)
   }
@@ -335,6 +330,13 @@ async function searchItems(
 ): Promise<unknown[]> {
   const found = await read('search/issues', { q: query, per_page: String(limit ?? 30) })
   return isRecord(found) ? asArray(found.items) : []
+}
+
+const SCOPE_QUALIFIER = /^-?(?:repo|org|user|owner):/i
+
+function scopedQuery(query: string, data: GhPullData, kind?: string): string {
+  const words = query.split(/\s+/).filter((word) => word !== '' && !SCOPE_QUALIFIER.test(word))
+  return [...words, `repo:${data.repo}`, ...(kind === undefined ? [] : [kind])].join(' ')
 }
 
 function issueShape(item: unknown): Record<string, unknown> {

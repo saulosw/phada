@@ -192,6 +192,33 @@ describe('answerGh', () => {
     expect(JSON.parse(answer.stdout)).toEqual([{ number: 3, title: 'Old cart fix' }])
   })
 
+  it.each([
+    ['search issues x repo:victim/private', 'x repo:acme/shop is:issue'],
+    ['search prs x org:victim user:someone', 'x repo:acme/shop is:pr'],
+  ])('keeps a search inside the repository: %s', async (line, q) => {
+    const { read, calls } = github({ 'search/issues': { items: [] } })
+
+    await gh(line, read)
+
+    expect(calls[0]?.query?.q).toBe(q)
+  })
+
+  it('drops other scopes from an api search', async () => {
+    const { read, calls } = github({ 'search/issues': { items: [] } })
+
+    await gh('api search/issues?q=x+repo:victim/private+repo:acme/shop', read)
+
+    expect(calls[0]?.query?.q).toBe('x repo:acme/shop')
+  })
+
+  it('drops other scopes from pr list --search', async () => {
+    const { read, calls } = github({ 'search/issues': { items: [] } })
+
+    await gh('pr list --search repo:victim/private', read)
+
+    expect(calls[0]?.query?.q).toBe('repo:acme/shop is:pr')
+  })
+
   it('captures a comment and never asks GitHub', async () => {
     const { read, calls } = github()
 
