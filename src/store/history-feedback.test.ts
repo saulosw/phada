@@ -267,6 +267,30 @@ describe('HistoryStore feedback', () => {
       expect(store.feedbackDue({}, T3)).toEqual([{ repo: 'acme/shop', number: 3 }])
     }))
 
+  it('a pull request last seen closed is due again once the watch lists it open', () =>
+    withStore((store) => {
+      store.observeFeedback(
+        observation([thread({ destination: 'ignored', signals: ['ignored'] })], {
+          pullState: 'closed',
+        }),
+      )
+      const pull = {
+        repo: 'acme/shop',
+        number: 3,
+        headSha: OLD,
+        headSeenAt: T0,
+        eligible: true,
+        state: 'gone' as const,
+      }
+      store.savePull(pull)
+      expect(store.feedbackDue({}, T3)).toEqual([])
+
+      store.savePull({ ...pull, state: 'open' })
+
+      expect(store.feedbackDue({}, T3)).toEqual([{ repo: 'acme/shop', number: 3 }])
+      expect(store.feedbackDue({}, T1)).toEqual([])
+    }))
+
   it('a thread missing from a later observation keeps its signals', () =>
     withStore((store) => {
       store.observeFeedback(

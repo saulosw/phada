@@ -143,7 +143,13 @@ export function feedbackDue(
 ): DuePull[] {
   const repos = filter.repos?.map((repo) => repo.toLowerCase())
   const { clause, values } = where([
-    ["(f.pull_state is null or f.pull_state = 'open')", undefined, true],
+    [
+      `(f.pull_state is null or f.pull_state = 'open' or exists (
+        select 1 from watched_pull w where w.repo = p.repo and w.number = p.number
+        and w.state = 'open'))`,
+      undefined,
+      true,
+    ],
     ['(f.observed_at is null or f.observed_at < ?)', before],
     ['p.repo = ?', filter.repo?.toLowerCase()],
     ['p.number = ?', filter.number],
