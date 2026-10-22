@@ -202,7 +202,25 @@ async function runPasses(
     ran++
     if (pass !== undefined) deps.events?.passStarted?.(pass, index)
     if (pass?.mode === 'native') {
-      const native = await runNativePass(request, deps, createNonce, pass)
+      let native: Awaited<ReturnType<typeof runNativePass>>
+      try {
+        native = await runNativePass(request, deps, createNonce, pass)
+      } catch (error) {
+        if (planned.length === 1 || !isAnswerFailure(error)) throw error
+        firstError ??= error
+        const message = error instanceof Error ? error.message : String(error)
+        answered.warnings.push(`Skill ${pass.skill} failed: ${message}`)
+        answered.reports.push({
+          skill: pass.skill,
+          origin,
+          status: 'failed',
+          mode: 'native',
+          durationMs: 0,
+          findings: 0,
+          reason: message,
+        })
+        continue
+      }
       answered.outputs.push(native.answer)
       answered.durationMs += native.answer.output.durationMs
       answered.usage = sumUsage(answered.usage, native.answer.output.usage)

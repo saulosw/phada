@@ -1138,6 +1138,36 @@ describe('runReview with a native skill pass', () => {
     ).rejects.toThrow('Claude did not answer within 1800s.')
   })
 
+  it('turns an unreadable skill run into a warning when other passes answer', async () => {
+    const { outcome } = await nativeReview(
+      [PHADA, NATIVE],
+      [OUTPUT],
+      new ProviderError(
+        'claude-cli',
+        'invalid-output',
+        'Claude did not finish the skill within 100 turns.',
+      ),
+    )
+
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(outcome.result.findings).toHaveLength(1)
+    expect(outcome.result.passes?.[1]).toMatchObject({
+      skill: 'code-review:code-review',
+      status: 'failed',
+      mode: 'native',
+      reason: 'Claude did not finish the skill within 100 turns.',
+    })
+    expect(outcome.result.warnings).toContain(
+      'Skill code-review:code-review failed: Claude did not finish the skill within 100 turns.',
+    )
+  })
+
+  it('still fails a single native pass whose run is unreadable', async () => {
+    await expect(
+      nativeReview([NATIVE], [], new ProviderError('claude-cli', 'invalid-output', 'empty')),
+    ).rejects.toThrow('empty')
+  })
+
   it('refuses a native pass without a skill runner', async () => {
     const provider = new FakeProvider(inTurn(OUTPUT))
 
