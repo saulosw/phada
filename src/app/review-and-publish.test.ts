@@ -173,6 +173,7 @@ function setup(
       fetched: () => calls.events.push('fetched'),
       reviewed: () => calls.events.push('reviewed'),
       publishing: () => calls.events.push('publishing'),
+      warning: (message) => calls.events.push(`warning: ${message}`),
     },
     ...overrides,
   }
@@ -250,7 +251,7 @@ describe('reviewAndPublish', () => {
       expect(await reviewAndPublish(INPUT, deps)).toEqual({
         status: 'skipped',
         pullRequest: PR,
-        reason: { kind: 'same-diff', since: OLD, ignoredOnly: false },
+        reason: { kind: 'same-diff', since: OLD },
       })
       expect(calls.reviews).toBe(0)
     })
@@ -297,15 +298,19 @@ describe('reviewAndPublish', () => {
       expect(run).toMatchObject({ publication: { resolved: { resolved: 0, total: 0 } } })
     })
 
-    it('compare failure sends threads without patch', async () => {
+    it('compare failure without the repository tools leaves the comment unsure, without the AI', async () => {
       const { deps, calls } = setup({
         fetchReviewState: earlierComments(),
         compare: () => Promise.reject(new Error('gone')),
       })
 
-      await reviewAndPublish(INPUT, deps)
+      const run = await reviewAndPublish(INPUT, deps)
 
-      expect(calls.rechecks[0]).toContain('(no patch: read the file with the tools)')
+      expect(calls.rechecks).toEqual([])
+      expect(calls.replies).toEqual([])
+      expect(run).toMatchObject({
+        reviewed: { recheck: { unsure: 1, verdicts: [{ verdict: 'unsure', by: 'no-access' }] } },
+      })
     })
 
     it('does not send to the AI a comment whose file did not change', async () => {
@@ -336,6 +341,7 @@ describe('reviewAndPublish', () => {
       const run = await reviewAndPublish(INPUT, deps)
 
       expect(calls.log.slice(-2)).toEqual(['resolve T2', 'post'])
+      expect(calls.events).toContain('warning: Could not resolve a fixed comment: no permission')
       expect(run).toMatchObject({
         publication: { status: 'published', resolved: { resolved: 1, failed: 1, total: 2 } },
       })

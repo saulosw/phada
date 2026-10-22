@@ -7,7 +7,7 @@ export interface RunOptions {
   force: boolean
   dryRun: boolean
   skipReviewedCommits?: boolean
-  diff?: { fingerprint: string; ignoredOnly: boolean }
+  diff?: string
 }
 
 export function decideRun(state: PullRequestReviewState, options: RunOptions): RunDecision {
@@ -39,6 +39,6 @@ function sameDiffReason(
   if (options.diff === undefined) return undefined
   const latest = latestPhadaReview(state)
   if (latest === undefined || latest.sha === options.headSha) return undefined
-  if (latest.diff !== options.diff.fingerprint) return undefined
-  return { kind: 'same-diff', since: latest.sha, ignoredOnly: options.diff.ignoredOnly }
+  if (latest.diff !== options.diff) return undefined
+  return { kind: 'same-diff', since: latest.sha }
 }

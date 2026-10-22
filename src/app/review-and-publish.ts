@@ -12,6 +12,7 @@ import type { Comparisons } from '../publish/recheck-candidates.js'
 import type { PublicationPlan, SkipReason } from '../publish/types.js'
 import { diffFingerprint } from '../review/diff-fingerprint.js'
 import type { RecheckThread, RecheckVerdict, ReviewResult } from '../review/types.js'
+import { errorMessage } from './error-message.js'
 import { loadPullRequestContext, reviewPullRequest } from './review-pull-request.js'
 import type {
   PullRequestReview,
@@ -74,6 +75,7 @@ export interface ReviewAndPublishEvents {
   fetched(pullRequest: PullRequest): void
   reviewed(review: PullRequestReview, pullRequest: PullRequest): void
   publishing(): void
+  warning(message: string): void
 }
 
 export interface ReviewAndPublishDeps {
@@ -125,10 +127,7 @@ export async function reviewAndPublish(
   }
   const loaded = await loadPullRequestContext(review, reviewDeps)
   const fingerprint = diffFingerprint(loaded.diff)
-  const decision = decideRun(state, {
-    ...runOptions,
-    diff: { fingerprint, ignoredOnly: loaded.context.ignored.length > 0 },
-  })
+  const decision = decideRun(state, { ...runOptions, diff: fingerprint })
   if (decision.action === 'skip') {
     return { status: 'skipped', pullRequest, reason: decision.reason }
   }
@@ -209,8 +208,8 @@ async function resolveFixed(
     try {
       await deps.replyAndResolve(threadId, `${reply}\n\n${resolvedMarker(headSha)}`)
       resolved++
-    } catch {
-      continue
+    } catch (error) {
+      deps.events.warning(`Could not resolve a fixed comment: ${errorMessage(error)}`)
     }
   }
   return { resolved, failed: fixed.length - resolved, total: fixed.length }

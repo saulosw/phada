@@ -180,9 +180,7 @@ function skipJson(reason: SkipReason) {
   return {
     reason: reason.kind,
     openThreads: reason.kind === 'open-threads' ? reason.openThreads : 0,
-    ...(reason.kind === 'same-diff'
-      ? { since: reason.since, ignoredOnly: reason.ignoredOnly }
-      : {}),
+    ...(reason.kind === 'same-diff' ? { since: reason.since } : {}),
   }
 }
 

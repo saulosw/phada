@@ -150,20 +150,12 @@ describe('decideRun', () => {
 
   describe('same diff', () => {
     const DIFF = '0123456789abcdef'
-    const SAME = { ...RUN, diff: { fingerprint: DIFF, ignoredOnly: false } }
+    const SAME = { ...RUN, diff: DIFF }
 
     it('skips a new commit whose filtered diff is the one Phada reviewed last', () => {
       expect(decideRun(state([review(OLD, 1, 'me', DIFF)]), SAME)).toEqual({
         action: 'skip',
-        reason: { kind: 'same-diff', since: OLD, ignoredOnly: false },
-      })
-    })
-
-    it('says when only left-out files changed', () => {
-      const options = { ...RUN, diff: { fingerprint: DIFF, ignoredOnly: true } }
-
-      expect(decideRun(state([review(OLD, 1, 'me', DIFF)]), options)).toMatchObject({
-        reason: { kind: 'same-diff', ignoredOnly: true },
+        reason: { kind: 'same-diff', since: OLD },
       })
     })
 
@@ -187,7 +179,7 @@ describe('decideRun', () => {
       expect(decideRun(state(reviews), { ...SAME, force: true })).toEqual({ action: 'run' })
       expect(decideRun(state(reviews), { ...SAME, dryRun: true })).toEqual({
         action: 'run',
-        wouldSkip: { kind: 'same-diff', since: OLD, ignoredOnly: false },
+        wouldSkip: { kind: 'same-diff', since: OLD },
       })
     })
 

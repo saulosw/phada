@@ -181,6 +181,7 @@ function reviewAndPublishDeps(
       fetched: (pullRequest) => deps.stderr.write(`${formatPullRequestSummary(pullRequest)}\n`),
       reviewed: (reviewed, pullRequest) => printReviewed(deps, command, reviewed, pullRequest),
       publishing: () => deps.stderr.write('Publishing the review…\n'),
+      warning: (message) => deps.stderr.write(`Warning: ${toTerminalText(message)}\n`),
     },
   }
 }

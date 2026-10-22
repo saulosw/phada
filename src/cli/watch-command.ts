@@ -295,7 +295,12 @@ async function runJob(
         if (head.state === 'closed' || head.draft) return 'closed-or-draft'
         return head.headSha === pullRequest.headSha ? 'current' : { superseded: head.headSha }
       },
-      events: { fetched: () => undefined, reviewed: () => undefined, publishing: () => undefined },
+      events: {
+        fetched: () => undefined,
+        reviewed: () => undefined,
+        publishing: () => undefined,
+        warning: () => undefined,
+      },
     },
   )
 }

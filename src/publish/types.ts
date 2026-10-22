@@ -13,7 +13,7 @@ export type SkipReason =
   | { kind: 'open-threads'; openThreads: number }
   | { kind: 'nothing-found' }
   | { kind: 'already-reviewed' }
-  | { kind: 'same-diff'; since: string; ignoredOnly: boolean }
+  | { kind: 'same-diff'; since: string }
   | { kind: 'closed-or-draft' }
 
 export type RunDecision =

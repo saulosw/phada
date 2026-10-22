@@ -413,11 +413,10 @@ describe('publication', () => {
         formatAlreadyReviewedJson(pullRequestFixture(), {
           kind: 'same-diff',
           since: '0'.repeat(40),
-          ignoredOnly: true,
         }),
       ),
     ).toMatchObject({
-      publication: { reason: 'same-diff', since: '0'.repeat(40), ignoredOnly: true },
+      publication: { reason: 'same-diff', since: '0'.repeat(40) },
     })
   })
 
