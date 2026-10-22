@@ -221,7 +221,13 @@ function printReviewed(
   for (const warning of outcome.result.warnings ?? []) {
     deps.stderr.write(`Warning: ${toTerminalText(warning)}\n`)
   }
-  const fixFor = blockedFixer({ pullRequest, env: deps.env, home: deps.home })
+  const review = reviewed.context.options.review
+  const fixFor = blockedFixer({
+    pullRequest,
+    env: deps.env,
+    home: deps.home,
+    ...(review === undefined ? {} : { review }),
+  })
   for (const line of formatSkillRunLines(outcome.result.passes ?? [], fixFor)) {
     deps.stderr.write(`${line}\n`)
   }
@@ -237,7 +243,13 @@ function printReviewed(
 
 function printRun(deps: MainDeps, command: ReviewCommand, run: ReviewRun): void {
   const json = command.format === 'json'
-  const fixFor = blockedFixer({ pullRequest: run.pullRequest, env: deps.env, home: deps.home })
+  const review = run.status === 'skipped' ? undefined : run.reviewed.context.options.review
+  const fixFor = blockedFixer({
+    pullRequest: run.pullRequest,
+    env: deps.env,
+    home: deps.home,
+    ...(review === undefined ? {} : { review }),
+  })
   if (json) deps.stdout.write(reviewRunJson(run, fixFor))
   const { pullRequest } = run
   if (run.status === 'skipped') {

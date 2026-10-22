@@ -1,16 +1,27 @@
 import { dirname, join } from 'node:path'
+import { skillPolicy } from '../app/native-skill.js'
+import type { ReviewSettings } from '../config/merge-config.js'
 import { userConfigDir } from '../config/user-config.js'
 import type { PullRequest } from '../github/pull-request.js'
 import { READ_ONLY_COMMANDS } from '../providers/claude-skill-args.js'
-import type { BlockedCommand } from '../providers/types.js'
+import type { BlockedCommand, CommandPolicy } from '../providers/types.js'
 import { TRUSTED_ASSOCIATIONS } from '../watch/filters.js'
 
 export interface FixContext {
   external: boolean
   configPath: string
+  policy?: CommandPolicy
 }
 
 const FILE_TOOLS: ReadonlySet<string> = new Set(['Read', 'Grep', 'Glob'])
+const NEVER_TOOLS: ReadonlySet<string> = new Set([
+  'Write',
+  'Edit',
+  'MultiEdit',
+  'NotebookEdit',
+  'WebFetch',
+  'WebSearch',
+])
 const PLUMBING: ReadonlySet<string> = new Set([
   'cd',
   'pushd',
@@ -30,9 +41,9 @@ const ENV_ASSIGNMENT = /^[A-Za-z_]\w*=/
 const MAX_PREFIX_WORDS = 2
 
 export function blockedFix({ tool, input }: BlockedCommand, context: FixContext): string {
-  if (tool !== 'Bash' && !FILE_TOOLS.has(tool)) {
-    return 'Phada never lets a skill write files or use the web'
-  }
+  if (NEVER_TOOLS.has(tool)) return 'Phada never lets a skill write files or use the web'
+  if (tool !== 'Bash' && !FILE_TOOLS.has(tool))
+    return 'this tool is not available to a native skill'
   if (context.external) {
     return 'this pull request is from an outside author: the skill always runs read-only'
   }
@@ -40,7 +51,9 @@ export function blockedFix({ tool, input }: BlockedCommand, context: FixContext)
     const folder = /\.[\w-]+$/.test(input) ? dirname(input) : input
     return `allow it with review.readDirs: ["${folder}"] in ${context.configPath}`
   }
-  const prefixes = commandPrefixes(input).map((prefix) => `"${prefix}"`)
+  const prefixes = commandPrefixes(input, context.policy ?? 'read-only').map(
+    (prefix) => `"${prefix}"`,
+  )
   return `allow it with review.commands: [${prefixes.join(', ')}] in ${context.configPath}`
 }
 
@@ -48,21 +61,23 @@ export function blockedFixer(input: {
   pullRequest: Pick<PullRequest, 'private' | 'association'>
   env: NodeJS.ProcessEnv
   home: string
+  review?: ReviewSettings
 }): (blocked: BlockedCommand) => string {
   const context: FixContext = {
     external:
       !input.pullRequest.private && !TRUSTED_ASSOCIATIONS.has(input.pullRequest.association),
     configPath: join(userConfigDir(input.env, input.home), 'config.yml'),
+    policy: skillPolicy(input.pullRequest, input.review ?? {}).commands,
   }
   return (blocked) => blockedFix(blocked, context)
 }
 
-function commandPrefixes(command: string): string[] {
+function commandPrefixes(command: string, policy: CommandPolicy): string[] {
   const segments = command
     .split(/&&|\|\||;|\|/)
     .map((segment) => words(segment))
     .filter((segment) => segment.length > 0)
-  const denied = segments.filter((segment) => !allowed(segment))
+  const denied = segments.filter((segment) => !allowed(segment, policy))
   const work = denied.filter((segment) => !PLUMBING.has(segment[0] ?? ''))
   const chosen =
     work.length > 0 ? work.slice(0, 1) : denied.length > 0 ? denied : segments.slice(0, 1)
@@ -70,6 +85,7 @@ function commandPrefixes(command: string): string[] {
 }
 
 function prefixOf(segment: readonly string[]): string {
+  if (PLUMBING.has(segment[0] ?? '')) return segment[0] ?? ''
   const prefix: string[] = []
   for (const [index, word] of segment.entries()) {
     if (index > 0 && (word.startsWith('-') || word.includes('/'))) break
@@ -85,7 +101,9 @@ function words(segment: string): string[] {
   return start === -1 ? [] : all.slice(start)
 }
 
-function allowed(segment: readonly string[]): boolean {
+function allowed(segment: readonly string[], policy: CommandPolicy): boolean {
+  if (policy === 'all') return true
   const text = segment.join(' ')
-  return READ_ONLY_COMMANDS.some((command) => text === command || text.startsWith(`${command} `))
+  const commands = [...READ_ONLY_COMMANDS, ...(policy === 'read-only' ? [] : policy)]
+  return commands.some((command) => text === command || text.startsWith(`${command} `))
 }

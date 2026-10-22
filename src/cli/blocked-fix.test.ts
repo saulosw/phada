@@ -63,3 +63,33 @@ describe('blockedFixer', () => {
     expect(own({ tool: 'Bash', input: 'npm test' })).toContain('in /cfg/config.yml')
   })
 })
+
+describe('blockedFix with your command list', () => {
+  const listed = { external: false, configPath: '/cfg/config.yml', policy: ['npm test'] }
+
+  it.each([
+    ['cd sub && npm test', '"cd"'],
+    ['npm test | tee out.txt', '"tee"'],
+  ])('suggests only what your list does not allow: %s', (command, expected) => {
+    expect(blockedFix({ tool: 'Bash', input: command }, listed)).toBe(
+      `allow it with review.commands: [${expected}] in /cfg/config.yml`,
+    )
+  })
+
+  it('reads the list from your config', () => {
+    const fixer = blockedFixer({
+      pullRequest: pullRequestFixture(),
+      env: { PHADA_CONFIG_HOME: '/cfg' },
+      home: '/home/u',
+      review: { commands: { policy: ['npm test'], origin: 'user:config.yml' } },
+    })
+
+    expect(fixer({ tool: 'Bash', input: 'npm test && make lint' })).toContain('["make lint"]')
+  })
+
+  it('names a tool a native skill cannot use', () => {
+    expect(blockedFix({ tool: 'mcp__other__x', input: '{}' }, listed)).toBe(
+      'this tool is not available to a native skill',
+    )
+  })
+})
