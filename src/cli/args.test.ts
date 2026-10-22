@@ -452,6 +452,14 @@ describe('parseCliArgs history', () => {
       'phada history prune takes only --older-than.',
     ],
     [['history', '--older-than', '30d'], '--older-than only works with phada history prune.'],
+    [
+      ['history', '--since', '999999999d'],
+      'Invalid --since "999999999d". Use a duration like 30d, 12h or 90m.',
+    ],
+    [
+      ['history', 'prune', '--older-than', '999999999d'],
+      'Invalid --older-than "999999999d". Use a duration like 180d.',
+    ],
   ])('refuses %j', (argv, message) => {
     expect(() => parseCliArgs(argv)).toThrow(message)
   })

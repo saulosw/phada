@@ -63,6 +63,7 @@ export type CliCommand =
 
 export const DEFAULT_HISTORY_LIMIT = 50
 const MIN_PRUNE_MS = durationMs('1d')
+const MAX_AGE_MS = durationMs('36500d')
 
 export const USAGE = `Usage: phada <command> [options]
 
@@ -466,10 +467,10 @@ function parseHistoryArgs(argv: readonly string[]): CliCommand {
     if (olderThan === undefined) {
       throw new UsageError('phada history prune needs --older-than, e.g. --older-than 180d.')
     }
-    if (!DURATION.test(olderThan)) {
+    const olderThanMs = ageMs(olderThan)
+    if (olderThanMs === undefined) {
       throw new UsageError(`Invalid --older-than "${olderThan}". Use a duration like 180d.`)
     }
-    const olderThanMs = durationMs(olderThan)
     if (olderThanMs < MIN_PRUNE_MS) throw new UsageError('Use --older-than 1d at least.')
     return { kind: 'history-prune', olderThanMs, debug: values.debug }
   }
@@ -486,7 +487,8 @@ function parseHistoryArgs(argv: readonly string[]): CliCommand {
       : isPullRequestRef(input)
         ? { kind: 'pull', ref: parsePullRequestRef(input) }
         : { kind: 'repo', repo: parseRepositoryName(input) }
-  if (values.since !== undefined && !DURATION.test(values.since)) {
+  const sinceMs = values.since === undefined ? undefined : ageMs(values.since)
+  if (values.since !== undefined && sinceMs === undefined) {
     throw new UsageError(`Invalid --since "${values.since}". Use a duration like 30d, 12h or 90m.`)
   }
   const limit = values.limit === undefined ? DEFAULT_HISTORY_LIMIT : Number(values.limit)
@@ -500,13 +502,19 @@ function parseHistoryArgs(argv: readonly string[]): CliCommand {
   return {
     kind: 'history',
     ...(target === undefined ? {} : { target }),
-    ...(values.since === undefined ? {} : { sinceMs: durationMs(values.since) }),
+    ...(sinceMs === undefined ? {} : { sinceMs }),
     limit,
     stats: values.stats,
     refresh: values.refresh,
     format,
     debug: values.debug,
   }
+}
+
+function ageMs(text: string): number | undefined {
+  if (!DURATION.test(text)) return undefined
+  const ms = durationMs(text)
+  return ms <= MAX_AGE_MS ? ms : undefined
 }
 
 function parseRepositoryName(name: string): RepositoryName {
