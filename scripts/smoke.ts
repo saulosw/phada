@@ -56,6 +56,15 @@ try {
   const indexHelp = spawnSync(phada, ['index', '--help'], { encoding: 'utf8', timeout: TIMEOUT_MS })
   check(indexHelp.status === 0 && indexHelp.stdout.startsWith('Usage: phada index'), 'index --help')
   check(!indexHelp.stderr.includes('ExperimentalWarning'), 'index --help prints a warning')
+  const builtInPrompt = spawnSync(phada, ['prompt', '--default'], {
+    encoding: 'utf8',
+    env: withoutTokens(),
+    timeout: TIMEOUT_MS,
+  })
+  check(
+    builtInPrompt.status === 0 && builtInPrompt.stdout.includes('You are a senior engineer'),
+    `phada prompt --default: exit ${builtInPrompt.status}, ${builtInPrompt.stderr}`,
+  )
 
   const noToken = spawnSync(phada, ['review', 'acme/shop#1'], {
     encoding: 'utf8',
