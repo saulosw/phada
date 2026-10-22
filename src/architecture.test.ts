@@ -179,6 +179,7 @@ const APP: Boundary = {
     '../repository/git-checkout.js',
     '../review/diff-fingerprint.js',
     '../review/impact-text.js',
+    '../review/prompt.js',
     '../review/recheck-threads.js',
     '../review/run-review.js',
     '../store/index-store.js',

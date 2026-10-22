@@ -2030,3 +2030,34 @@ describe('run review with skills', () => {
     expect(h.stderr()).toContain('phada: Skill "nope" is not installed.')
   })
 })
+
+describe('run prompt', () => {
+  it('prints the built-in prompt without a token', async () => {
+    const h = harness({ env: { PHADA_CONFIG_HOME: '/cfg' } })
+
+    expect(await run(['prompt', '--default'], h.deps)).toBe(0)
+    expect(h.stdout()).toContain('Built-in prompt, without a pull request')
+    expect(h.stdout()).toContain('You are a senior engineer reviewing a pull request.')
+  })
+
+  it('prints the prompt of a pull request without calling the AI', async () => {
+    const h = harness({
+      repoFiles: {
+        '.phada/config.yml': 'review:\n  prompt:\n    file: .phada/review.md\n',
+        '.phada/review.md': 'Flag missing tests.',
+      },
+    })
+
+    expect(await run(['prompt', 'acme/shop#12'], h.deps)).toBe(0)
+    expect(h.stdout()).toContain('Prompt for acme/shop#12')
+    expect(h.stdout()).toContain('### lens — .phada/config.yml → .phada/review.md')
+    expect(h.stdout()).toContain('Additional review focus set by the user:\nFlag missing tests.')
+    expect(h.prompts).toHaveLength(0)
+  })
+
+  it('needs a token for a pull request', async () => {
+    const h = harness({ env: { PHADA_CONFIG_HOME: '/cfg' } })
+
+    expect(await run(['prompt', 'acme/shop#12'], h.deps)).toBe(1)
+  })
+})

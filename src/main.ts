@@ -29,6 +29,7 @@ import { formatPullRequestSummary, formatReview } from './cli/format-review.js'
 import { messagesFor } from './cli/i18n/messages.js'
 import { runIndex } from './cli/index-command.js'
 import { runInit } from './cli/init.js'
+import { runPrompt } from './cli/prompt-command.js'
 import { runRules } from './cli/rules-command.js'
 import { runHistory, runHistoryPrune } from './cli/history-command.js'
 import { pullRequestReviewDeps, renderReview, reviewRunJson } from './cli/review-wiring.js'
@@ -90,6 +91,10 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
     }
     if (command.kind === 'rules') {
       await runRules(command, deps)
+      return 0
+    }
+    if (command.kind === 'prompt') {
+      await runPrompt(command, deps)
       return 0
     }
     if (command.kind === 'watch') return await runWatch(command, deps)

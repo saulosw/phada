@@ -94,8 +94,6 @@ export function buildReviewPrompt(
   tools?: Toolbox,
   pass?: SkillPass,
 ): ReviewPrompt {
-  const { pullRequest, context } = request
-  const docs = context?.docs ?? []
   const toolNames = toolNamesOf(tools)
   const parts = reviewInstructionParts(
     { ...request, ...(toolNames === undefined ? {} : { toolNames }) },
@@ -104,15 +102,39 @@ export function buildReviewPrompt(
   return {
     instructions: parts.map((part) => part.text).join('\n\n'),
     data: [
-      block('PHADA_PR', nonce, pullRequestDetails(pullRequest, context?.ignored)),
-      ...(docs.length === 0 ? [] : [block('PHADA_DOCS', nonce, docsBlock(docs))]),
+      ...reviewDataBlocks(request).map(({ name, content }) => block(name, nonce, content)),
       ...relatedBlocks(request.related, nonce),
       ...impactBlocks(request.impact, nonce),
-      block('PHADA_DIFF', nonce, annotateDiff(pullRequest.diff)),
-    ].join('\n\n'),
+    ]
+      .sort(byBlockOrder)
+      .join('\n\n'),
     outputSchema: REVIEW_REPORT_JSON_SCHEMA,
     ...(tools === undefined ? {} : { tools }),
   }
+}
+
+export interface DataBlock {
+  name: string
+  content: string
+}
+
+export function reviewDataBlocks({
+  pullRequest,
+  context,
+}: Pick<ReviewRequest, 'pullRequest' | 'context'>): DataBlock[] {
+  const docs = context?.docs ?? []
+  return [
+    { name: 'PHADA_PR', content: pullRequestDetails(pullRequest, context?.ignored) },
+    ...(docs.length === 0 ? [] : [{ name: 'PHADA_DOCS', content: docsBlock(docs) }]),
+    { name: 'PHADA_DIFF', content: annotateDiff(pullRequest.diff) },
+  ]
+}
+
+const BLOCK_ORDER = ['PHADA_PR', 'PHADA_DOCS', 'PHADA_RELATED', 'PHADA_IMPACT', 'PHADA_DIFF']
+
+function byBlockOrder(a: string, b: string): number {
+  const rank = (text: string) => BLOCK_ORDER.findIndex((name) => text.startsWith(`<<<${name}_`))
+  return rank(a) - rank(b)
 }
 
 export function reviewInstructionParts(
