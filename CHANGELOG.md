@@ -19,7 +19,7 @@ output can change between minor versions.
   its output becomes the body of the review. `--dry-run` and the JSON (`passes[].output`,
   `skillBodies`) show the skill's output.
 - `gh` inside a native skill is answered by Phada: pull request reads from Phada's data, other
-  reads of the same repository through Phada's token (60 per pass), and `gh pr comment`,
+  reads and searches of the same repository through Phada's token (60 per pass), and `gh pr comment`,
   `gh pr review` and `gh api` posts of comments or reviews kept as the skill's output and never
   sent.
 - `review.commands` (`read-only` by default, a list of commands, or `all`), `review.readDirs`
@@ -27,6 +27,8 @@ output can change between minor versions.
   repositories from outside authors always run read-only. Each command or read a skill was
   refused is shown on stderr, in `--dry-run` and in the JSON (`passes[].blocked`) with the
   config line that allows it.
+- `git` inside a native skill refuses options that could run a program, write a file or read
+  outside the checkout.
 - `{ name, mode: text }` keeps a skill in text mode; `claude:<name>` names a skill built into
   Claude Code. Codex and Ollama keep text mode.
 - `phada prompt` shows a native pass: the message, the context Phada adds, the commands and
@@ -50,6 +52,7 @@ output can change between minor versions.
 
 ### Changed
 
+- Ctrl-C during `phada review` stops it at once and removes its temporary files.
 - Text Phada publishes on a pull request is checked for token patterns, which are replaced by
   `[REDACTED]`.
 

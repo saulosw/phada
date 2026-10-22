@@ -198,9 +198,12 @@ src/
     gh-jq.ts             #   applyJq(): --jq with paths only
     gh-answer.ts         #   answerGh(): reads from Phada's data or the repository reader, writes
                          #   captured, the rest refused
-    gh-server.ts         #   serveGhFacade(): socket server, bin/gh, read limit, captures
+    gh-server.ts         #   serveGhFacade(): socket server, bin/gh and bin/git, read limit per pass,
+                         #   captures
     gh-bridge.ts         #   the executable bin/gh runs: argv, stdin and files in the checkout
                          #   → the socket
+    git-guard.ts         #   gitRefusal(): git options a native skill may not use
+    git-bridge.ts        #   the executable bin/git runs: refuse or exec the real git
     types.ts             #   GhPullData, GhCommand, ReadGitHub, GhFacadeError
   graph/                 # the repository graph, resolved on demand from the index of a commit
     types.ts             #   RepositoryGraph, GraphSymbol, Site, Dependency, …

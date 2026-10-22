@@ -424,11 +424,14 @@ terminal, in a temporary checkout of the pull request head:
   `merge-base`, `ls-files`, `grep`) and `gh`, unless `review.commands` allows more. It cannot
   write files or use the web, and it reads only inside the checkout, its own folder and
   `review.readDirs`. The repository's own `.claude/` settings and `CLAUDE.md` are not loaded.
+  `git` options that could run a program, write a file or read outside the checkout (such as
+  `grep -O`, `--output`, `--no-index`, `blame --contents`, `-c` or `-C`) are refused.
 - **`gh` is answered by Phada.** `gh pr view` and `gh pr diff` come from the data Phada already
   fetched; the pull request shows as open and not a draft, without the reviews and comments of the
   token's owner. Other reads of the same repository (`gh pr list`, `gh issue view`,
   `gh issue list`, `gh search prs`, `gh search issues`, `gh repo view`, `gh api` GET under
-  `repos/<owner>/<repo>/`) go through Phada with its token, up to 60 per pass. `gh pr comment`,
+  `repos/<owner>/<repo>/`) go through Phada with its token, up to 60 per pass; searches only
+  ever look in that repository. `gh pr comment`,
   `gh pr review` and `gh api` posts of comments or reviews on this pull request are kept as the
   skill's output and **never sent**. Anything else fails with a message that lists what works;
   `--jq` takes paths like `.files[].path`.
