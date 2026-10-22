@@ -302,7 +302,7 @@ describe('HistoryStore prune', () => {
   const OLD_AT = '2026-01-01T00:00:00.000Z'
   const CUT = '2026-06-01T00:00:00.000Z'
 
-  async function filled() {
+  async function filled(watchedHead = 'b'.repeat(40)) {
     const store = await openHistoryStore(fresh())
     const oldJob = store.addJob({ ...JOB, status: 'done', finishedAt: OLD_AT, createdAt: OLD_AT })
     store.addJob({ ...JOB, number: 4, status: 'queued', createdAt: OLD_AT })
@@ -337,7 +337,7 @@ describe('HistoryStore prune', () => {
     store.savePull({
       repo: 'acme/shop',
       number: 3,
-      headSha: 'a'.repeat(40),
+      headSha: watchedHead,
       headSeenAt: OLD_AT,
       eligible: true,
       state: 'open',
@@ -367,6 +367,14 @@ describe('HistoryStore prune', () => {
     expect(store.repo('acme/shop')).toEqual({ repo: 'acme/shop', checkedAt: OLD_AT })
     expect(store.pulls('acme/shop')).toHaveLength(1)
     expect(store.pause()).toEqual({ until: OLD_AT, reason: 'usage-limit', streak: 1 })
+    store.close()
+  })
+
+  it('prune keeps the finished job of the head an open pull request is still at', async () => {
+    const store = await filled('a'.repeat(40))
+
+    expect(store.prune(CUT)).toMatchObject({ runs: 1, findings: 1, jobs: 0 })
+    expect(store.jobs({}).map((job) => job.number)).toEqual([3, 4, 5, 6])
     store.close()
   })
 

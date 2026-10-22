@@ -403,7 +403,10 @@ class SqliteHistoryStore implements HistoryStore {
       const findings = this.#changes('delete from finding where published_at < ?', before)
       const jobs = this.#changes(
         `delete from job where status in ('done', 'failed', 'skipped', 'superseded')
-         and finished_at < ? and not exists (select 1 from run where run.job_id = job.id)`,
+         and finished_at < ? and not exists (select 1 from run where run.job_id = job.id)
+         and not exists (
+           select 1 from watched_pull w where w.repo = job.repo and w.number = job.number
+           and w.head_sha = job.head_sha and w.state = 'open')`,
         before,
       )
       this.#db
