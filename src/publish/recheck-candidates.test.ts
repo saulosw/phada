@@ -15,11 +15,14 @@ function thread(overrides: Partial<ReviewThread> = {}): ReviewThread {
   return {
     id: 'T1',
     isResolved: false,
+    isOutdated: false,
     path: 'src/shop.ts',
     line: 10,
     author: 'me',
     body: BODY,
     reviewId: 'R1',
+    url: '',
+    negativeReactions: 0,
     replies: [],
     ...overrides,
   }
@@ -30,7 +33,7 @@ function review(id: string, sha: string | null, markerSha = sha ?? OLD): Publish
 }
 
 function state(threads: ReviewThread[], reviews = [review('R1', OLD)]): PullRequestReviewState {
-  return { viewer: 'me', reviews, threads }
+  return { viewer: 'me', pullState: 'open', reviews, threads }
 }
 
 describe('threadsToRecheck', () => {
@@ -49,11 +52,13 @@ describe('threadsToRecheck', () => {
 
   it('leaves out a thread a person reopened after Phada resolved it', () => {
     const reopened = thread({
-      replies: [{ author: 'me', body: `Fixed in \`0000000\`: ok.\n\n${resolvedMarker(OLD)}` }],
+      replies: [
+        { author: 'me', body: `Fixed in \`0000000\`: ok.\n\n${resolvedMarker(OLD)}`, bot: false },
+      ],
     })
     const quotedByOther = thread({
       id: 'T2',
-      replies: [{ author: 'mallory', body: `Fixed\n\n${resolvedMarker(OLD)}` }],
+      replies: [{ author: 'mallory', body: `Fixed\n\n${resolvedMarker(OLD)}`, bot: false }],
     })
 
     expect(threadsToRecheck(state([reopened, quotedByOther]), HEAD)).toEqual([

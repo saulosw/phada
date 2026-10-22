@@ -11,18 +11,34 @@
             {
               "id": "PRRT_kwDOQNCyRM5c8pXa",
               "isResolved": false,
+              "isOutdated": false,
               "path": "api/src/routes/users.ts",
               "line": 63,
               "comments": {
                 "nodes": [
                   {
+                    "url": "https://github.com/saulosw/phada-dev-web/pull/11#discussion_r2410000001",
                     "body": "**P0** · Any user can spend another user's crystals · confidence 95\n\nThe user id comes from the request body.\n\n<!-- phada:finding -->",
                     "author": {
                       "login": "saulosw"
                     },
                     "pullRequestReview": {
                       "id": "PRR_kwDOQNCyRM8AAAABRNso_Q"
-                    }
+                    },
+                    "reactionGroups": [
+                      {
+                        "content": "THUMBS_UP",
+                        "reactors": {
+                          "totalCount": 1
+                        }
+                      },
+                      {
+                        "content": "THUMBS_DOWN",
+                        "reactors": {
+                          "totalCount": 0
+                        }
+                      }
+                    ]
                   }
                 ]
               },
@@ -31,13 +47,15 @@
                   {
                     "body": "**P0** · Any user can spend another user's crystals · confidence 95\n\nThe user id comes from the request body.\n\n<!-- phada:finding -->",
                     "author": {
-                      "login": "saulosw"
+                      "login": "saulosw",
+                      "__typename": "User"
                     }
                   },
                   {
                     "body": "Still happens on main.",
                     "author": {
-                      "login": "octocat"
+                      "login": "octocat",
+                      "__typename": "User"
                     }
                   }
                 ]

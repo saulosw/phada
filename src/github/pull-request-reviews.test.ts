@@ -64,6 +64,7 @@ describe('fetchReviewState', () => {
 
     expect(state).toEqual({
       viewer: 'saulosw',
+      pullState: 'open',
       reviews: [
         {
           id: REVIEW_ID,
@@ -76,21 +77,75 @@ describe('fetchReviewState', () => {
         {
           id: 'PRRT_kwDOQNCyRM5c8pXa',
           isResolved: false,
+          isOutdated: false,
           path: 'api/src/routes/users.ts',
           line: 63,
+          url: 'https://github.com/saulosw/phada-dev-web/pull/11#discussion_r2410000001',
           author: 'saulosw',
           body: "**P0** · Any user can spend another user's crystals · confidence 95\n\nThe user id comes from the request body.\n\n<!-- phada:finding -->",
           reviewId: REVIEW_ID,
+          negativeReactions: 0,
           replies: [
             {
               author: 'saulosw',
               body: "**P0** · Any user can spend another user's crystals · confidence 95\n\nThe user id comes from the request body.\n\n<!-- phada:finding -->",
+              bot: false,
             },
-            { author: 'octocat', body: 'Still happens on main.' },
+            { author: 'octocat', body: 'Still happens on main.', bot: false },
           ],
         },
       ],
     })
+  })
+
+  it.each([
+    ['MERGED', 'merged'],
+    ['CLOSED', 'closed'],
+  ])('reads a %s pull request state', async (state, expected) => {
+    const reviews = fixture('graphql-reviews.json')
+    ;((reviews.data as Json).repository as Json).pullRequest = {
+      ...(((reviews.data as Json).repository as Json).pullRequest as Json),
+      state,
+    }
+    const { fetch } = fakeGitHub([ok(reviews)], [ok(fixture('graphql-threads.json'))])
+
+    expect((await fetchWith(fetch)).pullState).toBe(expected)
+  })
+
+  it('counts thumbs down and confused reactions and reads outdated threads', async () => {
+    const threads = withPage(fixture('graphql-threads.json'), 'reviewThreads', (root) => {
+      const [thread] = root.nodes as Json[]
+      thread!.isOutdated = true
+      const [comment] = (thread!.comments as Json).nodes as Json[]
+      comment!.reactionGroups = [
+        { content: 'THUMBS_DOWN', reactors: { totalCount: 2 } },
+        { content: 'CONFUSED', reactors: { totalCount: 1 } },
+        { content: 'HEART', reactors: { totalCount: 3 } },
+      ]
+    })
+    const { fetch } = fakeGitHub([ok(fixture('graphql-reviews.json'))], [ok(threads)])
+
+    const [thread] = (await fetchWith(fetch)).threads
+
+    expect(thread).toMatchObject({ isOutdated: true, negativeReactions: 3 })
+  })
+
+  it('marks replies written by bots and treats a deleted author as a person', async () => {
+    const threads = withPage(fixture('graphql-threads.json'), 'reviewThreads', (root) => {
+      const [thread] = root.nodes as Json[]
+      ;(thread!.replies as Json).nodes = [
+        { body: 'Deployed.', author: { login: 'ci-bot', __typename: 'Bot' } },
+        { body: 'Gone.', author: null },
+      ]
+    })
+    const { fetch } = fakeGitHub([ok(fixture('graphql-reviews.json'))], [ok(threads)])
+
+    const [thread] = (await fetchWith(fetch)).threads
+
+    expect(thread?.replies).toEqual([
+      { author: 'ci-bot', body: 'Deployed.', bot: true },
+      { author: '', body: 'Gone.', bot: false },
+    ])
   })
 
   it('asks for the thread id, its first comment and its last 20 replies', async () => {

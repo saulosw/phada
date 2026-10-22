@@ -5,6 +5,7 @@
     },
     "repository": {
       "pullRequest": {
+        "state": "OPEN",
         "reviews": {
           "pageInfo": {
             "hasNextPage": false,

@@ -65,7 +65,12 @@ const RECHECK_FIXED: ReviewOutput = {
 
 const HEAD_SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
 const REVIEW_URL = 'https://github.com/acme/shop/pull/12#pullrequestreview-1'
-const EMPTY_STATE: PullRequestReviewState = { viewer: 'octocat', reviews: [], threads: [] }
+const EMPTY_STATE: PullRequestReviewState = {
+  viewer: 'octocat',
+  pullState: 'open',
+  reviews: [],
+  threads: [],
+}
 
 interface Harness {
   deps: MainDeps
@@ -339,6 +344,7 @@ function harness(
 function phadaState(threads: Partial<ReviewThread>[], findings = 1): PullRequestReviewState {
   return {
     viewer: 'octocat',
+    pullState: 'open',
     reviews: [
       {
         id: 'R1',
@@ -350,11 +356,14 @@ function phadaState(threads: Partial<ReviewThread>[], findings = 1): PullRequest
     threads: threads.map((thread, index) => ({
       id: `T${index + 1}`,
       isResolved: false,
+      isOutdated: false,
       path: 'src/shop.ts',
       line: 3,
       author: 'octocat',
       body: `**P1** · spend has no auth · confidence 90\n\nWhy.\n\n${FINDING_MARKER}`,
       reviewId: 'R1',
+      url: '',
+      negativeReactions: 0,
       replies: [],
       ...thread,
     })),
@@ -702,6 +711,7 @@ describe('run publishing', () => {
     const earlier = (): Promise<PullRequestReviewState> =>
       Promise.resolve({
         viewer: 'octocat',
+        pullState: 'open',
         reviews: [
           {
             id: 'R0',
@@ -714,11 +724,14 @@ describe('run publishing', () => {
           {
             id: 'T1',
             isResolved: false,
+            isOutdated: false,
             path: 'src/shop.ts',
             line: 3,
             author: 'octocat',
             body: `**P1** · Balance leaks · confidence 90\n\nWhy.\n\n${FINDING_MARKER}`,
             reviewId: 'R0',
+            url: '',
+            negativeReactions: 0,
             replies: [],
           },
         ],

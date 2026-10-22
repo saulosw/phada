@@ -30,6 +30,7 @@ function state(
 ): PullRequestReviewState {
   return {
     viewer: 'octocat',
+    pullState: 'open',
     reviews: options.reviewedHead
       ? [
           {
@@ -45,11 +46,14 @@ function state(
           {
             id: 'T1',
             isResolved: options.resolved ?? false,
+            isOutdated: false,
             path: 'src/other.ts',
             line: 90,
             author: 'octocat',
             body: `**P1** · Old · confidence 90\n\nWhy.\n\n${FINDING_MARKER}`,
             reviewId: 'R1',
+            url: '',
+            negativeReactions: 0,
             replies: [],
           },
         ]
@@ -65,6 +69,7 @@ function earlierComments(
 ): () => Promise<PullRequestReviewState> {
   return async () => ({
     viewer: 'octocat',
+    pullState: 'open',
     reviews: [
       {
         id: 'R0',
@@ -76,6 +81,7 @@ function earlierComments(
     threads: threads.map(({ id, path = 'src/shop.ts', title }) => ({
       id,
       isResolved: false,
+      isOutdated: false,
       path,
       line: 3,
       author: 'octocat',
@@ -84,6 +90,8 @@ function earlierComments(
           ? OLD_THREAD_BODY
           : `**P1** · ${title} · confidence 90\n\nWhy.\n\n${FINDING_MARKER}`,
       reviewId: 'R0',
+      url: '',
+      negativeReactions: 0,
       replies: [],
     })),
   })
@@ -234,6 +242,7 @@ describe('reviewAndPublish', () => {
     const OLD = '0'.repeat(40)
     const reviewedBefore = async (): Promise<PullRequestReviewState> => ({
       viewer: 'octocat',
+      pullState: 'open',
       reviews: [
         {
           id: 'R0',

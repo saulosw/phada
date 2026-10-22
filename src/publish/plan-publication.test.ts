@@ -8,18 +8,21 @@ function thread(overrides: Partial<ReviewThread> = {}): ReviewThread {
   return {
     id: 'T1',
     isResolved: false,
+    isOutdated: false,
     path: 'src/shop.ts',
     line: 10,
     author: 'me',
     body: `**P1** · Spend has no auth · confidence 90\n\nWhy.\n\n${FINDING_MARKER}`,
     reviewId: 'R1',
+    url: '',
+    negativeReactions: 0,
     replies: [],
     ...overrides,
   }
 }
 
 function state(threads: ReviewThread[]): PullRequestReviewState {
-  return { viewer: 'me', reviews: [], threads }
+  return { viewer: 'me', pullState: 'open', reviews: [], threads }
 }
 
 describe('planPublication', () => {
@@ -163,8 +166,13 @@ describe('planPublication', () => {
     const byPhada = (overrides: Partial<ReviewThread> = {}) =>
       thread({
         isResolved: true,
+        isOutdated: false,
         replies: [
-          { author: 'me', body: `Fixed in \`a1b2c3d\`: checked.\n\n${resolvedMarker(HEAD)}` },
+          {
+            author: 'me',
+            body: `Fixed in \`a1b2c3d\`: checked.\n\n${resolvedMarker(HEAD)}`,
+            bot: false,
+          },
         ],
         ...overrides,
       })
@@ -177,7 +185,7 @@ describe('planPublication', () => {
 
     it('holds back the finding of a thread a person resolved even after a Phada reply', () => {
       const replied = byPhada({
-        replies: [{ author: 'mallory', body: `Done\n\n${resolvedMarker(HEAD)}` }],
+        replies: [{ author: 'mallory', body: `Done\n\n${resolvedMarker(HEAD)}`, bot: false }],
       })
       const same = findingFixture({ line: 10 })
 
