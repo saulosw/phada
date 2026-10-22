@@ -153,8 +153,11 @@ const GRAPH: Boundary = {
 const APP: Boundary = {
   dir: 'app',
   values: new Set([
+    '../config/errors.js',
     '../context/load-context.js',
     '../context/list-context.js',
+    '../context/split-diff.js',
+    '../skills/errors.js',
     '../config/merge-config.js',
     '../config/parse-config.js',
     '../context/ignore.js',

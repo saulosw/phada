@@ -41,6 +41,7 @@ import type { Publication } from './format-json.js'
 import { formatRelatedLine } from './format-related.js'
 import { messagesFor } from './i18n/messages.js'
 import { indexProgress, withProgress } from './progress.js'
+import { diskSkillCatalog } from './skill-catalog.js'
 import { toTerminalText } from './terminal-text.js'
 
 export interface ReviewWiringDeps extends ContextReaders {
@@ -126,6 +127,7 @@ export function pullRequestReviewDeps(
         ...(servers.length === 0 ? {} : { userMcpServers: [...servers] }),
       }),
     watchProvider: (provider, pass) => withProgress(provider, deps.stderr, PROGRESS_LABELS[pass]),
+    skills: diskSkillCatalog(deps.files, deps.env, deps.home),
     related: {
       readRepository: (name) =>
         deps.fetchRepository({ ...splitRepoName(name), token }).catch((error: unknown) => {
