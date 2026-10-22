@@ -231,3 +231,154 @@ describe('HistoryStore records', () => {
     store.close()
   })
 })
+
+describe('HistoryStore queries', () => {
+  const at = (hour: number) => `2026-10-18T${String(hour).padStart(2, '0')}:00:00.000Z`
+
+  it('runs filters by repo, number and since, newest first, with total before the limit', async () => {
+    const store = await openHistoryStore(fresh())
+    store.addRun({ ...RUN, startedAt: at(1) })
+    store.addRun({ ...RUN, startedAt: at(3) })
+    store.addRun({ ...RUN, number: 4, startedAt: at(4) })
+    store.addRun({ ...RUN, repo: 'acme/other', startedAt: at(5) })
+
+    const all = store.runs({ limit: 2 })
+    const shop = store.runs({ repo: 'Acme/Shop', number: 3, since: at(2) })
+
+    expect(all.total).toBe(4)
+    expect(all.runs.map((run) => run.startedAt)).toEqual([at(5), at(4)])
+    expect(shop).toEqual({ runs: [expect.objectContaining({ startedAt: at(3) })], total: 1 })
+    store.close()
+  })
+
+  it('runs never return resultJson', async () => {
+    const store = await openHistoryStore(fresh())
+    store.addRun(RUN)
+
+    expect(store.runs({}).runs[0]).not.toHaveProperty('resultJson')
+    store.close()
+  })
+
+  it('feedbackDue lists pulls with findings or published runs with findings, oldest observation first', async () => {
+    const store = await openHistoryStore(fresh())
+    store.addRun({ ...RUN, number: 7 })
+    store.addRun({ ...RUN, number: 8, findings: 0 })
+    store.addRun({ ...RUN, number: 9, status: 'dry-run' })
+    store.observeFeedback({
+      repo: 'acme/shop',
+      number: 3,
+      pullState: 'open',
+      observedAt: at(1),
+      source: 'watch',
+      threads: [],
+    })
+    store.recordPublished([
+      {
+        repo: 'acme/shop',
+        number: 3,
+        commitSha: 'a'.repeat(40),
+        fingerprint: 'a.ts:x',
+        file: 'a.ts',
+        line: 1,
+        title: 'X',
+        severity: 'P2',
+        confidence: 80,
+        publishedAt: at(1),
+      },
+    ])
+
+    expect(store.feedbackDue({}, at(2))).toEqual([
+      { repo: 'acme/shop', number: 7 },
+      { repo: 'acme/shop', number: 3 },
+    ])
+    expect(store.feedbackDue({}, at(2), 1)).toEqual([{ repo: 'acme/shop', number: 7 }])
+    expect(store.feedbackDue({ repos: ['acme/other'] }, at(2))).toEqual([])
+    expect(store.feedbackDue({ repo: 'acme/shop', number: 3 }, at(1))).toEqual([])
+    store.close()
+  })
+})
+
+describe('HistoryStore prune', () => {
+  const OLD_AT = '2026-01-01T00:00:00.000Z'
+  const CUT = '2026-06-01T00:00:00.000Z'
+
+  async function filled() {
+    const store = await openHistoryStore(fresh())
+    const oldJob = store.addJob({ ...JOB, status: 'done', finishedAt: OLD_AT, createdAt: OLD_AT })
+    store.addJob({ ...JOB, number: 4, status: 'queued', createdAt: OLD_AT })
+    store.addJob({ ...JOB, number: 5, status: 'running', createdAt: OLD_AT })
+    const citedJob = store.addJob({ ...JOB, number: 6, status: 'failed', finishedAt: OLD_AT })
+    const oldRun = store.addRun({ ...RUN, jobId: oldJob, startedAt: OLD_AT, finishedAt: OLD_AT })
+    store.addRun({ ...RUN, jobId: citedJob })
+    store.recordPublished([
+      {
+        repo: 'acme/shop',
+        number: 3,
+        commitSha: 'a'.repeat(40),
+        fingerprint: 'a.ts:x',
+        file: 'a.ts',
+        line: 1,
+        title: 'X',
+        severity: 'P2',
+        confidence: 80,
+        runId: oldRun,
+        publishedAt: OLD_AT,
+      },
+    ])
+    store.observeFeedback({
+      repo: 'acme/shop',
+      number: 3,
+      pullState: 'open',
+      observedAt: OLD_AT,
+      source: 'watch',
+      threads: [],
+    })
+    store.saveRepo({ repo: 'acme/shop', checkedAt: OLD_AT })
+    store.savePull({
+      repo: 'acme/shop',
+      number: 3,
+      headSha: 'a'.repeat(40),
+      headSeenAt: OLD_AT,
+      eligible: true,
+      state: 'open',
+    })
+    store.setPause({ until: OLD_AT, reason: 'usage-limit', streak: 1 })
+    return store
+  }
+
+  it('prune removes old runs, findings with their signals and finished jobs no run cites', async () => {
+    const store = await filled()
+
+    const counts = store.prune(CUT)
+
+    expect(counts).toEqual({ runs: 1, findings: 1, jobs: 1, vacuumed: true })
+    expect(store.runs({}).total).toBe(1)
+    expect(store.findings({})).toEqual([])
+    expect(store.jobs({}).map((job) => job.number)).toEqual([4, 5, 6])
+    store.close()
+  })
+
+  it('prune keeps queued and running jobs and the watch state', async () => {
+    const store = await filled()
+
+    store.prune('2099-01-01T00:00:00.000Z')
+
+    expect(store.jobs({ status: ['queued', 'running'] }).map((job) => job.number)).toEqual([4, 5])
+    expect(store.repo('acme/shop')).toEqual({ repo: 'acme/shop', checkedAt: OLD_AT })
+    expect(store.pulls('acme/shop')).toHaveLength(1)
+    expect(store.pause()).toEqual({ until: OLD_AT, reason: 'usage-limit', streak: 1 })
+    store.close()
+  })
+
+  it('prune removes nothing newer than the cut', async () => {
+    const store = await filled()
+
+    expect(store.prune('2025-01-01T00:00:00.000Z')).toEqual({
+      runs: 0,
+      findings: 0,
+      jobs: 0,
+      vacuumed: true,
+    })
+    store.close()
+  })
+})

@@ -15,7 +15,13 @@ import {
 } from './history-columns.js'
 import type { Statement } from './history-columns.js'
 import { isNotADatabase } from './index-store.js'
-import { feedbackDue, findings, observeFeedback, recordPublished } from './history-feedback.js'
+import {
+  feedbackDue,
+  findings,
+  observeFeedback,
+  recordPublished,
+  transaction,
+} from './history-feedback.js'
 import type {
   DueFilter,
   DuePull,
@@ -82,6 +88,20 @@ export interface HistoryStatus {
   pause?: PauseState
 }
 
+export interface HistoryFilter {
+  repo?: string
+  number?: number
+  since?: string
+  limit?: number
+}
+
+export interface PruneCounts {
+  runs: number
+  findings: number
+  jobs: number
+  vacuumed: boolean
+}
+
 export interface HistoryStore {
   readonly path: string
   repo(name: string): RepoRecord | undefined
@@ -101,6 +121,8 @@ export interface HistoryStore {
   observeFeedback(observation: FeedbackObservation): void
   findings(filter: FindingFilter): FindingRecord[]
   feedbackDue(filter: DueFilter, before: string, limit?: number): DuePull[]
+  runs(filter: HistoryFilter): { runs: RunRecord[]; total: number }
+  prune(before: string): PruneCounts
   close(): void
 }
 
@@ -345,8 +367,71 @@ class SqliteHistoryStore implements HistoryStore {
     return feedbackDue(this.#db, filter, before, limit)
   }
 
+  runs(filter: HistoryFilter): { runs: RunRecord[]; total: number } {
+    const where: string[] = []
+    const values: SQLInputValue[] = []
+    if (filter.repo !== undefined) {
+      where.push('repo = ?')
+      values.push(filter.repo.toLowerCase())
+    }
+    if (filter.number !== undefined) {
+      where.push('number = ?')
+      values.push(filter.number)
+    }
+    if (filter.since !== undefined) {
+      where.push('started_at >= ?')
+      values.push(filter.since)
+    }
+    const clause = where.length === 0 ? '' : ` where ${where.join(' and ')}`
+    const total = Number(
+      this.#db.prepare(`select count(*) as total from run${clause}`).get(...values)?.total ?? 0,
+    )
+    const limit = filter.limit === undefined ? '' : ' limit ?'
+    const runs = this.#db
+      .prepare(`select * from run${clause} order by started_at desc, id desc${limit}`)
+      .all(...values, ...(filter.limit === undefined ? [] : [filter.limit]))
+      .map((row) => {
+        const { resultJson: _json, ...run } = fromRow<RunRecord>(row, RUN_TABLE)
+        return run
+      })
+    return { runs, total }
+  }
+
+  prune(before: string): PruneCounts {
+    const counts = transaction(this.#db, () => {
+      const runs = this.#changes('delete from run where started_at < ?', before)
+      const findings = this.#changes('delete from finding where published_at < ?', before)
+      const jobs = this.#changes(
+        `delete from job where status in ('done', 'failed', 'skipped', 'superseded')
+         and finished_at < ? and not exists (select 1 from run where run.job_id = job.id)`,
+        before,
+      )
+      this.#db
+        .prepare(
+          `delete from feedback_pull where not exists (
+             select 1 from finding where finding.repo = feedback_pull.repo
+             and finding.number = feedback_pull.number)
+           and not exists (
+             select 1 from run where run.repo = feedback_pull.repo
+             and run.number = feedback_pull.number)`,
+        )
+        .run()
+      return { runs, findings, jobs }
+    })
+    try {
+      this.#db.exec('vacuum')
+      return { ...counts, vacuumed: true }
+    } catch {
+      return { ...counts, vacuumed: false }
+    }
+  }
+
   close(): void {
     this.#db.close()
+  }
+
+  #changes(sql: string, ...values: SQLInputValue[]): number {
+    return Number(this.#db.prepare(sql).run(...values).changes)
   }
 
   #run({ sql, values }: Statement) {
