@@ -14,12 +14,16 @@ describe('blockedFix', () => {
   })
 
   it.each([
-    ['cd sub && npm test', 'npm test'],
-    ['npm test | tee out.txt', 'npm test'],
+    ['cd sub && npm test', 'cd", "npm test'],
+    ['npm test | tee out.txt', 'npm test", "tee'],
     ['git diff && make lint', 'make lint'],
     ['./scripts/check.sh --fast', './scripts/check.sh'],
     ['FOO=1 npm run build', 'npm run'],
     ['cd /tmp/x/repo; cat /tmp/x/a.diff; git ls-files; gh pr view 2', 'cd", "cat'],
+    [
+      'git diff x && echo -- && cat A.md && ls -d docs; git ls-files | head -40',
+      'echo", "cat", "ls", "head',
+    ],
   ])('suggests the denied part of a compound command: %s', (command, prefix) => {
     expect(fix('Bash', command)).toContain(`review.commands: ["${prefix}"]`)
   })

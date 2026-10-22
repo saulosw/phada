@@ -78,9 +78,7 @@ function commandPrefixes(command: string, policy: CommandPolicy): string[] {
     .map((segment) => words(segment))
     .filter((segment) => segment.length > 0)
   const denied = segments.filter((segment) => !allowed(segment, policy))
-  const work = denied.filter((segment) => !PLUMBING.has(segment[0] ?? ''))
-  const chosen =
-    work.length > 0 ? work.slice(0, 1) : denied.length > 0 ? denied : segments.slice(0, 1)
+  const chosen = denied.length > 0 ? denied : segments.slice(0, 1)
   return [...new Set(chosen.map(prefixOf))]
 }
 
