@@ -1,4 +1,5 @@
 import { posix } from 'node:path'
+import { durationMs } from './duration.js'
 import type { ConfigFile } from './schema.js'
 import type { ConfigLayer, LayerKind } from './types.js'
 
@@ -29,7 +30,10 @@ export interface DeclaredRepository {
 export interface SkillEntry {
   name: string
   paths?: string[]
+  mode?: 'native' | 'text'
 }
+
+export type CommandPolicySetting = 'read-only' | 'all' | string[]
 
 export type ConfigSource = 'repository' | 'local'
 
@@ -49,6 +53,9 @@ export interface ReviewSkillsRef {
 export interface ReviewSettings {
   prompt?: ReviewPromptRef
   skills?: ReviewSkillsRef
+  commands?: { policy: CommandPolicySetting; origin: string }
+  readDirs?: { dirs: string[]; origin: string }
+  timeoutMs?: number
 }
 
 export interface EffectiveConfig {
@@ -80,6 +87,7 @@ const OPTION_PRECEDENCE: readonly LayerKind[] = ['user-repo', 'repo-root', 'user
 const OPTIONS = ['language', 'minConfidence', 'verify', 'investigate', 'resolveThreads'] as const
 const USER_ONLY = ['provider', 'model', 'localFiles', 'mcp', 'watch', 'history'] as const
 const TOP_LEVEL_ONLY = ['watch', 'history'] as const
+const REVIEW_USER_ONLY = ['commands', 'readDirs', 'timeout'] as const
 const HTML_COMMENT = /<!--[\s\S]*?-->/g
 const GLOB_SYNTAX = /[()[\]{}*?!+@\\]/g
 const GLOB_CHARS = /[*?[\]{}!]/
@@ -119,12 +127,19 @@ export function mergeConfig(layers: readonly ConfigLayer[]): EffectiveConfig {
     ignore: [],
     repos: relatedRepositories(bySpecificity),
     privateOnPublic: firstSet((config) => config.context?.privateOnPublic) ?? false,
-    review: reviewSettings(
-      firstLayer((config) => config.review?.prompt),
-      firstLayer((config) =>
-        config.review?.skills?.length === 0 ? undefined : config.review?.skills,
+    review: {
+      ...reviewSettings(
+        firstLayer((config) => config.review?.prompt),
+        firstLayer((config) =>
+          config.review?.skills?.length === 0 ? undefined : config.review?.skills,
+        ),
       ),
-    ),
+      ...reviewUserSettings(
+        firstLayer((config) => config.review?.commands),
+        firstLayer((config) => config.review?.readDirs),
+        firstSet((config) => config.review?.timeout),
+      ),
+    },
     warnings,
   }
   for (const layer of usable) {
@@ -166,6 +181,29 @@ export function userMcpServers(userLayers: readonly ConfigLayer[]): string[] {
   return [...new Set(servers)]
 }
 
+function reviewUserSettings(
+  commandsLayer: ConfigLayer | undefined,
+  readDirsLayer: ConfigLayer | undefined,
+  timeout: string | undefined,
+): ReviewSettings {
+  const commands = commandsLayer?.config.review?.commands
+  const readDirs = readDirsLayer?.config.review?.readDirs
+  return {
+    ...(commandsLayer === undefined || commands === undefined
+      ? {}
+      : {
+          commands: {
+            policy: Array.isArray(commands) && commands.length === 0 ? 'read-only' : commands,
+            origin: commandsLayer.configLabel,
+          },
+        }),
+    ...(readDirsLayer === undefined || readDirs === undefined
+      ? {}
+      : { readDirs: { dirs: readDirs, origin: readDirsLayer.configLabel } }),
+    ...(timeout === undefined ? {} : { timeoutMs: durationMs(timeout) }),
+  }
+}
+
 function reviewSettings(
   promptLayer: ConfigLayer | undefined,
   skillsLayer: ConfigLayer | undefined,
@@ -193,6 +231,7 @@ function reviewSettings(
                 : {
                     name: entry.name,
                     ...(entry.paths === undefined ? {} : { paths: entry.paths }),
+                    ...(entry.mode === undefined ? {} : { mode: entry.mode }),
                   },
             ),
             origin: skillsLayer.configLabel,
@@ -242,6 +281,18 @@ function withoutMisplacedKeys(layer: ConfigLayer, warnings: string[]): ConfigLay
   if (layer.kind === 'user') return layer
   if (layer.kind === 'user-repo') return withoutTopLevelKeys(layer, warnings)
   const config: ConfigFile = { ...layer.config }
+  if (config.review !== undefined) {
+    const review = { ...config.review }
+    for (const key of REVIEW_USER_ONLY) {
+      if (review[key] !== undefined) {
+        warnings.push(
+          `${layer.configLabel}: review.${key} is only read from your own config; ignored.`,
+        )
+        delete review[key]
+      }
+    }
+    config.review = review
+  }
   if (layer.kind === 'repo-dir') {
     for (const key of OPTIONS) {
       if (config[key] !== undefined) {

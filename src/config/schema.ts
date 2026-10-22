@@ -80,6 +80,15 @@ const SkillName = z
   .trim()
   .regex(SKILL_NAME, 'use the skill name, or plugin:skill for a skill of a plugin')
 
+const MIN_REVIEW_TIMEOUT_MS = 60_000
+const MAX_REVIEW_TIMEOUT_MS = 7_200_000
+
+const Command = z
+  .string()
+  .trim()
+  .min(1)
+  .regex(/^[^\n*]+$/, 'write the command without line breaks or *')
+
 const ReviewSchema = z.strictObject({
   prompt: z
     .strictObject({
@@ -88,8 +97,29 @@ const ReviewSchema = z.strictObject({
     })
     .optional(),
   skills: z
-    .array(z.union([SkillName, z.strictObject({ name: SkillName, paths: Globs.optional() })]))
+    .array(
+      z.union([
+        SkillName,
+        z.strictObject({
+          name: SkillName,
+          paths: Globs.optional(),
+          mode: z.enum(['native', 'text']).optional(),
+        }),
+      ]),
+    )
     .optional(),
+  commands: z
+    .union([z.literal('read-only'), z.literal('all'), z.array(Command)], {
+      error: 'use read-only, all or a list of commands',
+    })
+    .optional(),
+  readDirs: z.array(z.string().trim().min(1)).optional(),
+  timeout: Duration.refine(
+    (text) =>
+      !DURATION.test(text) ||
+      (durationMs(text) >= MIN_REVIEW_TIMEOUT_MS && durationMs(text) <= MAX_REVIEW_TIMEOUT_MS),
+    'use a duration from 1m to 2h',
+  ).optional(),
 })
 
 const ContextFileSchema = z.strictObject({

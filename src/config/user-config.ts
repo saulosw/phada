@@ -77,13 +77,15 @@ async function loadLayer(
       ...(review === undefined
         ? {}
         : {
-            review:
-              review.prompt === undefined
-                ? review
-                : {
-                    ...review,
-                    prompt: { ...review.prompt, file: fromConfigDir(dir, review.prompt.file) },
-                  },
+            review: {
+              ...review,
+              ...(review.prompt === undefined
+                ? {}
+                : { prompt: { ...review.prompt, file: fromConfigDir(dir, review.prompt.file) } }),
+              ...(review.readDirs === undefined
+                ? {}
+                : { readDirs: review.readDirs.map((path) => fromConfigDir(dir, path)) }),
+            },
           }),
       ...(localFiles === undefined
         ? {}

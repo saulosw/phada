@@ -278,3 +278,59 @@ describe('review block', () => {
     if (!parsed.ok) expect(parsed.message).toMatch(new RegExp(`^${path.replaceAll('.', '\\.')}`))
   })
 })
+
+describe('review block for native skills', () => {
+  it('reads the skill mode, commands, readDirs and timeout', () => {
+    const text = [
+      'review:',
+      '  skills:',
+      '    - code-review:code-review',
+      '    - name: my-plugin:review',
+      '      mode: text',
+      '    - claude:security-review',
+      '  commands: ["npm test", "make lint"]',
+      '  readDirs: ["~/review-rules"]',
+      '  timeout: 30m',
+    ].join('\n')
+
+    expect(parseConfigText(text)).toEqual({
+      ok: true,
+      config: {
+        review: {
+          skills: [
+            'code-review:code-review',
+            { name: 'my-plugin:review', mode: 'text' },
+            'claude:security-review',
+          ],
+          commands: ['npm test', 'make lint'],
+          readDirs: ['~/review-rules'],
+          timeout: '30m',
+        },
+      },
+    })
+  })
+
+  it.each(['read-only', 'all'])('reads commands: %s', (policy) => {
+    expect(parseConfigText(`review:\n  commands: ${policy}`)).toEqual({
+      ok: true,
+      config: { review: { commands: policy } },
+    })
+  })
+
+  it.each([
+    ['an unknown commands mode', 'review:\n  commands: some', 'review.commands'],
+    ['a command with a wildcard', 'review:\n  commands: ["rm *"]', 'review.commands'],
+    ['a timeout under a minute', 'review:\n  timeout: 10s', 'review.timeout'],
+    ['a timeout over two hours', 'review:\n  timeout: 3h', 'review.timeout'],
+    [
+      'an unknown skill mode',
+      'review:\n  skills:\n    - name: a\n      mode: fast',
+      'review.skills.0',
+    ],
+  ])('rejects %s and names the key', (_case, text, path) => {
+    const parsed = parseConfigText(text)
+
+    expect(parsed.ok).toBe(false)
+    if (!parsed.ok) expect(parsed.message).toContain(path)
+  })
+})
