@@ -103,7 +103,6 @@ export async function buildPasses(input: {
       continue
     }
     warnings.push(...(skill.warnings ?? []))
-    if (native) nativeSkills.set(entry.name, skill.native)
     if (skill.omitted.length > 0) {
       warnings.push(
         `Skill ${entry.name}: ${skill.omitted.join(', ')} did not fit in 32 KB and was left out.`,
@@ -116,6 +115,7 @@ export async function buildPasses(input: {
       input.changedFiles,
       native,
     )
+    if (native && next.pass.skip === undefined) nativeSkills.set(entry.name, skill.native)
     planned.push(
       skill.omitted.length === 0
         ? next

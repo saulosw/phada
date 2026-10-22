@@ -174,6 +174,12 @@ const GRAPH: Boundary = {
 const APP: Boundary = {
   dir: 'app',
   values: new Set([
+    'node:path',
+    '../gh-facade/gh-server.js',
+    '../process/work-dirs.js',
+    '../repository/work-tree.js',
+    '../review/native-context.js',
+    '../watch/filters.js',
     '../config/errors.js',
     '../context/load-context.js',
     '../context/list-context.js',
@@ -210,6 +216,9 @@ const APP: Boundary = {
     '../watch/time.js',
   ]),
   types: new Set([
+    '../gh-facade/gh-server.js',
+    '../gh-facade/types.js',
+    '../repository/work-tree.js',
     '../config/types.js',
     '../config/watch-settings.js',
     '../context/types.js',

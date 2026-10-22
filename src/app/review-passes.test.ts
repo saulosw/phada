@@ -350,3 +350,21 @@ describe('buildPasses native mode', () => {
     ])
   })
 })
+
+describe('buildPasses native mode with paths', () => {
+  it('leaves a skipped native pass out of the native skills', async () => {
+    const planned = await build(
+      {
+        skills: {
+          entries: [{ name: 'code-review', paths: ['docs/**'] }],
+          origin: 'user:config.yml',
+          source: 'local',
+        },
+      },
+      { native: true, changedFiles: ['src/shop.ts'] },
+    )
+
+    expect(planned.passes?.[0]?.skip).toBeDefined()
+    expect(planned.nativeSkills.size).toBe(0)
+  })
+})

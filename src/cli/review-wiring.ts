@@ -42,7 +42,11 @@ import { formatPassesLine } from './format-passes.js'
 import { formatRelatedLine } from './format-related.js'
 import { messagesFor } from './i18n/messages.js'
 import { indexProgress, withProgress } from './progress.js'
+import { readDirResolver } from './read-dirs.js'
 import { diskSkillCatalog } from './skill-catalog.js'
+import { repositoryReader } from '../github/read-repository.js'
+import type { RepositoryReaderOptions } from '../github/read-repository.js'
+import type { ReadGitHub } from '../gh-facade/types.js'
 import { toTerminalText } from './terminal-text.js'
 
 export interface ReviewWiringDeps extends ContextReaders {
@@ -56,6 +60,8 @@ export interface ReviewWiringDeps extends ContextReaders {
   openObservedStore: (path: string) => Promise<ObservedStore>
   createExtractor: () => Extractor
   createProvider: (name: string, options: ProviderOptions) => ReviewProvider
+  repositoryReader?: (options: RepositoryReaderOptions) => ReadGitHub
+  runsSkills?: (provider: string) => boolean
 }
 
 export type PublishTarget = PullRequestRef & { token: string }
@@ -104,6 +110,10 @@ export const renderReview = {
     formatResolvedReply(headSha, reason, messagesFor(language)),
 }
 
+export function providerRunsSkills(provider: string): boolean {
+  return provider === 'claude'
+}
+
 export function pullRequestReviewDeps(
   deps: ReviewWiringDeps,
   repository: PublishTarget,
@@ -129,6 +139,10 @@ export function pullRequestReviewDeps(
       }),
     watchProvider: (provider, pass) => withProgress(provider, deps.stderr, PROGRESS_LABELS[pass]),
     skills: diskSkillCatalog(deps.files, deps.env, deps.home),
+    runsSkills: (deps.runsSkills ?? providerRunsSkills)(choice.provider),
+    readGitHub: (deps.repositoryReader ?? repositoryReader)({ repo: `${owner}/${repo}`, token }),
+    env: deps.env,
+    resolveDir: readDirResolver(deps.files, deps.home),
     related: {
       readRepository: (name) =>
         deps.fetchRepository({ ...splitRepoName(name), token }).catch((error: unknown) => {

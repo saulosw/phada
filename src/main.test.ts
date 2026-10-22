@@ -40,6 +40,7 @@ import {
   reviewMarker,
 } from './publish/markers.js'
 import { RECHECK_JSON_SCHEMA } from './review/recheck-schema.js'
+import { providerRunsSkills } from './cli/review-wiring.js'
 import { createProvider, run } from './main.js'
 import type { MainDeps, ProviderOptions } from './main.js'
 import { ClaudeCliProvider } from './providers/claude.js'
@@ -294,6 +295,7 @@ function harness(
     },
     clock: () => new Date(clock),
     createExtractor: () => extractor,
+    runsSkills: () => false,
     pathSize: async () => 2048,
     createProvider: (name, options) => {
       providers.push({ name, options })
@@ -2080,5 +2082,11 @@ describe('run review when no skill applies', () => {
     expect(h.stderr()).toContain(
       'Nothing to review: no skill applies to the changed files (docs-review — no changed file matches docs/**).',
     )
+  })
+})
+
+describe('providerRunsSkills', () => {
+  it('runs skills natively only with Claude', () => {
+    expect(['claude', 'codex', 'ollama'].map(providerRunsSkills)).toEqual([true, false, false])
   })
 })

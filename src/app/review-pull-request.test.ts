@@ -8,6 +8,7 @@ import { pullRequestFixture } from '../../test/support/pull-request.js'
 import { reviewReportJson } from '../../test/support/review-report.js'
 import { verdictFixture, verificationJson } from '../../test/support/verification.js'
 import type { ContextSources } from '../context/types.js'
+import { ProviderError } from '../providers/types.js'
 import type { ReviewOutput, ReviewPrompt, ReviewProvider } from '../providers/types.js'
 import { createExtractor } from '../repo-map/extract.js'
 import type { Checkout } from '../repository/checkout.js'
@@ -19,6 +20,7 @@ import { openObservedStore } from '../store/observed-store.js'
 import type { ObservedStore } from '../store/observed-store.js'
 import { memoryMirror } from '../../test/support/memory-mirror.js'
 import type { RepositoryInfo } from '../github/repository.js'
+import type { NativeRunnerDeps, NativeRunnerInput } from './native-skill.js'
 import type { RelatedDeps } from './related-repositories.js'
 import { reviewPullRequest } from './review-pull-request.js'
 import type { PullRequestReviewDeps } from './review-pull-request.js'
@@ -843,5 +845,103 @@ describe('reviewPullRequest with skills', () => {
 
     expect(result.passes).toBeUndefined()
     expect(h.events.some((event) => event.startsWith('passes'))).toBe(false)
+  })
+})
+
+describe('reviewPullRequest with native skills', () => {
+  function nativeSetup(
+    overrides: Partial<PullRequestReviewDeps> = {},
+    outputs: ReviewOutput[] = [OUTPUT],
+  ) {
+    const opened: { input: NativeRunnerInput; deps: NativeRunnerDeps }[] = []
+    const ran: string[] = []
+    let closed = 0
+    const h = setup(
+      {
+        runsSkills: true,
+        readGitHub: async () => ({}),
+        env: { PATH: '/usr/bin' },
+        resolveDir: async (path) => path,
+        openNativeRunner: async (runnerInput, runnerDeps) => {
+          opened.push({ input: runnerInput, deps: runnerDeps })
+          return {
+            runSkill: async (pass) => {
+              ran.push(pass.skill)
+              return { text: 'Found an issue.', captured: [], durationMs: 3, blocked: [] }
+            },
+            close: async () => {
+              closed += 1
+            },
+          }
+        },
+        ...overrides,
+      },
+      outputs,
+    )
+    return { ...h, opened, ran, runnerClosed: () => closed }
+  }
+
+  it('runs the skill natively and converts its output', async () => {
+    const h = nativeSetup()
+
+    const result = await reviewPullRequest(
+      { ...input, viewer: 'me', options: { verify: false, skills: ['code-review'] } },
+      h.deps,
+    )
+
+    expect(h.ran).toEqual(['code-review'])
+    expect(h.opened[0]?.input.viewer).toBe('me')
+    expect(h.opened[0]?.input.nativeSkills.get('code-review')).toMatchObject({ kind: 'file' })
+    expect(h.prompts[0]?.instructions).toContain('code review guide code-review')
+    expect(h.prompts[0]?.tools).toBeUndefined()
+    expect(h.runnerClosed()).toBe(1)
+    expect(result.passes?.[0]?.mode).toBe('native')
+  })
+
+  it('opens the mirror for a native skill even without investigation', async () => {
+    const h = nativeSetup()
+
+    await reviewPullRequest(
+      { ...input, options: { verify: false, investigate: false, skills: ['code-review'] } },
+      h.deps,
+    )
+
+    expect(h.opened).toHaveLength(1)
+  })
+
+  it('fails when the mirror is unavailable for a native skill', async () => {
+    const h = nativeSetup({
+      openMirror: async () => {
+        throw new CheckoutUnavailableError('no-access', 'Could not fetch acme/shop')
+      },
+    })
+
+    await expect(
+      reviewPullRequest({ ...input, options: { verify: false, skills: ['code-review'] } }, h.deps),
+    ).rejects.toThrow('Could not fetch acme/shop')
+  })
+
+  it('closes the runner when the review fails', async () => {
+    const h = nativeSetup({}, [{ ...OUTPUT, text: 'x' }])
+    h.deps.createProvider = () => ({
+      id: 'fake',
+      review: () => Promise.reject(new ProviderError('fake', 'timeout', 'too slow')),
+    })
+
+    await expect(
+      reviewPullRequest({ ...input, options: { verify: false, skills: ['code-review'] } }, h.deps),
+    ).rejects.toThrow('too slow')
+    expect(h.runnerClosed()).toBe(1)
+  })
+
+  it('opens no runner without a native pass', async () => {
+    const h = nativeSetup({ runsSkills: false })
+
+    await reviewPullRequest(
+      { ...input, options: { verify: false, skills: ['code-review'] } },
+      h.deps,
+    )
+
+    expect(h.opened).toHaveLength(0)
   })
 })

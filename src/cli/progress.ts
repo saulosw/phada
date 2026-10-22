@@ -1,4 +1,4 @@
-import type { ReviewPrompt, ReviewProvider } from '../providers/types.js'
+import type { ReviewPrompt, ReviewProvider, SkillRunRequest } from '../providers/types.js'
 import { formatElapsed } from './units.js'
 
 export interface TextOutput {
@@ -14,6 +14,7 @@ export function withProgress(
   output: TextOutput,
   action = 'Reviewing',
 ): ReviewProvider {
+  const runSkill = provider.runSkill?.bind(provider)
   return {
     id: provider.id,
     async review(prompt: ReviewPrompt) {
@@ -24,6 +25,18 @@ export function withProgress(
         stop()
       }
     },
+    ...(runSkill === undefined
+      ? {}
+      : {
+          async runSkill(request: SkillRunRequest) {
+            const stop = showProgress(`Running the skill with ${provider.id}…`, output)
+            try {
+              return await runSkill(request)
+            } finally {
+              stop()
+            }
+          },
+        }),
   }
 }
 

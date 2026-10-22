@@ -40,8 +40,11 @@ import {
   relatedSummaries,
 } from './related-report.js'
 import type { RankedRelated, RelatedReport } from './related-report.js'
+import { openNativeRunner } from './native-skill.js'
+import type { NativeRunner, NativeRunnerDeps, NativeRunnerInput } from './native-skill.js'
 import { buildPasses } from './review-passes.js'
 import type { PassPlan, SkillCatalog } from './review-passes.js'
+import type { ReadGitHub } from '../gh-facade/types.js'
 import type { SkippedRepository } from './select-related.js'
 
 export const REVIEW_INDEX_BUDGET_MS = 60_000
@@ -62,6 +65,7 @@ export interface PullRequestReviewInput {
   options: ReviewOptions
   loaded?: LoadedContext
   recheck?: readonly RecheckThread[]
+  viewer?: string
 }
 
 export interface PullRequestReviewEvents {
@@ -87,6 +91,10 @@ export interface PullRequestReviewDeps {
   related?: RelatedDeps
   skills: SkillCatalog
   runsSkills?: boolean
+  readGitHub?: ReadGitHub
+  env?: NodeJS.ProcessEnv
+  resolveDir?: (path: string) => Promise<string | undefined>
+  openNativeRunner?: (input: NativeRunnerInput, deps: NativeRunnerDeps) => Promise<NativeRunner>
   events: PullRequestReviewEvents
 }
 
@@ -124,6 +132,10 @@ interface HeadGraph {
   reason?: string
 }
 
+async function noGitHubReads(): Promise<never> {
+  throw new Error('GitHub reads are not available in this review.')
+}
+
 export async function reviewPullRequest(
   input: PullRequestReviewInput,
   deps: PullRequestReviewDeps,
@@ -146,6 +158,8 @@ export async function reviewPullRequest(
   if (planned.passes !== undefined) deps.events.passesPlanned?.(planned.plan)
 
   let investigation: Investigation | undefined
+  let mirror: GitMirror | undefined
+  let native: NativeRunner | undefined
   let unavailable: string | undefined
   let head: HeadGraph = {}
   let impact: DiffImpact | undefined
@@ -160,9 +174,10 @@ export async function reviewPullRequest(
     if (investigate && loaded.diff.trim() !== '') {
       let fetched: { mirror: GitMirror; sha: string; checkout: Checkout } | undefined
       try {
-        const mirror = await deps.openMirror()
-        const sha = await mirror.fetch(pullRequest.headSha, keepAs)
-        fetched = { mirror, sha, checkout: mirror.checkout(sha, { deepenAs: keepAs }) }
+        const opened = await deps.openMirror()
+        const sha = await opened.fetch(pullRequest.headSha, keepAs)
+        mirror = opened
+        fetched = { mirror: opened, sha, checkout: opened.checkout(sha, { deepenAs: keepAs }) }
       } catch (error) {
         if (!(error instanceof CheckoutUnavailableError)) throw error
         unavailable = error.message
@@ -252,6 +267,27 @@ export async function reviewPullRequest(
 
     const provider = deps.createProvider(servers)
     const watch = deps.watchProvider ?? ((watched: ReviewProvider) => watched)
+    if (planned.nativeSkills.size > 0) {
+      native = await (deps.openNativeRunner ?? openNativeRunner)(
+        {
+          pullRequest,
+          diff: loaded.diff,
+          review: loaded.options.review ?? {},
+          nativeSkills: planned.nativeSkills,
+          viewer: input.viewer ?? '',
+          ...(language === undefined ? {} : { language }),
+        },
+        {
+          mirror: mirror ?? (await deps.openMirror()),
+          provider: watch(provider, 'review'),
+          env: deps.env ?? {},
+          readGitHub: deps.readGitHub ?? noGitHubReads,
+          resolveDir: deps.resolveDir ?? (async () => undefined),
+          tools: () => investigation?.tools('review'),
+          warning: deps.events.warning,
+        },
+      )
+    }
     const recheck = await recheckEarlier(input, loaded, language, {
       provider: () => watch(provider, 'recheck'),
       tools: () => investigation?.tools('recheck'),
@@ -272,6 +308,7 @@ export async function reviewPullRequest(
         provider: watch(provider, 'review'),
         verifier: watch(provider, 'verify'),
         ...(investigation === undefined ? {} : { tools: investigation.tools }),
+        ...(native === undefined ? {} : { runSkill: native.runSkill }),
         events: {
           passStarted: (pass, index) =>
             deps.events.passStarted?.(pass.skill, index, planned.passes?.length ?? 1),
@@ -303,6 +340,7 @@ export async function reviewPullRequest(
       ...(planned.passes === undefined ? {} : { passes: planned.plan }),
     }
   } finally {
+    await native?.close()
     await investigation?.close()
     for (const item of opened) await item.close()
     head.store?.close()

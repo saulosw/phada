@@ -531,3 +531,39 @@ describe('reviewAndPublish', () => {
     expect(calls.reviews).toBe(1)
   })
 })
+
+describe('reviewAndPublish with a native skill', () => {
+  it('gives the skill runner the owner of the token', async () => {
+    const viewers: string[] = []
+    const { deps } = setup()
+    const base = deps.reviewDeps
+    deps.reviewDeps = (pull) => ({
+      ...base(pull),
+      runsSkills: true,
+      openMirror: async () => ({}) as never,
+      skills: {
+        find: async (name) => ({
+          name,
+          origin: 'Claude Code',
+          text: 'Skill built into Claude Code: code-review.',
+          omitted: [],
+          native: { kind: 'builtin', invoke: 'code-review' },
+        }),
+      },
+      openNativeRunner: async (runnerInput) => {
+        viewers.push(runnerInput.viewer)
+        return {
+          runSkill: async () => ({ text: 'ok', captured: [], durationMs: 1, blocked: [] }),
+          close: async () => undefined,
+        }
+      },
+    })
+
+    await reviewAndPublish(
+      { ...INPUT, options: { ...INPUT.options, skills: ['claude:code-review'] } },
+      deps,
+    )
+
+    expect(viewers).toEqual(['octocat'])
+  })
+})
