@@ -127,6 +127,7 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
       userMcpServers: mcp,
     })
 
+    deps.onSignal(() => deps.abort(130))
     deps.stderr.write(`Fetching ${formatPullRequestRef(command.ref)}…\n`)
     const startedAt = deps.clock().toISOString()
     const reviewRun = await reviewAndPublish(

@@ -2155,3 +2155,24 @@ describe('run watch with a built-in Claude Code skill', () => {
     )
   })
 })
+
+describe('run review and Ctrl-C', () => {
+  it('stops at once and cleans up on Ctrl-C', async () => {
+    const h = harness()
+    let interrupted = false
+    h.deps.createProvider = () => ({
+      id: 'fake-cli',
+      review: async () => {
+        if (!interrupted) {
+          interrupted = true
+          h.signal()
+        }
+        return { text: reviewReportJson(), durationMs: 1 }
+      },
+    })
+
+    await run(['review', 'acme/shop#12', '--no-verify'], h.deps)
+
+    expect(h.aborts).toEqual([130])
+  })
+})
