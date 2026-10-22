@@ -54,9 +54,7 @@ function bodyOf(text: string): string {
 
 async function citedFiles(files: LocalFileSystem, dir: string, body: string): Promise<string[]> {
   const present = new Set((await files.listDir(dir)) ?? [])
-  const cited = (body.match(CITED_FILE) ?? []).filter(
-    (name) => !name.includes('/') && !name.includes(':') && name !== SKILL_FILE,
-  )
+  const cited = (body.match(CITED_FILE) ?? []).filter((name) => name !== SKILL_FILE)
   return [...new Set(cited)].filter((name) => present.has(name))
 }
 
