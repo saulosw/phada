@@ -34,9 +34,40 @@ export interface ReviewOutput {
   warnings?: string[]
 }
 
+export type CommandPolicy = 'read-only' | 'all' | readonly string[]
+
+export interface BlockedCommand {
+  tool: string
+  input: string
+}
+
+export interface SkillRunRequest {
+  skill: NativeSkillRef
+  arguments: string
+  context: string
+  cwd: string
+  readDirs: readonly string[]
+  commands: CommandPolicy
+  env: Readonly<Record<string, string>>
+  tools?: Toolbox
+  timeoutMs: number
+  maxTurns: number
+}
+
+export interface SkillRunOutput {
+  text: string
+  durationMs: number
+  model?: string
+  usage?: TokenUsage
+  blocked: BlockedCommand[]
+  externalCalls?: ExternalToolCall[]
+  warnings?: string[]
+}
+
 export interface ReviewProvider {
   readonly id: string
   review(prompt: ReviewPrompt): Promise<ReviewOutput>
+  runSkill?(request: SkillRunRequest): Promise<SkillRunOutput>
 }
 
 export type ProviderErrorReason =

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, readlinkSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 let stdin = ''
 for await (const chunk of process.stdin) stdin += chunk
@@ -23,9 +24,38 @@ if (env.FAKE_CLAUDE_CAPTURE) {
         ? JSON.parse(readFileSync(mcpConfigPath, 'utf8'))
         : null,
     cwd: process.cwd(),
-    env: { GITHUB_TOKEN: env.GITHUB_TOKEN, GH_TOKEN: env.GH_TOKEN },
+    env: {
+      GITHUB_TOKEN: env.GITHUB_TOKEN,
+      GH_TOKEN: env.GH_TOKEN,
+      PATH: env.PATH,
+      GH_CONFIG_DIR: env.GH_CONFIG_DIR,
+    },
+    plugin: pluginOf(argv),
   }
   writeFileSync(env.FAKE_CLAUDE_CAPTURE, JSON.stringify(captured))
+}
+
+function pluginOf(args) {
+  const index = args.indexOf('--plugin-dir')
+  if (index === -1) return null
+  const dir = args[index + 1]
+  const manifestPath = join(dir, '.claude-plugin', 'plugin.json')
+  const links = {}
+  for (const folder of ['skills', 'commands']) {
+    if (!existsSync(join(dir, folder))) continue
+    for (const entry of readdirSync(join(dir, folder))) {
+      try {
+        links[`${folder}/${entry}`] = readlinkSync(join(dir, folder, entry))
+      } catch {
+        links[`${folder}/${entry}`] = null
+      }
+    }
+  }
+  return {
+    dir,
+    manifest: existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, 'utf8')) : null,
+    links,
+  }
 }
 
 const secret = env.FAKE_CLAUDE_SECRET ?? ''
@@ -78,6 +108,34 @@ switch (env.FAKE_CLAUDE_MODE ?? 'success') {
     )
     break
   }
+  case 'denials':
+    process.stdout.write(
+      [
+        JSON.stringify({ type: 'system', subtype: 'init', tools: [] }),
+        result({
+          is_error: false,
+          result: 'Found 1 issue.',
+          modelUsage: { 'claude-fake-1': {} },
+          usage,
+          permission_denials: [
+            {
+              tool_name: 'Bash',
+              tool_use_id: 't1',
+              tool_input: { command: 'npm test', description: 'Run' },
+            },
+            {
+              tool_name: 'Read',
+              tool_use_id: 't2',
+              tool_input: { file_path: '/home/u/.ssh/id_rsa' },
+            },
+            { tool_name: 'Grep', tool_use_id: 't3', tool_input: { pattern: 'x', path: '/etc' } },
+            { tool_name: 'WebFetch', tool_use_id: 't4', tool_input: { url: 'https://x' } },
+          ],
+        }),
+        '',
+      ].join('\n'),
+    )
+    break
   case 'garbage_then_result':
     process.stdout.write(
       `not json\n{"type":"system"}\n${result({ is_error: false, result: 'LGTM from fake', usage })}\n`,

@@ -2,10 +2,12 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { realpathSync } from 'node:fs'
+import { allowedSkillTools } from './claude-skill-args.js'
 import { ClaudeCliProvider } from './claude.js'
 import type { ClaudeCliProviderOptions } from './claude.js'
 import { ProviderError } from './types.js'
-import type { ReviewPrompt } from './types.js'
+import type { ReviewPrompt, SkillRunRequest } from './types.js'
 import type { Toolbox } from '../investigation/toolbox.js'
 
 const FAKE_CLAUDE = resolve('test/fixtures/bin/fake-claude')
@@ -212,7 +214,8 @@ describe('ClaudeCliProvider', () => {
       env: { GITHUB_TOKEN: FAKE_SECRET, GH_TOKEN: FAKE_SECRET },
     }).review(PROMPT)
 
-    expect(readCapture().env).toEqual({})
+    const { env } = readCapture()
+    expect([env.GITHUB_TOKEN, env.GH_TOKEN]).toEqual([undefined, undefined])
   })
 
   it('runs in a fresh empty temp dir and removes it afterwards', async () => {
@@ -459,5 +462,143 @@ describe('ClaudeCliProvider', () => {
       expect(socket).not.toBe('')
       expect(existsSync(dirname(socket))).toBe(false)
     })
+  })
+})
+
+describe('ClaudeCliProvider.runSkill', () => {
+  let skillDir: string
+  let checkout: string
+
+  beforeEach(() => {
+    skillDir = mkdtempSync(join(tmpdir(), 'phada-claude-skill-'))
+    checkout = mkdtempSync(join(tmpdir(), 'phada-claude-checkout-'))
+    writeFileSync(join(skillDir, 'SKILL.md'), 'Review.')
+  })
+
+  afterEach(() => {
+    rmSync(skillDir, { recursive: true, force: true })
+    rmSync(checkout, { recursive: true, force: true })
+  })
+
+  const request = (overrides: Partial<SkillRunRequest> = {}): SkillRunRequest => ({
+    skill: {
+      kind: 'file',
+      fileKind: 'skill',
+      path: join(skillDir, 'SKILL.md'),
+      dir: skillDir,
+      name: 'my-review',
+    },
+    arguments: 'https://github.com/acme/shop/pull/12',
+    context: 'You are running inside Phada.',
+    cwd: checkout,
+    readDirs: ['/home/u/rules'],
+    commands: 'read-only',
+    env: {
+      PATH: `/tmp/phada-gh-bin:${process.env.PATH ?? ''}`,
+      GH_CONFIG_DIR: '/tmp/phada-gh-empty',
+    },
+    timeoutMs: 30_000,
+    maxTurns: 100,
+    ...overrides,
+  })
+
+  function argAfter(argv: string[], flag: string): string | undefined {
+    const index = argv.indexOf(flag)
+    return index === -1 ? undefined : argv[index + 1]
+  }
+
+  it('runs the skill in the checkout with the restricted tools', async () => {
+    await provider('success', {
+      env: { GITHUB_TOKEN: FAKE_SECRET, GH_TOKEN: FAKE_SECRET },
+    }).runSkill(request())
+
+    const { argv, stdin, instructions, cwd, env, plugin } = readCapture() as Capture & {
+      plugin: { manifest: unknown; links: Record<string, string> } | null
+      env: Capture['env'] & { PATH?: string; GH_CONFIG_DIR?: string }
+    }
+    expect(argv.slice(0, 7)).toEqual([
+      '-p',
+      '--output-format',
+      'stream-json',
+      '--verbose',
+      '--restricted',
+      '--setting-sources=',
+      '--no-session-persistence',
+    ])
+    expect(argv).toContain('--strict-mcp-config')
+    expect(argv).not.toContain('--disable-slash-commands')
+    expect(argv.some((arg) => arg.startsWith('--json-schema'))).toBe(false)
+    expect(argAfter(argv, '--tools')).toBe('Read,Grep,Glob,Bash,Task,Skill')
+    expect(argAfter(argv, '--allowedTools')).toBe(allowedSkillTools('read-only', [], []).join(','))
+    expect(argAfter(argv, '--max-turns')).toBe('100')
+    expect(argv.filter((arg, index) => argv[index - 1] === '--add-dir')).toEqual([
+      '/home/u/rules',
+      realpathSync(skillDir),
+    ])
+    expect(plugin?.manifest).toEqual({ name: 'phada-skills' })
+    expect(plugin?.links).toEqual({ 'skills/my-review': skillDir })
+    expect(stdin).toBe('/phada-skills:my-review https://github.com/acme/shop/pull/12')
+    expect(instructions).toBe('You are running inside Phada.')
+    expect(realpathSync(cwd)).toBe(realpathSync(checkout))
+    expect(env.GITHUB_TOKEN).toBeUndefined()
+    expect(env.GH_TOKEN).toBeUndefined()
+    expect(env.PATH?.startsWith('/tmp/phada-gh-bin:')).toBe(true)
+    expect(env.GH_CONFIG_DIR).toBe('/tmp/phada-gh-empty')
+  })
+
+  it('reports the denied tools as blocked', async () => {
+    const output = await provider('denials').runSkill(request())
+
+    expect(output.text).toBe('Found 1 issue.')
+    expect(output.model).toBe('claude-fake-1')
+    expect(output.blocked).toEqual([
+      { tool: 'Bash', input: 'npm test' },
+      { tool: 'Read', input: '/home/u/.ssh/id_rsa' },
+      { tool: 'Grep', input: '/etc' },
+      { tool: 'WebFetch', input: '{"url":"https://x"}' },
+    ])
+  })
+
+  it('runs a skill built into Claude Code without a plugin', async () => {
+    await provider('success').runSkill(
+      request({ skill: { kind: 'builtin', invoke: 'code-review' } }),
+    )
+
+    const capture = readCapture() as Capture & { plugin: unknown }
+    expect(capture.plugin).toBeNull()
+    expect(capture.stdin).toBe('/code-review https://github.com/acme/shop/pull/12')
+  })
+
+  it('fails when the skill does not finish within its turns', async () => {
+    const error = await provider('max_turns')
+      .runSkill(request())
+      .then(
+        () => undefined,
+        (reason: unknown) => reason,
+      )
+
+    expect(error).toBeInstanceOf(ProviderError)
+    expect((error as ProviderError).reason).toBe('invalid-output')
+    expect((error as ProviderError).message).toBe(
+      'Claude did not finish the skill within 100 turns.',
+    )
+  })
+
+  it('times out like a review', async () => {
+    const error = await provider('hang')
+      .runSkill(request({ timeoutMs: 300 }))
+      .then(
+        () => undefined,
+        (reason: unknown) => reason,
+      )
+
+    expect((error as ProviderError).reason).toBe('timeout')
+  })
+
+  it('removes its temporary folder', async () => {
+    await provider('success').runSkill(request())
+
+    const { argv } = readCapture()
+    expect(existsSync(dirname(argAfter(argv, '--append-system-prompt-file') ?? ''))).toBe(false)
   })
 })

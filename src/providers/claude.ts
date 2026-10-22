@@ -7,13 +7,17 @@ import type { RunCommandResult } from '../process/run-command.js'
 import { runCli, snippet, USAGE_LIMIT, withTempDir } from './cli-run.js'
 import type { CliNames } from './cli-run.js'
 import { resolveClaudeModel } from './claude-model.js'
+import { allowedSkillTools, SKILL_TOOLS, writeSkillPlugin } from './claude-skill-args.js'
 import { ProviderError } from './types.js'
 import type {
+  BlockedCommand,
   ExternalToolCall,
   ProviderErrorReason,
   ReviewOutput,
   ReviewPrompt,
   ReviewProvider,
+  SkillRunOutput,
+  SkillRunRequest,
   TokenUsage,
 } from './types.js'
 
@@ -50,6 +54,14 @@ const ClaudeResult = z.object({
   result: z.string().optional(),
   modelUsage: z.record(z.string(), z.unknown()).optional(),
   usage: ClaudeUsage.optional(),
+  permission_denials: z
+    .array(
+      z.object({
+        tool_name: z.string(),
+        tool_input: z.record(z.string(), z.unknown()).optional(),
+      }),
+    )
+    .optional(),
 })
 type ClaudeResult = z.infer<typeof ClaudeResult>
 
@@ -149,21 +161,132 @@ export class ClaudeCliProvider implements ReviewProvider {
     })
   }
 
+  runSkill(request: SkillRunRequest): Promise<SkillRunOutput> {
+    return withTempDir(TEMP_DIR_PREFIX, async (temp) => {
+      const contextPath = join(temp, INSTRUCTIONS_FILE)
+      await writeFile(contextPath, request.context)
+      const model = await resolveClaudeModel({
+        model: this.#model,
+        env: this.#env,
+        homeDir: this.#homeDir,
+      })
+      const plugin = await writeSkillPlugin(temp, request.skill)
+      const server = request.tools === undefined ? undefined : await serveMcp(request.tools)
+      try {
+        const allowed = allowedSkillTools(
+          request.commands,
+          (request.tools?.definitions ?? []).map(({ name }) => name),
+          this.#userMcpServers.map(mcpToolPrefix),
+        )
+        const run = await runCli({
+          providerId: PROVIDER_ID,
+          names: NAMES,
+          command: this.#command,
+          detached: this.#detached,
+          args: [
+            '-p',
+            '--output-format',
+            'stream-json',
+            '--verbose',
+            '--restricted',
+            '--setting-sources=',
+            '--no-session-persistence',
+            ...(this.#userMcpServers.length === 0 ? ['--strict-mcp-config'] : []),
+            '--tools',
+            SKILL_TOOLS.join(','),
+            '--allowedTools',
+            allowed.join(','),
+            ...[...request.readDirs, ...plugin.addDirs].flatMap((dir) => ['--add-dir', dir]),
+            ...(plugin.pluginDir === undefined ? [] : ['--plugin-dir', plugin.pluginDir]),
+            '--append-system-prompt-file',
+            contextPath,
+            '--max-turns',
+            String(request.maxTurns),
+            `--model=${model}`,
+            ...(await mcpConfigArgs(temp, server)),
+          ],
+          stdin: `/${plugin.invoke} ${request.arguments}`,
+          cwd: request.cwd,
+          env: { ...this.#env, ...request.env },
+          timeoutMs: request.timeoutMs,
+        })
+        const serverNames = new Map(this.#userMcpServers.map((name) => [mcpServerKey(name), name]))
+        return toSkillOutput(run, request.maxTurns, serverNames)
+      } finally {
+        await server?.close()
+      }
+    })
+  }
+
   async #mcpArgs(cwd: string, prompt: ReviewPrompt, server: McpServer | undefined) {
     const allowed = [
       ...(prompt.tools?.definitions ?? []).map(({ name }) => `${PHADA_TOOL_PREFIX}${name}`),
       ...this.#userMcpServers.map(mcpToolPrefix),
     ]
-    const args: string[] = []
-    if (server !== undefined) {
-      const configPath = join(cwd, MCP_CONFIG_FILE)
-      const config = { mcpServers: { [MCP_SERVER_NAME]: { type: 'stdio', ...server.launch } } }
-      await writeFile(configPath, JSON.stringify(config))
-      args.push('--mcp-config', configPath)
-    }
+    const args = await mcpConfigArgs(cwd, server)
     if (allowed.length > 0) args.push('--allowedTools', allowed.join(','))
     return args
   }
+}
+
+async function mcpConfigArgs(dir: string, server: McpServer | undefined): Promise<string[]> {
+  if (server === undefined) return []
+  const configPath = join(dir, MCP_CONFIG_FILE)
+  const config = { mcpServers: { [MCP_SERVER_NAME]: { type: 'stdio', ...server.launch } } }
+  await writeFile(configPath, JSON.stringify(config))
+  return ['--mcp-config', configPath]
+}
+
+function toSkillOutput(
+  run: RunCommandResult,
+  maxTurns: number,
+  serverNames: ReadonlyMap<string, string>,
+): SkillRunOutput {
+  const { claude, events } = finalResult(run)
+  if (claude.subtype === MAX_TURNS_SUBTYPE) {
+    throw new ProviderError(
+      PROVIDER_ID,
+      'invalid-output',
+      `Claude did not finish the skill within ${maxTurns} turns.`,
+    )
+  }
+  if (claude.is_error || claude.result === undefined) throw claudeError(claude)
+  if (claude.result.trim() === '') {
+    throw new ProviderError(PROVIDER_ID, 'invalid-output', 'The skill returned an empty answer.')
+  }
+  const [model] = modelsByOutput(claude.modelUsage ?? {})
+  const externalCalls = externalCallsOf(events, serverNames)
+  return {
+    text: claude.result,
+    durationMs: run.durationMs,
+    ...(model === undefined ? {} : { model }),
+    ...(claude.usage === undefined ? {} : { usage: toTokenUsage(claude.usage) }),
+    blocked: (claude.permission_denials ?? []).map(blockedOf),
+    ...(externalCalls.length === 0 ? {} : { externalCalls }),
+  }
+}
+
+const BLOCKED_INPUT_KEYS = ['command', 'file_path', 'path', 'pattern'] as const
+
+function blockedOf({
+  tool_name,
+  tool_input = {},
+}: {
+  tool_name: string
+  tool_input?: Record<string, unknown> | undefined
+}): BlockedCommand {
+  const key = BLOCKED_INPUT_KEYS.find((name) => typeof tool_input[name] === 'string')
+  return {
+    tool: tool_name,
+    input: key === undefined ? JSON.stringify(tool_input) : String(tool_input[key]),
+  }
+}
+
+function finalResult(run: RunCommandResult): { claude: ClaudeResult; events: unknown[] } {
+  const events = run.stdout.split('\n').map(parseJson)
+  const parsed = events.findLast((event) => ClaudeResult.safeParse(event).success)
+  if (parsed === undefined) throw unreadableOutputError(run)
+  return { claude: ClaudeResult.parse(parsed), events }
 }
 
 function toReviewOutput(
@@ -172,11 +295,7 @@ function toReviewOutput(
   withTools: boolean,
   serverNames: ReadonlyMap<string, string>,
 ): ReviewOutput {
-  const events = run.stdout.split('\n').map(parseJson)
-  const parsed = events.findLast((event) => ClaudeResult.safeParse(event).success)
-  if (parsed === undefined) throw unreadableOutputError(run)
-
-  const claude = ClaudeResult.parse(parsed)
+  const { claude, events } = finalResult(run)
   if (claude.subtype === MAX_TURNS_SUBTYPE) {
     throw new ProviderError(
       PROVIDER_ID,

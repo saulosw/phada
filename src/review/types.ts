@@ -1,5 +1,7 @@
 import type { PullRequest } from '../github/pull-request.js'
-import type { ExternalToolCall, TokenUsage } from '../providers/types.js'
+import type { BlockedCommand, ExternalToolCall, TokenUsage } from '../providers/types.js'
+
+export type { BlockedCommand }
 
 export interface ContextRule {
   key: string
@@ -198,11 +200,6 @@ export interface CapturedWrite {
   command: string
   body: string
   comments: CapturedComment[]
-}
-
-export interface BlockedCommand {
-  tool: string
-  input: string
 }
 
 export interface NativeSkillRun {
