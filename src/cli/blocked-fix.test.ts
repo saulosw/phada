@@ -19,6 +19,7 @@ describe('blockedFix', () => {
     ['git diff && make lint', 'make lint'],
     ['./scripts/check.sh --fast', './scripts/check.sh'],
     ['FOO=1 npm run build', 'npm run'],
+    ['cd /tmp/x/repo; cat /tmp/x/a.diff; git ls-files; gh pr view 2', 'cd", "cat'],
   ])('suggests the denied part of a compound command: %s', (command, prefix) => {
     expect(fix('Bash', command)).toContain(`review.commands: ["${prefix}"]`)
   })

@@ -1,5 +1,5 @@
 import { copyFile, mkdir, rm, writeFile } from 'node:fs/promises'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { runCommand } from '../process/run-command.js'
 import {
   CheckoutUnavailableError,
@@ -95,7 +95,7 @@ export async function materializeWorkTree(
     'check out the pull request head',
     FETCH_TIMEOUT_MS,
   )
-  const diffFile = join(dirname(input.dir), DIFF_FILE)
+  const diffFile = join(input.dir, '.git', DIFF_FILE)
   await writeFile(diffFile, input.diff)
   return { dir: input.dir, mergeBase: base, diffFile, warnings }
 }

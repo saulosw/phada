@@ -40,7 +40,8 @@ export function blockedFix({ tool, input }: BlockedCommand, context: FixContext)
     const folder = /\.[\w-]+$/.test(input) ? dirname(input) : input
     return `allow it with review.readDirs: ["${folder}"] in ${context.configPath}`
   }
-  return `allow it with review.commands: ["${commandPrefix(input)}"] in ${context.configPath}`
+  const prefixes = commandPrefixes(input).map((prefix) => `"${prefix}"`)
+  return `allow it with review.commands: [${prefixes.join(', ')}] in ${context.configPath}`
 }
 
 export function blockedFixer(input: {
@@ -56,17 +57,21 @@ export function blockedFixer(input: {
   return (blocked) => blockedFix(blocked, context)
 }
 
-function commandPrefix(command: string): string {
+function commandPrefixes(command: string): string[] {
   const segments = command
     .split(/&&|\|\||;|\|/)
     .map((segment) => words(segment))
     .filter((segment) => segment.length > 0)
-  const denied =
-    segments.find((segment) => !PLUMBING.has(segment[0] ?? '') && !allowed(segment)) ??
-    segments[0] ??
-    []
+  const denied = segments.filter((segment) => !allowed(segment))
+  const work = denied.filter((segment) => !PLUMBING.has(segment[0] ?? ''))
+  const chosen =
+    work.length > 0 ? work.slice(0, 1) : denied.length > 0 ? denied : segments.slice(0, 1)
+  return [...new Set(chosen.map(prefixOf))]
+}
+
+function prefixOf(segment: readonly string[]): string {
   const prefix: string[] = []
-  for (const [index, word] of denied.entries()) {
+  for (const [index, word] of segment.entries()) {
     if (index > 0 && (word.startsWith('-') || word.includes('/'))) break
     prefix.push(word)
     if (prefix.length === MAX_PREFIX_WORDS) break

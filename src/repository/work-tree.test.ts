@@ -98,10 +98,11 @@ describe('materializeWorkTree', () => {
     expect(readFileSync(join(tree.dir, 'src/a.ts'), 'utf8')).toBe('export const a = 3\n')
   })
 
-  it('writes the diff next to the checkout, outside it', async () => {
-    const { tree, work } = await materialize()
+  it('writes the diff inside .git of the checkout, readable and out of git status', async () => {
+    const { tree } = await materialize()
 
-    expect(tree.diffFile).toBe(join(work, 'pull-request.diff'))
+    expect(tree.diffFile).toBe(join(tree.dir, '.git', 'pull-request.diff'))
+    expect(git(tree.dir, 'status', '--porcelain')).toBe('')
     expect(readFileSync(tree.diffFile, 'utf8')).toBe('diff --git a/src/a.ts b/src/a.ts\n')
   })
 

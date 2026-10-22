@@ -20,6 +20,7 @@ describe('nativeSkillContext', () => {
     expect(text).toContain('/tmp/phada-native-x/pull-request.diff')
     expect(text).toContain('Nobody can answer questions')
     expect(text).toContain('Do not publish anything yourself')
+    expect(text).toContain('Read files with the Read, Grep and Glob tools')
   })
 
   it('asks for the review language', () => {
@@ -30,7 +31,7 @@ describe('nativeSkillContext', () => {
 
   it('keeps its fixed text', () => {
     expect(createHash('sha256').update(nativeSkillContext(input)).digest('hex')).toBe(
-      '8c95e4cfd97cfc2f3959e0573e524da0501172c32203ef6b0e569ca52c2ec278',
+      '8eef8163efddc5b7cdf1781a6f21d49dfb72318c6b8753f5a7825a362e1e98b9',
     )
   })
 })
