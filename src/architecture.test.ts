@@ -28,7 +28,13 @@ const PUBLISH: Boundary = {
     '../github/pull-request-reviews.js',
     '../github/compare-commits.js',
   ]),
-  expected: ['decide-run.ts', 'markers.ts', 'plan-publication.ts', 'recheck-candidates.ts'],
+  expected: [
+    'decide-run.ts',
+    'feedback.ts',
+    'markers.ts',
+    'plan-publication.ts',
+    'recheck-candidates.ts',
+  ],
 }
 const WATCH: Boundary = {
   dir: 'watch',
@@ -103,7 +109,13 @@ const REPO_MAP: Boundary = {
 const STORE: Boundary = {
   dir: 'store',
   values: new Set(['node:fs/promises', 'node:path', 'node:sqlite']),
-  types: new Set(['../repo-map/types.js', '../repo-map/languages.js', '../watch/types.js']),
+  types: new Set([
+    '../repo-map/types.js',
+    '../repo-map/languages.js',
+    '../watch/types.js',
+    '../publish/feedback.js',
+    '../review/types.js',
+  ]),
   expected: ['index-store.ts', 'schema.ts'],
 }
 const GRAPH: Boundary = {
@@ -150,6 +162,7 @@ const APP: Boundary = {
     '../investigation/create-investigation.js',
     '../investigation/tools/report.js',
     '../publish/decide-run.js',
+    '../publish/feedback.js',
     '../publish/markers.js',
     '../publish/plan-publication.js',
     '../publish/recheck-candidates.js',
@@ -200,6 +213,7 @@ const APP: Boundary = {
   ]),
   expected: [
     'error-message.ts',
+    'feedback.ts',
     'review-and-publish.ts',
     'watch-repositories.ts',
     'index-repository.ts',

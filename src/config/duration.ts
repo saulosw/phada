@@ -1,6 +1,11 @@
-export const DURATION = /^\d+(s|m|h)$/
+export const DURATION = /^\d+(s|m|h|d)$/
 
-const UNIT_MS: Readonly<Record<string, number>> = { s: 1_000, m: 60_000, h: 3_600_000 }
+const UNIT_MS: Readonly<Record<string, number>> = {
+  s: 1_000,
+  m: 60_000,
+  h: 3_600_000,
+  d: 86_400_000,
+}
 
 export function durationMs(text: string): number {
   const unit = text.slice(-1)

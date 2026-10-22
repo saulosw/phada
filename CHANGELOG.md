@@ -7,8 +7,22 @@ output can change between minor versions.
 
 ## Unreleased
 
+## 0.6.0 - 2026-10-22
+
 ### Added
 
+- The history keeps every comment Phada publishes and what happened to it, read from its thread
+  without the AI: fixed (resolved by Phada after a recheck, or by a person after its lines
+  changed), dismissed (resolved by a person without a change), ignored (still open when the pull
+  request closed) or open, plus a negative reaction (👎 or 😕) and a reply from someone. Each
+  signal keeps when it started and when it stopped. `phada review` saves the threads it reads;
+  `phada watch` reads the pull requests with Phada comments every 30 minutes when idle and once
+  more when they close.
+- `phada history [owner/repo[#N]]` lists past reviews (`--since`, `--limit`), the comments of a
+  pull request with their outcome, and `--stats` per repository; `--refresh` reads the comments
+  on GitHub first; `--format json` with `schemaVersion: 1`. `phada history prune` removes old
+  reviews, comments and finished jobs (`--older-than 180d`).
+- Durations accept days (`30d`).
 - Findings can carry a code suggestion, kept only when it replaces up to 20 lines of one `@@`
   section of the diff that it quotes exactly; the verifier can drop it. It is published as a
   GitHub suggestion that applies with one click, shown as a `diff` block in the terminal, and

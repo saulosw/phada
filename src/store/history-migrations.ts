@@ -70,4 +70,45 @@ create index run_by_source on run (source, started_at);
 create table watch_state (key text primary key, value text not null);
 `,
   },
+  {
+    version: 2,
+    sql: `
+create table feedback_pull (
+  repo text not null,
+  number integer not null,
+  observed_at text not null,
+  pull_state text not null check (pull_state in ('open', 'closed', 'merged')),
+  primary key (repo, number)
+);
+create table finding (
+  id integer primary key,
+  repo text not null,
+  number integer not null,
+  commit_sha text,
+  fingerprint text not null,
+  file text not null,
+  line integer,
+  title text not null,
+  severity text check (severity in ('P0', 'P1', 'P2')),
+  confidence integer,
+  rule text,
+  run_id integer references run (id) on delete set null,
+  thread_id text unique,
+  thread_url text,
+  outdated integer not null default 0,
+  published_at text not null
+);
+create index finding_by_pull on finding (repo, number);
+create table signal (
+  id integer primary key,
+  finding_id integer not null references finding (id) on delete cascade,
+  kind text not null
+    check (kind in ('fixed', 'dismissed', 'ignored', 'negative-reaction', 'human-reply')),
+  source text not null check (source in ('watch', 'manual', 'refresh')),
+  observed_at text not null,
+  cleared_at text
+);
+create index signal_by_finding on signal (finding_id, kind);
+`,
+  },
 ]

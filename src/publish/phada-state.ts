@@ -43,3 +43,9 @@ export function repliedAsResolved(state: PullRequestReviewState, thread: ReviewT
 function isViewer(state: PullRequestReviewState, author: string): boolean {
   return author !== '' && author === state.viewer
 }
+
+export function reviewedShaOf(state: PullRequestReviewState, thread: ReviewThread): string | null {
+  const review = state.reviews.find((item) => item.id === thread.reviewId)
+  if (review === undefined) return null
+  return review.commitSha ?? parseReviewMarker(review.body)?.sha ?? null
+}

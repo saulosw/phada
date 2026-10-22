@@ -1,6 +1,7 @@
 import { reviewAndPublish } from './app/review-and-publish.js'
 import type { ReviewAndPublishDeps, ReviewRun } from './app/review-and-publish.js'
 import { errorMessage } from './app/error-message.js'
+import { recordReviewFeedback } from './app/feedback.js'
 import { historyRun } from './cli/history-run.js'
 import type { RunMeta } from './cli/history-run.js'
 import { dataFiles } from './config/data-paths.js'
@@ -28,6 +29,7 @@ import { messagesFor } from './cli/i18n/messages.js'
 import { runIndex } from './cli/index-command.js'
 import { runInit } from './cli/init.js'
 import { runRules } from './cli/rules-command.js'
+import { runHistory, runHistoryPrune } from './cli/history-command.js'
 import { pullRequestReviewDeps, renderReview, reviewRunJson } from './cli/review-wiring.js'
 import { assertProviderChoice } from './cli/provider-choice.js'
 import type { ProviderOptions } from './cli/provider-choice.js'
@@ -90,6 +92,14 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
       return 0
     }
     if (command.kind === 'watch') return await runWatch(command, deps)
+    if (command.kind === 'history') {
+      await runHistory(command, deps)
+      return 0
+    }
+    if (command.kind === 'history-prune') {
+      await runHistoryPrune(command, deps)
+      return 0
+    }
 
     const token = deps.env.GITHUB_TOKEN?.trim() || deps.env.GH_TOKEN?.trim()
     if (!token) throw new MissingGitHubTokenError()
@@ -279,13 +289,26 @@ async function saveRun(
   try {
     const history = await deps.openHistoryStore(dataFiles(deps.env, deps.home).history)
     try {
-      history.addRun(historyRun(run, reviewRunJson(run), meta))
+      const runId = history.addRun(historyRun(run, reviewRunJson(run), meta))
+      saveFeedback(deps, () =>
+        recordReviewFeedback(history, run, { runId, source: 'manual', now: meta.finishedAt }),
+      )
     } finally {
       history.close()
     }
   } catch (error) {
     deps.stderr.write(
       `Warning: ${toTerminalText(errorMessage(error))}. This review is not saved in the history.\n`,
+    )
+  }
+}
+
+function saveFeedback(deps: Pick<MainDeps, 'stderr'>, save: () => void): void {
+  try {
+    save()
+  } catch (error) {
+    deps.stderr.write(
+      `Warning: could not save the comments' feedback in the history (${toTerminalText(errorMessage(error))}).\n`,
     )
   }
 }

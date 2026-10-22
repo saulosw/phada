@@ -7,7 +7,7 @@ import type { WatchSettings } from '../config/watch-settings.js'
 import type { OpenPull, PullListing } from '../github/list-pull-requests.js'
 import type { BranchHead } from '../github/repository.js'
 import { openHistoryStore } from '../store/history-store.js'
-import type { HistoryStore } from '../store/history-store.js'
+import type { DuePull, HistoryStore } from '../store/history-store.js'
 import type { FailureKind, JobRecord } from '../watch/types.js'
 import type { ReviewRun } from './review-and-publish.js'
 import { watchRepositories } from './watch-repositories.js'
@@ -70,6 +70,7 @@ interface Script {
   classify?: (error: unknown) => { kind: FailureKind; resetAt?: string }
   branchHead?: (now: number) => BranchHead
   refreshIndex?: () => Promise<'complete' | 'partial'>
+  refreshFeedback?: (pulls: readonly DuePull[]) => Promise<void>
   stopWhen?: (state: { now: number; ran: JobRecord[]; sleeps: number }) => boolean
   settings?: WatchSettings
 }
@@ -100,7 +101,12 @@ async function setup(script: Script, history?: HistoryStore) {
     },
     refreshIndex: async (_repo, budgetMs) => {
       indexed.push(budgetMs)
+      events.push('index checked')
       return script.refreshIndex?.() ?? 'complete'
+    },
+    refreshFeedback: async (pulls) => {
+      events.push(`feedback ${pulls.map((due) => `${due.repo}#${due.number}`).join(' ')}`)
+      await script.refreshFeedback?.(pulls)
     },
     classify: script.classify ?? (() => ({ kind: 'transient' })),
     now: () => new Date(now),
@@ -122,6 +128,7 @@ async function setup(script: Script, history?: HistoryStore) {
       failed: (job) => events.push(`failed #${job.number}`),
       indexed: (repo) => events.push(`indexed ${repo}`),
       indexPartial: (repo) => events.push(`partial ${repo}`),
+      feedback: (repo, number, threads) => events.push(`observed ${repo}#${number} ${threads}`),
       warning: (message) => events.push(`warning ${message}`),
       limited: (count, until) =>
         events.push(`limited ${count} until ${(Date.parse(until) - START) / MIN}`),
@@ -460,5 +467,122 @@ describe('watchRepositories', () => {
     expect(h.events).toEqual([
       'warning acme/shop: --backfill only applies the first time a repository is seen; its open pull requests were recorded as they were on 2026-10-17.',
     ])
+  })
+
+  describe('feedback', () => {
+    const iso = (offset: number) => new Date(START + offset).toISOString()
+    const publishedRun = (number: number) => ({
+      source: 'watch' as const,
+      repo: 'acme/shop',
+      number,
+      headSha: A,
+      startedAt: iso(-60 * MIN),
+      finishedAt: iso(-60 * MIN),
+      status: 'published' as const,
+      aiCalled: true,
+      findings: 1,
+    })
+
+    async function storeWith(...numbers: number[]) {
+      const store = await openHistoryStore(join(dir, `w${++files}.sqlite`))
+      store.saveRepo({ repo: 'acme/shop', baselineAt: iso(-120 * MIN) })
+      for (const number of numbers) store.addRun(publishedRun(number))
+      return store
+    }
+
+    it('idle cycle refreshes due feedback after the index, even for a pull no longer listed', async () => {
+      const h = await setup({ branchHead: () => ({ status: 'ok', sha: B }) }, await storeWith(7))
+
+      await watchRepositories(input({ once: true }), h.deps)
+
+      expect(h.events).toEqual(['index checked', 'indexed acme/shop', 'feedback acme/shop#7'])
+    })
+
+    it('asks for at most 10 pulls observed more than 30 minutes ago', async () => {
+      const store = await storeWith(...Array.from({ length: 12 }, (_, index) => index + 1))
+      store.observeFeedback({
+        repo: 'acme/shop',
+        number: 1,
+        pullState: 'open',
+        observedAt: iso(-10 * MIN),
+        source: 'watch',
+        threads: [],
+      })
+      const h = await setup({}, store)
+
+      await watchRepositories(input({ once: true }), h.deps)
+
+      const asked = h.events
+        .find((event) => event.startsWith('feedback'))
+        ?.split(' ')
+        .slice(1)
+      expect(asked).toHaveLength(10)
+      expect(asked).not.toContain('acme/shop#1')
+    })
+
+    it('stops reading a pull request after the read that saw it merged or closed', async () => {
+      const store = await storeWith(7, 8)
+      for (const [number, pullState] of [
+        [7, 'merged'],
+        [8, 'closed'],
+      ] as const) {
+        store.observeFeedback({
+          repo: 'acme/shop',
+          number,
+          pullState,
+          observedAt: iso(-120 * MIN),
+          source: 'watch',
+          threads: [],
+        })
+      }
+      const h = await setup({}, store)
+
+      await watchRepositories(input({ once: true }), h.deps)
+
+      expect(h.events.some((event) => event.startsWith('feedback'))).toBe(false)
+    })
+
+    it('skips repositories that are not watched', async () => {
+      const store = await storeWith()
+      store.addRun({ ...publishedRun(4), repo: 'acme/other' })
+      const h = await setup({}, store)
+
+      await watchRepositories(input({ once: true }), h.deps)
+
+      expect(h.events.some((event) => event.startsWith('feedback'))).toBe(false)
+    })
+
+    it('refreshes feedback only once the queue is idle', async () => {
+      const store = await storeWith(7)
+      store.addJob({
+        repo: 'acme/shop',
+        number: 3,
+        headSha: A,
+        status: 'queued',
+        attempts: 0,
+        notBefore: iso(-MIN),
+        createdAt: iso(-5 * MIN),
+      })
+      const h = await setup({}, store)
+
+      await watchRepositories(input({ once: true }), h.deps)
+
+      const order = h.events.filter((event) => /^(finished|feedback)/.test(event))
+      expect(order).toEqual(['finished #3', 'feedback acme/shop#7'])
+    })
+
+    it('warns and goes on when the feedback refresh throws', async () => {
+      const h = await setup(
+        {
+          refreshFeedback: async () => {
+            throw new Error('disk full')
+          },
+        },
+        await storeWith(7),
+      )
+
+      expect(await watchRepositories(input({ once: true }), h.deps)).toEqual({ reason: 'once' })
+      expect(h.events).toContain('warning could not refresh the feedback (disk full)')
+    })
   })
 })

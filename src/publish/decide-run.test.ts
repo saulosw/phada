@@ -24,18 +24,21 @@ function thread(overrides: Partial<ReviewThread> = {}): ReviewThread {
   return {
     id: 'T1',
     isResolved: false,
+    isOutdated: false,
     path: 'src/shop.ts',
     line: 3,
     author: 'me',
     body: `**P1** · Title · confidence 90\n\nWhy.\n\n${FINDING_MARKER}`,
     reviewId: 'R1',
+    url: '',
+    negativeReactions: 0,
     replies: [],
     ...overrides,
   }
 }
 
 function state(reviews: PublishedReview[], threads: ReviewThread[] = []): PullRequestReviewState {
-  return { viewer: 'me', reviews, threads }
+  return { viewer: 'me', pullState: 'open', reviews, threads }
 }
 
 describe('decideRun', () => {
@@ -104,7 +107,12 @@ describe('decideRun', () => {
   })
 
   it('never treats a deleted author as the viewer', () => {
-    const ghost = { viewer: '', reviews: [review(HEAD, 0, '')], threads: [thread({ author: '' })] }
+    const ghost = {
+      viewer: '',
+      pullState: 'open' as const,
+      reviews: [review(HEAD, 0, '')],
+      threads: [thread({ author: '' })],
+    }
 
     expect(decideRun(ghost, RUN)).toEqual({ action: 'run' })
   })

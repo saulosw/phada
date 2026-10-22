@@ -6,6 +6,7 @@ import type { PullRequestRef } from '../github/pull-request-ref.js'
 import { DEFAULT_MIN_CONFIDENCE } from '../review/run-review.js'
 import { CONFIDENCE_FLOOR, isConfidenceCut, MAX_CONFIDENCE } from '../review/select-findings.js'
 import { LANGUAGE_TAG } from '../config/schema.js'
+import { DURATION, durationMs } from '../config/duration.js'
 import { UsageError } from './errors.js'
 
 export type OutputFormat = 'markdown' | 'json'
@@ -34,6 +35,17 @@ export type CliCommand =
       debug: boolean
     }
   | {
+      kind: 'history'
+      target?: RulesTarget
+      sinceMs?: number
+      limit: number
+      stats: boolean
+      refresh: boolean
+      format: IndexFormat
+      debug: boolean
+    }
+  | { kind: 'history-prune'; olderThanMs: number; debug: boolean }
+  | {
       kind: 'review'
       ref: PullRequestRef
       provider?: string
@@ -49,6 +61,10 @@ export type CliCommand =
       debug: boolean
     }
 
+export const DEFAULT_HISTORY_LIMIT = 50
+const MIN_PRUNE_MS = durationMs('1d')
+const MAX_AGE_MS = durationMs('36500d')
+
 export const USAGE = `Usage: phada <command> [options]
 
 Reviews GitHub pull requests with the AI provider you choose.
@@ -59,6 +75,7 @@ Commands:
   index <owner/repo>     Build a map of a repository's code on this machine
   rules <owner/repo[#N]> Show the rules and docs a review would read
   watch                  Review new pull requests and pushes on its own
+  history                Show past reviews and what happened to Phada's comments
 
 Options:
   -h, --help             Show this help
@@ -201,6 +218,31 @@ Environment:
   PHADA_DATA_HOME    Folder of the history (default: ~/.local/share/phada)
   PHADA_CACHE_HOME   Folder of the mirrors and indexes (default: ~/.cache/phada)`
 
+export const HISTORY_USAGE = `Usage: phada history [<owner/repo[#N]>] [options]
+       phada history prune --older-than <age>
+
+Shows the reviews kept in the local history and what happened to the
+comments Phada published: fixed, dismissed (resolved without a change),
+ignored (left open until the pull request closed) or still open, and which
+ones got a negative reaction or a reply. Reads only this machine, unless
+--refresh.
+
+Options:
+  --since <age>        Only the last <age>, e.g. 30d, 12h
+  --limit <n>          Show at most n reviews (default: ${DEFAULT_HISTORY_LIMIT})
+  --stats              What happened to the comments, per repository
+  --refresh            Read the comments' current state on GitHub first
+  --format <name>      Output: text or json (default: text)
+  --older-than <age>   With prune: remove reviews, findings and finished
+                       jobs older than <age>, 1d at least
+  --debug              Show error details
+  -h, --help           Show this help
+
+Environment:
+  GITHUB_TOKEN         GitHub token for --refresh
+  GH_TOKEN             Used when GITHUB_TOKEN is not set
+  PHADA_DATA_HOME      Folder of the history (default: ~/.local/share/phada)`
+
 const REPOSITORY_NAME = /^([\w.-]+)\/([\w.-]+)$/
 
 export function parseCliArgs(argv: readonly string[]): CliCommand {
@@ -210,6 +252,7 @@ export function parseCliArgs(argv: readonly string[]): CliCommand {
   if (command === 'index') return parseIndexArgs(rest)
   if (command === 'rules') return parseRulesArgs(rest)
   if (command === 'watch') return parseWatchArgs(rest)
+  if (command === 'history') return parseHistoryArgs(rest)
   if (command !== undefined && !command.startsWith('-')) throw unknownCommand(command)
 
   const { values } = parseOptions(argv, {
@@ -226,7 +269,7 @@ function unknownCommand(command: string): UsageError {
     return new UsageError(`Unknown command "${command}". Did you mean "phada review ${command}"?`)
   }
   return new UsageError(
-    `Unknown command "${command}". Available: review, init, index, rules, watch.`,
+    `Unknown command "${command}". Available: review, init, index, rules, watch, history.`,
   )
 }
 
@@ -397,6 +440,81 @@ function parseWatchArgs(argv: readonly string[]): CliCommand {
     format,
     debug: values.debug,
   }
+}
+
+function parseHistoryArgs(argv: readonly string[]): CliCommand {
+  const { values, positionals } = parseOptions(argv, {
+    since: { type: 'string' },
+    limit: { type: 'string' },
+    stats: { type: 'boolean', default: false },
+    refresh: { type: 'boolean', default: false },
+    format: { type: 'string' },
+    'older-than': { type: 'string' },
+    debug: { type: 'boolean', default: false },
+    help: { type: 'boolean', short: 'h', default: false },
+  })
+  if (values.help) return { kind: 'help', text: HISTORY_USAGE }
+  const olderThan = values['older-than']
+  if (positionals[0] === 'prune') {
+    const extra =
+      positionals.length > 1 ||
+      values.since !== undefined ||
+      values.limit !== undefined ||
+      values.stats ||
+      values.refresh ||
+      values.format !== undefined
+    if (extra) throw new UsageError('phada history prune takes only --older-than.')
+    if (olderThan === undefined) {
+      throw new UsageError('phada history prune needs --older-than, e.g. --older-than 180d.')
+    }
+    const olderThanMs = ageMs(olderThan)
+    if (olderThanMs === undefined) {
+      throw new UsageError(`Invalid --older-than "${olderThan}". Use a duration like 180d.`)
+    }
+    if (olderThanMs < MIN_PRUNE_MS) throw new UsageError('Use --older-than 1d at least.')
+    return { kind: 'history-prune', olderThanMs, debug: values.debug }
+  }
+  if (olderThan !== undefined) {
+    throw new UsageError('--older-than only works with phada history prune.')
+  }
+  if (positionals.length > 1) {
+    throw new UsageError('Give one repository or pull request at a time.')
+  }
+  const [input] = positionals
+  const target: RulesTarget | undefined =
+    input === undefined
+      ? undefined
+      : isPullRequestRef(input)
+        ? { kind: 'pull', ref: parsePullRequestRef(input) }
+        : { kind: 'repo', repo: parseRepositoryName(input) }
+  const sinceMs = values.since === undefined ? undefined : ageMs(values.since)
+  if (values.since !== undefined && sinceMs === undefined) {
+    throw new UsageError(`Invalid --since "${values.since}". Use a duration like 30d, 12h or 90m.`)
+  }
+  const limit = values.limit === undefined ? DEFAULT_HISTORY_LIMIT : Number(values.limit)
+  if (!Number.isSafeInteger(limit) || limit < 1 || !/^\d+$/.test(values.limit ?? '1')) {
+    throw new UsageError(`Invalid --limit "${values.limit}". Use a whole number from 1.`)
+  }
+  const format = values.format ?? 'text'
+  if (format !== 'text' && format !== 'json') {
+    throw new UsageError(`Invalid --format "${format}". Use text or json.`)
+  }
+  return {
+    kind: 'history',
+    ...(target === undefined ? {} : { target }),
+    ...(sinceMs === undefined ? {} : { sinceMs }),
+    limit,
+    stats: values.stats,
+    refresh: values.refresh,
+    format,
+    debug: values.debug,
+  }
+}
+
+function ageMs(text: string): number | undefined {
+  if (!DURATION.test(text)) return undefined
+  const ms = durationMs(text)
+  return ms <= MAX_AGE_MS ? ms : undefined
 }
 
 function parseRepositoryName(name: string): RepositoryName {

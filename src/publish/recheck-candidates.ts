@@ -1,8 +1,8 @@
 import type { ComparedFile } from '../github/compare-commits.js'
 import type { PullRequestReviewState, ReviewThread } from '../github/pull-request-reviews.js'
 import type { RecheckThread } from '../review/types.js'
-import { findingTitle, parseReviewMarker } from './markers.js'
-import { openPhadaThreads, repliedAsResolved } from './phada-state.js'
+import { findingTitle } from './markers.js'
+import { openPhadaThreads, repliedAsResolved, reviewedShaOf } from './phada-state.js'
 
 export interface ThreadToRecheck {
   thread: ReviewThread
@@ -42,10 +42,4 @@ export function withChanges(
       changed: !known || file !== undefined,
     }
   })
-}
-
-function reviewedShaOf(state: PullRequestReviewState, thread: ReviewThread): string | null {
-  const review = state.reviews.find((item) => item.id === thread.reviewId)
-  if (review === undefined) return null
-  return review.commitSha ?? parseReviewMarker(review.body)?.sha ?? null
 }

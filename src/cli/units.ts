@@ -43,3 +43,8 @@ function formatMinutes(totalSeconds: number): string {
   const seconds = String(totalSeconds % 60).padStart(2, '0')
   return `${minutes}m${seconds}s`
 }
+
+export function formatLocalTime(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+}

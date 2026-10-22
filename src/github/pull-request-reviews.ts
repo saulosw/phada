@@ -7,6 +7,7 @@ import {
   invalidPayload,
   nullableNumberField,
   nullableStringField,
+  numberField,
   stringField,
 } from './json-fields.js'
 import { formatPullRequestRef } from './pull-request-ref.js'
@@ -14,11 +15,18 @@ import type { PullRequestRef } from './pull-request-ref.js'
 import type { GitHubRequestContext } from './request.js'
 
 const DEFAULT_TIMEOUT_MS = 30_000
+const NEGATIVE_REACTIONS = new Set(['THUMBS_DOWN', 'CONFUSED'])
+const PULL_STATES: Readonly<Record<string, PullState>> = {
+  OPEN: 'open',
+  CLOSED: 'closed',
+  MERGED: 'merged',
+}
 
 const REVIEWS_QUERY = `query($owner: String!, $repo: String!, $number: Int!, $after: String) {
   viewer { login }
   repository(owner: $owner, name: $repo) {
     pullRequest(number: $number) {
+      state
       reviews(first: 100, after: $after) {
         pageInfo { hasNextPage endCursor }
         nodes { id body author { login } commit { oid } }
@@ -35,10 +43,19 @@ const THREADS_QUERY = `query($owner: String!, $repo: String!, $number: Int!, $af
         nodes {
           id
           isResolved
+          isOutdated
           path
           line
-          comments(first: 1) { nodes { body author { login } pullRequestReview { id } } }
-          replies: comments(last: 20) { nodes { body author { login } } }
+          comments(first: 1) {
+            nodes {
+              url
+              body
+              author { login }
+              pullRequestReview { id }
+              reactionGroups { content reactors { totalCount } }
+            }
+          }
+          replies: comments(last: 20) { nodes { body author { login __typename } } }
         }
       }
     }
@@ -55,21 +72,28 @@ export interface PublishedReview {
 export interface ThreadComment {
   author: string
   body: string
+  bot: boolean
 }
 
 export interface ReviewThread {
   id: string
   isResolved: boolean
+  isOutdated: boolean
   path: string
   line: number | null
+  url: string
   author: string
   body: string
   reviewId: string | null
+  negativeReactions: number
   replies: ThreadComment[]
 }
 
+export type PullState = 'open' | 'closed' | 'merged'
+
 export interface PullRequestReviewState {
   viewer: string
+  pullState: PullState
   reviews: PublishedReview[]
   threads: ReviewThread[]
 }
@@ -100,6 +124,7 @@ export async function fetchReviewState(
   const threadPages = await fetchPages(ctx, ref, THREADS_QUERY, variables, 'reviewThreads')
   return {
     viewer: stringField(reviewPages[0]?.data, 'viewer.login'),
+    pullState: pullStateOf(reviewPages[0]?.data),
     reviews: reviewPages.flatMap(({ nodes }) => nodes.map(toReview)),
     threads: threadPages.flatMap(({ nodes }) => nodes.map(toThread)),
   }
@@ -158,24 +183,41 @@ function toReview(node: unknown): PublishedReview {
   }
 }
 
+function pullStateOf(data: unknown): PullState {
+  const state = PULL_STATES[stringField(data, 'repository.pullRequest.state')]
+  if (state === undefined) throw invalidPayload('pullRequest.state')
+  return state
+}
+
 function toThread(node: unknown): ReviewThread {
   const [comment] = arrayField(node, 'comments.nodes')
   return {
     id: stringField(node, 'id'),
     isResolved: booleanField(node, 'isResolved'),
+    isOutdated: booleanField(node, 'isOutdated'),
     path: stringField(node, 'path'),
     line: nullableNumberField(node, 'line'),
+    url: comment === undefined ? '' : stringField(comment, 'url'),
     author: comment === undefined ? '' : login(comment, 'author'),
     body: comment === undefined ? '' : stringField(comment, 'body'),
     reviewId:
       comment === undefined || field(comment, 'pullRequestReview') === null
         ? null
         : stringField(comment, 'pullRequestReview.id'),
+    negativeReactions: comment === undefined ? 0 : negativeReactions(comment),
     replies: arrayField(node, 'replies.nodes').map((reply) => ({
       author: login(reply, 'author'),
       body: stringField(reply, 'body'),
+      bot: field(reply, 'author') !== null && stringField(reply, 'author.__typename') === 'Bot',
     })),
   }
+}
+
+function negativeReactions(comment: unknown): number {
+  if (field(comment, 'reactionGroups') === null) return 0
+  return arrayField(comment, 'reactionGroups')
+    .filter((group) => NEGATIVE_REACTIONS.has(stringField(group, 'content')))
+    .reduce<number>((total, group) => total + numberField(group, 'reactors.totalCount'), 0)
 }
 
 function login(node: unknown, path: string): string {

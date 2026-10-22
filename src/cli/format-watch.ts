@@ -5,7 +5,7 @@ import { errorMessage } from '../app/error-message.js'
 import { formatSkipMessage } from './format-publication.js'
 import { shortSha } from './review-text.js'
 import { toTerminalText } from './terminal-text.js'
-import { formatCount } from './units.js'
+import { formatCount, formatLocalTime } from './units.js'
 
 const SCHEMA_VERSION = 1
 
@@ -25,6 +25,7 @@ export type WatchEventView =
   | { kind: 'failed'; job: JobRecord; error: unknown }
   | { kind: 'indexed'; repo: string; sha: string }
   | { kind: 'indexPartial'; repo: string }
+  | { kind: 'feedback'; repo: string; number: number; threads: number }
   | { kind: 'warning'; message: string }
   | { kind: 'limited'; count: number; until: string }
 
@@ -54,6 +55,8 @@ function eventText(event: WatchEventView): string {
       return `${event.repo}: index of the default branch updated to ${shortSha(event.sha)}.`
     case 'indexPartial':
       return `${event.repo}: indexing the default branch; it goes on when the queue is idle.`
+    case 'feedback':
+      return `Feedback: ${event.repo}#${event.number}, ${formatCount(event.threads, 'comment')}.`
     case 'warning':
       return `Warning: ${event.message}`
     case 'limited':
@@ -190,8 +193,7 @@ function clock(date: Date): string {
 }
 
 function when(iso: string): string {
-  const date = new Date(iso)
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${clock(date)}`
+  return formatLocalTime(new Date(iso))
 }
 
 function pad(value: number): string {

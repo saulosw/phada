@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { createFakeFetch } from '../../test/support/fake-fetch.js'
 import type { FakeResponse } from '../../test/support/fake-fetch.js'
-import { GitHubAuthError, GitHubGraphQLError, GitHubRequestError } from './errors.js'
+import {
+  GitHubAuthError,
+  GitHubGraphQLError,
+  GitHubRateLimitError,
+  GitHubRequestError,
+} from './errors.js'
 import { sendGraphQL } from './graphql.js'
 import { ACCEPT_JSON } from './request.js'
 
@@ -36,6 +41,19 @@ describe('sendGraphQL', () => {
       query: 'query { viewer { login } }',
       variables: { n: 1 },
     })
+  })
+
+  it('turns a rate limit answered with HTTP 200 into a rate limit error', async () => {
+    const body = JSON.stringify({
+      data: null,
+      errors: [{ type: 'RATE_LIMITED', message: 'API rate limit exceeded' }],
+    })
+    const { ctx } = graphQL([{ status: 200, body, headers: { 'x-ratelimit-reset': '1800000000' } }])
+
+    const error = await failureOf(sendGraphQL(ctx, 'query', {}))
+
+    expect(error).toBeInstanceOf(GitHubRateLimitError)
+    expect((error as GitHubRateLimitError).resetAt).toEqual(new Date(1_800_000_000_000))
   })
 
   it('throws the first GraphQL error of an HTTP 200, redacted, with its type', async () => {

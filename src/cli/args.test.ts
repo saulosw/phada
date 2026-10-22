@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { InvalidPullRequestRefError } from '../github/errors.js'
 import {
   parseCliArgs,
+  HISTORY_USAGE,
   INDEX_USAGE,
   INIT_USAGE,
   REVIEW_USAGE,
@@ -39,7 +40,7 @@ describe('parseCliArgs', () => {
     ],
     [
       ['reveiw', 'acme/shop#12'],
-      'Unknown command "reveiw". Available: review, init, index, rules, watch.',
+      'Unknown command "reveiw". Available: review, init, index, rules, watch, history.',
     ],
     [['--verify'], "Unknown option '--verify'."],
   ])('rejects the command line %j with a usage error', (argv, message) => {
@@ -376,5 +377,100 @@ describe('parseCliArgs watch', () => {
     expect(parseCliArgs(['watch', '--help'])).toEqual({ kind: 'help', text: WATCH_USAGE })
     expect(WATCH_USAGE.startsWith('Usage: phada watch [options]')).toBe(true)
     expect(USAGE).toContain('watch                  Review new pull requests and pushes on its own')
+  })
+})
+
+describe('parseCliArgs history', () => {
+  const DAY = 86_400_000
+
+  it('lists the history by default', () => {
+    expect(parseCliArgs(['history'])).toEqual({
+      kind: 'history',
+      limit: 50,
+      stats: false,
+      refresh: false,
+      format: 'text',
+      debug: false,
+    })
+  })
+
+  it('reads a repository or a pull request and the options', () => {
+    expect(
+      parseCliArgs([
+        'history',
+        'acme/shop#3',
+        '--since',
+        '30d',
+        '--limit',
+        '5',
+        '--stats',
+        '--refresh',
+        '--format',
+        'json',
+        '--debug',
+      ]),
+    ).toEqual({
+      kind: 'history',
+      target: { kind: 'pull', ref: { owner: 'acme', repo: 'shop', number: 3 } },
+      sinceMs: 30 * DAY,
+      limit: 5,
+      stats: true,
+      refresh: true,
+      format: 'json',
+      debug: true,
+    })
+    expect(parseCliArgs(['history', 'acme/shop'])).toMatchObject({
+      target: { kind: 'repo', repo: { owner: 'acme', repo: 'shop' } },
+    })
+  })
+
+  it('reads prune with --older-than', () => {
+    expect(parseCliArgs(['history', 'prune', '--older-than', '180d'])).toEqual({
+      kind: 'history-prune',
+      olderThanMs: 180 * DAY,
+      debug: false,
+    })
+  })
+
+  it.each([
+    [['history', '--limit', '0'], 'Invalid --limit "0". Use a whole number from 1.'],
+    [['history', '--since', '5x'], 'Invalid --since "5x". Use a duration like 30d, 12h or 90m.'],
+    [['history', '--format', 'yaml'], 'Invalid --format "yaml". Use text or json.'],
+    [['history', 'acme/shop', 'acme/web'], 'Give one repository or pull request at a time.'],
+    [['history', 'prune'], 'phada history prune needs --older-than, e.g. --older-than 180d.'],
+    [['history', 'prune', '--older-than', '12h'], 'Use --older-than 1d at least.'],
+    [
+      ['history', 'prune', '--older-than', '1y'],
+      'Invalid --older-than "1y". Use a duration like 180d.',
+    ],
+    [
+      ['history', 'prune', 'acme/shop', '--older-than', '30d'],
+      'phada history prune takes only --older-than.',
+    ],
+    [
+      ['history', 'prune', '--older-than', '30d', '--stats'],
+      'phada history prune takes only --older-than.',
+    ],
+    [['history', '--older-than', '30d'], '--older-than only works with phada history prune.'],
+    [
+      ['history', '--since', '999999999d'],
+      'Invalid --since "999999999d". Use a duration like 30d, 12h or 90m.',
+    ],
+    [
+      ['history', 'prune', '--older-than', '999999999d'],
+      'Invalid --older-than "999999999d". Use a duration like 180d.',
+    ],
+  ])('refuses %j', (argv, message) => {
+    expect(() => parseCliArgs(argv)).toThrow(message)
+  })
+
+  it('prints its help', () => {
+    expect(parseCliArgs(['history', '--help'])).toEqual({ kind: 'help', text: HISTORY_USAGE })
+    expect(parseCliArgs(['history', 'prune', '--help'])).toEqual({
+      kind: 'help',
+      text: HISTORY_USAGE,
+    })
+    expect(HISTORY_USAGE.startsWith('Usage: phada history [<owner/repo[#N]>] [options]')).toBe(true)
+    expect(USAGE).toContain('history                Show past reviews and what happened to')
   })
 })

@@ -1,7 +1,7 @@
 import type { WatchedRepoSettings, WatchSettings } from '../config/watch-settings.js'
 import type { PullListing } from '../github/list-pull-requests.js'
 import type { BranchHead } from '../github/repository.js'
-import type { HistoryStore } from '../store/history-store.js'
+import type { DuePull, HistoryStore } from '../store/history-store.js'
 import type { FailureKind, JobRecord, PauseState } from '../watch/types.js'
 import { afterFailure, MAX_ATTEMPTS, rateLimitPause } from '../watch/failures.js'
 import { later } from '../watch/time.js'
@@ -12,6 +12,8 @@ import { errorMessage } from './error-message.js'
 import type { ReviewRun } from './review-and-publish.js'
 
 export const IDLE_INDEX_BUDGET_MS = 60_000
+export const FEEDBACK_INTERVAL_MS = 1_800_000
+export const FEEDBACK_PULLS_PER_CYCLE = 10
 
 export interface Failure {
   kind: FailureKind
@@ -41,6 +43,7 @@ export interface WatchEvents {
   failed(job: JobRecord, error: unknown): void
   indexed(repo: string, sha: string): void
   indexPartial(repo: string): void
+  feedback(repo: string, number: number, threads: number): void
   warning(message: string): void
   limited(count: number, until: string): void
 }
@@ -53,6 +56,7 @@ export interface WatchDeps {
   runJob(job: JobRecord): Promise<ReviewRun>
   recordRun(job: JobRecord, outcome: RunOutcome, startedAt: string): void
   refreshIndex(repo: string, budgetMs: number): Promise<'complete' | 'partial'>
+  refreshFeedback(pulls: readonly DuePull[]): Promise<void>
   classify(error: unknown): Failure
   now(): Date
   sleep(ms: number): Promise<void>
@@ -107,6 +111,8 @@ export async function watchRepositories(input: WatchInput, deps: WatchDeps): Pro
       if (deps.stopRequested()) return { reason: 'stopped' }
       await refreshIdle(repo.repo, settings, branches, deps)
     }
+    if (deps.stopRequested()) return { reason: 'stopped' }
+    await refreshFeedback(settings, deps)
     if (input.once) return { reason: 'once' }
     const wake = nextWake(settings, history, next.waitUntil)
     await deps.sleep(Math.max(MIN_SLEEP_MS, Date.parse(wake) - deps.now().getTime()))
@@ -305,6 +311,20 @@ async function refreshIdle(
   } catch (error) {
     history.saveRepo({ ...record, branchCheckedAt: now })
     deps.events.warning(`${repo}: could not refresh the index (${errorMessage(error)})`)
+  }
+}
+
+async function refreshFeedback(settings: WatchSettings, deps: WatchDeps): Promise<void> {
+  const due = deps.history.feedbackDue(
+    { repos: settings.repos.map(({ repo }) => repo) },
+    later(iso(deps), -FEEDBACK_INTERVAL_MS),
+    FEEDBACK_PULLS_PER_CYCLE,
+  )
+  if (due.length === 0) return
+  try {
+    await deps.refreshFeedback(due)
+  } catch (error) {
+    deps.events.warning(`could not refresh the feedback (${errorMessage(error)})`)
   }
 }
 

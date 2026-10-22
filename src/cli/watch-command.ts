@@ -1,4 +1,5 @@
 import { errorMessage } from '../app/error-message.js'
+import { recordReviewFeedback, refreshFeedback } from '../app/feedback.js'
 import { refreshIndex } from '../app/index-repository.js'
 import { reviewAndPublish } from '../app/review-and-publish.js'
 import type { ReviewRun } from '../app/review-and-publish.js'
@@ -34,7 +35,12 @@ import { formatError } from './format-error.js'
 import { formatWatchEvent } from './format-watch.js'
 import { watchRun } from './history-run.js'
 import { assertProviderChoice } from './provider-choice.js'
-import { pullRequestReviewDeps, renderReview, reviewRunJson } from './review-wiring.js'
+import {
+  feedbackRefreshDeps,
+  pullRequestReviewDeps,
+  renderReview,
+  reviewRunJson,
+} from './review-wiring.js'
 import type { Choice, ReviewWiringDeps } from './review-wiring.js'
 import { printWatchEvents } from './watch-events.js'
 import { watchStatusText } from './watch-status.js'
@@ -166,6 +172,10 @@ function watchDeps(
   deps: WatchCommandDeps,
 ): WatchDeps {
   const choices = new Map<number, Choice>()
+  const events = trackRunningJob(
+    printWatchEvents((event) => deps.stderr.write(`${formatWatchEvent(event, deps.clock())}\n`)),
+    stop,
+  )
   const withEtag = (etag: string | undefined) => (etag === undefined ? {} : { etag })
   return {
     history,
@@ -192,7 +202,14 @@ function watchDeps(
         ...(choice?.model === undefined ? {} : { model: choice.model }),
       }
       try {
-        history.addRun(watchRun(job, outcome, meta, reviewRunJson))
+        const runId = history.addRun(watchRun(job, outcome, meta, reviewRunJson))
+        if ('run' in outcome) {
+          recordReviewFeedback(history, outcome.run, {
+            runId,
+            source: 'watch',
+            now: meta.finishedAt,
+          })
+        }
       } catch (error) {
         deps.stderr.write(
           `Warning: could not save the run in the history (${errorMessage(error)}).\n`,
@@ -200,14 +217,27 @@ function watchDeps(
       }
     },
     refreshIndex: (repo, budgetMs) => refreshDefaultBranch(repo, budgetMs, token, deps),
+    refreshFeedback: async (pulls) => {
+      await refreshFeedback(
+        pulls,
+        'watch',
+        feedbackRefreshDeps(
+          history,
+          token,
+          deps,
+          {
+            observed: (pull, threads) => events.feedback(pull.repo, pull.number, threads),
+            warning: (message) => events.warning(message),
+          },
+          () => stop.stopRequested(),
+        ),
+      )
+    },
     classify: (error) => classifyFailure(error, deps.clock()),
     now: () => deps.clock(),
     sleep: (ms) => deps.sleep(ms, stop.signal),
     stopRequested: () => stop.stopRequested(),
-    events: trackRunningJob(
-      printWatchEvents((event) => deps.stderr.write(`${formatWatchEvent(event, deps.clock())}\n`)),
-      stop,
-    ),
+    events,
   }
 }
 

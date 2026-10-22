@@ -14,6 +14,7 @@ export function printWatchEvents(print: (event: WatchEventView) => void): WatchE
     failed: (job, error) => print({ kind: 'failed', job, error }),
     indexed: (repo, sha) => print({ kind: 'indexed', repo, sha }),
     indexPartial: (repo) => print({ kind: 'indexPartial', repo }),
+    feedback: (repo, number, threads) => print({ kind: 'feedback', repo, number, threads }),
     warning: (message) => print({ kind: 'warning', message }),
     limited: (count, until) => print({ kind: 'limited', count, until }),
   }

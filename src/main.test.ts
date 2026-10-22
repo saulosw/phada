@@ -65,7 +65,12 @@ const RECHECK_FIXED: ReviewOutput = {
 
 const HEAD_SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
 const REVIEW_URL = 'https://github.com/acme/shop/pull/12#pullrequestreview-1'
-const EMPTY_STATE: PullRequestReviewState = { viewer: 'octocat', reviews: [], threads: [] }
+const EMPTY_STATE: PullRequestReviewState = {
+  viewer: 'octocat',
+  pullState: 'open',
+  reviews: [],
+  threads: [],
+}
 
 interface Harness {
   deps: MainDeps
@@ -339,6 +344,7 @@ function harness(
 function phadaState(threads: Partial<ReviewThread>[], findings = 1): PullRequestReviewState {
   return {
     viewer: 'octocat',
+    pullState: 'open',
     reviews: [
       {
         id: 'R1',
@@ -350,11 +356,14 @@ function phadaState(threads: Partial<ReviewThread>[], findings = 1): PullRequest
     threads: threads.map((thread, index) => ({
       id: `T${index + 1}`,
       isResolved: false,
+      isOutdated: false,
       path: 'src/shop.ts',
       line: 3,
       author: 'octocat',
       body: `**P1** · spend has no auth · confidence 90\n\nWhy.\n\n${FINDING_MARKER}`,
       reviewId: 'R1',
+      url: '',
+      negativeReactions: 0,
       replies: [],
       ...thread,
     })),
@@ -702,6 +711,7 @@ describe('run publishing', () => {
     const earlier = (): Promise<PullRequestReviewState> =>
       Promise.resolve({
         viewer: 'octocat',
+        pullState: 'open',
         reviews: [
           {
             id: 'R0',
@@ -714,11 +724,14 @@ describe('run publishing', () => {
           {
             id: 'T1',
             isResolved: false,
+            isOutdated: false,
             path: 'src/shop.ts',
             line: 3,
             author: 'octocat',
             body: `**P1** · Balance leaks · confidence 90\n\nWhy.\n\n${FINDING_MARKER}`,
             reviewId: 'R0',
+            url: '',
+            negativeReactions: 0,
             replies: [],
           },
         ],
@@ -1601,6 +1614,30 @@ describe('run rules', () => {
 })
 
 describe('run history', () => {
+  it('says phada history cannot read a file written by a newer Phada', async () => {
+    const h = harness({
+      env: { PHADA_CONFIG_HOME: '/cfg', PHADA_DATA_HOME: '/data' },
+      files: memoryFiles({ '/data/history.sqlite': '' }),
+      openHistoryStore: () =>
+        Promise.reject(
+          new HistoryVersionError('/data/history.sqlite', 9, 2),
+        ) as Promise<HistoryStore>,
+    })
+
+    expect(await run(['history'], h.deps)).toBe(1)
+    expect(h.stderr()).toContain(
+      '/data/history.sqlite was written by a newer Phada (history version 9, this one knows 2); update Phada',
+    )
+  })
+
+  it('runs phada history and phada history prune', async () => {
+    const h = harness()
+
+    expect(await run(['history'], h.deps)).toBe(0)
+    expect(await run(['history', 'prune', '--older-than', '30d'], h.deps)).toBe(0)
+    expect(h.stdout()).toBe('No reviews in the history yet.\nNo reviews in the history yet.\n')
+  })
+
   const REVIEW = ['review', 'acme/shop#12', '--no-verify']
   type Row = Record<string, unknown>
   const runsOf = (h: Harness): Row[] => {
@@ -1666,6 +1703,43 @@ describe('run history', () => {
     expect(await run(REVIEW, h.deps)).toBe(1)
     expect(runsOf(h)).toEqual([
       expect.objectContaining({ status: 'failed', ai_called: 1, error_kind: null }),
+    ])
+  })
+
+  const tableOf = (h: Harness, table: string): Row[] => {
+    const file = h.historyFiles[0]?.split(' → ')[1]
+    if (file === undefined) return []
+    const db = new DatabaseSync(file)
+    const rows = db.prepare(`select * from ${table} order by id`).all() as Row[]
+    db.close()
+    return rows
+  }
+
+  it('saves the findings it published and the signals it read', async () => {
+    const h = harness({
+      review: () => Promise.resolve(WITH_FINDING),
+      reviewState: () =>
+        Promise.resolve(
+          phadaState([
+            {
+              isResolved: true,
+              path: 'src/old.ts',
+              body: `**P2** · Old finding · confidence 80\n\nWhy.\n\n${FINDING_MARKER}`,
+            },
+          ]),
+        ),
+    })
+
+    expect(await run([...REVIEW, '--force'], h.deps)).toBe(0)
+
+    const [run_] = runsOf(h)
+    const findings = tableOf(h, 'finding')
+    expect(findings).toEqual([
+      expect.objectContaining({ file: 'src/old.ts', thread_id: 'T1', run_id: null }),
+      expect.objectContaining({ commit_sha: HEAD_SHA, thread_id: null, run_id: run_?.id }),
+    ])
+    expect(tableOf(h, 'signal')).toEqual([
+      expect.objectContaining({ finding_id: findings[0]?.id, kind: 'dismissed', source: 'manual' }),
     ])
   })
 
@@ -1751,6 +1825,24 @@ describe('phada watch', () => {
     expect(h.providers[0]?.options).toMatchObject({ detached: true })
     expect(h.stderr()).toMatch(/\[\d\d:\d\d\] Reviewing acme\/shop#12 at a1b2c3d…/)
     expect(h.stderr()).toContain(`Published acme/shop#12: ${REVIEW_URL}`)
+  })
+
+  it('saves the findings a watch review published', async () => {
+    const h = harness({
+      files: withConfig(),
+      listPulls: listed,
+      review: () => Promise.resolve(WITH_FINDING),
+    })
+
+    expect(await run(['watch', '--once', '--backfill'], h.deps)).toBe(0)
+
+    const file = h.historyFiles[0]?.split(' → ')[1] ?? ''
+    const db = new DatabaseSync(file)
+    const findings = db.prepare('select repo, number, thread_id from finding').all()
+    const observed = db.prepare('select repo, number, pull_state from feedback_pull').all()
+    db.close()
+    expect(findings).toEqual([{ repo: 'acme/shop', number: 12, thread_id: null }])
+    expect(observed).toEqual([{ repo: 'acme/shop', number: 12, pull_state: 'open' }])
   })
 
   it('records the open pull requests without reviewing them on the first run', async () => {

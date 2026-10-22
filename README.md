@@ -49,8 +49,10 @@ request can take a few minutes. `phada review owner/repo#123 --dry-run` prints e
 be posted and posts nothing.
 
 `phada --help` lists the commands, and `phada review --help`, `phada init --help`,
-`phada index --help`, `phada rules --help` and `phada watch --help` list their options. To have
-new pull requests and pushes reviewed without running anything, see [Watch mode](#watch-mode).
+`phada index --help`, `phada rules --help`, `phada watch --help` and `phada history --help` list
+their options. To have new pull requests and pushes reviewed without running anything, see
+[Watch mode](#watch-mode); to see what happened to the comments Phada published, see
+[History](#history).
 
 ### GitHub token
 
@@ -253,6 +255,46 @@ so the file stays readable only by you. Unlike the cache, the history is never r
 by Phada; a newer version updates it in place, and an older one refuses a file written by a newer
 one instead of touching it. `history: false` in your own config turns it off (`phada watch`
 needs it).
+
+```bash
+phada history                         # the last 50 reviews
+phada history owner/repo --since 30d  # one repository, the last 30 days
+phada history owner/repo#123          # one pull request, with what happened to each comment
+phada history --stats                 # what happened to the comments, per repository
+phada history --refresh --stats       # read the comments on GitHub first
+phada history prune --older-than 180d
+```
+
+### What happened to each comment
+
+The history also keeps every comment Phada published and what happened to it, read from the
+comment's thread on GitHub, without the AI. Each comment has one outcome:
+
+- **fixed**: Phada resolved it after a recheck (see
+  [Comments fixed in a new commit](#comments-fixed-in-a-new-commit)), or a person resolved it
+  after the lines it points at changed;
+- **dismissed**: a person resolved it without the lines changing;
+- **ignored**: it was still open when the pull request was merged or closed;
+- **open**: none of the above yet.
+
+And two marks: **negative reaction** (a 👎 or 😕 on the comment) and **replied** (someone
+answered in the thread; Phada's own replies and bots do not count). Outcomes and marks follow the
+thread: a resolved comment that is reopened is open again, and a removed reaction stops counting.
+The history keeps when each one started and, when it stopped, when.
+
+`phada review` saves the state of the threads it reads on every run. `phada watch` also reads
+the pull requests with Phada comments every 30 minutes when the queue is idle, and once more when
+they are merged or closed. Without the watch, `phada history --refresh` reads them on demand
+(it needs `GITHUB_TOKEN`); `phada history owner/repo#123 --refresh` reads that pull request even
+when the history has nothing about it yet.
+
+`--stats` counts the comments published in the period per repository, with the share of each
+outcome. They are signals, not verdicts: a dismissed comment may still have been right.
+
+`--format json` prints the runs, the comments with their outcome and the history of each signal,
+or the stats, with `schemaVersion: 1`. `phada history prune --older-than <age>` removes reviews,
+comments and finished jobs older than that age (`1d` at least); it never touches what the watch
+needs to know what it already saw.
 
 ## Rules and repository context
 
@@ -579,6 +621,8 @@ your own stops Phada with an error that names the file and the key.
 
 `phada index` exits with 0 when the map was built and 1 when fetching or writing it failed.
 `phada rules` exits with 0 when it printed the context and 1 when GitHub could not be read.
+`phada history` exits with 0 when it printed the history and 1 when the file or, with `--refresh`,
+GitHub could not be read.
 `phada watch` exits with 0 when it stopped or `--once` finished, 1 when it stopped on an error
 (another watch running, an AI CLI that is not logged in, a token GitHub rejects), 2 when the
 command line or your config is wrong, and 130 when a second Ctrl-C aborted it.

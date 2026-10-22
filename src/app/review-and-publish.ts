@@ -39,7 +39,7 @@ export type PublicationResult =
   | { status: 'closed-or-draft' }
   | { status: 'failed'; error: unknown }
 
-export type ReviewRun =
+export type ReviewRun = (
   | { status: 'skipped'; pullRequest: PullRequest; reason: SkipReason }
   | {
       status: 'nothing'
@@ -57,6 +57,7 @@ export type ReviewRun =
       publication: PublicationResult
       wouldSkip?: SkipReason
     }
+) & { reviewState?: PullRequestReviewState }
 
 export type HeadCheck = 'current' | 'closed-or-draft' | { superseded: string }
 
@@ -116,7 +117,8 @@ export async function reviewAndPublish(
     skipReviewedCommits: input.mode === 'watch',
   }
   const early = decideRun(state, runOptions)
-  if (early.action === 'skip') return { status: 'skipped', pullRequest, reason: early.reason }
+  if (early.action === 'skip')
+    return { status: 'skipped', pullRequest, reason: early.reason, reviewState: state }
 
   const reviewDeps = deps.reviewDeps(pullRequest)
   const review = {
@@ -129,7 +131,7 @@ export async function reviewAndPublish(
   const fingerprint = diffFingerprint(loaded.diff)
   const decision = decideRun(state, { ...runOptions, diff: fingerprint })
   if (decision.action === 'skip') {
-    return { status: 'skipped', pullRequest, reason: decision.reason }
+    return { status: 'skipped', pullRequest, reason: decision.reason, reviewState: state }
   }
 
   const resolve = input.options.resolveThreads ?? loaded.options.resolveThreads ?? true
@@ -140,7 +142,7 @@ export async function reviewAndPublish(
   if (outcome.status === 'skipped') {
     if (outcome.reason !== 'all-ignored') {
       deps.events.reviewed(reviewed, pullRequest)
-      return { status: 'nothing', pullRequest, reviewed }
+      return { status: 'nothing', pullRequest, reviewed, reviewState: state }
     }
     const rendered = deps.render.ignoredOnly(
       pullRequest.headSha,
@@ -155,6 +157,7 @@ export async function reviewAndPublish(
       reviewed,
       rendered,
       publication: await publish(input, deps, pullRequest, rendered, fixed, reviewed.language),
+      reviewState: state,
     }
   }
 
@@ -170,6 +173,7 @@ export async function reviewAndPublish(
     rendered,
     publication: await publish(input, deps, pullRequest, rendered, fixed, reviewed.language),
     ...(decision.wouldSkip === undefined ? {} : { wouldSkip: decision.wouldSkip }),
+    reviewState: state,
   }
 }
 

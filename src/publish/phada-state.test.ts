@@ -4,18 +4,23 @@ import { FINDING_MARKER, resolvedMarker } from './markers.js'
 import { resolvedByPhada } from './phada-state.js'
 
 const SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
-const STATE: PullRequestReviewState = { viewer: 'me', reviews: [], threads: [] }
+const STATE: PullRequestReviewState = { viewer: 'me', pullState: 'open', reviews: [], threads: [] }
 
 function thread(overrides: Partial<ReviewThread> = {}): ReviewThread {
   return {
     id: 'T1',
     isResolved: true,
+    isOutdated: false,
     path: 'src/shop.ts',
     line: 3,
     author: 'me',
     body: `**P1** · Title · confidence 90\n\nWhy.\n\n${FINDING_MARKER}`,
     reviewId: 'R1',
-    replies: [{ author: 'me', body: `Fixed in \`a1b2c3d\`: ok.\n\n${resolvedMarker(SHA)}` }],
+    url: '',
+    negativeReactions: 0,
+    replies: [
+      { author: 'me', body: `Fixed in \`a1b2c3d\`: ok.\n\n${resolvedMarker(SHA)}`, bot: false },
+    ],
     ...overrides,
   }
 }
@@ -30,7 +35,7 @@ describe('resolvedByPhada', () => {
   })
 
   it('is false when the marker comes from someone else or is quoted', () => {
-    const quoted = { author: 'me', body: `\`${resolvedMarker(SHA)}\` was here` }
+    const quoted = { author: 'me', body: `\`${resolvedMarker(SHA)}\` was here`, bot: false }
 
     expect(
       resolvedByPhada(STATE, thread({ replies: [{ ...thread().replies[0]!, author: 'x' }] })),
