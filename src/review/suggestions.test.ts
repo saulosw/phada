@@ -174,6 +174,16 @@ describe('checkSuggestion', () => {
         replacement: 'const LIMIT = 20 /* \u202E */',
       }),
     ).toBeUndefined()
+    for (const hidden of ['\u200B', '\u200F', '\uFEFF', '\u2028', '\u00AD', '\u061C']) {
+      expect(
+        check({
+          startLine: 2,
+          endLine: 2,
+          original: 'const LIMIT = 20',
+          replacement: `const LIMIT${hidden} = 5`,
+        }),
+      ).toBeUndefined()
+    }
     expect(
       check({
         startLine: 2,
