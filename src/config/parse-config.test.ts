@@ -224,3 +224,57 @@ describe('parseConfigText', () => {
     if (!parsed.ok) expect(parsed.message).toContain(message)
   })
 })
+
+describe('review block', () => {
+  it('reads the review prompt and skills', () => {
+    const text = [
+      'review:',
+      '  prompt:',
+      '    file: .phada/review.md',
+      '    mode: replace',
+      '  skills:',
+      '    - phada',
+      '    - superpowers:requesting-code-review',
+      '    - name: security-review',
+      '      paths: ["src/auth/**"]',
+    ].join('\n')
+
+    expect(parseConfigText(text)).toEqual({
+      ok: true,
+      config: {
+        review: {
+          prompt: { file: '.phada/review.md', mode: 'replace' },
+          skills: [
+            'phada',
+            'superpowers:requesting-code-review',
+            { name: 'security-review', paths: ['src/auth/**'] },
+          ],
+        },
+      },
+    })
+  })
+
+  it.each([
+    [
+      'an unknown prompt mode',
+      'review:\n  prompt:\n    file: a.md\n    mode: merge',
+      'review.prompt.mode',
+    ],
+    ['a skill name with a space', 'review:\n  skills: ["a b"]', 'review.skills.0'],
+    [
+      'a skill object name with a space',
+      'review:\n  skills:\n    - name: "a b"',
+      'review.skills.0.name',
+    ],
+    [
+      'an exception in skill paths',
+      'review:\n  skills:\n    - name: a\n      paths: ["!x"]',
+      'review.skills.0.paths.0',
+    ],
+  ])('rejects %s and names the key', (_case, text, path) => {
+    const parsed = parseConfigText(text)
+
+    expect(parsed.ok).toBe(false)
+    if (!parsed.ok) expect(parsed.message).toMatch(new RegExp(`^${path.replaceAll('.', '\\.')}`))
+  })
+})
