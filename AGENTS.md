@@ -153,7 +153,7 @@ src/
     create-review.ts     #   createReview(): one COMMENT review with line comments (start_line for
                          #   several lines)
     compare-commits.ts   #   fetchComparison(): the files changed between two commits, with patches
-    resolve-thread.ts    #   replyAndResolve(): reply on a review thread, then resolve it
+    resolve-thread.ts    #   replyAndResolve(): resolve a review thread, then reply on it
     repository-files.ts  #   fetchRepositoryTree(), fetchRepositoryFile(): the repository at a commit
     repository.ts        #   fetchRepository(): visibility, default branch, empty; fetchBranchHead()
     list-pull-requests.ts #  listOpenPullRequests(): open pull requests, ETag of the first page

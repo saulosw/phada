@@ -22,7 +22,7 @@ function run(reply: FakeResponse[], resolve: FakeResponse[] = []) {
 }
 
 describe('replyAndResolve', () => {
-  it('replies on the thread and then resolves it', async () => {
+  it('resolves the thread and then replies on it', async () => {
     const { result, calls } = run(
       [ok({ addPullRequestReviewThreadReply: { comment: { id: 'C1' } } })],
       [ok({ resolveReviewThread: { thread: { id: 'PRRT_1', isResolved: true } } })],
@@ -30,18 +30,19 @@ describe('replyAndResolve', () => {
 
     await result
 
-    expect(calls.map(byMutation)).toEqual(['reply', 'resolve'])
-    expect(JSON.parse(calls[0]?.body ?? '').variables).toEqual({
+    expect(calls.map(byMutation)).toEqual(['resolve', 'reply'])
+    expect(JSON.parse(calls[0]?.body ?? '').variables).toEqual({ threadId: 'PRRT_1' })
+    expect(JSON.parse(calls[1]?.body ?? '').variables).toEqual({
       threadId: 'PRRT_1',
       body: 'Fixed in `abc1234`.',
     })
-    expect(JSON.parse(calls[1]?.body ?? '').variables).toEqual({ threadId: 'PRRT_1' })
   })
 
-  it('does not resolve a thread when the reply fails', async () => {
-    const { result, calls } = run([
-      { status: 200, body: JSON.stringify({ errors: [{ message: 'Resource not accessible' }] }) },
-    ])
+  it('does not reply on a thread it could not resolve', async () => {
+    const { result, calls } = run(
+      [],
+      [{ status: 200, body: JSON.stringify({ errors: [{ message: 'Resource not accessible' }] }) }],
+    )
 
     await expect(result).rejects.toBeInstanceOf(GitHubGraphQLError)
     expect(calls).toHaveLength(1)

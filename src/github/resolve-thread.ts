@@ -27,6 +27,6 @@ export async function replyAndResolve(options: ReplyAndResolveOptions): Promise<
     fetch: options.fetch ?? globalThis.fetch,
     timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
   }
-  await sendGraphQL(ctx, REPLY, { threadId: options.threadId, body: options.body })
   await sendGraphQL(ctx, RESOLVE, { threadId: options.threadId })
+  await sendGraphQL(ctx, REPLY, { threadId: options.threadId, body: options.body })
 }
