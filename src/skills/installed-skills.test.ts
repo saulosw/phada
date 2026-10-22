@@ -77,7 +77,7 @@ describe('listInstalledSkills', () => {
       }),
       [`${PLUGINS}/cache/market/pocock/1.3.1/skills/engineering/code-review/SKILL.md`]:
         '---\nname: code-review\n---\nTwo axes.',
-      [`${PLUGINS}/cache/market/pocock/1.3.1/skills/other/SKILL.md`]: 'Not listed.',
+      [`${PLUGINS}/cache/market/pocock/1.3.1/skills/other/SKILL.md`]: 'In the default folder.',
       [`${PLUGINS}/cache/market/outside/SKILL.md`]: 'Outside.',
       [`${PLUGINS}/cache/market/code-review/af59/commands/code-review.md`]: 'Five agents.',
     })
@@ -87,6 +87,7 @@ describe('listInstalledSkills', () => {
     expect(listing.skills.map(({ qualified, kind }) => [qualified, kind])).toEqual([
       ['code-review:code-review', 'command'],
       ['pocock:code-review', 'skill'],
+      ['pocock:other', 'skill'],
     ])
   })
 
@@ -126,5 +127,79 @@ describe('listInstalledSkills', () => {
     expect(listing.warnings).toEqual([
       `Could not read ${PLUGINS}/installed_plugins.json: plugin skills were not searched.`,
     ])
+  })
+})
+
+describe('listInstalledSkills with the plugin manifest forms', () => {
+  const ROOT = `${PLUGINS}/cache/m/p/1.0.0`
+  const withPlugin = (files: Record<string, string>) =>
+    memoryFiles({
+      [`${PLUGINS}/installed_plugins.json`]: installed({ 'p@m': ROOT }),
+      ...files,
+    })
+  const names = async (files: Record<string, string>) =>
+    (await listInstalledSkills(withPlugin(files), roots)).skills.map(({ qualified }) => qualified)
+
+  it('scans a listed folder of skills and still scans skills/', async () => {
+    expect(
+      await names({
+        [`${ROOT}/.claude-plugin/plugin.json`]: '{"name":"p","skills":["./extra-skills/"]}',
+        [`${ROOT}/extra-skills/a/SKILL.md`]: 'A.',
+        [`${ROOT}/extra-skills/b/SKILL.md`]: 'B.',
+        [`${ROOT}/skills/c/SKILL.md`]: 'C.',
+      }),
+    ).toEqual(['p:a', 'p:b', 'p:c'])
+  })
+
+  it('reads the plugin root as a skill folder when the manifest lists it', async () => {
+    expect(
+      await names({
+        [`${ROOT}/.claude-plugin/plugin.json`]: '{"name":"p","skills":"./"}',
+        [`${ROOT}/SKILL.md`]: '---\nname: root-review\n---\nRoot.',
+      }),
+    ).toEqual(['p:root-review'])
+  })
+
+  it('loads a plugin with SKILL.md at its root and no skills folder as one skill', async () => {
+    expect(await names({ [`${ROOT}/SKILL.md`]: 'Root.' })).toEqual(['p:p'])
+  })
+
+  it('lists a skill folder only once when the manifest also names skills/', async () => {
+    expect(
+      await names({
+        [`${ROOT}/.claude-plugin/plugin.json`]: '{"name":"p","skills":["./skills/"]}',
+        [`${ROOT}/skills/c/SKILL.md`]: 'C.',
+      }),
+    ).toEqual(['p:c'])
+  })
+
+  it('reads commands given as files and as a map, instead of commands/', async () => {
+    expect(
+      await names({
+        [`${ROOT}/.claude-plugin/plugin.json`]: JSON.stringify({
+          name: 'p',
+          commands: {
+            status: { source: './cmds/status.md' },
+            about: { content: 'Inline.' },
+          },
+        }),
+        [`${ROOT}/cmds/status.md`]: 'Status.',
+        [`${ROOT}/commands/ignored.md`]: 'Ignored.',
+      }),
+    ).toEqual(['p:status'])
+    expect(
+      await names({
+        [`${ROOT}/.claude-plugin/plugin.json`]: '{"name":"p","commands":["./cmds/review.md"]}',
+        [`${ROOT}/cmds/review.md`]: 'Review.',
+      }),
+    ).toEqual(['p:review'])
+  })
+
+  it('takes the name of a skill from a CRLF front matter with BOM', async () => {
+    const files = memoryFiles({
+      '/home/u/.claude/skills/sec/SKILL.md': '\uFEFF---\r\nname: security-review\r\n---\r\nBody.',
+    })
+
+    expect((await listInstalledSkills(files, roots)).skills[0]?.name).toBe('security-review')
   })
 })

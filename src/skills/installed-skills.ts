@@ -109,23 +109,71 @@ async function pluginSkills(
   const found: InstalledSkill[] = []
   for (const [plugin, installPath] of plugins) {
     const manifest = await readManifest(files, installPath)
-    const skillDirs = insidePlugin(installPath, manifest.skills)
-    if (skillDirs === undefined) {
-      found.push(...(await skillsIn(files, join(installPath, 'skills'), 'claude-plugin', plugin)))
-    } else {
-      for (const dir of skillDirs) {
-        const skill = await skillAt(files, dir, 'claude-plugin', plugin)
-        if (skill !== undefined) found.push(skill)
-      }
-    }
-    const commandDirs = insidePlugin(installPath, manifest.commands) ?? [
-      join(installPath, 'commands'),
-    ]
-    for (const dir of commandDirs) {
-      found.push(...(await commandsIn(files, dir, 'claude-plugin', plugin)))
-    }
+    found.push(...(await pluginSkillFolders(files, plugin, installPath, manifest)))
+    found.push(...(await pluginCommands(files, plugin, installPath, manifest)))
   }
   return found.sort((a, b) => compareText(a.qualified, b.qualified))
+}
+
+async function pluginSkillFolders(
+  files: LocalFileSystem,
+  plugin: string,
+  installPath: string,
+  manifest: PluginManifest,
+): Promise<InstalledSkill[]> {
+  const defaultFolder = join(installPath, 'skills')
+  const listed = insidePlugin(installPath, manifest.skills) ?? []
+  const hasDefault = (await files.listDir(defaultFolder)) !== null
+  if (manifest.skills === undefined && !hasDefault) {
+    const text = await files.readText(join(installPath, SKILL_FILE))
+    if (text === null) return []
+    const name = frontmatterName(text) ?? plugin
+    return [
+      {
+        name,
+        qualified: qualify(plugin, name),
+        kind: 'skill',
+        root: 'claude-plugin',
+        path: join(installPath, SKILL_FILE),
+        dir: installPath,
+      },
+    ]
+  }
+  const found = new Map<string, InstalledSkill>()
+  for (const folder of [defaultFolder, ...listed]) {
+    const single = await skillAt(files, folder, 'claude-plugin', plugin)
+    const skills =
+      single === undefined ? await skillsIn(files, folder, 'claude-plugin', plugin) : [single]
+    for (const skill of skills) found.set(skill.path, skill)
+  }
+  return [...found.values()]
+}
+
+async function pluginCommands(
+  files: LocalFileSystem,
+  plugin: string,
+  installPath: string,
+  manifest: PluginManifest,
+): Promise<InstalledSkill[]> {
+  const paths = insidePlugin(installPath, manifest.commands) ?? [join(installPath, 'commands')]
+  const found: InstalledSkill[] = []
+  for (const path of paths) {
+    if (path.endsWith('.md')) {
+      if ((await files.readText(path)) === null) continue
+      const name = manifest.commandNames?.get(path) ?? posix.basename(path).slice(0, -'.md'.length)
+      found.push({
+        name,
+        qualified: qualify(plugin, name),
+        kind: 'command',
+        root: 'claude-plugin',
+        path,
+        dir: posix.dirname(path),
+      })
+      continue
+    }
+    found.push(...(await commandsIn(files, path, 'claude-plugin', plugin)))
+  }
+  return found
 }
 
 function installPaths(text: string): [string, string][] | undefined {
@@ -149,6 +197,7 @@ function installPaths(text: string): [string, string][] | undefined {
 interface PluginManifest {
   skills?: string[]
   commands?: string[]
+  commandNames?: Map<string, string>
 }
 
 async function readManifest(files: LocalFileSystem, installPath: string): Promise<PluginManifest> {
@@ -158,14 +207,28 @@ async function readManifest(files: LocalFileSystem, installPath: string): Promis
     const parsed: unknown = JSON.parse(text)
     if (!isRecord(parsed)) return {}
     const skills = pathList(parsed.skills)
-    const commands = pathList(parsed.commands)
+    const commandMap = isRecord(parsed.commands) ? commandSources(parsed.commands) : undefined
+    const commands = commandMap === undefined ? pathList(parsed.commands) : [...commandMap.keys()]
+    const commandNames =
+      commandMap === undefined
+        ? undefined
+        : new Map([...commandMap].map(([source, name]) => [posix.join(installPath, source), name]))
     return {
       ...(skills === undefined ? {} : { skills }),
       ...(commands === undefined ? {} : { commands }),
+      ...(commandNames === undefined ? {} : { commandNames }),
     }
   } catch {
     return {}
   }
+}
+
+function commandSources(map: Record<string, unknown>): Map<string, string> {
+  const sources = new Map<string, string>()
+  for (const [name, entry] of Object.entries(map)) {
+    if (isRecord(entry) && typeof entry.source === 'string') sources.set(entry.source, name)
+  }
+  return sources
 }
 
 function pathList(value: unknown): string[] | undefined {
@@ -176,9 +239,10 @@ function pathList(value: unknown): string[] | undefined {
 
 function insidePlugin(installPath: string, paths: string[] | undefined): string[] | undefined {
   if (paths === undefined) return undefined
+  const root = posix.normalize(installPath).replace(/\/+$/, '')
   return paths.flatMap((path) => {
-    const joined = posix.normalize(posix.join(installPath, path))
-    return joined.startsWith(`${installPath}/`) ? [joined] : []
+    const joined = posix.normalize(posix.join(root, path)).replace(/\/+$/, '')
+    return joined === root || joined.startsWith(`${root}/`) ? [joined] : []
   })
 }
 
