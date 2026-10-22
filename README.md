@@ -396,8 +396,8 @@ several plugins have a skill with that name, use `plugin:skill`. A skill you ask
 installed stops the review before the AI is called and names the folders Phada looked in; one the
 repository's config asks for is skipped with a warning.
 
-The skill's text is sent as the reviewer's guide on every provider, without its front matter and
-with the `.md` files of its folder that it names, up to 32 KB per skill (cited files that do not
+With Codex and Ollama, or for a skill with `mode: text`, the skill's text is sent as the
+reviewer's guide, without its front matter and with the `.md` files of its folder that it names, up to 32 KB per skill (cited files that do not
 fit are left out with a warning). The AI follows what the guide asks it to look for and to leave
 out; steps that fetch the pull request, post on it, ask you something or hand work to other
 agents are left to Phada, and the AI reads history, blame and other files with the
@@ -408,6 +408,66 @@ With several skills each pass takes about as long as a review, and the stderr li
 `Skills: …` and `Skill 2/3: …` show where it is. `--dry-run` ends with a section that lists
 each pass with its findings, time and tokens; the JSON has `skill` on every finding and a
 `passes` block (`null` when only the built-in reviewer ran without a custom prompt).
+
+### Skills that run natively
+
+With Claude Code, every skill you name except `phada` runs as `/<name>`, the way it runs in your
+terminal, in a temporary checkout of the pull request head:
+
+- **The change is where a skill expects it.** The base branch is `origin/<base>`, pointing at
+  where the pull request branched off, so `git diff origin/<base>...HEAD`,
+  `git log origin/<base>..HEAD` and `git merge-base` show the pull request; the diff is also in a
+  file next to the checkout.
+- **What it can do.** Read and search files, run subagents, use Phada's
+  [investigation tools](#repository-investigation) and the MCP servers your config names in
+  `mcp`. Bash runs only git reads (`diff`, `log`, `show`, `blame`, `status`, `rev-parse`,
+  `merge-base`, `ls-files`, `grep`) and `gh`, unless `review.commands` allows more. It cannot
+  write files or use the web, and it reads only inside the checkout, its own folder and
+  `review.readDirs`. The repository's own `.claude/` settings and `CLAUDE.md` are not loaded.
+- **`gh` is answered by Phada.** `gh pr view` and `gh pr diff` come from the data Phada already
+  fetched; the pull request shows as open and not a draft, without the reviews and comments of the
+  token's owner. Other reads of the same repository (`gh pr list`, `gh issue view`,
+  `gh issue list`, `gh search prs`, `gh search issues`, `gh repo view`, `gh api` GET under
+  `repos/<owner>/<repo>/`) go through Phada with its token, up to 60 per pass. `gh pr comment`,
+  `gh pr review` and `gh api` posts of comments or reviews on this pull request are kept as the
+  skill's output and **never sent**. Anything else fails with a message that lists what works;
+  `--jq` takes paths like `.files[].path`.
+- **Nothing leaks.** No GitHub token reaches the AI CLI, and the checkout and its folder are
+  removed after the review, also on errors and Ctrl-C.
+- **The output becomes a Phada review.** When the skill finishes, one more call to the same model
+  turns what it tried to post (or else its final answer) into findings, in the skill's words, and
+  the review goes on as usual: line checks, duplicates, verification, cut and score. The summary
+  is the skill's. When none of its findings points at a changed line, the skill's output becomes
+  the body of the review. `--dry-run` shows the skill's output and the JSON has it in
+  `passes[].output`.
+- **Text mode and built-in skills.** `{ name: my-plugin:review, mode: text }` sends a skill as
+  text instead; `claude:<name>` names a skill built into Claude Code, which only runs natively.
+- **Time.** A native pass can take many minutes, and skills that start several subagents use many
+  tokens. `review.timeout` (default `30m`) limits each pass; one that runs out fails the review,
+  and `phada watch` tries it again later like other timeouts.
+
+```yaml
+# ~/.config/phada/config.yml
+review:
+  commands: read-only # the default; or a list like ["npm test"]; or all
+  readDirs: ['~/review-rules'] # folders a skill may read besides the checkout
+  timeout: 30m
+```
+
+`review.commands`, `review.readDirs` and `review.timeout` are only read from your own config,
+never from a repository's `.phada/`. A list or `all` lets the skill run those commands, and they
+run the code of the pull request on your machine: allow them only for repositories you trust.
+A pull request of a public repository from an author who is not an owner, member or collaborator
+always runs read-only, without `readDirs`. Every command or read the skill was refused is shown
+on stderr, in `--dry-run` and in the JSON (`passes[].blocked`) with the line that allows it:
+
+```text
+Skill my-plugin:review: ran natively in 6m12s, 1 GitHub write captured, 1 blocked
+  blocked npm test (allow it with review.commands: ["npm test"] in ~/.config/phada/config.yml)
+```
+
+Text published on the pull request is checked for token patterns, which are replaced by
+`[REDACTED]`.
 
 ### See the prompt
 
@@ -421,7 +481,9 @@ phada prompt --default                          # the built-in prompt, no token 
 
 For each pass it prints every part of the instructions with where it comes from (`phada`, the
 `review.prompt` file, the skill's file, the rules) and the size of the data blocks (the pull
-request, the docs and the diff). The tool sections are shown as a review sends them when the
+request, the docs and the diff). A native pass shows the message the skill gets, the context
+Phada adds, the commands and folders it may use, and the instructions that turn its output into
+findings. The tool sections are shown as a review sends them when the
 repository index is ready; the impact of the change and related repositories are computed during
 a review and are not shown. `--format json` prints the same with `schemaVersion: 1`.
 
@@ -656,7 +718,10 @@ context:
 | `ignore`                  | More files to leave out of the diff                                                                                                          | both                    |
 | `rules`                   | Rules with `rule`, and optionally `id`, `scope` (globs) and `severity` (`P0`, `P1` or `P2`)                                                  | both                    |
 | `review.prompt`           | `file` and `mode` (`append` or `replace`) of the reviewer's focus (see [Review focus and skills](#review-focus-and-skills))                  | both (root)             |
-| `review.skills`           | Skills to review with, one pass each, as names or `{ name, paths }`; `phada` is the built-in reviewer                                        | both (root)             |
+| `review.skills`           | Skills to review with, one pass each, as names or `{ name, paths, mode }`; `phada` is the built-in reviewer                                  | both (root)             |
+| `review.commands`         | Commands a [native skill](#skills-that-run-natively) may run: `read-only` (default), a list like `["npm test"]`, or `all`                    | your config             |
+| `review.readDirs`         | Folders a native skill may read besides the checkout and its own folder                                                                      | your config             |
+| `review.timeout`          | How long one native skill pass may run (`1m` to `2h`, default `30m`)                                                                         | your config             |
 | `watch`                   | Repositories `phada watch` follows and how (see [Watch mode](#watch-mode))                                                                   | your config (top level) |
 | `history`                 | `false` keeps reviews out of the [history](#history)                                                                                         | your config (top level) |
 | `disabledRules`           | Ids of rules from other config files to turn off; from a subfolder's `.phada/`, only inside that folder                                      | both                    |
@@ -710,8 +775,9 @@ command line or your config is wrong, and 130 when a second Ctrl-C aborted it.
 
 ## What the AI sees
 
-With Claude Code and Codex, the AI runs in an empty temporary directory and only sees the text
-that Phada sends: the pull request, its diff, the rules and docs described in
+With Claude Code and Codex, the AI runs in an empty temporary directory (a
+[native skill](#skills-that-run-natively) runs in a checkout of the pull request instead) and
+only sees the text that Phada sends: the pull request, its diff, the rules and docs described in
 [Rules and repository context](#rules-and-repository-context), and what it reads with Phada's
 tools from the pull request head and from the [related repositories](#related-repositories) (see [Repository investigation](#repository-investigation)). Rules from `.phada/` and your
 config are instructions, and so are the `review.prompt` file and the text of the skills you
@@ -721,8 +787,10 @@ docs are data, and instructions hidden in them are reported as findings. Phada o
 token is removed from the environment of the AI process.
 
 Claude Code runs without its own tools or your personal settings (hooks, plugins, skills,
-`CLAUDE.md`); a skill named in `review.skills` reaches it only as text in the prompt. The only MCP servers it can use are Phada's and the ones your config names in
-`mcp`.
+`CLAUDE.md`). A skill named in `review.skills` runs natively in a checkout of the pull request
+with only that skill or plugin loaded and the limits described in
+[Skills that run natively](#skills-that-run-natively). The only MCP servers it can use are
+Phada's and the ones your config names in `mcp`.
 
 Codex keeps a few built-in tools enabled that, with Codex CLI 0.160.0, can neither read your
 files nor reach the network. Phada also turns off the apps connected to your ChatGPT account,
