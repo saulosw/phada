@@ -199,7 +199,7 @@ export interface RecheckVerdict {
   title: string
   verdict: RecheckVerdictKind
   reason: string
-  by: 'ai' | 'unchanged'
+  by: 'ai' | 'unchanged' | 'no-access'
 }
 
 export interface RecheckReport {

@@ -135,6 +135,19 @@ describe('recheckThreads', () => {
     })
   })
 
+  it('calls a thread without a patch unsure, without the AI, when there are no tools', async () => {
+    const provider = new FakeProvider(verdicts([{ id: 1, verdict: 'fixed', reason: 'Gone.' }]))
+    const threads = [thread({ id: 'T1', patch: undefined }), thread({ id: 'T2', title: 'Other' })]
+
+    const report = await recheckThreads(REQUEST, threads, provider, NONCE)
+
+    expect(provider.prompts).toEqual([buildRecheckPrompt(REQUEST, threads.slice(1), NONCE)])
+    expect(report.verdicts.map(({ threadId, verdict, by }) => [threadId, verdict, by])).toEqual([
+      ['T1', 'unsure', 'no-access'],
+      ['T2', 'fixed', 'ai'],
+    ])
+  })
+
   it('reads a thread without a verdict as unsure', async () => {
     const provider = new FakeProvider(verdicts([]))
 

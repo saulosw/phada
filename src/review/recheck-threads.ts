@@ -9,6 +9,7 @@ import type { RecheckReport, RecheckThread, RecheckVerdict, ReviewRequest } from
 
 const UNCHANGED_REASON = 'The file did not change.'
 const NO_VERDICT_REASON = 'No verdict for this comment.'
+const NO_ACCESS_REASON = 'No patch and no repository access to check it.'
 
 export async function recheckThreads(
   request: ReviewRequest,
@@ -17,7 +18,8 @@ export async function recheckThreads(
   nonce: string = newNonce(),
   tools?: Toolbox,
 ): Promise<RecheckReport> {
-  const changed = threads.filter((thread) => thread.changed)
+  const blind = (thread: RecheckThread) => thread.patch === undefined && tools === undefined
+  const changed = threads.filter((thread) => thread.changed && !blind(thread))
   const output =
     changed.length === 0
       ? undefined
@@ -25,6 +27,17 @@ export async function recheckThreads(
   const answers = output === undefined ? new Map() : parseRecheck(output.text)
   const verdicts = threads.map((thread): RecheckVerdict => {
     const { id: threadId, file, line, title } = thread
+    if (thread.changed && blind(thread)) {
+      return {
+        threadId,
+        file,
+        line,
+        title,
+        verdict: 'unsure',
+        reason: NO_ACCESS_REASON,
+        by: 'no-access',
+      }
+    }
     if (!thread.changed) {
       return {
         threadId,
