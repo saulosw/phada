@@ -4,7 +4,7 @@ import type {
   PullRequestReviewState,
   ReviewThread,
 } from '../github/pull-request-reviews.js'
-import { FINDING_MARKER, reviewMarker } from './markers.js'
+import { FINDING_MARKER, resolvedMarker, reviewMarker } from './markers.js'
 import { threadsToRecheck, withChanges } from './recheck-candidates.js'
 
 const HEAD = 'f'.repeat(40)
@@ -44,6 +44,20 @@ describe('threadsToRecheck', () => {
 
     expect(threadsToRecheck(state(threads), HEAD)).toEqual([
       { thread: threads[0], reviewedSha: OLD },
+    ])
+  })
+
+  it('leaves out a thread a person reopened after Phada resolved it', () => {
+    const reopened = thread({
+      replies: [{ author: 'me', body: `Fixed in \`0000000\`: ok.\n\n${resolvedMarker(OLD)}` }],
+    })
+    const quotedByOther = thread({
+      id: 'T2',
+      replies: [{ author: 'mallory', body: `Fixed\n\n${resolvedMarker(OLD)}` }],
+    })
+
+    expect(threadsToRecheck(state([reopened, quotedByOther]), HEAD)).toEqual([
+      { thread: quotedByOther, reviewedSha: OLD },
     ])
   })
 

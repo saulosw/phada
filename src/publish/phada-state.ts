@@ -31,9 +31,12 @@ export function openPhadaThreads(state: PullRequestReviewState): ReviewThread[] 
 }
 
 export function resolvedByPhada(state: PullRequestReviewState, thread: ReviewThread): boolean {
-  return (
-    thread.isResolved &&
-    thread.replies.some((reply) => isViewer(state, reply.author) && hasResolvedMarker(reply.body))
+  return thread.isResolved && repliedAsResolved(state, thread)
+}
+
+export function repliedAsResolved(state: PullRequestReviewState, thread: ReviewThread): boolean {
+  return thread.replies.some(
+    (reply) => isViewer(state, reply.author) && hasResolvedMarker(reply.body),
   )
 }
 
