@@ -48,7 +48,10 @@ src/
                          #   plan → render (injected) → [checkHead] → reply and resolve the fixed
                          #   threads → createReview; never prints
     watch-repositories.ts # watchRepositories(): the watch loop — discovery with ETags, planCycle,
-                         #   the next job, failures and pauses, the idle index refresh; events
+                         #   the next job, failures and pauses, the idle index and feedback
+                         #   refresh (30 min per pull request, 10 per cycle); events
+    feedback.ts          #   recordReviewFeedback(): the threads a run read and the comments it
+                         #   published → the history; refreshFeedback(): read due pull requests
     index-repository.ts  #   indexRepository(): mirror → files left out and why → indexCommit();
                          #   refreshIndex(): the same within a deadline (idle watch);
                          #   indexCommit(): extract new blobs (optional deadline) → store the commit
@@ -64,9 +67,11 @@ src/
   cli/                   # terminal edge
     args.ts              #   parseCliArgs(): `review` (--dry-run, --force, --verify/--no-verify,
                          #   --investigate/--no-investigate, --no-resolve), `init`, `index` (--ref,
-                         #   --format text|json), `rules` (--format text|json) and `watch` (--once,
-                         #   --backfill, --status) commands, --help, --version; USAGE,
-                         #   REVIEW_USAGE, INIT_USAGE, INDEX_USAGE, RULES_USAGE, WATCH_USAGE
+                         #   --format text|json), `rules` (--format text|json), `watch` (--once,
+                         #   --backfill, --status) and `history` (--since, --limit, --stats,
+                         #   --refresh, prune --older-than) commands, --help, --version; USAGE,
+                         #   REVIEW_USAGE, INIT_USAGE, INDEX_USAGE, RULES_USAGE, WATCH_USAGE,
+                         #   HISTORY_USAGE
     init.ts              #   runInit(): .phada/ in the repository, or the user's own config
     init-templates.ts    #   the commented files phada init writes
     index-command.ts     #   runIndex(): token, cache folder, mirror, progress, the map's report
@@ -78,6 +83,9 @@ src/
                          #   trackRunningJob(): which job a second Ctrl-C puts back
     watch-events.ts      #   printWatchEvents(): the watch events as terminal lines
     watch-status.ts      #   watchStatusText(): --status in text or JSON
+    history-command.ts   #   runHistory() (list, stats, --refresh), runHistoryPrune()
+    format-history.ts    #   formatHistoryText/Json(), feedbackStats(), formatStatsText/Json()
+                         #   (schemaVersion 1)
     format-watch.ts      #   formatWatchEvent(), formatWatchStatus(), formatWatchStatusJson()
     provider-choice.ts   #   assertProviderChoice(): known provider, model for ollama, mcp only
                          #   with claude
@@ -126,7 +134,7 @@ src/
     data-paths.ts        #   the data folder (PHADA_DATA_HOME › XDG › ~/.local/share/phada):
                          #   history.sqlite and watch.lock
     watch-settings.ts    #   resolveWatchSettings() with the defaults, historyEnabled()
-    duration.ts          #   durationMs(): 90s, 5m, 1h
+    duration.ts          #   durationMs(): 90s, 5m, 1h, 30d
     errors.ts            #   ConfigError
   context/               # what the review sends besides the diff, with injected readers
     phada-paths.ts       #   .phada/ folders from the root to each changed file
@@ -148,7 +156,8 @@ src/
     json-fields.ts       #   typed reads of fields in GitHub answers
     graphql.ts           #   sendGraphQL(): errors in an HTTP 200 become GitHubGraphQLError
     pull-request.ts      #   fetchPullRequest(), fetchPullRequestHead()
-    pull-request-reviews.ts # fetchReviewState(): viewer, reviews and threads (id, first comment,
+    pull-request-reviews.ts # fetchReviewState(): viewer, pull request state, reviews and threads
+                         #   (id, outdated, first comment with its URL and negative reactions,
                          #   last 20 replies), paginated
     create-review.ts     #   createReview(): one COMMENT review with line comments (start_line for
                          #   several lines)
@@ -204,7 +213,10 @@ src/
     markers.ts           #   the review (with the diff fingerprint), finding and resolved markers,
                          #   read only at the end of a body; findingTitle()
     phada-state.ts       #   Phada's own reviews and open threads (author = token owner + marker);
-                         #   resolvedByPhada()
+                         #   resolvedByPhada(), reviewedShaOf()
+    feedback.ts          #   threadFeedback(): each Phada thread → outcome (fixed, dismissed,
+                         #   ignored, open) and marks (negative-reaction, human-reply);
+                         #   findingFingerprint()
     decide-run.ts        #   decideRun(): review, or skip a commit Phada already reviewed or whose
                          #   filtered diff did not change (same-diff)
     recheck-candidates.ts #  threadsToRecheck(), withChanges(): Phada's open threads of older commits
@@ -236,7 +248,9 @@ src/
     index-reader.ts      #   IndexReader: the files, symbols, calls and uses of one commit
     observed-store.ts    #   openObservedStore(): relations learned from reviews (own schema)
     history-store.ts     #   openHistoryStore(): the review history, never rebuilt; watched
-                         #   repositories and pull requests, jobs, runs, pause
+                         #   repositories and pull requests, jobs, runs, pause, runs(), prune()
+    history-feedback.ts  #   published findings, observations and their signals (observed and
+                         #   cleared), feedbackDue()
     history-columns.ts   #   the history tables (columns, keys) and their insert/upsert/update
     history-migrations.ts #  versioned migrations (PRAGMA user_version); a newer file is refused
   watch/                 # pure: what the watch does, data in, decision out
@@ -293,7 +307,8 @@ environment. `src/context/` reads nothing itself: `loadContext()` gets the reade
 repository and of the local disk as data, and its only value imports from outside the folder are
 `picomatch`, `node:path` and the pure config helpers (`parse-config.ts`, `merge-config.ts`).
 `src/publish/` imports only types from outside the folder (`src/review/types.ts`,
-`src/github/pull-request-reviews.ts`, `src/github/compare-commits.ts`). `src/watch/` imports only types from outside the folder
+`src/github/pull-request-reviews.ts`, `src/github/compare-commits.ts`). `src/store/` stores the
+feedback records of `src/publish/feedback.ts` as types only. `src/watch/` imports only types from outside the folder
 (the watch settings and the listed pull requests) and never reads the clock: `now` comes in as
 data. Its records (`src/watch/types.ts`) are the watch's own; `src/store/` stores them.
 `src/cli/review-wiring.ts` and `src/cli/watch-command.ts` declare the deps they need
