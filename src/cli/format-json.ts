@@ -210,6 +210,16 @@ function reviewJson(result: ReviewResult) {
     },
     durationMs: result.durationMs,
     usage: usageJson(result.usage),
+    passes:
+      result.passes?.map(({ skill, origin, status, durationMs, usage, findings, reason }) => ({
+        skill,
+        origin,
+        status,
+        durationMs,
+        usage: usageJson(usage),
+        findings,
+        reason: reason ?? null,
+      })) ?? null,
   }
 }
 
@@ -248,8 +258,20 @@ function usageJson(usage: TokenUsage | undefined) {
 }
 
 function findingJson(finding: Finding) {
-  const { severity, confidence, file, line, title, why, fix, rule, sources, reason, suggestion } =
-    finding
+  const {
+    severity,
+    confidence,
+    file,
+    line,
+    title,
+    why,
+    fix,
+    rule,
+    sources,
+    reason,
+    suggestion,
+    skill,
+  } = finding
   return {
     severity,
     confidence,
@@ -262,6 +284,7 @@ function findingJson(finding: Finding) {
     sources: sources ?? [],
     reason: reason ?? null,
     suggestion: suggestion ?? null,
+    skill: skill ?? 'phada',
   }
 }
 

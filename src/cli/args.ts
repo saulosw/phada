@@ -5,7 +5,7 @@ import { parsePullRequestRef } from '../github/pull-request-ref.js'
 import type { PullRequestRef } from '../github/pull-request-ref.js'
 import { DEFAULT_MIN_CONFIDENCE } from '../review/run-review.js'
 import { CONFIDENCE_FLOOR, isConfidenceCut, MAX_CONFIDENCE } from '../review/select-findings.js'
-import { LANGUAGE_TAG } from '../config/schema.js'
+import { LANGUAGE_TAG, SKILL_NAME } from '../config/schema.js'
 import { DURATION, durationMs } from '../config/duration.js'
 import { UsageError } from './errors.js'
 
@@ -56,6 +56,7 @@ export type CliCommand =
       verify?: boolean
       investigate?: boolean
       resolveThreads?: boolean
+      skills?: string[]
       dryRun: boolean
       force: boolean
       debug: boolean
@@ -107,6 +108,9 @@ Options:
   --investigate         Let the AI read the repository, even if your config turns it off
   --no-resolve          Do not recheck Phada's comments from previous commits, nor
                         resolve the ones whose problem was fixed
+  --skill <name>        Review with this skill installed for your AI CLI (plugin:skill
+                        for a skill of a plugin; phada is the built-in reviewer);
+                        repeat it for several passes; replaces review.skills of the config
   --dry-run             Print what would be published and post nothing
   --force               Review again even if Phada already reviewed this commit
   --debug               Show error details
@@ -308,6 +312,7 @@ function parseReviewArgs(argv: readonly string[]): CliCommand {
   }
   const investigate =
     values.investigate === true ? true : values['no-investigate'] === true ? false : undefined
+  const skills = parseSkills(values.skill)
 
   return {
     kind: 'review',
@@ -320,6 +325,7 @@ function parseReviewArgs(argv: readonly string[]): CliCommand {
     ...(verify === undefined ? {} : { verify }),
     ...(investigate === undefined ? {} : { investigate }),
     ...(values['no-resolve'] === true ? { resolveThreads: false } : {}),
+    ...(skills === undefined ? {} : { skills }),
     dryRun: values['dry-run'],
     force: values.force,
     debug: values.debug,
@@ -337,11 +343,25 @@ const REVIEW_OPTIONS = {
   investigate: { type: 'boolean' },
   'no-investigate': { type: 'boolean' },
   'no-resolve': { type: 'boolean' },
+  skill: { type: 'string', multiple: true },
   'dry-run': { type: 'boolean', default: false },
   force: { type: 'boolean', default: false },
   debug: { type: 'boolean', default: false },
   help: { type: 'boolean', short: 'h', default: false },
 } as const satisfies ParseArgsOptionsConfig
+
+export function parseSkills(values: readonly string[] | undefined): string[] | undefined {
+  if (values === undefined || values.length === 0) return undefined
+  return values.map((value) => {
+    const name = value.trim()
+    if (!SKILL_NAME.test(name)) {
+      throw new UsageError(
+        `Invalid --skill "${value}". Use the skill name, or plugin:skill for a skill of a plugin.`,
+      )
+    }
+    return name
+  })
+}
 
 function parseInitArgs(argv: readonly string[]): CliCommand {
   const { values, positionals } = parseOptions(argv, {

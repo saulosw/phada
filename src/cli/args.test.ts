@@ -474,3 +474,27 @@ describe('parseCliArgs history', () => {
     expect(USAGE).toContain('history                Show past reviews and what happened to')
   })
 })
+
+describe('review --skill', () => {
+  it('reads every --skill in order', () => {
+    expect(
+      parseCliArgs(['review', 'acme/shop#12', '--skill', 'phada', '--skill', 'my-plugin:review']),
+    ).toMatchObject({ kind: 'review', skills: ['phada', 'my-plugin:review'] })
+  })
+
+  it('leaves skills unset without --skill', () => {
+    expect(parseCliArgs(['review', 'acme/shop#12'])).not.toHaveProperty('skills')
+  })
+
+  it('refuses a skill name with a space', () => {
+    expect(() => parseCliArgs(['review', 'acme/shop#12', '--skill', 'a b'])).toThrow(
+      new UsageError(
+        'Invalid --skill "a b". Use the skill name, or plugin:skill for a skill of a plugin.',
+      ),
+    )
+  })
+
+  it('documents --skill', () => {
+    expect(REVIEW_USAGE).toContain('--skill <name>')
+  })
+})

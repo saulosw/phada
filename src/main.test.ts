@@ -1980,3 +1980,53 @@ describe('phada watch', () => {
     expect(listedRepos).toBe(0)
   })
 })
+
+describe('run review with skills', () => {
+  const REVIEW = ['review', 'acme/shop#12', '--no-verify']
+  const SKILL = '/home/u/.claude/skills/code-review/SKILL.md'
+  const installed = () => memoryFiles({ [SKILL]: '---\nname: code-review\n---\nFind bugs.' })
+
+  it('runs one pass per skill and names them on stderr', async () => {
+    const h = harness({ files: installed() })
+
+    expect(await run([...REVIEW, '--skill', 'phada', '--skill', 'code-review'], h.deps)).toBe(0)
+    const reviews = h.prompts.filter((prompt) => prompt.outputSchema !== RECHECK_JSON_SCHEMA)
+    expect(reviews).toHaveLength(2)
+    expect(reviews[1]?.instructions).toContain('Review guide (skill code-review):\nFind bugs.')
+    expect(h.stderr()).toContain('Skills: phada, code-review\n')
+  })
+
+  it('shows the passes in --dry-run and the skill of each finding in the JSON', async () => {
+    const h = harness({ files: installed() })
+
+    await run([...REVIEW, '--skill', 'code-review', '--dry-run'], h.deps)
+    expect(h.stdout()).toContain('## Skills\n\n- code-review (' + SKILL + '): ')
+
+    const json = harness({ files: installed() })
+    await run([...REVIEW, '--skill', 'code-review', '--dry-run', '--format', 'json'], json.deps)
+    const parsed = JSON.parse(json.stdout()) as {
+      review: { findings: { skill: string }[]; passes: { skill: string }[] }
+    }
+    expect(parsed.review.passes.map(({ skill }) => skill)).toEqual(['code-review'])
+    expect(parsed.review.findings.every(({ skill }) => skill === 'code-review')).toBe(true)
+  })
+
+  it('stops before the AI when a skill is not installed', async () => {
+    const h = harness()
+
+    expect(await run([...REVIEW, '--skill', 'nope'], h.deps)).toBe(2)
+    expect(h.stderr()).toContain('phada: Skill "nope" is not installed. Phada looked in')
+    expect(h.prompts).toHaveLength(0)
+  })
+
+  it('refuses to start a watch whose config names a skill that is not installed', async () => {
+    const h = harness({
+      files: memoryFiles({
+        '/cfg/config.yml': 'watch:\n  repos: [acme/shop]\nreview:\n  skills: [nope]\n',
+      }),
+    })
+
+    expect(await run(['watch', '--once'], h.deps)).toBe(2)
+    expect(h.stderr()).toContain('phada: Skill "nope" is not installed.')
+  })
+})

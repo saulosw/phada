@@ -11,6 +11,7 @@ export interface Messages {
   basedOn: string
   leftOut: string
   rule: string
+  skill: string
   summary: string
   files: string
   fileColumns: readonly [string, string, string]

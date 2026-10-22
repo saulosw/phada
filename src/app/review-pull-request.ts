@@ -72,6 +72,7 @@ export interface PullRequestReviewEvents {
   impactReady(report: ImpactReport): void
   relatedReady(report: RelatedReport): void
   passesPlanned?(plan: PassPlan[]): void
+  passStarted?(skill: string, index: number, total: number): void
 }
 
 export interface PullRequestReviewDeps {
@@ -269,6 +270,10 @@ export async function reviewPullRequest(
         provider: watch(provider, 'review'),
         verifier: watch(provider, 'verify'),
         ...(investigation === undefined ? {} : { tools: investigation.tools }),
+        events: {
+          passStarted: (pass, index) =>
+            deps.events.passStarted?.(pass.skill, index, planned.passes?.length ?? 1),
+        },
       },
     )
 

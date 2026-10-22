@@ -17,6 +17,7 @@ import { formatContextSection } from './cli/format-context.js'
 import { formatImpactSection } from './cli/format-impact.js'
 import { formatInvestigationLine, formatInvestigationSection } from './cli/format-investigation.js'
 import { formatRelatedSection } from './cli/format-related.js'
+import { formatPassesSection } from './cli/format-passes.js'
 import {
   formatPublishedMessage,
   formatRecheckMessage,
@@ -135,6 +136,7 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
           ...(command.resolveThreads === undefined
             ? {}
             : { resolveThreads: command.resolveThreads }),
+          ...(command.skills === undefined ? {} : { skills: command.skills }),
         },
         userLayers,
         userMcpServers: mcp,
@@ -250,7 +252,7 @@ function printRun(deps: MainDeps, command: ReviewCommand, run: ReviewRun): void 
         deps.stdout.write(
           run.status === 'nothing'
             ? formatGitHubPreview(rendered, messages)
-            : `${formatGitHubPreview(rendered, messages)}\n${formatContextSection(reviewed.context.report)}\n${formatImpactSection(reviewed.impact, reviewed.impactText)}\n${reviewed.related.status === 'none' ? '' : `${formatRelatedSection(reviewed.related)}\n`}${formatInvestigationSection(reviewed.investigation)}`,
+            : `${formatGitHubPreview(rendered, messages)}\n${formatContextSection(reviewed.context.report)}\n${formatImpactSection(reviewed.impact, reviewed.impactText)}\n${reviewed.related.status === 'none' ? '' : `${formatRelatedSection(reviewed.related)}\n`}${passesSection(run)}${formatInvestigationSection(reviewed.investigation)}`,
         )
       }
       deps.stderr.write('Dry run: nothing was posted.\n')
@@ -277,6 +279,13 @@ function printRun(deps: MainDeps, command: ReviewCommand, run: ReviewRun): void 
     default:
       return
   }
+}
+
+function passesSection(run: ReviewRun): string {
+  if (run.status !== 'reviewed') return ''
+  const outcome = run.reviewed.outcome
+  const passes = outcome.status === 'reviewed' ? outcome.result.passes : undefined
+  return passes === undefined ? '' : `${formatPassesSection(passes)}\n`
 }
 
 async function saveRun(

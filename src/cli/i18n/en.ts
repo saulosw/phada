@@ -20,6 +20,7 @@ export const english: Messages = {
   basedOn: 'Based on',
   leftOut: 'Left out of the review',
   rule: 'rule',
+  skill: 'skill',
   summary: 'Summary',
   files: 'Files',
   fileColumns: ['File', 'Change', 'Findings'],

@@ -31,11 +31,25 @@ const CONTEXT = `# Files the review reads for context, besides the repository do
 # ignore: ["**/*.snap", "src/generated/**"]
 `
 
+function reviewFocus(promptFile: string): string {
+  return `# What the reviewer looks for. prompt adds to (append, the default) or replaces
+# (replace) Phada's own focus; the output format and the scales stay Phada's.
+# skills names skills installed for your AI CLI (plugin:skill for a plugin), one
+# review pass each; phada is the built-in reviewer; paths limits a skill to some files.
+# review:
+#   prompt:
+#     file: ${promptFile}
+#     mode: append
+#   skills: [phada, security-review]
+`
+}
+
 export const REPOSITORY_CONFIG_TEMPLATE = `# Phada config for this repository, read from the base branch of each pull request.
 # A .phada/ folder in a subfolder adds rules, files and ignore patterns for that part
 # of the tree; options are only read from this root file and from each user's own config.
 
 ${SHARED_OPTIONS}
+${reviewFocus('.phada/review.md')}
 ${RULES}
 ${CONTEXT}`
 
@@ -48,6 +62,7 @@ export const USER_CONFIG_TEMPLATE = `# Your own Phada config. It applies to ever
 # model: opus
 
 ${SHARED_OPTIONS}
+${reviewFocus('review.md               # next to this file')}
 ${RULES}
 ${CONTEXT}
 # Let the review read a private related repository for a public pull request
