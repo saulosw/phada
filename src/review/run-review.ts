@@ -2,13 +2,16 @@ import type { ReviewOutput, ReviewProvider, TokenUsage } from '../providers/type
 import type { Toolbox } from '../investigation/toolbox.js'
 import { withKnownReferences, withRuleSeverity } from './context-findings.js'
 import { diffFingerprint } from './diff-fingerprint.js'
-import { parseDiffFiles } from './diff-lines.js'
+import { findDiffFile, parseDiffFiles } from './diff-lines.js'
+import type { DiffFile } from './diff-lines.js'
 import { newNonce } from './nonce.js'
 import { InvalidReviewReportError } from './errors.js'
 import { parseReviewReport } from './parse-report.js'
 import type { ParsedReport } from './parse-report.js'
+import { buildConvertPrompt } from './convert-prompt.js'
 import { buildReviewPrompt } from './prompt.js'
 import { scoreFindings } from './score.js'
+import { skillBodyText, skillOutputText } from './skill-output.js'
 import { checkSuggestions } from './suggestions.js'
 import {
   CONFIDENCE_FLOOR,
@@ -19,7 +22,15 @@ import {
   summarizeFiles,
   VERIFY_CANDIDATE_FLOOR,
 } from './select-findings.js'
-import type { Finding, PassReport, ReviewOutcome, ReviewRequest, SkillPass } from './types.js'
+import type {
+  Finding,
+  NativeSkillRun,
+  PassReport,
+  ReviewOutcome,
+  ReviewRequest,
+  SkillBody,
+  SkillPass,
+} from './types.js'
 import { verifyCandidates } from './verify-findings.js'
 
 export const DEFAULT_MIN_CONFIDENCE = 60
@@ -28,6 +39,7 @@ export interface RunReviewDeps {
   provider: ReviewProvider
   verifier?: ReviewProvider
   tools?: (pass: 'review' | 'verify') => Toolbox
+  runSkill?: (pass: SkillPass) => Promise<NativeSkillRun>
   createNonce?: () => string
   events?: { passStarted?(pass: SkillPass, index: number): void }
 }
@@ -98,6 +110,7 @@ export async function runReview(
       ...(checked?.warnings ?? []),
     ]),
   ]
+  const skillBodies = nativeBodies(answered.outputs, diffFiles)
   const model = first?.output.model
   const additionalModels = otherModels(answered.outputs, model)
   return {
@@ -136,6 +149,7 @@ export async function runReview(
       ...(externalCalls.length === 0 ? {} : { externalCalls }),
       ...(warnings.length === 0 ? {} : { warnings }),
       ...(request.passes === undefined ? {} : { passes: answered.reports }),
+      ...(skillBodies.length === 0 ? {} : { skillBodies }),
     },
   }
 }
@@ -144,6 +158,7 @@ interface AnsweredPass {
   output: ReviewOutput
   report: ParsedReport
   findings: Finding[]
+  body?: SkillBody
 }
 
 interface AnsweredPasses {
@@ -186,6 +201,15 @@ async function runPasses(
     }
     ran++
     if (pass !== undefined) deps.events?.passStarted?.(pass, index)
+    if (pass?.mode === 'native') {
+      const native = await runNativePass(request, deps, createNonce, pass)
+      answered.outputs.push(native.answer)
+      answered.durationMs += native.answer.output.durationMs
+      answered.usage = sumUsage(answered.usage, native.answer.output.usage)
+      answered.warnings.push(...native.warnings)
+      answered.reports.push(native.report)
+      continue
+    }
     const tools = deps.tools?.('review')
     try {
       const output = await deps.provider.review(
@@ -227,6 +251,82 @@ async function runPasses(
   }
   if (ran > 0 && answered.outputs.length === 0) throw firstError
   return answered
+}
+
+const EMPTY_REPORT: ParsedReport = { summary: '', files: [], findings: [], invalid: 0 }
+
+async function runNativePass(
+  request: ReviewRequest,
+  deps: RunReviewDeps,
+  createNonce: () => string,
+  pass: SkillPass,
+): Promise<{ answer: AnsweredPass; report: PassReport; warnings: string[] }> {
+  if (deps.runSkill === undefined) {
+    throw new Error(`Skill ${pass.skill} runs natively but no skill runner was given.`)
+  }
+  const run = await deps.runSkill(pass)
+  const skillOutput = skillOutputText(run)
+  const warnings: string[] = []
+  let converted: ReviewOutput | undefined
+  let report = EMPTY_REPORT
+  try {
+    converted = await deps.provider.review(
+      buildConvertPrompt(request, createNonce(), pass, skillOutput),
+    )
+    report = parseReviewReport(converted.text)
+  } catch (error) {
+    if (!isAnswerFailure(error)) throw error
+    warnings.push(
+      `Skill ${pass.skill}: Phada could not read the converted review; the skill output is used as the review body.`,
+    )
+  }
+  const findings = report.findings.map((finding) => ({ ...finding, skill: pass.skill }))
+  const durationMs = run.durationMs + (converted?.durationMs ?? 0)
+  const usage = sumUsage(run.usage, converted?.usage)
+  const model = run.model ?? converted?.model
+  const output: ReviewOutput = {
+    text: converted?.text ?? '',
+    durationMs,
+    ...(model === undefined ? {} : { model }),
+    ...(usage === undefined ? {} : { usage }),
+    ...(run.externalCalls === undefined ? {} : { externalCalls: run.externalCalls }),
+    ...(run.warnings === undefined ? {} : { warnings: run.warnings }),
+  }
+  const body = skillBodyText(run)
+  return {
+    answer: {
+      output,
+      report,
+      findings,
+      ...(body.trim() === '' ? {} : { body: { skill: pass.skill, text: body } }),
+    },
+    report: {
+      skill: pass.skill,
+      origin: pass.lens.kind === 'default' ? 'phada' : pass.lens.origin,
+      status: 'reviewed',
+      mode: 'native',
+      durationMs,
+      ...(usage === undefined ? {} : { usage }),
+      findings: findings.length,
+      output: skillOutput,
+      captured: run.captured.length,
+      blocked: run.blocked,
+    },
+    warnings,
+  }
+}
+
+function nativeBodies(
+  outputs: readonly AnsweredPass[],
+  diffFiles: readonly DiffFile[],
+): SkillBody[] {
+  return outputs.flatMap(({ body, findings }) => {
+    if (body === undefined) return []
+    const inDiff = findings.some((finding) =>
+      findDiffFile(finding.file, diffFiles)?.lines.has(finding.line),
+    )
+    return inDiff ? [] : [body]
+  })
 }
 
 function verifiedRequest(request: ReviewRequest, reports: readonly PassReport[]): ReviewRequest {

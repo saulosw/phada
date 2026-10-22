@@ -177,10 +177,48 @@ export interface PassReport {
   skill: string
   origin: string
   status: 'reviewed' | 'skipped' | 'failed'
+  mode?: 'native'
   durationMs: number
   usage?: TokenUsage
   findings: number
   reason?: string
+  output?: string
+  captured?: number
+  blocked?: BlockedCommand[]
+}
+
+export interface CapturedComment {
+  path: string
+  line?: number
+  startLine?: number
+  body: string
+}
+
+export interface CapturedWrite {
+  command: string
+  body: string
+  comments: CapturedComment[]
+}
+
+export interface BlockedCommand {
+  tool: string
+  input: string
+}
+
+export interface NativeSkillRun {
+  text: string
+  captured: CapturedWrite[]
+  durationMs: number
+  model?: string
+  usage?: TokenUsage
+  blocked: BlockedCommand[]
+  externalCalls?: ExternalToolCall[]
+  warnings?: string[]
+}
+
+export interface SkillBody {
+  skill: string
+  text: string
 }
 
 export interface ReviewResult {
@@ -204,6 +242,7 @@ export interface ReviewResult {
   externalCalls?: ExternalToolCall[]
   warnings?: string[]
   passes?: PassReport[]
+  skillBodies?: SkillBody[]
 }
 
 export interface RecheckThread {
