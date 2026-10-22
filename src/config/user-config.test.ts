@@ -16,6 +16,7 @@ function memoryFiles(files: Record<string, string>): LocalFileSystem {
     writeNew: async () => false,
     makeDir: async () => undefined,
     listDocs: async () => null,
+    listDir: async () => null,
   }
 }
 

@@ -3,6 +3,7 @@ import { DiffTooLargeError, GitHubError, InvalidPullRequestRefError } from '../g
 import { ProviderError } from '../providers/types.js'
 import { CheckoutUnavailableError } from '../repository/git-checkout.js'
 import { InvalidReviewReportError } from '../review/errors.js'
+import { SkillError } from '../skills/errors.js'
 import { HistoryStoreError } from '../store/history-store.js'
 import { IndexStoreError } from '../store/index-store.js'
 import { MissingGitHubTokenError, UsageError, WatchRunningError } from './errors.js'
@@ -52,6 +53,7 @@ function describe(error: unknown): { summary: string; exitCode: 1 | 2 } {
     return { summary: `${error.message} Run with --help for usage.`, exitCode: 2 }
   }
   if (error instanceof ConfigError) return { summary: error.message, exitCode: 2 }
+  if (error instanceof SkillError) return { summary: error.message, exitCode: 2 }
   if (error instanceof InvalidPullRequestRefError) return { summary: error.message, exitCode: 2 }
   if (error instanceof MissingGitHubTokenError) return { summary: error.message, exitCode: 1 }
   if (error instanceof WatchRunningError || error instanceof HistoryStoreError) {

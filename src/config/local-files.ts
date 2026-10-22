@@ -12,6 +12,7 @@ export interface LocalFileSystem {
   writeNew(path: string, text: string): Promise<boolean>
   makeDir(path: string): Promise<void>
   listDocs(path: string): Promise<LocalDoc[] | null>
+  listDir(path: string): Promise<string[] | null>
 }
 
 export const nodeFileSystem: LocalFileSystem = {
@@ -63,6 +64,14 @@ export const nodeFileSystem: LocalFileSystem = {
         }),
     )
     return docs.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+  },
+  async listDir(path) {
+    try {
+      return (await readdir(path)).sort()
+    } catch (error) {
+      if (isMissing(error)) return null
+      throw error
+    }
   },
 }
 

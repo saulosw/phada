@@ -118,6 +118,12 @@ const STORE: Boundary = {
   ]),
   expected: ['index-store.ts', 'schema.ts'],
 }
+const SKILLS: Boundary = {
+  dir: 'skills',
+  values: new Set(['node:path', '../context/frontmatter.js']),
+  types: new Set(['../config/local-files.js']),
+  expected: ['installed-skills.ts', 'resolve-skill.ts', 'skill-locations.ts', 'skill-text.ts'],
+}
 const GRAPH: Boundary = {
   dir: 'graph',
   values: new Set(['node:path', '../review/diff-lines.js']),
@@ -493,6 +499,7 @@ describe.each([
   STORE,
   GRAPH,
   APP,
+  SKILLS,
 ])('$dir boundary', (boundary) => {
   const sources = sourcesOf(boundary)
 

@@ -60,3 +60,15 @@ describe('nodeFileSystem', () => {
     expect(await nodeFileSystem.listDocs(join(dir, 'missing'))).toBeNull()
   })
 })
+
+describe('nodeFileSystem.listDir', () => {
+  it('lists the names inside a folder and null for a missing one', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'phada-list-'))
+    await writeFile(join(dir, 'b.md'), 'b')
+    await mkdir(join(dir, 'a'))
+
+    expect(await nodeFileSystem.listDir(dir)).toEqual(['a', 'b.md'])
+    expect(await nodeFileSystem.listDir(join(dir, 'missing'))).toBeNull()
+    expect(await nodeFileSystem.listDir(join(dir, 'b.md'))).toBeNull()
+  })
+})
