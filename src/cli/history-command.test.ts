@@ -176,6 +176,27 @@ describe('runHistory', () => {
     expect(h.stdout()).toContain('Findings:\n  P2  src/shop.ts:4  X  dismissed')
   })
 
+  it('a text list without a pull request does not read the findings', async () => {
+    const h = harness()
+    await h.seed((store) => store.addRun(RUN))
+    let reads = 0
+    h.deps.openHistoryStore = async (path) => {
+      const store = await openHistoryStore(path)
+      return new Proxy(store, {
+        get(target, key) {
+          if (key === 'findings') reads++
+          const value = Reflect.get(target, key) as unknown
+          return typeof value === 'function' ? value.bind(target) : value
+        },
+      })
+    }
+
+    await runHistory(COMMAND, h.deps)
+    await runHistory({ ...COMMAND, format: 'json' }, h.deps)
+
+    expect(reads).toBe(1)
+  })
+
   it('warns when the config turns the history off and still lists', async () => {
     const h = harness({ config: 'history: false' })
     await h.seed((store) => store.addRun(RUN))

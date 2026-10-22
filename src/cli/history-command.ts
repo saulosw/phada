@@ -111,9 +111,12 @@ function render(
   source: { history: HistoryStore; filter: Filter } | undefined,
 ): string {
   const json = command.format === 'json'
-  const findings = source?.history.findings({ ...source.filter, since }) ?? []
+  const showsFindings = json || command.stats || command.target?.kind === 'pull'
+  const findings = showsFindings
+    ? (source?.history.findings({ ...source.filter, since }) ?? [])
+    : undefined
   if (command.stats) {
-    const stats = feedbackStats(findings)
+    const stats = feedbackStats(findings ?? [])
     return json ? formatStatsJson(stats, since) : formatStatsText(stats, since)
   }
   const { runs, total } = source?.history.runs({
@@ -121,8 +124,8 @@ function render(
     since,
     limit: command.limit,
   }) ?? { runs: [], total: 0 }
-  if (json) return formatHistoryJson(runs, total, findings)
-  return formatHistoryText(runs, total, command.target?.kind === 'pull' ? findings : undefined)
+  if (json) return formatHistoryJson(runs, total, findings ?? [])
+  return formatHistoryText(runs, total, findings)
 }
 
 async function refresh(
