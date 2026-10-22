@@ -97,6 +97,7 @@ describe('formatReviewJson', () => {
         durationMs: 16_400,
         usage: { inputTokens: 9700, outputTokens: 417 },
         passes: null,
+        skillBodies: null,
       },
       publication: null,
       context: null,
@@ -599,5 +600,67 @@ describe('publication', () => {
         ],
       },
     })
+  })
+})
+
+describe('formatReviewJson with native skill passes', () => {
+  const result: ReviewResult = {
+    ...RESULT,
+    passes: [
+      { skill: 'phada', origin: 'phada', status: 'reviewed', durationMs: 5, findings: 1 },
+      {
+        skill: 'code-review:code-review',
+        origin: '/p',
+        status: 'reviewed',
+        mode: 'native',
+        durationMs: 60,
+        findings: 0,
+        output: '--- final answer ---\nNo issues.',
+        captured: 1,
+        blocked: [{ tool: 'Bash', input: 'npm test' }],
+      },
+    ],
+    skillBodies: [{ skill: 'code-review:code-review', text: 'No issues.' }],
+  }
+
+  it('shows the mode, the skill output, the captured writes and each blocked command with its fix', () => {
+    const output = JSON.parse(
+      formatReviewJson(
+        pullRequestFixture(),
+        { status: 'reviewed', result },
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        (blocked) => `fix for ${blocked.input}`,
+      ),
+    ) as { review: { passes: Record<string, unknown>[]; skillBodies: unknown } }
+
+    expect(output.review.passes[0]).toMatchObject({
+      mode: 'text',
+      output: null,
+      captured: null,
+      blocked: [],
+    })
+    expect(output.review.passes[1]).toMatchObject({
+      mode: 'native',
+      output: '--- final answer ---\nNo issues.',
+      captured: 1,
+      blocked: [{ tool: 'Bash', input: 'npm test', fix: 'fix for npm test' }],
+    })
+    expect(output.review.skillBodies).toEqual([
+      { skill: 'code-review:code-review', text: 'No issues.' },
+    ])
+  })
+
+  it('has no skill bodies without them', () => {
+    const output = JSON.parse(
+      formatReviewJson(pullRequestFixture(), { status: 'reviewed', result: RESULT }),
+    ) as {
+      review: { skillBodies: unknown }
+    }
+    expect(output.review.skillBodies).toBeNull()
   })
 })

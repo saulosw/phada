@@ -1,5 +1,6 @@
 import { defaultPromptView, inspectPrompt } from '../app/inspect-prompt.js'
 import type { LocalFileSystem } from '../config/local-files.js'
+import { resolveProvider } from '../config/merge-config.js'
 import { loadUserLayers } from '../config/user-config.js'
 import { loadContext } from '../context/load-context.js'
 import type { FetchPullRequestOptions, PullRequest } from '../github/pull-request.js'
@@ -9,6 +10,7 @@ import type { ContextReaders } from './context-sources.js'
 import { MissingGitHubTokenError } from './errors.js'
 import { formatPromptJson, formatPromptText } from './format-prompt.js'
 import type { TextOutput } from './progress.js'
+import { providerRunsSkills } from './provider-choice.js'
 import { diskSkillCatalog } from './skill-catalog.js'
 
 export type PromptCommand = Extract<CliCommand, { kind: 'prompt' }>
@@ -53,6 +55,7 @@ export async function runPrompt(command: PromptCommand, deps: PromptCommandDeps)
     loaded,
     ...(command.skills === undefined ? {} : { cliSkills: command.skills }),
     investigate: loaded.options.investigate ?? true,
+    native: providerRunsSkills(resolveProvider({}, userLayers).provider),
     skills: diskSkillCatalog(deps.files, deps.env, deps.home),
     readRepoFile: (path) => sources.readRepoFile(path),
     readLocalFile: (path) => sources.readLocalFile(path),

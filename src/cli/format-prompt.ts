@@ -15,12 +15,25 @@ export function formatPromptText(view: PromptView): string {
   ]
   view.passes.forEach((pass, index) => {
     const where = pass.origin === 'phada' ? 'built-in' : pass.origin
-    const heading = `## Pass ${index + 1}: ${pass.skill} (${where})`
+    const heading = `## Pass ${index + 1}: ${pass.skill} (${pass.mode === 'native' ? 'native, ' : ''}${where})`
     if (pass.status === 'skipped') {
       lines.push(toTerminalText(`${heading} — skipped: ${pass.reason ?? ''}`), '')
       return
     }
     lines.push(toTerminalText(heading), '')
+    if (pass.native !== undefined) {
+      const { message, commands, readDirs } = pass.native
+      lines.push(
+        toTerminalText(`Message: ${message}`),
+        toTerminalText(
+          `Commands: ${typeof commands === 'string' ? commands : commands.join(', ')}`,
+        ),
+        toTerminalText(
+          `Read folders: ${readDirs.length === 0 ? 'the checkout and the skill folder only' : ['the checkout', 'the skill folder', ...readDirs].join(', ')}`,
+        ),
+        '',
+      )
+    }
     for (const part of pass.parts) {
       lines.push(
         toTerminalText(`### ${part.section} — ${part.origin}`),

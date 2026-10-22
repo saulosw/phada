@@ -36,6 +36,12 @@ export interface PlannedPasses {
 
 export const BUILT_IN_SKILL = 'phada'
 
+export function builtInSkillError(name: string): SkillError {
+  return new SkillError(
+    `Skill ${name} is built into Claude Code and only runs natively with provider claude.`,
+  )
+}
+
 export async function buildPasses(input: {
   review?: ReviewSettings
   cliSkills?: readonly string[]
@@ -93,9 +99,7 @@ export async function buildPasses(input: {
       skill = await input.skills.find(entry.name)
       native = (entry.mode ?? (input.native ? 'native' : 'text')) === 'native' && input.native
       if (skill.native.kind === 'builtin' && !native) {
-        throw new SkillError(
-          `Skill ${entry.name} is built into Claude Code and only runs natively with provider claude.`,
-        )
+        throw builtInSkillError(entry.name)
       }
     } catch (error) {
       if (!(error instanceof SkillError) || listed?.source === 'local') throw error

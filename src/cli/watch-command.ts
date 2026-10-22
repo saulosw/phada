@@ -8,7 +8,7 @@ import type { WatchDeps } from '../app/watch-repositories.js'
 import { repositoryCache } from '../config/cache-paths.js'
 import { dataFiles } from '../config/data-paths.js'
 import { mergeConfig, resolveProvider, userMcpServers } from '../config/merge-config.js'
-import { BUILT_IN_SKILL } from '../app/review-passes.js'
+import { BUILT_IN_SKILL, builtInSkillError } from '../app/review-passes.js'
 import { loadTopLevelUserLayers, loadUserLayers } from '../config/user-config.js'
 import { historyEnabled, resolveWatchSettings } from '../config/watch-settings.js'
 import type { WatchSettings } from '../config/watch-settings.js'
@@ -35,7 +35,7 @@ import { MissingGitHubTokenError, UsageError, WatchRunningError } from './errors
 import { formatError } from './format-error.js'
 import { formatWatchEvent } from './format-watch.js'
 import { watchRun } from './history-run.js'
-import { assertProviderChoice } from './provider-choice.js'
+import { assertProviderChoice, providerRunsSkills } from './provider-choice.js'
 import { diskSkillCatalog } from './skill-catalog.js'
 import {
   feedbackRefreshDeps,
@@ -282,8 +282,13 @@ async function jobSetup(repo: string, deps: WatchCommandDeps): Promise<JobSetup>
     'config',
   )
   const skills = diskSkillCatalog(deps.files, deps.env, deps.home)
-  for (const { name } of mergeConfig(userLayers).review.skills?.entries ?? []) {
-    if (name !== BUILT_IN_SKILL) await skills.find(name)
+  const native = (deps.runsSkills ?? providerRunsSkills)(choice.provider)
+  for (const { name, mode } of mergeConfig(userLayers).review.skills?.entries ?? []) {
+    if (name === BUILT_IN_SKILL) continue
+    const skill = await skills.find(name)
+    if (skill.native.kind === 'builtin' && (!native || mode === 'text')) {
+      throw builtInSkillError(name)
+    }
   }
   return { userLayers, choice, mcp }
 }

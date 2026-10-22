@@ -40,7 +40,7 @@ import {
   reviewMarker,
 } from './publish/markers.js'
 import { RECHECK_JSON_SCHEMA } from './review/recheck-schema.js'
-import { providerRunsSkills } from './cli/review-wiring.js'
+import { providerRunsSkills } from './cli/provider-choice.js'
 import { createProvider, run } from './main.js'
 import type { MainDeps, ProviderOptions } from './main.js'
 import { ClaudeCliProvider } from './providers/claude.js'
@@ -2088,5 +2088,70 @@ describe('run review when no skill applies', () => {
 describe('providerRunsSkills', () => {
   it('runs skills natively only with Claude', () => {
     expect(['claude', 'codex', 'ollama'].map(providerRunsSkills)).toEqual([true, false, false])
+  })
+})
+
+describe('run review with a native skill', () => {
+  const REVIEW = ['review', 'acme/shop#12', '--no-verify', '--skill', 'claude:code-review']
+
+  function nativeHarness() {
+    const h = harness()
+    h.deps.runsSkills = () => true
+    h.deps.openNativeRunner = async () => ({
+      runSkill: async () => ({
+        text: 'Found nothing.',
+        captured: [{ command: 'gh pr comment', body: 'Posted.', comments: [] }],
+        durationMs: 61_000,
+        blocked: [{ tool: 'Bash', input: 'npm test -- --run' }],
+      }),
+      close: async () => undefined,
+    })
+    return h
+  }
+
+  it('says how the skill ran and how to allow what it was refused', async () => {
+    const h = nativeHarness()
+
+    expect(await run(REVIEW, h.deps)).toBe(0)
+    expect(h.stderr()).toContain('Skills: claude:code-review (native)\n')
+    expect(h.stderr()).toMatch(
+      /Skill claude:code-review: ran natively in \S+, 1 GitHub write captured, 1 blocked\n/,
+    )
+    expect(h.stderr()).toContain(
+      '  blocked npm test -- --run (allow it with review.commands: ["npm test"] in ',
+    )
+  })
+
+  it('shows the blocked commands with their fix in --dry-run and the JSON', async () => {
+    const h = nativeHarness()
+    await run([...REVIEW, '--dry-run'], h.deps)
+    expect(h.stdout()).toContain(
+      '  - blocked: npm test -- --run — allow it with review.commands: ["npm test"]',
+    )
+    expect(h.stdout()).toContain('### Skill output: claude:code-review')
+
+    const json = nativeHarness()
+    await run([...REVIEW, '--dry-run', '--format', 'json'], json.deps)
+    const parsed = JSON.parse(json.stdout()) as {
+      review: { passes: { mode: string; blocked: { fix: string }[] }[] }
+    }
+    expect(parsed.review.passes[0]?.mode).toBe('native')
+    expect(parsed.review.passes[0]?.blocked[0]?.fix).toContain('review.commands: ["npm test"]')
+  })
+})
+
+describe('run watch with a built-in Claude Code skill', () => {
+  it('refuses to start when the provider does not run skills natively', async () => {
+    const h = harness({
+      files: memoryFiles({
+        '/cfg/config.yml':
+          'provider: codex\nwatch:\n  repos: [acme/shop]\nreview:\n  skills: [claude:security-review]\n',
+      }),
+    })
+
+    expect(await run(['watch', '--once'], h.deps)).toBe(2)
+    expect(h.stderr()).toContain(
+      'phada: Skill claude:security-review is built into Claude Code and only runs natively with provider claude.',
+    )
   })
 })

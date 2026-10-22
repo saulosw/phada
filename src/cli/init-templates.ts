@@ -31,18 +31,25 @@ const CONTEXT = `# Files the review reads for context, besides the repository do
 # ignore: ["**/*.snap", "src/generated/**"]
 `
 
-function reviewFocus(promptFile: string): string {
+function reviewFocus(promptFile: string, own = false): string {
   return `# What the reviewer looks for. prompt adds to (append, the default) or replaces
 # (replace) Phada's own focus; the output format and the scales stay Phada's.
 # skills names skills installed for your AI CLI (plugin:skill for a plugin), one
 # review pass each; phada is the built-in reviewer; paths limits a skill to some files.
+# With Claude Code a skill runs as /<name> in a checkout of the pull request;
+# { name: x, mode: text } sends its text instead; claude:<name> is built into Claude Code.
 # review:
 #   prompt:
 #     file: ${promptFile}
 #     mode: append
 #   skills: [phada, security-review]
-`
+${own ? OWN_REVIEW_OPTIONS : ''}`
 }
+
+const OWN_REVIEW_OPTIONS = `#   commands: read-only        # or a list like ["npm test"], or all: these run code of the pull request
+#   readDirs: ["~/review-rules"]   # folders a skill may read besides the checkout and its own folder
+#   timeout: 30m               # how long one skill may run
+`
 
 export const REPOSITORY_CONFIG_TEMPLATE = `# Phada config for this repository, read from the base branch of each pull request.
 # A .phada/ folder in a subfolder adds rules, files and ignore patterns for that part
@@ -62,7 +69,7 @@ export const USER_CONFIG_TEMPLATE = `# Your own Phada config. It applies to ever
 # model: opus
 
 ${SHARED_OPTIONS}
-${reviewFocus('review.md               # next to this file')}
+${reviewFocus('review.md               # next to this file', true)}
 ${RULES}
 ${CONTEXT}
 # Let the review read a private related repository for a public pull request

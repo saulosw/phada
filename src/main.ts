@@ -17,7 +17,9 @@ import { formatContextSection } from './cli/format-context.js'
 import { formatImpactSection } from './cli/format-impact.js'
 import { formatInvestigationLine, formatInvestigationSection } from './cli/format-investigation.js'
 import { formatRelatedSection } from './cli/format-related.js'
-import { formatPassesSection } from './cli/format-passes.js'
+import { formatPassesSection, formatSkillRunLines } from './cli/format-passes.js'
+import type { BlockedFix } from './cli/format-passes.js'
+import { blockedFixer } from './cli/blocked-fix.js'
 import type { ReviewOutcome } from './review/types.js'
 import {
   formatPublishedMessage,
@@ -218,6 +220,10 @@ function printReviewed(
   for (const warning of outcome.result.warnings ?? []) {
     deps.stderr.write(`Warning: ${toTerminalText(warning)}\n`)
   }
+  const fixFor = blockedFixer({ pullRequest, env: deps.env, home: deps.home })
+  for (const line of formatSkillRunLines(outcome.result.passes ?? [], fixFor)) {
+    deps.stderr.write(`${line}\n`)
+  }
   const investigationLine = formatInvestigationLine(reviewed.investigation)
   if (investigationLine !== undefined) deps.stderr.write(`${investigationLine}\n`)
   if (reviewed.recheck !== undefined) {
@@ -230,7 +236,8 @@ function printReviewed(
 
 function printRun(deps: MainDeps, command: ReviewCommand, run: ReviewRun): void {
   const json = command.format === 'json'
-  if (json) deps.stdout.write(reviewRunJson(run))
+  const fixFor = blockedFixer({ pullRequest: run.pullRequest, env: deps.env, home: deps.home })
+  if (json) deps.stdout.write(reviewRunJson(run, fixFor))
   const { pullRequest } = run
   if (run.status === 'skipped') {
     deps.stderr.write(`${formatSkipMessage(pullRequest.headSha, run.reason)}\n`)
@@ -254,7 +261,7 @@ function printRun(deps: MainDeps, command: ReviewCommand, run: ReviewRun): void 
         deps.stdout.write(
           run.status === 'nothing'
             ? formatGitHubPreview(rendered, messages)
-            : `${formatGitHubPreview(rendered, messages)}\n${formatContextSection(reviewed.context.report)}\n${formatImpactSection(reviewed.impact, reviewed.impactText)}\n${reviewed.related.status === 'none' ? '' : `${formatRelatedSection(reviewed.related)}\n`}${passesSection(run)}${formatInvestigationSection(reviewed.investigation)}`,
+            : `${formatGitHubPreview(rendered, messages)}\n${formatContextSection(reviewed.context.report)}\n${formatImpactSection(reviewed.impact, reviewed.impactText)}\n${reviewed.related.status === 'none' ? '' : `${formatRelatedSection(reviewed.related)}\n`}${passesSection(run, fixFor)}${formatInvestigationSection(reviewed.investigation)}`,
         )
       }
       deps.stderr.write('Dry run: nothing was posted.\n')
@@ -290,11 +297,11 @@ function skipLine(outcome: Extract<ReviewOutcome, { status: 'skipped' }>): strin
   return `Nothing to review: no skill applies to the changed files (${skipped.join('; ')}).`
 }
 
-function passesSection(run: ReviewRun): string {
+function passesSection(run: ReviewRun, fixFor: BlockedFix): string {
   if (run.status !== 'reviewed') return ''
   const outcome = run.reviewed.outcome
   const passes = outcome.status === 'reviewed' ? outcome.result.passes : undefined
-  return passes === undefined ? '' : `${formatPassesSection(passes)}\n`
+  return passes === undefined ? '' : `${formatPassesSection(passes, fixFor)}\n`
 }
 
 async function saveRun(

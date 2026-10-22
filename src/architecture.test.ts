@@ -179,6 +179,7 @@ const APP: Boundary = {
     '../process/work-dirs.js',
     '../repository/work-tree.js',
     '../review/native-context.js',
+    '../review/convert-prompt.js',
     '../watch/filters.js',
     '../config/errors.js',
     '../context/load-context.js',

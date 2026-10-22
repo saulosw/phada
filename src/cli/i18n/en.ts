@@ -55,6 +55,7 @@ export const english: Messages = {
     tokens: (input, output) => `${input} in / ${output} out`,
   },
   github: {
+    skillBody: (skill) => `Review by skill ${skill}`,
     heading: '🦋 Phada review',
     generatedWith: 'Generated with Phada 🦋',
     inlineComments: (bySeverity, count) =>

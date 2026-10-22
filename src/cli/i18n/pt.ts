@@ -69,6 +69,7 @@ export const portuguese: Messages = {
     tokens: (input, output) => `${input} de entrada / ${output} de saída`,
   },
   github: {
+    skillBody: (skill) => `Revisão da skill ${skill}`,
     heading: 'Revisão do Phada 🦋',
     generatedWith: 'Gerado com Phada 🦋',
     inlineComments: (bySeverity, value) =>

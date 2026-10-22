@@ -137,27 +137,43 @@ export async function openNativeRunner(
   }
 }
 
+export interface SkillPolicy {
+  commands: CommandPolicy
+  readDirs: string[]
+  narrowed: boolean
+}
+
+export function skillPolicy(
+  pullRequest: Pick<PullRequest, 'private' | 'association'>,
+  review: ReviewSettings,
+): SkillPolicy {
+  const asked = review.commands?.policy ?? 'read-only'
+  const dirs = review.readDirs?.dirs ?? []
+  const outside = !pullRequest.private && !TRUSTED_ASSOCIATIONS.has(pullRequest.association)
+  if (!outside) return { commands: asked, readDirs: [...dirs], narrowed: false }
+  return {
+    commands: 'read-only',
+    readDirs: [],
+    narrowed: asked !== 'read-only' || dirs.length > 0,
+  }
+}
+
 async function commandPolicy(
   input: NativeRunnerInput,
   deps: NativeRunnerDeps,
 ): Promise<{ commands: CommandPolicy; readDirs: string[] }> {
   const { pullRequest, review } = input
-  const asked = review.commands?.policy ?? 'read-only'
-  const dirs = review.readDirs?.dirs ?? []
-  const outside = !pullRequest.private && !TRUSTED_ASSOCIATIONS.has(pullRequest.association)
-  if (outside) {
-    if (asked !== 'read-only' || dirs.length > 0) {
-      deps.warning(
-        `${pullRequest.repo}#${pullRequest.number} is from an outside author: the skill runs read-only.`,
-      )
-    }
-    return { commands: 'read-only', readDirs: [] }
+  const policy = skillPolicy(pullRequest, review)
+  if (policy.narrowed) {
+    deps.warning(
+      `${pullRequest.repo}#${pullRequest.number} is from an outside author: the skill runs read-only.`,
+    )
   }
   const readDirs: string[] = []
-  for (const dir of dirs) {
+  for (const dir of policy.readDirs) {
     const resolved = await deps.resolveDir(dir)
     if (resolved === undefined) deps.warning(`review.readDirs: ${dir} does not exist; ignored.`)
     else readDirs.push(resolved)
   }
-  return { commands: asked, readDirs }
+  return { commands: policy.commands, readDirs }
 }
