@@ -7,6 +7,25 @@ output can change between minor versions.
 
 ## Unreleased
 
+### Added
+
+- `review.prompt` in `.phada/config.yml` or your own config changes what the reviewer looks for:
+  `append` (the default) adds the text of a file to the built-in focus, `replace` swaps the
+  built-in role, scope and list of what not to report. The output format, line numbers,
+  confidence and severity scales stay the same.
+- `review.skills` (and `--skill`, repeatable) reviews with skills installed for your AI CLI: your
+  Claude Code skills and commands, the skills and commands of your Claude Code plugins
+  (`plugin:skill`), and Codex and `~/.agents` skills. Each skill runs as its own pass, with its
+  text (and the `.md` files it names, up to 32 KB) as the reviewer's guide on every provider, and
+  the findings are merged into one review. `phada` is the built-in reviewer; `paths` runs a skill
+  only for some files. Every finding names its skill in the JSON (`skill`) and under its comment,
+  the JSON has a `passes` block, and `--dry-run` lists each pass with its time and tokens.
+- The verifier sees the guide a finding came from, so findings the user's guide asks for are not
+  rejected as style.
+- `phada prompt owner/repo#N` prints the prompt a review would send, pass by pass, with where
+  each part comes from and the size of the data blocks, without calling the AI;
+  `phada prompt --default` prints the built-in prompt; `--format json`.
+
 ## 0.6.0 - 2026-10-22
 
 ### Added
