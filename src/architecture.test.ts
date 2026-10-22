@@ -28,7 +28,13 @@ const PUBLISH: Boundary = {
     '../github/pull-request-reviews.js',
     '../github/compare-commits.js',
   ]),
-  expected: ['decide-run.ts', 'markers.ts', 'plan-publication.ts', 'recheck-candidates.ts'],
+  expected: [
+    'decide-run.ts',
+    'feedback.ts',
+    'markers.ts',
+    'plan-publication.ts',
+    'recheck-candidates.ts',
+  ],
 }
 const WATCH: Boundary = {
   dir: 'watch',
