@@ -159,12 +159,14 @@ dismissed earlier and left out (`dismissed` in the JSON).
 On a new commit, Phada first rechecks its own open comments from earlier commits, one AI call
 for all of them. For each comment it sends what changed in that file since the comment was
 posted (GitHub's comparison of the two commits) and lets the AI read the file at the new head;
-a comment whose file did not change stays open without asking the AI. The AI answers `fixed`,
-`still-valid` or `unsure` for each one, and Phada only acts on `fixed`: right before posting the
-new review, it replies on the thread "Fixed in `abc1234`: …" with the reason and resolves it. A
-comment that is still valid or unsure stays open, Phada never reopens a thread, never touches
-threads of other people, and a failure on one thread does not stop the others (the run says
-"Resolved N of M comments found fixed"). The new review does not post again a finding of a
+a comment whose file did not change stays open without asking the AI, and so does one Phada
+cannot check (no comparison after a rebase and no access to the repository with
+`--no-investigate`). The AI answers `fixed`, `still-valid` or `unsure` for each one, and Phada
+only acts on `fixed`: right before posting the new review, it resolves the thread and replies
+"Fixed in `abc1234`: …" with the reason. A comment that is still valid or unsure stays open,
+Phada never reopens a thread, never touches threads of other people, leaves alone a thread a
+person reopened after Phada resolved it, and a failure on one thread does not stop the others
+(the run says "Resolved N of M comments found fixed" and warns about each failure). The new review does not post again a finding of a
 comment found fixed in the same run; if the problem comes back in a later commit, it is posted
 again, while a finding whose thread a person resolved is never posted again. `--dry-run` says
 what it would resolve and resolves nothing, and nothing is resolved when publishing is off.
@@ -527,6 +529,7 @@ context:
 | `minConfidence`           | Confidence cut, like `--min-confidence`                                                                                                      | both (root)             |
 | `verify`                  | Verify findings, like `--verify`                                                                                                             | both (root)             |
 | `investigate`             | `false` turns the [repository investigation](#repository-investigation) off, like `--no-investigate`                                         | both (root)             |
+| `resolveThreads`          | `false` turns off the [recheck of earlier comments](#comments-fixed-in-a-new-commit), like `--no-resolve`                                    | both (root)             |
 | `mcp`                     | Names of your Claude Code MCP servers the AI may use (see [Your AI's MCP servers](#your-ais-mcp-servers))                                    | your config             |
 | `context.defaults`        | `false` sends only the files listed in `context.files`, not the docs Phada picks                                                             | both (root)             |
 | `context.files`           | Files of the repository to always send (globs allowed), first in line for the budget                                                         | both                    |
