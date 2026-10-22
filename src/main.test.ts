@@ -1614,6 +1614,22 @@ describe('run rules', () => {
 })
 
 describe('run history', () => {
+  it('says phada history cannot read a file written by a newer Phada', async () => {
+    const h = harness({
+      env: { PHADA_CONFIG_HOME: '/cfg', PHADA_DATA_HOME: '/data' },
+      files: memoryFiles({ '/data/history.sqlite': '' }),
+      openHistoryStore: () =>
+        Promise.reject(
+          new HistoryVersionError('/data/history.sqlite', 9, 2),
+        ) as Promise<HistoryStore>,
+    })
+
+    expect(await run(['history'], h.deps)).toBe(1)
+    expect(h.stderr()).toContain(
+      '/data/history.sqlite was written by a newer Phada (history version 9, this one knows 2); update Phada',
+    )
+  })
+
   it('runs phada history and phada history prune', async () => {
     const h = harness()
 

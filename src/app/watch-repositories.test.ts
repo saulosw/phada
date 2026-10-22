@@ -520,6 +520,28 @@ describe('watchRepositories', () => {
       expect(asked).not.toContain('acme/shop#1')
     })
 
+    it('stops reading a pull request after the read that saw it merged or closed', async () => {
+      const store = await storeWith(7, 8)
+      for (const [number, pullState] of [
+        [7, 'merged'],
+        [8, 'closed'],
+      ] as const) {
+        store.observeFeedback({
+          repo: 'acme/shop',
+          number,
+          pullState,
+          observedAt: iso(-120 * MIN),
+          source: 'watch',
+          threads: [],
+        })
+      }
+      const h = await setup({}, store)
+
+      await watchRepositories(input({ once: true }), h.deps)
+
+      expect(h.events.some((event) => event.startsWith('feedback'))).toBe(false)
+    })
+
     it('skips repositories that are not watched', async () => {
       const store = await storeWith()
       store.addRun({ ...publishedRun(4), repo: 'acme/other' })
