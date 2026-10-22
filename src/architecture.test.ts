@@ -124,6 +124,27 @@ const SKILLS: Boundary = {
   types: new Set(['../config/local-files.js']),
   expected: ['installed-skills.ts', 'resolve-skill.ts', 'skill-locations.ts', 'skill-text.ts'],
 }
+const GH_FACADE: Boundary = {
+  dir: 'gh-facade',
+  values: new Set([
+    'node:crypto',
+    'node:fs/promises',
+    'node:net',
+    'node:os',
+    'node:path',
+    'node:url',
+  ]),
+  types: new Set(['../review/types.js']),
+  expected: [
+    'gh-answer.ts',
+    'gh-bridge.ts',
+    'gh-command.ts',
+    'gh-jq.ts',
+    'gh-server.ts',
+    'types.ts',
+  ],
+  globals: ['console'],
+}
 const GRAPH: Boundary = {
   dir: 'graph',
   values: new Set(['node:path', '../review/diff-lines.js']),
@@ -504,6 +525,7 @@ describe.each([
   GRAPH,
   APP,
   SKILLS,
+  GH_FACADE,
 ])('$dir boundary', (boundary) => {
   const sources = sourcesOf(boundary)
 
