@@ -119,7 +119,12 @@ function reviewBody(
   const parts: BodyParts = {
     reason: messages.scoreReason(scoreFocus(result.findings)),
     summary: result.summary,
-    skillBodies: (result.skillBodies ?? []).map(({ text }) => text).join('\n\n'),
+    skillBodies: (result.skillBodies ?? [])
+      .map(
+        ({ skill, text }) =>
+          `**${messages.github.skillBody(githubLine(skill))}**\n\n${githubBlock(text)}`,
+      )
+      .join('\n\n'),
     files: filesDetails(result.files, messages),
     model: modelLabel(result),
     stillOpen: [...plan.stillOpen],
@@ -150,7 +155,7 @@ function renderBody(
     `## ${messages.github.heading}: ${score.value}/5 (${messages.scoreLabels[score.value]})`,
     capitalize(githubBlock(parts.reason)),
     summary === '' ? '' : `### ${messages.summary}\n\n${summary}`,
-    skillBodySection(result, parts.skillBodies, messages),
+    parts.skillBodies,
     parts.files,
     countsLine(plan, messages),
     fixedLine(result, plan, messages),
@@ -168,16 +173,6 @@ function renderBody(
   ]
     .filter((section) => section !== '')
     .join('\n\n')
-}
-
-function skillBodySection(result: ReviewResult, text: string, messages: Messages): string {
-  const bodies = result.skillBodies ?? []
-  if (bodies.length === 0 || text === '') return ''
-  if (bodies.length > 1) {
-    const names = bodies.map(({ skill }) => githubLine(skill)).join(', ')
-    return `**${messages.github.skillBody(names)}**\n\n${githubBlock(text)}`
-  }
-  return `**${messages.github.skillBody(githubLine(bodies[0]?.skill ?? ''))}**\n\n${githubBlock(text)}`
 }
 
 function fixedLine(result: ReviewResult, plan: PublicationPlan, messages: Messages): string {

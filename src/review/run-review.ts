@@ -110,7 +110,11 @@ export async function runReview(
       ...(checked?.warnings ?? []),
     ]),
   ]
-  const skillBodies = nativeBodies(answered.outputs, diffFiles)
+  const skillBodies = nativeBodies(
+    answered.outputs,
+    diffFiles,
+    verify ? VERIFY_CANDIDATE_FLOOR : CONFIDENCE_FLOOR,
+  )
   const model = first?.output.model
   const additionalModels = otherModels(answered.outputs, model)
   return {
@@ -337,11 +341,14 @@ async function runNativePass(
 function nativeBodies(
   outputs: readonly AnsweredPass[],
   diffFiles: readonly DiffFile[],
+  floor: number,
 ): SkillBody[] {
   return outputs.flatMap(({ body, findings }) => {
     if (body === undefined) return []
-    const inDiff = findings.some((finding) =>
-      findDiffFile(finding.file, diffFiles)?.lines.has(finding.line),
+    const inDiff = findings.some(
+      (finding) =>
+        finding.confidence >= floor &&
+        findDiffFile(finding.file, diffFiles)?.lines.has(finding.line) === true,
     )
     return inDiff ? [] : [body]
   })

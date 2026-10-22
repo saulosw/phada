@@ -320,6 +320,7 @@ describe('review block for native skills', () => {
   it.each([
     ['an unknown commands mode', 'review:\n  commands: some', 'review.commands'],
     ['a command with a wildcard', 'review:\n  commands: ["rm *"]', 'review.commands'],
+    ['a command with a comma', 'review:\n  commands: ["npm test, make"]', 'review.commands'],
     ['a timeout under a minute', 'review:\n  timeout: 10s', 'review.timeout'],
     ['a timeout over two hours', 'review:\n  timeout: 3h', 'review.timeout'],
     [

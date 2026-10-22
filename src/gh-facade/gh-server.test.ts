@@ -134,6 +134,16 @@ describe('serveGhFacade', () => {
     expect(third.stderr).toBe('phada: the GitHub read limit of this review was reached.\n')
   })
 
+  it('gives each pass its own read limit', async () => {
+    const gh = await start(async () => ({ name: 'shop' }), 1)
+
+    await run(['repo', 'view', '--json', 'name'])
+    gh.resetReads()
+    const again = await run(['repo', 'view', '--json', 'name'])
+
+    expect(again.code).toBe(0)
+  })
+
   it('makes gh executable and removes everything on close', async () => {
     const gh = await start()
     const bin = join(gh.binDir, 'gh')
@@ -171,5 +181,31 @@ describe('serveGhFacade git guard', () => {
     expect(refused.code).toBe(1)
     expect(refused.stderr).toContain('phada: git -O is not available')
     expect(existsSync(join(cwd, 'pwned'))).toBe(false)
+  })
+})
+
+describe('serveGhFacade root', () => {
+  it('refuses a body file outside the checkout even when gh runs from another folder', async () => {
+    facade = await serveGhFacade({
+      data: DATA,
+      readGitHub: async () => ({}),
+      execArgv: ['--import', import.meta.resolve('tsx')],
+      root: cwd,
+    })
+    writeFileSync(join(outside, 'secret.md'), 'token')
+
+    const result = await new Promise<{ stderr: string; code: number }>((resolve) => {
+      execFile(
+        join(facade?.binDir ?? '', 'gh'),
+        ['pr', 'comment', '--body-file', 'secret.md'],
+        { cwd: outside, env: { ...process.env, ...facade?.env } },
+        (error, _stdout, stderr) =>
+          resolve({ stderr, code: error === null ? 0 : Number(error.code ?? 1) }),
+      )
+    })
+
+    expect(result.code).toBe(1)
+    expect(result.stderr).toContain('phada: only files inside the checkout can be read')
+    expect(facade.captured()).toEqual([])
   })
 })

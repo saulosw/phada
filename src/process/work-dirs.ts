@@ -42,11 +42,21 @@ export async function sweepOrphanWorkDirs(
       pid === undefined || !Number.isInteger(pid)
         ? await olderThan(dir, UNCLAIMED_GRACE_MS)
         : !isAlive(pid)
-    if (!orphan) continue
-    await rm(dir, { recursive: true, force: true })
-    removed.push(dir)
+    if (!orphan || !(await ownedByMe(dir))) continue
+    try {
+      await rm(dir, { recursive: true, force: true })
+      removed.push(dir)
+    } catch {
+      continue
+    }
   }
   return removed
+}
+
+async function ownedByMe(dir: string): Promise<boolean> {
+  const info = await stat(dir).catch(() => undefined)
+  const uid = process.getuid?.()
+  return info !== undefined && (uid === undefined || info.uid === uid)
 }
 
 async function olderThan(dir: string, ms: number): Promise<boolean> {

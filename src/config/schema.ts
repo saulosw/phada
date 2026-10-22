@@ -87,7 +87,7 @@ const Command = z
   .string()
   .trim()
   .min(1)
-  .regex(/^[^\n*]+$/, 'write the command without line breaks or *')
+  .regex(/^[^\n*,]+$/, 'write the command without line breaks, commas or *')
 
 const ReviewSchema = z.strictObject({
   prompt: z

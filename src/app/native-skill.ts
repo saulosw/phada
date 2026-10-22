@@ -52,6 +52,7 @@ export async function openNativeRunner(
   const dir = await openWorkDir(deps.tempRoot)
   let facade: GhFacade | undefined
   let tree: WorkTree
+  let policy: { commands: CommandPolicy; readDirs: string[] }
   try {
     tree = await materializeWorkTree(
       deps.mirror,
@@ -85,15 +86,16 @@ export async function openNativeRunner(
       },
       readGitHub: deps.readGitHub,
       tempRoot: dir,
+      root: tree.dir,
       ...(deps.env.PATH === undefined ? {} : { path: deps.env.PATH }),
       ...(deps.ghExecArgv === undefined ? {} : { execArgv: deps.ghExecArgv }),
     })
+    policy = await commandPolicy(input, deps)
   } catch (error) {
     await facade?.close()
     await closeWorkDir(dir)
     throw error
   }
-  const policy = await commandPolicy(input, deps)
   const gh = facade
   const workTree = tree
   let seen = 0
@@ -105,6 +107,7 @@ export async function openNativeRunner(
         throw new Error(`${deps.provider.id} cannot run skills natively.`)
       }
       const tools = deps.tools?.()
+      gh.resetReads()
       const output = await deps.provider.runSkill({
         skill,
         arguments: pullRequest.url,

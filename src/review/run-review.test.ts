@@ -1088,6 +1088,17 @@ describe('runReview with a native skill pass', () => {
     ])
   })
 
+  it('uses the skill output as the body when its findings in the diff are below the floor', async () => {
+    const weak = reviewReportJson({ findings: [findingFixture({ confidence: 40 })] })
+    const { outcome } = await nativeReview([NATIVE], [{ ...OUTPUT, text: weak }])
+
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(outcome.result.findings).toEqual([])
+    expect(outcome.result.skillBodies).toEqual([
+      { skill: 'code-review:code-review', text: skillRun().text },
+    ])
+  })
+
   it('gives the body only of the native pass that found nothing in the diff', async () => {
     const empty = reviewReportJson({ findings: [] })
     const { outcome } = await nativeReview([PHADA, NATIVE], [OUTPUT, { ...OUTPUT, text: empty }])

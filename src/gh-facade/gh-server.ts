@@ -22,6 +22,7 @@ export interface GhFacade {
   binDir: string
   env: Record<string, string>
   captured(): CapturedWrite[]
+  resetReads(): void
   close(): Promise<void>
 }
 
@@ -39,6 +40,7 @@ export async function serveGhFacade(input: {
   execArgv?: readonly string[]
   tempRoot?: string
   path?: string
+  root?: string
 }): Promise<GhFacade> {
   const dir = await mkdtemp(join(input.tempRoot ?? tmpdir(), 'phada-gh-'))
   const binDir = join(dir, 'bin')
@@ -113,8 +115,12 @@ export async function serveGhFacade(input: {
       GH_PROMPT_DISABLED: '1',
       GH_NO_UPDATE_NOTIFIER: '1',
       ...(realGit === undefined ? {} : { PHADA_REAL_GIT: realGit }),
+      ...(input.root === undefined ? {} : { PHADA_GH_ROOT: input.root }),
     },
     captured: () => [...captured],
+    resetReads: () => {
+      reads = 0
+    },
     close: async () => {
       for (const socket of connections) socket.destroy()
       await new Promise<void>((resolve) => server.close(() => resolve()))

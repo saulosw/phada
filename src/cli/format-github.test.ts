@@ -621,6 +621,21 @@ describe('formatGitHubReview with native skills', () => {
     )
   })
 
+  it('labels the body of each skill', () => {
+    const body = formatGitHubReview(
+      {
+        ...RESULT,
+        skillBodies: [
+          { skill: 'a', text: 'From a.' },
+          { skill: 'b', text: 'From b.' },
+        ],
+      },
+      PLAN,
+    ).body
+
+    expect(body).toContain('**Review by skill a**\n\nFrom a.\n\n**Review by skill b**\n\nFrom b.')
+  })
+
   it('writes the label in the review language', () => {
     const body = formatGitHubReview(
       { ...RESULT, skillBodies: [{ skill: 'x', text: 'Sem problemas.' }] },

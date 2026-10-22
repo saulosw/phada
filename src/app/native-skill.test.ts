@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -256,5 +256,54 @@ describe('openNativeRunner', () => {
 
     await expect(native.runSkill(PASS)).rejects.toThrow('ollama cannot run skills natively.')
     await native.close()
+  })
+})
+
+describe('openNativeRunner cleanup', () => {
+  it('removes the work folder when the folders of your config cannot be read', async () => {
+    count += 1
+    const mirror = await openGitMirror({
+      dir: join(parent, `m${count}`, 'shop.git'),
+      owner: 'acme',
+      repo: 'shop',
+      token: 'x',
+      env: process.env,
+      remoteUrl: repository.url,
+    })
+    const root = mkdtempSync(join(tmpdir(), 'phada-native-root-'))
+
+    await expect(
+      openNativeRunner(
+        {
+          pullRequest: {
+            ...pullRequestFixture(),
+            baseSha,
+            headSha,
+            baseRef: 'main',
+            headRef: 'feat/x',
+            stats: { changedFiles: 1, additions: 1, deletions: 1, commits: 1 },
+          },
+          diff: '',
+          review: { readDirs: { dirs: ['/x'], origin: 'user:config.yml' } },
+          nativeSkills: new Map([['my-review', REF]]),
+          viewer: 'me',
+        },
+        {
+          mirror,
+          provider: new SkillProvider(),
+          env: process.env,
+          readGitHub: async () => ({}),
+          resolveDir: async () => {
+            throw new Error('EACCES')
+          },
+          warning: () => {},
+          tempRoot: root,
+          ghExecArgv: ['--import', import.meta.resolve('tsx')],
+        },
+      ),
+    ).rejects.toThrow('EACCES')
+
+    expect(readdirSync(root)).toEqual([])
+    rmSync(root, { recursive: true, force: true })
   })
 })

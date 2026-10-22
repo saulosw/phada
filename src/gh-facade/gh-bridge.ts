@@ -12,10 +12,10 @@ async function main(): Promise<number> {
     process.stderr.write('phada: gh is only available inside a Phada review.\n')
     return 1
   }
-  const root = await realpath(process.cwd())
+  const root = await realpath(process.env.PHADA_GH_ROOT || process.cwd())
   const files: Record<string, string> = {}
   for (const path of filesToRead(argv)) {
-    const real = await realpath(resolve(root, path)).catch(() => undefined)
+    const real = await realpath(resolve(process.cwd(), path)).catch(() => undefined)
     const inside =
       real !== undefined &&
       !relative(root, real).startsWith('..') &&

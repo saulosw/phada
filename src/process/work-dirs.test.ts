@@ -1,4 +1,5 @@
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -60,5 +61,27 @@ describe('work dirs', () => {
     expect(existsSync(alive)).toBe(true)
     expect(existsSync(young)).toBe(true)
     expect(existsSync(other)).toBe(true)
+  })
+})
+
+describe('sweepOrphanWorkDirs on a shared temp folder', () => {
+  it('skips a folder it cannot remove and goes on', async () => {
+    const stuck = join(root, 'phada-native-stuck')
+    const dead = join(root, 'phada-native-dead2')
+    mkdirSync(join(stuck, 'inner'), { recursive: true })
+    writeFileSync(join(stuck, 'inner', 'f'), 'x')
+    writeFileSync(join(stuck, 'owner.pid'), '111')
+    mkdirSync(dead)
+    writeFileSync(join(dead, 'owner.pid'), '111')
+    chmodSync(join(stuck, 'inner'), 0o500)
+
+    try {
+      const removed = await sweepOrphanWorkDirs(root, () => false)
+
+      expect(removed).toContain(dead)
+      expect(removed).not.toContain(stuck)
+    } finally {
+      chmodSync(join(stuck, 'inner'), 0o700)
+    }
   })
 })
