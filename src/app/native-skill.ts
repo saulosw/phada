@@ -85,6 +85,7 @@ export async function openNativeRunner(
       },
       readGitHub: deps.readGitHub,
       tempRoot: dir,
+      ...(deps.env.PATH === undefined ? {} : { path: deps.env.PATH }),
       ...(deps.ghExecArgv === undefined ? {} : { execArgv: deps.ghExecArgv }),
     })
   } catch (error) {

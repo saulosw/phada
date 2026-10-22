@@ -1,9 +1,10 @@
 import { randomBytes } from 'node:crypto'
-import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import { access, chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import type { Socket } from 'node:net'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { delimiter, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { CapturedWrite } from '../review/types.js'
 import { answerGh } from './gh-answer.js'
@@ -37,6 +38,7 @@ export async function serveGhFacade(input: {
   execPath?: string
   execArgv?: readonly string[]
   tempRoot?: string
+  path?: string
 }): Promise<GhFacade> {
   const dir = await mkdtemp(join(input.tempRoot ?? tmpdir(), 'phada-gh-'))
   const binDir = join(dir, 'bin')
@@ -93,15 +95,16 @@ export async function serveGhFacade(input: {
       resolve()
     })
   })
-  const bridge = fileURLToPath(new URL('./gh-bridge.js', import.meta.url))
-  const command = [
-    input.execPath ?? process.execPath,
-    ...(input.execArgv ?? process.execArgv),
-    bridge,
-  ]
-  const script = `#!/bin/sh\nexec ${command.map(shellQuote).join(' ')} "$@"\n`
-  await writeFile(join(binDir, 'gh'), script)
-  await chmod(join(binDir, 'gh'), 0o755)
+  const node = [input.execPath ?? process.execPath, ...(input.execArgv ?? process.execArgv)]
+  await writeLauncher(join(binDir, 'gh'), [
+    ...node,
+    fileURLToPath(new URL('./gh-bridge.js', import.meta.url)),
+  ])
+  await writeLauncher(join(binDir, 'git'), [
+    ...node,
+    fileURLToPath(new URL('./git-bridge.js', import.meta.url)),
+  ])
+  const realGit = await findExecutable('git', input.path ?? process.env.PATH ?? '', binDir)
   return {
     binDir,
     env: {
@@ -109,6 +112,7 @@ export async function serveGhFacade(input: {
       GH_CONFIG_DIR: configDir,
       GH_PROMPT_DISABLED: '1',
       GH_NO_UPDATE_NOTIFIER: '1',
+      ...(realGit === undefined ? {} : { PHADA_REAL_GIT: realGit }),
     },
     captured: () => [...captured],
     close: async () => {
@@ -137,6 +141,29 @@ function parseRequest(line: string): GhBridgeRequest | undefined {
   } catch {
     return undefined
   }
+}
+
+async function writeLauncher(path: string, command: readonly string[]): Promise<void> {
+  await writeFile(path, `#!/bin/sh\nexec ${command.map(shellQuote).join(' ')} "$@"\n`)
+  await chmod(path, 0o755)
+}
+
+async function findExecutable(
+  name: string,
+  path: string,
+  skip: string,
+): Promise<string | undefined> {
+  for (const dir of path.split(delimiter)) {
+    if (dir === '' || dir === skip) continue
+    const candidate = join(dir, name)
+    try {
+      await access(candidate, constants.X_OK)
+      return candidate
+    } catch {
+      continue
+    }
+  }
+  return undefined
 }
 
 function shellQuote(value: string): string {

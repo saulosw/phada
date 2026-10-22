@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
 import {
   existsSync,
   mkdirSync,
@@ -145,5 +145,31 @@ describe('serveGhFacade', () => {
     await gh.close()
     facade = undefined
     expect(existsSync(bin)).toBe(false)
+  })
+})
+
+describe('serveGhFacade git guard', () => {
+  it('runs the real git and refuses unsafe options', async () => {
+    const gh = await start()
+    execFileSync('git', ['init', '-q'], { cwd })
+    writeFileSync(join(cwd, 'a.ts'), 'spend\n')
+    execFileSync('git', ['add', 'a.ts'], { cwd })
+
+    const git = (args: string[]) =>
+      new Promise<{ stdout: string; stderr: string; code: number }>((resolve) => {
+        execFile(
+          join(gh.binDir, 'git'),
+          args,
+          { cwd, env: { ...process.env, ...gh.env } },
+          (error, stdout, stderr) =>
+            resolve({ stdout, stderr, code: error === null ? 0 : Number(error.code ?? 1) }),
+        )
+      })
+
+    expect(await git(['ls-files'])).toMatchObject({ stdout: 'a.ts\n', code: 0 })
+    const refused = await git(['grep', '-Otouch pwned', 'spend'])
+    expect(refused.code).toBe(1)
+    expect(refused.stderr).toContain('phada: git -O is not available')
+    expect(existsSync(join(cwd, 'pwned'))).toBe(false)
   })
 })

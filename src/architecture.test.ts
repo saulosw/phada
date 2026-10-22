@@ -127,6 +127,8 @@ const SKILLS: Boundary = {
 const GH_FACADE: Boundary = {
   dir: 'gh-facade',
   values: new Set([
+    'node:child_process',
+    'node:fs',
     'node:crypto',
     'node:fs/promises',
     'node:net',
@@ -141,6 +143,8 @@ const GH_FACADE: Boundary = {
     'gh-command.ts',
     'gh-jq.ts',
     'gh-server.ts',
+    'git-bridge.ts',
+    'git-guard.ts',
     'types.ts',
   ],
   globals: ['console'],
