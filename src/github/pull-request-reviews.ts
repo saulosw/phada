@@ -214,6 +214,7 @@ function toThread(node: unknown): ReviewThread {
 }
 
 function negativeReactions(comment: unknown): number {
+  if (field(comment, 'reactionGroups') === null) return 0
   return arrayField(comment, 'reactionGroups')
     .filter((group) => NEGATIVE_REACTIONS.has(stringField(group, 'content')))
     .reduce<number>((total, group) => total + numberField(group, 'reactors.totalCount'), 0)

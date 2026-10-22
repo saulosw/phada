@@ -130,6 +130,19 @@ describe('fetchReviewState', () => {
     expect(thread).toMatchObject({ isOutdated: true, negativeReactions: 3 })
   })
 
+  it('reads a null reaction list as no reactions', async () => {
+    const threads = withPage(fixture('graphql-threads.json'), 'reviewThreads', (root) => {
+      const [thread] = root.nodes as Json[]
+      const [comment] = (thread!.comments as Json).nodes as Json[]
+      comment!.reactionGroups = null
+    })
+    const { fetch } = fakeGitHub([ok(fixture('graphql-reviews.json'))], [ok(threads)])
+
+    const [thread] = (await fetchWith(fetch)).threads
+
+    expect(thread?.negativeReactions).toBe(0)
+  })
+
   it('marks replies written by bots and treats a deleted author as a person', async () => {
     const threads = withPage(fixture('graphql-threads.json'), 'reviewThreads', (root) => {
       const [thread] = root.nodes as Json[]
