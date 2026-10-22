@@ -125,7 +125,16 @@ function render(
     limit: command.limit,
   }) ?? { runs: [], total: 0 }
   if (json) return formatHistoryJson(runs, total, findings ?? [])
+  if (total === 0 && findings === undefined && source !== undefined) {
+    const comments = source.history.findings({ ...source.filter, since }).length
+    if (comments > 0) return onlyCommentsText(comments)
+  }
   return formatHistoryText(runs, total, findings)
+}
+
+function onlyCommentsText(comments: number): string {
+  const one = comments === 1
+  return `No reviews in the history yet, but ${formatCount(comments, 'Phada comment')} ${one ? 'is' : 'are'} recorded. See what happened to ${one ? 'it' : 'them'} with --stats, or with owner/repo#N for one pull request.\n`
 }
 
 async function refresh(

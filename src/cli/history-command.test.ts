@@ -197,6 +197,43 @@ describe('runHistory', () => {
     expect(reads).toBe(1)
   })
 
+  it('points to the recorded comments when there are no reviews to list', async () => {
+    const h = harness()
+    await h.seed((store) =>
+      store.observeFeedback({
+        repo: 'acme/shop',
+        number: 3,
+        pullState: 'open',
+        observedAt: RUN.startedAt,
+        source: 'refresh',
+        threads: [
+          {
+            threadId: 'T1',
+            fingerprint: 'src/shop.ts:x',
+            url: '',
+            file: 'src/shop.ts',
+            line: 4,
+            title: 'X',
+            severity: 'P2',
+            commitSha: null,
+            outdated: false,
+            destination: 'open',
+            signals: [],
+          },
+        ],
+      }),
+    )
+
+    await runHistory(
+      { ...COMMAND, target: { kind: 'repo', repo: { owner: 'acme', repo: 'shop' } } },
+      h.deps,
+    )
+
+    expect(h.stdout()).toBe(
+      'No reviews in the history yet, but 1 Phada comment is recorded. See what happened to it with --stats, or with owner/repo#N for one pull request.\n',
+    )
+  })
+
   it('warns when the config turns the history off and still lists', async () => {
     const h = harness({ config: 'history: false' })
     await h.seed((store) => store.addRun(RUN))
