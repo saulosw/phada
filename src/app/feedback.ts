@@ -19,6 +19,7 @@ export interface FeedbackRefreshDeps {
   history: HistoryStore
   fetchReviewState(pull: DuePull): Promise<PullRequestReviewState>
   isNotFound(error: unknown): boolean
+  isRateLimited(error: unknown): boolean
   now(): string
   events: {
     observed(pull: DuePull, threads: number): void
@@ -63,7 +64,7 @@ export async function refreshFeedback(
 ): Promise<{ observed: number; failed: number }> {
   let observed = 0
   let failed = 0
-  for (const pull of pulls) {
+  for (const [index, pull] of pulls.entries()) {
     let state: PullRequestReviewState
     try {
       state = await deps.fetchReviewState(pull)
@@ -78,6 +79,13 @@ export async function refreshFeedback(
         })
         observed++
         continue
+      }
+      if (deps.isRateLimited(error)) {
+        deps.events.warning(
+          `${pull.repo}#${pull.number}: ${errorMessage(error)}; the other pull requests wait for the next refresh`,
+        )
+        failed += pulls.length - index
+        break
       }
       deps.events.warning(`${pull.repo}#${pull.number}: ${errorMessage(error)}`)
       failed++

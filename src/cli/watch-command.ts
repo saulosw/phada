@@ -12,7 +12,7 @@ import { loadTopLevelUserLayers, loadUserLayers } from '../config/user-config.js
 import { historyEnabled, resolveWatchSettings } from '../config/watch-settings.js'
 import type { WatchSettings } from '../config/watch-settings.js'
 import { splitRepoName } from '../github/pull-request-ref.js'
-import { PullRequestNotFoundError } from '../github/errors.js'
+import { GitHubRateLimitError, PullRequestNotFoundError } from '../github/errors.js'
 import type { ConfigLayer } from '../config/types.js'
 import type { ComparedFile, CompareOptions } from '../github/compare-commits.js'
 import type { CreatedReview, CreateReviewOptions } from '../github/create-review.js'
@@ -219,6 +219,7 @@ function watchDeps(
         fetchReviewState: (pull) =>
           deps.fetchReviewState({ ...splitRepoName(pull.repo), number: pull.number, token }),
         isNotFound: (error) => error instanceof PullRequestNotFoundError,
+        isRateLimited: (error) => error instanceof GitHubRateLimitError,
         now: () => deps.clock().toISOString(),
         events: {
           observed: (pull, threads) => events.feedback(pull.repo, pull.number, threads),

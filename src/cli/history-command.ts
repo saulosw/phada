@@ -3,7 +3,7 @@ import { dataFiles } from '../config/data-paths.js'
 import type { LocalFileSystem } from '../config/local-files.js'
 import { loadTopLevelUserLayers } from '../config/user-config.js'
 import { historyEnabled } from '../config/watch-settings.js'
-import { PullRequestNotFoundError } from '../github/errors.js'
+import { GitHubRateLimitError, PullRequestNotFoundError } from '../github/errors.js'
 import { splitRepoName } from '../github/pull-request-ref.js'
 import type {
   FetchReviewStateOptions,
@@ -139,6 +139,7 @@ async function refresh(
     fetchReviewState: (pull) =>
       deps.fetchReviewState({ ...splitRepoName(pull.repo), number: pull.number, token }),
     isNotFound: (error) => error instanceof PullRequestNotFoundError,
+    isRateLimited: (error) => error instanceof GitHubRateLimitError,
     now: () => deps.clock().toISOString(),
     events: {
       observed: () => undefined,

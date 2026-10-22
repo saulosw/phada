@@ -169,6 +169,7 @@ describe('refreshFeedback', () => {
       history: store,
       fetchReviewState,
       isNotFound: (error) => error instanceof Error && error.message === 'not found',
+      isRateLimited: (error) => error instanceof Error && error.message === 'rate limited',
       now: () => NOW,
       events: {
         log,
@@ -236,6 +237,30 @@ describe('refreshFeedback', () => {
 
       expect(result).toEqual({ observed: 2, failed: 0 })
       expect(store.feedbackDue({ number: 1 }, '2099-01-01T00:00:00.000Z')).toEqual([])
+    }))
+
+  it('stops at a rate limit and leaves the rest for the next refresh', () =>
+    withStore(async (store) => {
+      const asked: number[] = []
+      const d = deps(store, async (pull) => {
+        asked.push(pull.number)
+        throw new Error('rate limited')
+      })
+
+      const result = await refreshFeedback(
+        [
+          { repo: 'acme/shop', number: 1 },
+          { repo: 'acme/shop', number: 2 },
+        ],
+        'watch',
+        d,
+      )
+
+      expect(asked).toEqual([1])
+      expect(result).toEqual({ observed: 0, failed: 2 })
+      expect(d.events.log).toEqual([
+        'warning acme/shop#1: rate limited; the other pull requests wait for the next refresh',
+      ])
     }))
 
   it('other errors warn and count as failed', () =>
