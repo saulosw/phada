@@ -25,7 +25,7 @@ const DESTINATIONS = ['fixed', 'dismissed', 'ignored'] as const
 
 export function threadFeedback(state: PullRequestReviewState): ThreadFeedback[] {
   return phadaThreads(state).map((thread) => {
-    const title = findingTitle(thread.body) ?? thread.path
+    const title = unescapeTitle(findingTitle(thread.body) ?? thread.path)
     const severity = findingSeverity(thread.body)
     const destination = destinationOfThread(state, thread)
     return {
@@ -54,6 +54,14 @@ export function destinationOf(kinds: readonly SignalKind[]): Destination {
 
 export function findingFingerprint(file: string, title: string): string {
   return `${file}:${normalizeTitle(title)}`
+}
+
+function unescapeTitle(title: string): string {
+  return title
+    .replace(/\u200b/g, '')
+    .replace(/(\\+)</g, (escaped, slashes: string) =>
+      slashes.length % 2 === 1 ? `${'\\'.repeat((slashes.length - 1) / 2)}<` : escaped,
+    )
 }
 
 function destinationOfThread(state: PullRequestReviewState, thread: ReviewThread): Destination {

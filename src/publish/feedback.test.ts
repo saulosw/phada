@@ -145,6 +145,17 @@ describe('threadFeedback', () => {
     })
   })
 
+  it('shows the title as written, without the escapes added for GitHub', () => {
+    const body = `**P2** · Strict \\< rejects @\u200bbob, see #\u200b12 and \\\\\\< · confidence 80\n\nWhy.\n\n${FINDING_MARKER}`
+
+    const feedback = feedbackOf(phadaThread({ body }))
+
+    expect(feedback?.title).toBe('Strict < rejects @bob, see #12 and \\<')
+    expect(feedback?.fingerprint).toBe(
+      findingFingerprint('src/shop.ts', 'Strict < rejects @bob, see #12 and \\<'),
+    )
+  })
+
   it('a comment without the usual title keeps the file as title and no severity', () => {
     const feedback = feedbackOf(phadaThread({ body: `Odd body\n\n${FINDING_MARKER}` }))
 
