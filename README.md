@@ -285,7 +285,8 @@ The history keeps when each one started and, when it stopped, when.
 `phada review` saves the state of the threads it reads on every run. `phada watch` also reads
 the pull requests with Phada comments every 30 minutes when the queue is idle, and once more when
 they are merged or closed. Without the watch, `phada history --refresh` reads them on demand
-(it needs `GITHUB_TOKEN`).
+(it needs `GITHUB_TOKEN`); `phada history owner/repo#123 --refresh` reads that pull request even
+when the history has nothing about it yet.
 
 `--stats` counts the comments published in the period per repository, with the share of each
 outcome. They are signals, not verdicts: a dismissed comment may still have been right.
