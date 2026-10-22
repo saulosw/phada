@@ -173,8 +173,8 @@ Turn it off with `resolveThreads: false` in a config file or `--no-resolve`. The
 
 ### Pushes that change nothing to review
 
-Every review keeps a fingerprint of the reviewed diff, without the files left out of the review,
-hunk positions or context lines. A new commit whose diff has the same fingerprint as the last
+Every review keeps a fingerprint of the reviewed diff, without the files left out of the review
+and without the line numbers of its hunks. A new commit whose diff has the same fingerprint as the last
 Phada review of the pull request is skipped without calling the AI: a push that only touches
 ignored files, or a merge of the base branch that only moves the changed lines, does not trigger
 a new review. `--force` reviews anyway and `--dry-run` says it would skip.

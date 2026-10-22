@@ -23,20 +23,58 @@ describe('diffFingerprint', () => {
     expect(diffFingerprint(BASE)).toBe(diffFingerprint(BASE))
   })
 
-  it('ignores hunk headers and context', () => {
+  it('ignores where the hunks start and the index line', () => {
     const shifted = diffOf(
       'diff --git a/src/shop.ts b/src/shop.ts',
       'index 3333333..4444444 100644',
       '--- a/src/shop.ts',
       '+++ b/src/shop.ts',
       '@@ -11,4 +14,4 @@ export function spend() {',
-      " import { db } from './database'",
+      " import { db } from './db'",
       '-const LIMIT = 10',
       '+const LIMIT = 20',
-      ' export { db }',
+      ' export {}',
     )
 
     expect(diffFingerprint(shifted)).toBe(diffFingerprint(BASE))
+  })
+
+  it('changes when an added line moves past unchanged code', () => {
+    const before = diffOf(
+      'diff --git a/src/pay.ts b/src/pay.ts',
+      '--- a/src/pay.ts',
+      '+++ b/src/pay.ts',
+      '@@ -1,2 +1,3 @@',
+      ' function pay(user) {',
+      '   charge(user)',
+      '+  if (!user) return',
+    )
+    const after = diffOf(
+      'diff --git a/src/pay.ts b/src/pay.ts',
+      '--- a/src/pay.ts',
+      '+++ b/src/pay.ts',
+      '@@ -1,2 +1,3 @@',
+      ' function pay(user) {',
+      '+  if (!user) return',
+      '   charge(user)',
+    )
+
+    expect(diffFingerprint(after)).not.toBe(diffFingerprint(before))
+  })
+
+  it('counts removed lines that start with -- and added lines that start with ++', () => {
+    const sql = (line: string) =>
+      diffOf(
+        'diff --git a/q.sql b/q.sql',
+        '--- a/q.sql',
+        '+++ b/q.sql',
+        '@@ -1,2 +1,1 @@',
+        ' SELECT 1;',
+        line,
+      )
+
+    expect(diffFingerprint(sql('--- drop me'))).not.toBe(diffFingerprint(sql('--- keep me')))
+    expect(diffFingerprint(sql('+++ add me'))).not.toBe(diffFingerprint(sql('+++ add you')))
   })
 
   it('changes when an added or removed line changes', () => {
