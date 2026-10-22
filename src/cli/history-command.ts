@@ -128,7 +128,10 @@ async function refresh(
   token: string,
   deps: HistoryCommandDeps,
 ): Promise<void> {
-  const due = history.feedbackDue(filter, deps.clock().toISOString())
+  const due =
+    filter.repo !== undefined && filter.number !== undefined
+      ? [{ repo: filter.repo.toLowerCase(), number: filter.number }]
+      : history.feedbackDue(filter, deps.clock().toISOString())
   if (due.length === 0) return
   deps.stderr.write(`Refreshing ${formatCount(due.length, 'pull request')}…\n`)
   await refreshFeedback(due, 'refresh', {

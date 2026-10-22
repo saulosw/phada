@@ -239,6 +239,22 @@ describe('runHistory', () => {
     store.close()
   })
 
+  it('--refresh reads the pull request it names even when the history does not know it', async () => {
+    const h = harness()
+
+    await runHistory(
+      {
+        ...COMMAND,
+        refresh: true,
+        target: { kind: 'pull', ref: { owner: 'acme', repo: 'shop', number: 8 } },
+      },
+      h.deps,
+    )
+
+    expect(h.fetched.map(({ number }) => number)).toEqual([8])
+    expect(h.stdout()).toContain('Findings:\n  P1  src/shop.ts:10  Spend has no auth  dismissed')
+  })
+
   it('--refresh warns about a pull request it cannot read and goes on', async () => {
     const h = harness({
       fetchReviewState: async (request) => {
