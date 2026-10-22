@@ -20,6 +20,7 @@ export interface FeedbackRefreshDeps {
   fetchReviewState(pull: DuePull): Promise<PullRequestReviewState>
   isNotFound(error: unknown): boolean
   isRateLimited(error: unknown): boolean
+  stopRequested?(): boolean
   now(): string
   events: {
     observed(pull: DuePull, threads: number): void
@@ -65,6 +66,7 @@ export async function refreshFeedback(
   let observed = 0
   let failed = 0
   for (const [index, pull] of pulls.entries()) {
+    if (deps.stopRequested?.() === true) break
     let state: PullRequestReviewState
     try {
       state = await deps.fetchReviewState(pull)

@@ -221,10 +221,16 @@ function watchDeps(
       await refreshFeedback(
         pulls,
         'watch',
-        feedbackRefreshDeps(history, token, deps, {
-          observed: (pull, threads) => events.feedback(pull.repo, pull.number, threads),
-          warning: (message) => events.warning(message),
-        }),
+        feedbackRefreshDeps(
+          history,
+          token,
+          deps,
+          {
+            observed: (pull, threads) => events.feedback(pull.repo, pull.number, threads),
+            warning: (message) => events.warning(message),
+          },
+          () => stop.stopRequested(),
+        ),
       )
     },
     classify: (error) => classifyFailure(error, deps.clock()),

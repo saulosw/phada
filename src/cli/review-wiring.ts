@@ -75,9 +75,11 @@ export function feedbackRefreshDeps(
   token: string,
   deps: FeedbackWiringDeps,
   events: FeedbackRefreshDeps['events'],
+  stopRequested?: () => boolean,
 ): FeedbackRefreshDeps {
   return {
     history,
+    ...(stopRequested === undefined ? {} : { stopRequested }),
     fetchReviewState: (pull) =>
       deps.fetchReviewState({ ...splitRepoName(pull.repo), number: pull.number, token }),
     isNotFound: (error) => error instanceof PullRequestNotFoundError,

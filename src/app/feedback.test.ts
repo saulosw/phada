@@ -263,6 +263,27 @@ describe('refreshFeedback', () => {
       ])
     }))
 
+  it('stops between pull requests when asked to', () =>
+    withStore(async (store) => {
+      const asked: number[] = []
+      const d = deps(store, async (pull) => {
+        asked.push(pull.number)
+        return STATE
+      })
+
+      const result = await refreshFeedback(
+        [
+          { repo: 'acme/shop', number: 1 },
+          { repo: 'acme/shop', number: 2 },
+        ],
+        'watch',
+        { ...d, stopRequested: () => asked.length === 1 },
+      )
+
+      expect(asked).toEqual([1])
+      expect(result).toEqual({ observed: 1, failed: 0 })
+    }))
+
   it('other errors warn and count as failed', () =>
     withStore(async (store) => {
       const d = deps(store, async () => {
