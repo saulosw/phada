@@ -29,6 +29,7 @@ import { messagesFor } from './cli/i18n/messages.js'
 import { runIndex } from './cli/index-command.js'
 import { runInit } from './cli/init.js'
 import { runRules } from './cli/rules-command.js'
+import { runHistory, runHistoryPrune } from './cli/history-command.js'
 import { pullRequestReviewDeps, renderReview, reviewRunJson } from './cli/review-wiring.js'
 import { assertProviderChoice } from './cli/provider-choice.js'
 import type { ProviderOptions } from './cli/provider-choice.js'
@@ -91,6 +92,14 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
       return 0
     }
     if (command.kind === 'watch') return await runWatch(command, deps)
+    if (command.kind === 'history') {
+      await runHistory(command, deps)
+      return 0
+    }
+    if (command.kind === 'history-prune') {
+      await runHistoryPrune(command, deps)
+      return 0
+    }
 
     const token = deps.env.GITHUB_TOKEN?.trim() || deps.env.GH_TOKEN?.trim()
     if (!token) throw new MissingGitHubTokenError()

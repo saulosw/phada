@@ -1614,6 +1614,14 @@ describe('run rules', () => {
 })
 
 describe('run history', () => {
+  it('runs phada history and phada history prune', async () => {
+    const h = harness()
+
+    expect(await run(['history'], h.deps)).toBe(0)
+    expect(await run(['history', 'prune', '--older-than', '30d'], h.deps)).toBe(0)
+    expect(h.stdout()).toBe('No reviews in the history yet.\nNo reviews in the history yet.\n')
+  })
+
   const REVIEW = ['review', 'acme/shop#12', '--no-verify']
   type Row = Record<string, unknown>
   const runsOf = (h: Harness): Row[] => {
