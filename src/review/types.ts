@@ -87,6 +87,7 @@ export interface SkillPass {
   skill: string
   lens: ReviewerLens
   paths?: string[]
+  skip?: string
 }
 
 export interface ReviewRequest {

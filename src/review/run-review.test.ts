@@ -11,6 +11,7 @@ import { InvalidReviewReportError } from './errors.js'
 import { buildReviewPrompt } from './prompt.js'
 import { REVIEW_REPORT_JSON_SCHEMA } from './report-schema.js'
 import { DEFAULT_MIN_CONFIDENCE, runReview } from './run-review.js'
+import type { SkillPass } from './types.js'
 import { buildVerifyPrompt } from './verify-prompt.js'
 
 class FakeProvider implements ReviewProvider {
@@ -715,5 +716,209 @@ describe('runReview with the repository tools', () => {
     if (outcome.status !== 'reviewed') throw new Error('expected a review')
     expect(outcome.result.warnings).toEqual(['model cannot call tools'])
     expect(outcome.result).not.toHaveProperty('externalCalls')
+  })
+})
+
+describe('runReview with several skill passes', () => {
+  const PHADA_PASS: SkillPass = { skill: 'phada', lens: { kind: 'default' } }
+  const SKILL_PASS: SkillPass = {
+    skill: 'code-review',
+    lens: { kind: 'skill', name: 'code-review', text: 'Find bugs.', origin: '/s/SKILL.md' },
+  }
+  const second = findingFixture({ line: 3, title: 'spend ignores the balance', severity: 'P2' })
+  const answer = (findings: unknown[], extra: Partial<ReviewOutput> = {}): ReviewOutput => ({
+    ...OUTPUT,
+    text: reviewReportJson({ findings }),
+    ...extra,
+  })
+
+  async function reviewed(
+    passes: SkillPass[],
+    outputs: (ReviewOutput | Error)[],
+    tools?: () => Toolbox,
+  ) {
+    let next = 0
+    const provider = new FakeProvider(() => {
+      const output = outputs[next++]
+      return output instanceof Error || output === undefined
+        ? Promise.reject(output ?? new Error('no more answers'))
+        : Promise.resolve(output)
+    })
+    const outcome = await runReview(
+      { pullRequest: pullRequestFixture(), passes },
+      { provider, ...(tools === undefined ? {} : { tools }) },
+    )
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    return { result: outcome.result, provider }
+  }
+
+  it('calls the provider once per pass, each with its own lens and toolbox', async () => {
+    const boxes: string[] = []
+    const { provider } = await reviewed(
+      [PHADA_PASS, SKILL_PASS],
+      [answer([findingFixture()]), answer([second])],
+      () => {
+        boxes.push('review')
+        return {
+          definitions: [],
+          call: async () => ({ text: '', isError: false }),
+          touchedPaths: () => [],
+        }
+      },
+    )
+
+    expect(provider.prompts).toHaveLength(2)
+    expect(provider.prompts[0]?.instructions).toContain('You are a senior engineer')
+    expect(provider.prompts[1]?.instructions).toContain('Review guide (skill code-review):')
+    expect(boxes).toEqual(['review', 'review'])
+  })
+
+  it('merges the findings of every pass with the skill that found each', async () => {
+    const { result } = await reviewed(
+      [PHADA_PASS, SKILL_PASS],
+      [answer([findingFixture()]), answer([findingFixture(), second])],
+    )
+
+    expect(result.findings.map(({ line, skill }) => [line, skill])).toEqual([
+      [1, 'phada'],
+      [3, 'code-review'],
+    ])
+    expect(result.dropped.duplicate).toBe(1)
+  })
+
+  it('sums time and tokens and reports each pass', async () => {
+    const { result } = await reviewed(
+      [PHADA_PASS, SKILL_PASS],
+      [
+        answer([findingFixture()]),
+        answer([second], { durationMs: 1000, usage: { inputTokens: 10, outputTokens: 5 } }),
+      ],
+    )
+
+    expect(result.durationMs).toBe(2234)
+    expect(result.usage).toEqual({ inputTokens: 3522, outputTokens: 425 })
+    expect(result.passes).toEqual([
+      {
+        skill: 'phada',
+        origin: 'phada',
+        status: 'reviewed',
+        durationMs: 1234,
+        usage: { inputTokens: 3512, outputTokens: 420 },
+        findings: 1,
+      },
+      {
+        skill: 'code-review',
+        origin: '/s/SKILL.md',
+        status: 'reviewed',
+        durationMs: 1000,
+        usage: { inputTokens: 10, outputTokens: 5 },
+        findings: 1,
+      },
+    ])
+  })
+
+  it('skips a pass whose paths match no changed file', async () => {
+    const { result, provider } = await reviewed(
+      [
+        PHADA_PASS,
+        { ...SKILL_PASS, paths: ['src/auth/**'], skip: 'no changed file matches src/auth/**' },
+      ],
+      [answer([findingFixture()])],
+    )
+
+    expect(provider.prompts).toHaveLength(1)
+    expect(result.passes?.[1]).toEqual({
+      skill: 'code-review',
+      origin: '/s/SKILL.md',
+      status: 'skipped',
+      durationMs: 0,
+      findings: 0,
+      reason: 'no changed file matches src/auth/**',
+    })
+  })
+
+  it('reviews with no findings when every pass is skipped', async () => {
+    const { result, provider } = await reviewed(
+      [{ ...SKILL_PASS, paths: ['docs/**'], skip: 'no changed file matches docs/**' }],
+      [],
+    )
+
+    expect(provider.prompts).toHaveLength(0)
+    expect(result.findings).toEqual([])
+    expect(result.summary).toBe('No skill applies to the changed files.')
+  })
+
+  it('takes the summary from the first pass that answered', async () => {
+    const { result } = await reviewed(
+      [PHADA_PASS, SKILL_PASS],
+      [
+        new Error('claude exited with 1'),
+        {
+          ...answer([second]),
+          text: reviewReportJson({ summary: 'From the skill.', findings: [second] }),
+        },
+      ],
+    )
+
+    expect(result.summary).toBe('From the skill.')
+    expect(result.findings.map(({ skill }) => skill)).toEqual(['code-review'])
+    expect(result.passes?.[0]).toMatchObject({ status: 'failed', reason: 'claude exited with 1' })
+    expect(result.warnings).toEqual(['Skill phada failed: claude exited with 1'])
+  })
+
+  it('fails with the error of the first pass when every pass fails', async () => {
+    await expect(
+      reviewed([PHADA_PASS, SKILL_PASS], [new Error('first'), new Error('second')]),
+    ).rejects.toThrow('first')
+  })
+
+  it('lets the error of a single pass propagate', async () => {
+    await expect(reviewed([SKILL_PASS], [new Error('only')])).rejects.toThrow('only')
+  })
+
+  it('leaves passes and skills out without passes', async () => {
+    const provider = new FakeProvider(() => Promise.resolve(OUTPUT))
+    const outcome = await runReview({ pullRequest: pullRequestFixture() }, { provider })
+
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(outcome.result.passes).toBeUndefined()
+    expect(outcome.result.findings[0]?.skill).toBeUndefined()
+  })
+
+  it('tells the caller when each pass starts', async () => {
+    const started: string[] = []
+    const provider = new FakeProvider(inTurn(answer([]), answer([])))
+
+    await runReview(
+      { pullRequest: pullRequestFixture(), passes: [PHADA_PASS, SKILL_PASS] },
+      { provider, events: { passStarted: (pass) => started.push(pass.skill) } },
+    )
+
+    expect(started).toEqual(['phada', 'code-review'])
+  })
+
+  it('keeps sources read in any pass and calls of every pass', async () => {
+    let call = 0
+    const touched = [['src/a.ts'], ['src/b.ts']]
+    const { result } = await reviewed(
+      [PHADA_PASS, SKILL_PASS],
+      [
+        answer([]),
+        answer([{ ...second, sources: ['src/a.ts', 'src/b.ts'] }], {
+          externalCalls: [{ server: 'linear', tool: 'get_issue' }],
+        }),
+      ],
+      () => {
+        const paths = touched[call++] ?? []
+        return {
+          definitions: [],
+          call: async () => ({ text: '', isError: false }),
+          touchedPaths: () => paths,
+        }
+      },
+    )
+
+    expect(result.findings[0]?.sources).toEqual(['src/a.ts', 'src/b.ts'])
+    expect(result.externalCalls).toEqual([{ server: 'linear', tool: 'get_issue' }])
   })
 })
