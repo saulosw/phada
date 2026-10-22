@@ -62,7 +62,7 @@ export type CliCommand =
     }
 
 export const DEFAULT_HISTORY_LIMIT = 50
-const MIN_PRUNE_MS = 86_400_000
+const MIN_PRUNE_MS = durationMs('1d')
 
 export const USAGE = `Usage: phada <command> [options]
 

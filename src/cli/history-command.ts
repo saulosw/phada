@@ -3,8 +3,6 @@ import { dataFiles } from '../config/data-paths.js'
 import type { LocalFileSystem } from '../config/local-files.js'
 import { loadTopLevelUserLayers } from '../config/user-config.js'
 import { historyEnabled } from '../config/watch-settings.js'
-import { GitHubRateLimitError, PullRequestNotFoundError } from '../github/errors.js'
-import { splitRepoName } from '../github/pull-request-ref.js'
 import type {
   FetchReviewStateOptions,
   PullRequestReviewState,
@@ -20,6 +18,7 @@ import {
   formatStatsText,
 } from './format-history.js'
 import type { TextOutput } from './progress.js'
+import { feedbackRefreshDeps } from './review-wiring.js'
 import { toTerminalText } from './terminal-text.js'
 import { formatCount } from './units.js'
 
@@ -138,18 +137,14 @@ async function refresh(
       : history.feedbackDue(filter, deps.clock().toISOString())
   if (due.length === 0) return
   deps.stderr.write(`Refreshing ${formatCount(due.length, 'pull request')}…\n`)
-  await refreshFeedback(due, 'refresh', {
-    history,
-    fetchReviewState: (pull) =>
-      deps.fetchReviewState({ ...splitRepoName(pull.repo), number: pull.number, token }),
-    isNotFound: (error) => error instanceof PullRequestNotFoundError,
-    isRateLimited: (error) => error instanceof GitHubRateLimitError,
-    now: () => deps.clock().toISOString(),
-    events: {
+  await refreshFeedback(
+    due,
+    'refresh',
+    feedbackRefreshDeps(history, token, deps, {
       observed: () => undefined,
       warning: (message) => deps.stderr.write(`Warning: ${toTerminalText(message)}\n`),
-    },
-  })
+    }),
+  )
 }
 
 function refreshToken(env: NodeJS.ProcessEnv, enabled: boolean): string {

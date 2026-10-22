@@ -2,10 +2,10 @@ import { destinationOf } from '../publish/feedback.js'
 import type { Destination, SignalKind } from '../publish/feedback.js'
 import type { FindingRecord, RunRecord } from '../store/history-store.js'
 import { toTerminalText } from './terminal-text.js'
-import { formatCount } from './units.js'
+import { shortSha } from './review-text.js'
+import { formatCount, formatLocalTime } from './units.js'
 
 const SCHEMA_VERSION = 1
-const SHORT_SHA = 7
 const WARNING = 'Signals, not verdicts: a dismissed finding may still have been right.'
 
 export interface RepoStats {
@@ -69,7 +69,7 @@ export function feedbackStats(findings: readonly FindingRecord[]): RepoStats[] {
 
 export function formatStatsText(stats: readonly RepoStats[], since: string | undefined): string {
   const lines = [
-    ...(since === undefined ? [] : [`Since ${localDate(since).slice(0, 10)}.`]),
+    ...(since === undefined ? [] : [`Since ${formatLocalTime(new Date(since)).slice(0, 10)}.`]),
     ...(stats.length === 0 ? ['No published comments in the history yet.'] : []),
     ...stats.map(statsLine),
     '',
@@ -91,9 +91,9 @@ function runLine(run: RunRecord): string {
     run.url ?? run.reason ?? run.error,
   ].filter((part) => part !== undefined)
   return [
-    localDate(run.startedAt),
+    formatLocalTime(new Date(run.startedAt)),
     `${run.repo}#${run.number}`,
-    run.headSha.slice(0, SHORT_SHA),
+    shortSha(run.headSha),
     run.source.padEnd(6),
     run.status.padEnd(9),
     details.join(' · '),
@@ -186,10 +186,4 @@ function emptyStats(repo: string): RepoStats {
     negativeReaction: 0,
     humanReply: 0,
   }
-}
-
-function localDate(iso: string): string {
-  const date = new Date(iso)
-  const pad = (value: number) => String(value).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }

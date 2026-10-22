@@ -1,7 +1,14 @@
+import type { FeedbackRefreshDeps } from '../app/feedback.js'
 import type { PullRequestReviewDeps } from '../app/review-pull-request.js'
 import type { PublicationResult, RenderedReview, ReviewRun } from '../app/review-and-publish.js'
 import { repositoryCache } from '../config/cache-paths.js'
+import { GitHubRateLimitError, PullRequestNotFoundError } from '../github/errors.js'
 import { splitRepoName } from '../github/pull-request-ref.js'
+import type {
+  FetchReviewStateOptions,
+  PullRequestReviewState,
+} from '../github/pull-request-reviews.js'
+import type { HistoryStore } from '../store/history-store.js'
 import type { PullRequestRef } from '../github/pull-request-ref.js'
 import type { PullRequest } from '../github/pull-request.js'
 import { RepositoryAccessError } from '../github/repository.js'
@@ -56,6 +63,28 @@ const PROGRESS_LABELS: Readonly<Record<ReviewPass, string>> = {
   review: 'Reviewing',
   verify: 'Verifying findings',
   recheck: 'Rechecking open comments',
+}
+
+export interface FeedbackWiringDeps {
+  fetchReviewState: (options: FetchReviewStateOptions) => Promise<PullRequestReviewState>
+  clock: () => Date
+}
+
+export function feedbackRefreshDeps(
+  history: HistoryStore,
+  token: string,
+  deps: FeedbackWiringDeps,
+  events: FeedbackRefreshDeps['events'],
+): FeedbackRefreshDeps {
+  return {
+    history,
+    fetchReviewState: (pull) =>
+      deps.fetchReviewState({ ...splitRepoName(pull.repo), number: pull.number, token }),
+    isNotFound: (error) => error instanceof PullRequestNotFoundError,
+    isRateLimited: (error) => error instanceof GitHubRateLimitError,
+    now: () => deps.clock().toISOString(),
+    events,
+  }
 }
 
 export const renderReview = {

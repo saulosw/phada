@@ -12,7 +12,6 @@ import { loadTopLevelUserLayers, loadUserLayers } from '../config/user-config.js
 import { historyEnabled, resolveWatchSettings } from '../config/watch-settings.js'
 import type { WatchSettings } from '../config/watch-settings.js'
 import { splitRepoName } from '../github/pull-request-ref.js'
-import { GitHubRateLimitError, PullRequestNotFoundError } from '../github/errors.js'
 import type { ConfigLayer } from '../config/types.js'
 import type { ComparedFile, CompareOptions } from '../github/compare-commits.js'
 import type { CreatedReview, CreateReviewOptions } from '../github/create-review.js'
@@ -36,7 +35,12 @@ import { formatError } from './format-error.js'
 import { formatWatchEvent } from './format-watch.js'
 import { watchRun } from './history-run.js'
 import { assertProviderChoice } from './provider-choice.js'
-import { pullRequestReviewDeps, renderReview, reviewRunJson } from './review-wiring.js'
+import {
+  feedbackRefreshDeps,
+  pullRequestReviewDeps,
+  renderReview,
+  reviewRunJson,
+} from './review-wiring.js'
 import type { Choice, ReviewWiringDeps } from './review-wiring.js'
 import { printWatchEvents } from './watch-events.js'
 import { watchStatusText } from './watch-status.js'
@@ -214,18 +218,14 @@ function watchDeps(
     },
     refreshIndex: (repo, budgetMs) => refreshDefaultBranch(repo, budgetMs, token, deps),
     refreshFeedback: async (pulls) => {
-      await refreshFeedback(pulls, 'watch', {
-        history,
-        fetchReviewState: (pull) =>
-          deps.fetchReviewState({ ...splitRepoName(pull.repo), number: pull.number, token }),
-        isNotFound: (error) => error instanceof PullRequestNotFoundError,
-        isRateLimited: (error) => error instanceof GitHubRateLimitError,
-        now: () => deps.clock().toISOString(),
-        events: {
+      await refreshFeedback(
+        pulls,
+        'watch',
+        feedbackRefreshDeps(history, token, deps, {
           observed: (pull, threads) => events.feedback(pull.repo, pull.number, threads),
           warning: (message) => events.warning(message),
-        },
-      })
+        }),
+      )
     },
     classify: (error) => classifyFailure(error, deps.clock()),
     now: () => deps.clock(),

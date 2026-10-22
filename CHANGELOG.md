@@ -20,10 +20,9 @@ output can change between minor versions.
   more when they close.
 - `phada history [owner/repo[#N]]` lists past reviews (`--since`, `--limit`), the comments of a
   pull request with their outcome, and `--stats` per repository; `--refresh` reads the comments
-  on GitHub first; `--format json` with `schemaVersion: 1`. `phada history prune --older-than
-<age>` removes old reviews, comments and finished jobs.
+  on GitHub first; `--format json` with `schemaVersion: 1`. `phada history prune` removes old
+  reviews, comments and finished jobs (`--older-than 180d`).
 - Durations accept days (`30d`).
-
 - Findings can carry a code suggestion, kept only when it replaces up to 20 lines of one `@@`
   section of the diff that it quotes exactly; the verifier can drop it. It is published as a
   GitHub suggestion that applies with one click, shown as a `diff` block in the terminal, and

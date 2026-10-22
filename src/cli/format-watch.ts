@@ -5,7 +5,7 @@ import { errorMessage } from '../app/error-message.js'
 import { formatSkipMessage } from './format-publication.js'
 import { shortSha } from './review-text.js'
 import { toTerminalText } from './terminal-text.js'
-import { formatCount } from './units.js'
+import { formatCount, formatLocalTime } from './units.js'
 
 const SCHEMA_VERSION = 1
 
@@ -193,8 +193,7 @@ function clock(date: Date): string {
 }
 
 function when(iso: string): string {
-  const date = new Date(iso)
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${clock(date)}`
+  return formatLocalTime(new Date(iso))
 }
 
 function pad(value: number): string {
