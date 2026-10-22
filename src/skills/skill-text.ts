@@ -21,8 +21,9 @@ export async function readSkillText(
   skill: InstalledSkill,
 ): Promise<SkillText> {
   const raw = await files.readText(skill.path)
-  const body = bodyOf(raw ?? '')
   const label = `Skill "${skill.qualified}" (${skill.path})`
+  if (raw === null) throw new SkillError(`${label} could not be read.`)
+  const body = bodyOf(raw)
   if (body === '') throw new SkillError(`${label} is empty.`)
   let bytes = byteLength(body)
   if (bytes > SKILL_TEXT_LIMIT_BYTES) throw new SkillError(`${label} is larger than 32 KB.`)

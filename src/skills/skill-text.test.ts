@@ -97,3 +97,11 @@ describe('readSkillText', () => {
     expect((await readSkillText(files, command)).text).toBe('Like other.md.')
   })
 })
+
+describe('readSkillText of a file that disappeared', () => {
+  it('says the skill could not be read', async () => {
+    await expect(readSkillText(memoryFiles({}), skill)).rejects.toThrow(
+      `Skill "sp:requesting-code-review" (${DIR}/SKILL.md) could not be read.`,
+    )
+  })
+})
