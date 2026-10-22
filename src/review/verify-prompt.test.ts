@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import { findingFixture } from '../../test/support/finding.js'
 import { pullRequestFixture } from '../../test/support/pull-request.js'
@@ -6,6 +7,7 @@ import { annotateDiff } from './diff-lines.js'
 import { buildReviewPrompt } from './prompt.js'
 import { CONFIDENCE_SCALE, SEVERITY } from './prompt-parts.js'
 import { VERIFICATION_JSON_SCHEMA } from './verification-schema.js'
+import type { SkillPass } from './types.js'
 import { buildVerifyPrompt } from './verify-prompt.js'
 
 const NONCE = '0123456789ab'
@@ -19,6 +21,15 @@ function verifyPrompt(language?: string) {
 }
 
 describe('buildVerifyPrompt', () => {
+  it.each([
+    [undefined, '11f7dd6988901d9b27ebd9ad11c72377408a8ab772aa80bc2d5052dcdf82fe03'],
+    ['pt-BR', 'b20fc7c0852d170d8d2a13ef8594438c7bd4752e45ed8d8346da8832e9818ebe'],
+  ])('keeps the verifier instructions word for word (language %s)', (language, digest) => {
+    const { instructions } = verifyPrompt(language)
+
+    expect(createHash('sha256').update(instructions).digest('hex')).toBe(digest)
+  })
+
   it('asks a skeptical reviewer to confirm or reject each candidate on its own', () => {
     const { instructions } = verifyPrompt()
 
@@ -202,5 +213,77 @@ describe('buildVerifyPrompt with repository context', () => {
 
     expect(instructions).toContain('You see only the diff, not the rest of the repository.')
     expect(instructions).not.toContain('Repository rules')
+  })
+})
+
+describe('buildVerifyPrompt with the review focus the user chose', () => {
+  const DEFAULT_DIGEST = '11f7dd6988901d9b27ebd9ad11c72377408a8ab772aa80bc2d5052dcdf82fe03'
+  const digest = (text: string) => createHash('sha256').update(text).digest('hex')
+  const skillPass: SkillPass = {
+    skill: 'code-review',
+    lens: { kind: 'skill', name: 'code-review', text: 'Flag code smells.', origin: '/s/SKILL.md' },
+  }
+
+  it('keeps the instructions word for word with only the built-in phada pass', () => {
+    const { instructions } = buildVerifyPrompt(
+      {
+        pullRequest: pullRequestFixture(),
+        passes: [{ skill: 'phada', lens: { kind: 'default' } }],
+      },
+      CANDIDATES,
+      NONCE,
+    )
+
+    expect(digest(instructions)).toBe(DEFAULT_DIGEST)
+  })
+
+  it('shows the guide of each skill and keeps what it asks for in scope', () => {
+    const { instructions } = buildVerifyPrompt(
+      {
+        pullRequest: pullRequestFixture(),
+        passes: [{ skill: 'phada', lens: { kind: 'default' } }, skillPass],
+      },
+      CANDIDATES,
+      NONCE,
+    )
+
+    expect(instructions).toContain(
+      'Some candidates come from reviewers that followed a review guide the user chose',
+    )
+    expect(instructions).toContain(
+      'do not reject it for being a style, design or maintainability matter',
+    )
+    expect(instructions).toContain('Reject it only when it is not real.')
+    expect(instructions).toContain('[code-review]\nFlag code smells.')
+    expect(instructions).not.toContain('[phada]')
+  })
+
+  it('shows the user focus of the phada pass in append mode', () => {
+    const { instructions } = buildVerifyPrompt(
+      {
+        pullRequest: pullRequestFixture(),
+        passes: [
+          {
+            skill: 'phada',
+            lens: { kind: 'append', text: 'Flag missing tests.', origin: '.phada/review.md' },
+          },
+        ],
+      },
+      CANDIDATES,
+      NONCE,
+    )
+
+    expect(instructions).toContain('[phada]\nFlag missing tests.')
+  })
+
+  it('names the skill of a candidate that has one', () => {
+    const { data } = buildVerifyPrompt(
+      { pullRequest: pullRequestFixture(), passes: [skillPass] },
+      [findingFixture({ skill: 'code-review' }), findingFixture({ line: 6 })],
+      NONCE,
+    )
+
+    expect(data).toContain('"skill":"code-review"')
+    expect(data.match(/"skill"/g)).toHaveLength(1)
   })
 })

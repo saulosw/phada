@@ -19,7 +19,7 @@ import {
   SEVERITY,
   toolNamesOf,
 } from './prompt-parts.js'
-import type { Finding, ReviewRequest } from './types.js'
+import type { Finding, ReviewRequest, SkillPass } from './types.js'
 import { VERIFICATION_JSON_SCHEMA } from './verification-schema.js'
 
 const ROLE = `You are a skeptical senior engineer checking the findings that another reviewer
@@ -93,13 +93,26 @@ export function buildVerifyPrompt(
   }
 }
 
+const USER_FOCUS = `Some candidates come from reviewers that followed a review guide the user chose;
+the guide of each is below, by skill. A candidate the guide asks for is in scope:
+do not reject it for being a style, design or maintainability matter.
+Reject it only when it is not real.`
+
+function userFocus(passes: readonly SkillPass[] | undefined): string {
+  const guides = (passes ?? []).flatMap(({ skill, lens }) =>
+    lens.kind === 'default' ? [] : [`[${skill}]\n${lens.text}`],
+  )
+  return guides.length === 0 ? '' : [USER_FOCUS, ...guides].join('\n\n')
+}
+
 function instructionsFor(
-  { language, context, impact, related }: ReviewRequest,
+  { language, context, impact, related, passes }: ReviewRequest,
   tools?: Toolbox,
 ): string {
   const sections = [
     ROLE,
     taskFor(tools),
+    userFocus(passes),
     rulesSection(context?.rules ?? []),
     (context?.docs.length ?? 0) > 0 ? CONTEXT_DOCS : '',
     hasRelated(related) ? RELATED : '',
@@ -120,7 +133,7 @@ function instructionsFor(
 }
 
 function candidateLine(
-  { file, line, title, why, rule, suggestion }: Finding,
+  { file, line, title, why, rule, suggestion, skill }: Finding,
   index: number,
 ): string {
   return JSON.stringify({
@@ -130,6 +143,7 @@ function candidateLine(
     title,
     why,
     ...(rule === undefined ? {} : { rule }),
+    ...(skill === undefined ? {} : { skill }),
     ...(suggestion === undefined
       ? {}
       : { suggestion: { original: suggestion.original, replacement: suggestion.replacement } }),
