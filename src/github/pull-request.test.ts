@@ -67,6 +67,7 @@ describe('fetchPullRequest', () => {
       title: 'feat: let users spend crystals in the shop',
       description: 'Fixture for Phada tests: a trimmed real response from the GitHub REST API.',
       author: 'saulosw',
+      association: 'OWNER',
       state: 'open',
       draft: false,
       baseRef: 'develop',
@@ -78,6 +79,15 @@ describe('fetchPullRequest', () => {
       stats: { changedFiles: 2, additions: 15, deletions: 1, commits: 1 },
       diff: DIFF,
     })
+  })
+
+  it('reads an author without an association as NONE', async () => {
+    const { author_association: _association, ...json } = metadata()
+    const github = fakeGitHub([ok(JSON.stringify(json))], [ok(DIFF)])
+
+    const pr = await fetchWith(github.fetch)
+
+    expect(pr.association).toBe('NONE')
   })
 
   it('reads whether the repository is public', async () => {
