@@ -412,6 +412,18 @@ describe('formatGitHubReview comments', () => {
       })
     })
 
+    it('publishes an empty block that deletes the lines and never adds a blank line', () => {
+      const comment = (replacement: string) =>
+        formatGitHubReview(
+          RESULT,
+          plan([findingFixture({ line: 3, suggestion: { ...one, replacement } })]),
+        ).comments[0]?.body
+
+      expect(comment('')).toContain('```suggestion\n```')
+      expect(comment('b(user.id)\n')).toContain('```suggestion\nb(user.id)\n```')
+      expect(comment('a\r\nb\r\n')).toContain('```suggestion\na\nb\n```')
+    })
+
     it('starts a comment of several lines on the first line of the suggestion', () => {
       const several = { startLine: 2, endLine: 4, original: 'a\nb\nc', replacement: 'd' }
       const [comment] = formatGitHubReview(

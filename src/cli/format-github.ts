@@ -2,6 +2,7 @@ import type { ReviewComment } from '../github/create-review.js'
 import { FINDING_MARKER, reviewMarker } from '../publish/markers.js'
 import type { PublicationPlan } from '../publish/types.js'
 import { scoreFocus } from '../review/score.js'
+import { normalize } from '../review/suggestions.js'
 import type { FileChange, Finding, ReviewResult, Severity } from '../review/types.js'
 import { findingReferences, leftOutLine } from './finding-references.js'
 import { english } from './i18n/en.js'
@@ -228,7 +229,9 @@ function findingComment(finding: Finding, limit: number, messages: Messages): Re
   const { suggestion } = finding
   if (suggestion !== undefined) {
     const fence = codeFence(suggestion.replacement)
-    const block = `${fence}suggestion\n${suggestion.replacement.replace(/\r/g, '')}\n${fence}`
+    const code = normalize(suggestion.replacement)
+    const block =
+      code === '' ? `${fence}suggestion\n${fence}` : `${fence}suggestion\n${code}\n${fence}`
     const body = commentBody(finding, limit, messages, block)
     if (body.length <= limit) {
       return {
