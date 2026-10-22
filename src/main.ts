@@ -18,6 +18,7 @@ import { formatImpactSection } from './cli/format-impact.js'
 import { formatInvestigationLine, formatInvestigationSection } from './cli/format-investigation.js'
 import { formatRelatedSection } from './cli/format-related.js'
 import { formatPassesSection } from './cli/format-passes.js'
+import type { ReviewOutcome } from './review/types.js'
 import {
   formatPublishedMessage,
   formatRecheckMessage,
@@ -211,11 +212,7 @@ function printReviewed(
 ): void {
   const { outcome } = reviewed
   if (outcome.status === 'skipped') {
-    deps.stderr.write(
-      outcome.reason === 'all-ignored'
-        ? 'Nothing to review: every changed file is ignored.\n'
-        : 'Nothing to review: the pull request has no changes.\n',
-    )
+    deps.stderr.write(`${toTerminalText(skipLine(outcome))}\n`)
     return
   }
   for (const warning of outcome.result.warnings ?? []) {
@@ -284,6 +281,13 @@ function printRun(deps: MainDeps, command: ReviewCommand, run: ReviewRun): void 
     default:
       return
   }
+}
+
+function skipLine(outcome: Extract<ReviewOutcome, { status: 'skipped' }>): string {
+  if (outcome.reason === 'all-ignored') return 'Nothing to review: every changed file is ignored.'
+  if (outcome.reason === 'empty-diff') return 'Nothing to review: the pull request has no changes.'
+  const skipped = (outcome.passes ?? []).map(({ skill, reason }) => `${skill} — ${reason ?? ''}`)
+  return `Nothing to review: no skill applies to the changed files (${skipped.join('; ')}).`
 }
 
 function passesSection(run: ReviewRun): string {

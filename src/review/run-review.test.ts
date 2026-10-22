@@ -4,6 +4,7 @@ import { pullRequestFixture } from '../../test/support/pull-request.js'
 import { reviewContextFixture } from '../../test/support/review-context.js'
 import { reviewReportJson } from '../../test/support/review-report.js'
 import { verdictFixture, verificationJson } from '../../test/support/verification.js'
+import { ProviderError } from '../providers/types.js'
 import type { ReviewOutput, ReviewPrompt, ReviewProvider } from '../providers/types.js'
 import type { Toolbox } from '../investigation/toolbox.js'
 import { diffFingerprint } from './diff-fingerprint.js'
@@ -720,6 +721,34 @@ describe('runReview with the repository tools', () => {
 })
 
 describe('runReview with several skill passes', () => {
+  it('does not show the verifier the guide of a pass that failed', async () => {
+    const provider = new FakeProvider(
+      inTurn(
+        OUTPUT,
+        { ...OUTPUT, text: 'not a report' },
+        { ...OUTPUT, text: verificationJson([verdictFixture({ id: 1 })]) },
+      ),
+    )
+
+    await runReview(
+      {
+        pullRequest: pullRequestFixture(),
+        verify: true,
+        passes: [
+          { skill: 'phada', lens: { kind: 'append', text: 'Flag missing tests.', origin: 'x' } },
+          {
+            skill: 'code-review',
+            lens: { kind: 'skill', name: 'code-review', text: 'Find bugs.', origin: 'y' },
+          },
+        ],
+      },
+      { provider },
+    )
+
+    expect(provider.prompts[2]?.instructions).toContain('[phada]\nFlag missing tests.')
+    expect(provider.prompts[2]?.instructions).not.toContain('Find bugs.')
+  })
+
   const PHADA_PASS: SkillPass = { skill: 'phada', lens: { kind: 'default' } }
   const SKILL_PASS: SkillPass = {
     skill: 'code-review',
@@ -837,22 +866,57 @@ describe('runReview with several skill passes', () => {
     })
   })
 
-  it('reviews with no findings when every pass is skipped', async () => {
-    const { result, provider } = await reviewed(
-      [{ ...SKILL_PASS, paths: ['docs/**'], skip: 'no changed file matches docs/**' }],
-      [],
+  it('skips the review when every pass is skipped', async () => {
+    const provider = new FakeProvider(() => Promise.reject(new Error('never called')))
+
+    const outcome = await runReview(
+      {
+        pullRequest: pullRequestFixture(),
+        passes: [{ ...SKILL_PASS, paths: ['docs/**'], skip: 'no changed file matches docs/**' }],
+      },
+      { provider },
     )
 
     expect(provider.prompts).toHaveLength(0)
-    expect(result.findings).toEqual([])
-    expect(result.summary).toBe('No skill applies to the changed files.')
+    expect(outcome).toEqual({
+      status: 'skipped',
+      reason: 'no-skill-applies',
+      passes: [
+        {
+          skill: 'code-review',
+          origin: '/s/SKILL.md',
+          status: 'skipped',
+          durationMs: 0,
+          findings: 0,
+          reason: 'no changed file matches docs/**',
+        },
+      ],
+    })
+  })
+
+  it('fails the whole review when a pass hits a provider limit', async () => {
+    await expect(
+      reviewed(
+        [PHADA_PASS, SKILL_PASS],
+        [answer([findingFixture()]), new ProviderError('claude-cli', 'usage-limit', 'limit hit')],
+      ),
+    ).rejects.toThrow(ProviderError)
+  })
+
+  it('keeps the review when a pass gives the provider an invalid answer', async () => {
+    const { result } = await reviewed(
+      [PHADA_PASS, SKILL_PASS],
+      [answer([findingFixture()]), new ProviderError('claude-cli', 'invalid-output', 'max turns')],
+    )
+
+    expect(result.passes?.[1]).toMatchObject({ status: 'failed', reason: 'max turns' })
   })
 
   it('takes the summary from the first pass that answered', async () => {
     const { result } = await reviewed(
       [PHADA_PASS, SKILL_PASS],
       [
-        new Error('claude exited with 1'),
+        { ...OUTPUT, text: 'not a report' },
         {
           ...answer([second]),
           text: reviewReportJson({ summary: 'From the skill.', findings: [second] }),
@@ -862,8 +926,8 @@ describe('runReview with several skill passes', () => {
 
     expect(result.summary).toBe('From the skill.')
     expect(result.findings.map(({ skill }) => skill)).toEqual(['code-review'])
-    expect(result.passes?.[0]).toMatchObject({ status: 'failed', reason: 'claude exited with 1' })
-    expect(result.warnings).toEqual(['Skill phada failed: claude exited with 1'])
+    expect(result.passes?.[0]).toMatchObject({ status: 'failed' })
+    expect(result.warnings?.[0]).toMatch(/^Skill phada failed: /)
   })
 
   it('fails with the error of the first pass when every pass fails', async () => {

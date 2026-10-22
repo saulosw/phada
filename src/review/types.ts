@@ -237,7 +237,8 @@ export interface RecheckReport {
   usage?: TokenUsage
 }
 
-export type SkipReviewReason = 'empty-diff' | 'all-ignored'
+export type SkipReviewReason = 'empty-diff' | 'all-ignored' | 'no-skill-applies'
 
 export type ReviewOutcome =
-  { status: 'reviewed'; result: ReviewResult } | { status: 'skipped'; reason: SkipReviewReason }
+  | { status: 'reviewed'; result: ReviewResult }
+  | { status: 'skipped'; reason: SkipReviewReason; passes?: PassReport[] }

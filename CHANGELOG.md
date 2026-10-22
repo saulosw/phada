@@ -18,7 +18,7 @@ output can change between minor versions.
   (`plugin:skill`), and Codex and `~/.agents` skills. Each skill runs as its own pass, with its
   text (and the `.md` files it names, up to 32 KB) as the reviewer's guide on every provider, and
   the findings are merged into one review. `phada` is the built-in reviewer; `paths` runs a skill
-  only for some files. Every finding names its skill in the JSON (`skill`) and under its comment,
+  only for some files, and nothing is published when no skill applies to the changed files. Every finding names its skill in the JSON (`skill`) and under its comment,
   the JSON has a `passes` block, and `--dry-run` lists each pass with its time and tokens.
 - The verifier sees the guide a finding came from, so findings the user's guide asks for are not
   rejected as style.

@@ -4,6 +4,7 @@ import { withKnownReferences, withRuleSeverity } from './context-findings.js'
 import { diffFingerprint } from './diff-fingerprint.js'
 import { parseDiffFiles } from './diff-lines.js'
 import { newNonce } from './nonce.js'
+import { InvalidReviewReportError } from './errors.js'
 import { parseReviewReport } from './parse-report.js'
 import type { ParsedReport } from './parse-report.js'
 import { buildReviewPrompt } from './prompt.js'
@@ -49,6 +50,9 @@ export async function runReview(
   const createNonce = deps.createNonce ?? newNonce
   const answered = await runPasses(request, deps, createNonce)
   const first = answered.outputs[0]
+  if (first === undefined) {
+    return { status: 'skipped', reason: 'no-skill-applies', passes: answered.reports }
+  }
   const diffFiles = parseDiffFiles(pullRequest.diff)
   const verify = request.verify === true
   const suggested = checkSuggestions(
@@ -73,7 +77,7 @@ export async function runReview(
   )
   const checked = verify
     ? await verifyCandidates(
-        request,
+        verifiedRequest(request, answered.reports),
         prepared.candidates,
         deps.verifier ?? deps.provider,
         createNonce(),
@@ -110,8 +114,8 @@ export async function runReview(
       ...(additionalModels === undefined ? {} : { additionalModels }),
       durationMs: answered.durationMs + (checked?.verification.durationMs ?? 0),
       ...(totalUsage === undefined ? {} : { usage: totalUsage }),
-      summary: first?.report.summary ?? NO_SKILL_APPLIES,
-      files: summarizeFiles(first?.report.files ?? [], selection.findings, diffFiles),
+      summary: first.report.summary,
+      files: summarizeFiles(first.report.files, selection.findings, diffFiles),
       findings: selection.findings,
       worthChecking: selection.worthChecking,
       worthCheckingOmitted: selection.worthCheckingOmitted,
@@ -135,8 +139,6 @@ export async function runReview(
     },
   }
 }
-
-const NO_SKILL_APPLIES = 'No skill applies to the changed files.'
 
 interface AnsweredPass {
   output: ReviewOutput
@@ -209,7 +211,7 @@ async function runPasses(
         })
       }
     } catch (error) {
-      if (pass === undefined || planned.length === 1) throw error
+      if (pass === undefined || planned.length === 1 || !isAnswerFailure(error)) throw error
       firstError ??= error
       const message = error instanceof Error ? error.message : String(error)
       answered.warnings.push(`Skill ${pass.skill} failed: ${message}`)
@@ -225,6 +227,27 @@ async function runPasses(
   }
   if (ran > 0 && answered.outputs.length === 0) throw firstError
   return answered
+}
+
+function verifiedRequest(request: ReviewRequest, reports: readonly PassReport[]): ReviewRequest {
+  if (request.passes === undefined) return request
+  const answered = new Set(
+    reports.filter(({ status }) => status === 'reviewed').map(({ skill }) => skill),
+  )
+  return { ...request, passes: request.passes.filter(({ skill }) => answered.has(skill)) }
+}
+
+const ANSWER_FAILURES: ReadonlySet<string> = new Set(['invalid-output', 'prompt-too-large'])
+
+function isAnswerFailure(error: unknown): boolean {
+  if (error instanceof InvalidReviewReportError) return true
+  return (
+    error instanceof Error &&
+    error.name === 'ProviderError' &&
+    'reason' in error &&
+    typeof error.reason === 'string' &&
+    ANSWER_FAILURES.has(error.reason)
+  )
 }
 
 function otherModels(

@@ -380,7 +380,10 @@ review:
   kept once. Each finding names the skill that found it, in the JSON and under each comment on
   the pull request. `phada` is the built-in reviewer, with your `review.prompt` if there is one;
   leave it out to review only with your skills. `paths` runs a skill only when a changed file
-  matches; otherwise the pass is skipped and the review says so.
+  matches; otherwise the pass is skipped and the review says so. When no pass runs, nothing is
+  published and Phada says which skills did not apply. A pass whose answer is not a valid review
+  is left out with a warning and the others still publish; a provider failure (a usage or rate
+  limit, a timeout) fails the whole review, so it can run again later.
 - **`--skill <name>`** (repeatable) replaces the configured list for one run of `phada review` or
   `phada prompt`. `phada watch` uses only the config.
 

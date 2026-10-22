@@ -2061,3 +2061,24 @@ describe('run prompt', () => {
     expect(await run(['prompt', 'acme/shop#12'], h.deps)).toBe(1)
   })
 })
+
+describe('run review when no skill applies', () => {
+  it('posts nothing and says why', async () => {
+    const h = harness({
+      files: memoryFiles({
+        '/home/u/.claude/skills/docs-review/SKILL.md': 'Check the docs.',
+        '/cfg/config.yml':
+          "review:\n  skills:\n    - name: docs-review\n      paths: ['docs/**']\n",
+      }),
+    })
+
+    expect(await run(['review', 'acme/shop#12', '--no-verify'], h.deps)).toBe(0)
+    expect(h.posts).toHaveLength(0)
+    expect(h.prompts.filter((prompt) => prompt.outputSchema !== RECHECK_JSON_SCHEMA)).toHaveLength(
+      0,
+    )
+    expect(h.stderr()).toContain(
+      'Nothing to review: no skill applies to the changed files (docs-review — no changed file matches docs/**).',
+    )
+  })
+})
