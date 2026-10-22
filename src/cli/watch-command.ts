@@ -1,4 +1,5 @@
 import { errorMessage } from '../app/error-message.js'
+import { recordReviewFeedback, refreshFeedback } from '../app/feedback.js'
 import { refreshIndex } from '../app/index-repository.js'
 import { reviewAndPublish } from '../app/review-and-publish.js'
 import type { ReviewRun } from '../app/review-and-publish.js'
@@ -11,6 +12,7 @@ import { loadTopLevelUserLayers, loadUserLayers } from '../config/user-config.js
 import { historyEnabled, resolveWatchSettings } from '../config/watch-settings.js'
 import type { WatchSettings } from '../config/watch-settings.js'
 import { splitRepoName } from '../github/pull-request-ref.js'
+import { PullRequestNotFoundError } from '../github/errors.js'
 import type { ConfigLayer } from '../config/types.js'
 import type { ComparedFile, CompareOptions } from '../github/compare-commits.js'
 import type { CreatedReview, CreateReviewOptions } from '../github/create-review.js'
@@ -166,6 +168,10 @@ function watchDeps(
   deps: WatchCommandDeps,
 ): WatchDeps {
   const choices = new Map<number, Choice>()
+  const events = trackRunningJob(
+    printWatchEvents((event) => deps.stderr.write(`${formatWatchEvent(event, deps.clock())}\n`)),
+    stop,
+  )
   const withEtag = (etag: string | undefined) => (etag === undefined ? {} : { etag })
   return {
     history,
@@ -192,7 +198,14 @@ function watchDeps(
         ...(choice?.model === undefined ? {} : { model: choice.model }),
       }
       try {
-        history.addRun(watchRun(job, outcome, meta, reviewRunJson))
+        const runId = history.addRun(watchRun(job, outcome, meta, reviewRunJson))
+        if ('run' in outcome) {
+          recordReviewFeedback(history, outcome.run, {
+            runId,
+            source: 'watch',
+            now: meta.finishedAt,
+          })
+        }
       } catch (error) {
         deps.stderr.write(
           `Warning: could not save the run in the history (${errorMessage(error)}).\n`,
@@ -200,14 +213,24 @@ function watchDeps(
       }
     },
     refreshIndex: (repo, budgetMs) => refreshDefaultBranch(repo, budgetMs, token, deps),
+    refreshFeedback: async (pulls) => {
+      await refreshFeedback(pulls, 'watch', {
+        history,
+        fetchReviewState: (pull) =>
+          deps.fetchReviewState({ ...splitRepoName(pull.repo), number: pull.number, token }),
+        isNotFound: (error) => error instanceof PullRequestNotFoundError,
+        now: () => deps.clock().toISOString(),
+        events: {
+          observed: (pull, threads) => events.feedback(pull.repo, pull.number, threads),
+          warning: (message) => events.warning(message),
+        },
+      })
+    },
     classify: (error) => classifyFailure(error, deps.clock()),
     now: () => deps.clock(),
     sleep: (ms) => deps.sleep(ms, stop.signal),
     stopRequested: () => stop.stopRequested(),
-    events: trackRunningJob(
-      printWatchEvents((event) => deps.stderr.write(`${formatWatchEvent(event, deps.clock())}\n`)),
-      stop,
-    ),
+    events,
   }
 }
 

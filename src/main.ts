@@ -1,6 +1,7 @@
 import { reviewAndPublish } from './app/review-and-publish.js'
 import type { ReviewAndPublishDeps, ReviewRun } from './app/review-and-publish.js'
 import { errorMessage } from './app/error-message.js'
+import { recordReviewFeedback } from './app/feedback.js'
 import { historyRun } from './cli/history-run.js'
 import type { RunMeta } from './cli/history-run.js'
 import { dataFiles } from './config/data-paths.js'
@@ -279,13 +280,26 @@ async function saveRun(
   try {
     const history = await deps.openHistoryStore(dataFiles(deps.env, deps.home).history)
     try {
-      history.addRun(historyRun(run, reviewRunJson(run), meta))
+      const runId = history.addRun(historyRun(run, reviewRunJson(run), meta))
+      saveFeedback(deps, () =>
+        recordReviewFeedback(history, run, { runId, source: 'manual', now: meta.finishedAt }),
+      )
     } finally {
       history.close()
     }
   } catch (error) {
     deps.stderr.write(
       `Warning: ${toTerminalText(errorMessage(error))}. This review is not saved in the history.\n`,
+    )
+  }
+}
+
+function saveFeedback(deps: Pick<MainDeps, 'stderr'>, save: () => void): void {
+  try {
+    save()
+  } catch (error) {
+    deps.stderr.write(
+      `Warning: could not save the comments' feedback in the history (${toTerminalText(errorMessage(error))}).\n`,
     )
   }
 }

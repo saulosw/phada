@@ -1682,6 +1682,43 @@ describe('run history', () => {
     ])
   })
 
+  const tableOf = (h: Harness, table: string): Row[] => {
+    const file = h.historyFiles[0]?.split(' → ')[1]
+    if (file === undefined) return []
+    const db = new DatabaseSync(file)
+    const rows = db.prepare(`select * from ${table} order by id`).all() as Row[]
+    db.close()
+    return rows
+  }
+
+  it('saves the findings it published and the signals it read', async () => {
+    const h = harness({
+      review: () => Promise.resolve(WITH_FINDING),
+      reviewState: () =>
+        Promise.resolve(
+          phadaState([
+            {
+              isResolved: true,
+              path: 'src/old.ts',
+              body: `**P2** · Old finding · confidence 80\n\nWhy.\n\n${FINDING_MARKER}`,
+            },
+          ]),
+        ),
+    })
+
+    expect(await run([...REVIEW, '--force'], h.deps)).toBe(0)
+
+    const [run_] = runsOf(h)
+    const findings = tableOf(h, 'finding')
+    expect(findings).toEqual([
+      expect.objectContaining({ file: 'src/old.ts', thread_id: 'T1', run_id: null }),
+      expect.objectContaining({ commit_sha: HEAD_SHA, thread_id: null, run_id: run_?.id }),
+    ])
+    expect(tableOf(h, 'signal')).toEqual([
+      expect.objectContaining({ finding_id: findings[0]?.id, kind: 'dismissed', source: 'manual' }),
+    ])
+  })
+
   it('saves nothing when the user config turns the history off', async () => {
     let opened = 0
     const h = harness({
@@ -1764,6 +1801,24 @@ describe('phada watch', () => {
     expect(h.providers[0]?.options).toMatchObject({ detached: true })
     expect(h.stderr()).toMatch(/\[\d\d:\d\d\] Reviewing acme\/shop#12 at a1b2c3d…/)
     expect(h.stderr()).toContain(`Published acme/shop#12: ${REVIEW_URL}`)
+  })
+
+  it('saves the findings a watch review published', async () => {
+    const h = harness({
+      files: withConfig(),
+      listPulls: listed,
+      review: () => Promise.resolve(WITH_FINDING),
+    })
+
+    expect(await run(['watch', '--once', '--backfill'], h.deps)).toBe(0)
+
+    const file = h.historyFiles[0]?.split(' → ')[1] ?? ''
+    const db = new DatabaseSync(file)
+    const findings = db.prepare('select repo, number, thread_id from finding').all()
+    const observed = db.prepare('select repo, number, pull_state from feedback_pull').all()
+    db.close()
+    expect(findings).toEqual([{ repo: 'acme/shop', number: 12, thread_id: null }])
+    expect(observed).toEqual([{ repo: 'acme/shop', number: 12, pull_state: 'open' }])
   })
 
   it('records the open pull requests without reviewing them on the first run', async () => {

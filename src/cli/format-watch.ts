@@ -25,6 +25,7 @@ export type WatchEventView =
   | { kind: 'failed'; job: JobRecord; error: unknown }
   | { kind: 'indexed'; repo: string; sha: string }
   | { kind: 'indexPartial'; repo: string }
+  | { kind: 'feedback'; repo: string; number: number; threads: number }
   | { kind: 'warning'; message: string }
   | { kind: 'limited'; count: number; until: string }
 
@@ -54,6 +55,8 @@ function eventText(event: WatchEventView): string {
       return `${event.repo}: index of the default branch updated to ${shortSha(event.sha)}.`
     case 'indexPartial':
       return `${event.repo}: indexing the default branch; it goes on when the queue is idle.`
+    case 'feedback':
+      return `Feedback: ${event.repo}#${event.number}, ${formatCount(event.threads, 'comment')}.`
     case 'warning':
       return `Warning: ${event.message}`
     case 'limited':
