@@ -431,3 +431,14 @@ describe('mergeConfig review', () => {
     expect(merged.review.prompt?.file).toBe('docs/review.md')
   })
 })
+
+describe('mergeConfig review skills that are empty', () => {
+  it('lets an empty list fall through to the next layer', () => {
+    const merged = mergeConfig([
+      user({ review: { skills: ['code-review'] } }),
+      root({ review: { skills: [] } }),
+    ])
+
+    expect(merged.review.skills?.entries).toEqual([{ name: 'code-review' }])
+  })
+})

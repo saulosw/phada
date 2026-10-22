@@ -287,3 +287,26 @@ describe('buildVerifyPrompt with the review focus the user chose', () => {
     expect(data.match(/"skill"/g)).toHaveLength(1)
   })
 })
+
+describe('buildVerifyPrompt with a skipped pass', () => {
+  it('leaves out the guide of a pass that did not run', () => {
+    const { instructions } = buildVerifyPrompt(
+      {
+        pullRequest: pullRequestFixture(),
+        passes: [
+          { skill: 'phada', lens: { kind: 'append', text: 'Ran.', origin: 'x' } },
+          {
+            skill: 'sec',
+            lens: { kind: 'skill', name: 'sec', text: 'Skipped guide.', origin: 'y' },
+            skip: 'no changed file matches src/auth/**',
+          },
+        ],
+      },
+      CANDIDATES,
+      NONCE,
+    )
+
+    expect(instructions).toContain('[phada]\nRan.')
+    expect(instructions).not.toContain('Skipped guide.')
+  })
+})

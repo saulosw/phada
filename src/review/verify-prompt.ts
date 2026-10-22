@@ -99,8 +99,8 @@ do not reject it for being a style, design or maintainability matter.
 Reject it only when it is not real.`
 
 function userFocus(passes: readonly SkillPass[] | undefined): string {
-  const guides = (passes ?? []).flatMap(({ skill, lens }) =>
-    lens.kind === 'default' ? [] : [`[${skill}]\n${lens.text}`],
+  const guides = (passes ?? []).flatMap(({ skill, lens, skip }) =>
+    lens.kind === 'default' || skip !== undefined ? [] : [`[${skill}]\n${lens.text}`],
   )
   return guides.length === 0 ? '' : [USER_FOCUS, ...guides].join('\n\n')
 }

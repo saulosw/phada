@@ -53,10 +53,14 @@ export async function buildPasses(input: {
   if (listed === undefined && review.prompt === undefined) return { plan: [], warnings: [] }
 
   const warnings: string[] = []
-  const phadaLens = review.prompt === undefined ? undefined : await promptLens(review.prompt, input)
+  const entries = listed?.entries ?? [{ name: BUILT_IN_SKILL }]
+  const phadaLens =
+    review.prompt === undefined || !entries.some(({ name }) => name === BUILT_IN_SKILL)
+      ? undefined
+      : await promptLens(review.prompt, input)
   const planned: { pass: SkillPass; plan: PassPlan }[] = []
   const seen = new Set<string>()
-  for (const entry of listed?.entries ?? [{ name: BUILT_IN_SKILL }]) {
+  for (const entry of entries) {
     if (seen.has(entry.name)) {
       warnings.push(`${listed?.origin}: skill ${entry.name} is listed twice; ignored.`)
       continue
@@ -100,8 +104,17 @@ export async function buildPasses(input: {
     )
   }
   if (planned.length === 0) {
+    const lens = phadaLens ??
+      (review.prompt === undefined ? undefined : await promptLens(review.prompt, input)) ?? {
+        kind: 'default',
+      }
     planned.push(
-      withPaths({ name: BUILT_IN_SKILL }, phadaLens ?? { kind: 'default' }, BUILT_IN_SKILL, []),
+      withPaths(
+        { name: BUILT_IN_SKILL },
+        lens,
+        lens.kind === 'default' ? BUILT_IN_SKILL : lens.origin,
+        [],
+      ),
     )
   }
   return {

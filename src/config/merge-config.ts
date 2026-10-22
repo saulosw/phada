@@ -121,7 +121,9 @@ export function mergeConfig(layers: readonly ConfigLayer[]): EffectiveConfig {
     privateOnPublic: firstSet((config) => config.context?.privateOnPublic) ?? false,
     review: reviewSettings(
       firstLayer((config) => config.review?.prompt),
-      firstLayer((config) => config.review?.skills),
+      firstLayer((config) =>
+        config.review?.skills?.length === 0 ? undefined : config.review?.skills,
+      ),
     ),
     warnings,
   }

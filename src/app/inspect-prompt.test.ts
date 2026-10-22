@@ -130,3 +130,16 @@ describe('defaultPromptView', () => {
     expect(view.passes[0]?.parts.some((part) => part.section === 'contract')).toBe(true)
   })
 })
+
+describe('defaultPromptView of a default review', () => {
+  it('shows the verified floor and the tools a default review sends', () => {
+    const view = defaultPromptView()
+    const text = view.passes[0]?.parts.map((part) => part.text).join('\n') ?? ''
+
+    expect(text).toContain('Report every candidate rated 25 or higher.')
+    expect(text).toContain('read_file, grep, list tools.')
+    expect(view.notes).toContain(
+      'Tool sections are as a review sends them when the repository index is ready.',
+    )
+  })
+})

@@ -228,3 +228,40 @@ describe('buildPasses', () => {
     expect(planned.plan[0]?.omitted).toEqual(['big.md'])
   })
 })
+
+describe('buildPasses without the phada pass', () => {
+  it('never reads the review prompt when phada does not run', async () => {
+    const planned = await build(
+      {
+        prompt: {
+          file: '.phada/missing.md',
+          mode: 'append',
+          origin: '.phada/config.yml',
+          source: 'repository',
+        },
+      },
+      { cliSkills: ['sec'] },
+    )
+
+    expect(planned.passes?.map(({ skill }) => skill)).toEqual(['sec'])
+  })
+})
+
+describe('buildPasses falling back to phada', () => {
+  it('gives the fallback phada pass the review prompt', async () => {
+    const planned = await build(
+      {
+        ...repoSkills('nope'),
+        prompt: {
+          file: '.phada/review.md',
+          mode: 'append',
+          origin: '.phada/config.yml',
+          source: 'repository',
+        },
+      },
+      { repoFiles: { '.phada/review.md': 'Flag missing tests.' } },
+    )
+
+    expect(planned.passes?.[0]?.lens).toMatchObject({ kind: 'append', text: 'Flag missing tests.' })
+  })
+})

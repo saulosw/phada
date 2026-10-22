@@ -100,11 +100,11 @@ export function defaultPromptView(): PromptView {
         skill: BUILT_IN_SKILL,
         origin: BUILT_IN_SKILL,
         status: 'planned',
-        parts: reviewInstructionParts({}),
+        parts: reviewInstructionParts({ verify: true, toolNames: REVIEW_TOOL_NAMES }),
         data: [],
       },
     ],
-    notes: [],
+    notes: [TOOLS_NOTE],
     warnings: [],
   }
 }
