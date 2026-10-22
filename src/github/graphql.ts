@@ -1,6 +1,13 @@
-import { GitHubGraphQLError } from './errors.js'
+import { GitHubGraphQLError, GitHubRateLimitError } from './errors.js'
 import { isRecord } from './json-fields.js'
-import { ACCEPT_JSON, ensureOk, readJson, sendGitHubRequest, toErrorSnippet } from './request.js'
+import {
+  ACCEPT_JSON,
+  ensureOk,
+  readJson,
+  readRateLimit,
+  sendGitHubRequest,
+  toErrorSnippet,
+} from './request.js'
 import type { GitHubRequestContext } from './request.js'
 
 export async function sendGraphQL(
@@ -15,7 +22,12 @@ export async function sendGraphQL(
   await ensureOk(response, ctx)
   const json = await readJson(response, ctx)
   const errors = isRecord(json) ? json.errors : undefined
-  if (Array.isArray(errors) && errors.length > 0) throw toGraphQLError(errors[0], ctx.token)
+  if (Array.isArray(errors) && errors.length > 0) {
+    const error = toGraphQLError(errors[0], ctx.token)
+    if (error.type === 'RATE_LIMITED')
+      throw new GitHubRateLimitError(readRateLimit(response.headers))
+    throw error
+  }
   return isRecord(json) ? json.data : undefined
 }
 
