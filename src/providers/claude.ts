@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { z } from 'zod'
 import { MCP_SERVER_NAME, serveMcp } from '../investigation/mcp/mcp-server.js'
 import type { McpServer } from '../investigation/mcp/mcp-server.js'
+import type { McpNameEntry } from '../config/mcp-servers.js'
 import type { RunCommandResult } from '../process/run-command.js'
 import { runCli, snippet, USAGE_LIMIT, withTempDir } from './cli-run.js'
 import type { CliNames } from './cli-run.js'
@@ -79,11 +80,16 @@ export interface ClaudeCliProviderOptions {
   detached?: boolean
   env?: NodeJS.ProcessEnv
   homeDir?: string
-  userMcpServers?: string[]
+  mcpNames?: McpNameEntry[]
 }
 
 export function mcpToolPrefix(server: string): string {
   return `mcp__${mcpServerKey(server)}`
+}
+
+export function mcpAllowed(entry: McpNameEntry): string[] {
+  const prefix = mcpToolPrefix(entry.name)
+  return entry.tools === undefined ? [prefix] : entry.tools.map((tool) => `${prefix}__${tool}`)
 }
 
 function mcpServerKey(server: string): string {
@@ -97,7 +103,7 @@ export class ClaudeCliProvider implements ReviewProvider {
   readonly #timeoutMs: number
   readonly #env: NodeJS.ProcessEnv
   readonly #homeDir: string | undefined
-  readonly #userMcpServers: readonly string[]
+  readonly #mcpNames: readonly McpNameEntry[]
   readonly #detached: boolean
 
   constructor(options: ClaudeCliProviderOptions = {}) {
@@ -107,7 +113,7 @@ export class ClaudeCliProvider implements ReviewProvider {
     this.#detached = options.detached ?? false
     this.#env = options.env ?? process.env
     this.#homeDir = options.homeDir
-    this.#userMcpServers = options.userMcpServers ?? []
+    this.#mcpNames = options.mcpNames ?? []
   }
 
   review(prompt: ReviewPrompt): Promise<ReviewOutput> {
@@ -122,7 +128,7 @@ export class ClaudeCliProvider implements ReviewProvider {
       const server = prompt.tools === undefined ? undefined : await serveMcp(prompt.tools)
       try {
         const mcpArgs = await this.#mcpArgs(cwd, prompt, server)
-        const withTools = server !== undefined || this.#userMcpServers.length > 0
+        const withTools = server !== undefined || this.#mcpNames.length > 0
         const maxTurns = withTools ? MAX_TOOL_TURNS + MAX_ATTEMPTS : MAX_ATTEMPTS
         const run = await runCli({
           providerId: PROVIDER_ID,
@@ -136,7 +142,7 @@ export class ClaudeCliProvider implements ReviewProvider {
             '--verbose',
             '--tools',
             '',
-            ...(this.#userMcpServers.length === 0 ? ['--strict-mcp-config'] : []),
+            ...(this.#mcpNames.length === 0 ? ['--strict-mcp-config'] : []),
             '--no-session-persistence',
             '--setting-sources=',
             '--disable-slash-commands',
@@ -153,7 +159,7 @@ export class ClaudeCliProvider implements ReviewProvider {
           env: this.#env,
           timeoutMs: this.#timeoutMs,
         })
-        const serverNames = new Map(this.#userMcpServers.map((name) => [mcpServerKey(name), name]))
+        const serverNames = new Map(this.#mcpNames.map(({ name }) => [mcpServerKey(name), name]))
         return toReviewOutput(run, maxTurns, withTools, serverNames)
       } finally {
         await server?.close()
@@ -176,7 +182,7 @@ export class ClaudeCliProvider implements ReviewProvider {
         const allowed = allowedSkillTools(
           request.commands,
           (request.tools?.definitions ?? []).map(({ name }) => name),
-          this.#userMcpServers.map(mcpToolPrefix),
+          this.#mcpNames.flatMap(mcpAllowed),
         )
         const run = await runCli({
           providerId: PROVIDER_ID,
@@ -191,7 +197,7 @@ export class ClaudeCliProvider implements ReviewProvider {
             '--restricted',
             '--setting-sources=',
             '--no-session-persistence',
-            ...(this.#userMcpServers.length === 0 ? ['--strict-mcp-config'] : []),
+            ...(this.#mcpNames.length === 0 ? ['--strict-mcp-config'] : []),
             '--tools',
             SKILL_TOOLS.join(','),
             '--allowedTools',
@@ -210,7 +216,7 @@ export class ClaudeCliProvider implements ReviewProvider {
           env: { ...this.#env, ...request.env },
           timeoutMs: request.timeoutMs,
         })
-        const serverNames = new Map(this.#userMcpServers.map((name) => [mcpServerKey(name), name]))
+        const serverNames = new Map(this.#mcpNames.map(({ name }) => [mcpServerKey(name), name]))
         return toSkillOutput(run, request.maxTurns, serverNames)
       } finally {
         await server?.close()
@@ -221,7 +227,7 @@ export class ClaudeCliProvider implements ReviewProvider {
   async #mcpArgs(cwd: string, prompt: ReviewPrompt, server: McpServer | undefined) {
     const allowed = [
       ...(prompt.tools?.definitions ?? []).map(({ name }) => `${PHADA_TOOL_PREFIX}${name}`),
-      ...this.#userMcpServers.map(mcpToolPrefix),
+      ...this.#mcpNames.flatMap(mcpAllowed),
     ]
     const args = await mcpConfigArgs(cwd, server)
     if (allowed.length > 0) args.push('--allowedTools', allowed.join(','))

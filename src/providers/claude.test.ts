@@ -388,9 +388,9 @@ describe('ClaudeCliProvider', () => {
     })
 
     it("allows the user's own MCP servers by name and loads them", async () => {
-      await provider('success', { userMcpServers: ['linear', 'claude.ai Linear'] }).review(
-        withTools,
-      )
+      await provider('success', {
+        mcpNames: [{ name: 'linear' }, { name: 'claude.ai Linear' }],
+      }).review(withTools)
 
       const { argv } = readCapture()
       expect(argv).not.toContain('--strict-mcp-config')
@@ -400,13 +400,23 @@ describe('ClaudeCliProvider', () => {
     })
 
     it("allows only the user's servers when there are no repository tools", async () => {
-      await provider('success', { userMcpServers: ['linear'] }).review(PROMPT)
+      await provider('success', { mcpNames: [{ name: 'linear' }] }).review(PROMPT)
 
       const { argv } = readCapture()
       expect(argv).not.toContain('--strict-mcp-config')
       expect(argv).not.toContain('--mcp-config')
       expect(argAfter(argv, '--allowedTools')).toBe('mcp__linear')
       expect(argAfter(argv, '--max-turns')).toBe('43')
+    })
+
+    it('allows only the chosen tools of a named server', async () => {
+      await provider('success', {
+        mcpNames: [{ name: 'linear', tools: ['get_issue', 'search'] }, { name: 'claude.ai Docs' }],
+      }).review(withTools)
+
+      expect(argAfter(readCapture().argv, '--allowedTools')).toBe(
+        'mcp__phada__read_file,mcp__phada__grep,mcp__phada__list,mcp__linear__get_issue,mcp__linear__search,mcp__claude_ai_Docs',
+      )
     })
 
     it('reports the calls to MCP servers other than Phada', async () => {
@@ -422,7 +432,7 @@ describe('ClaudeCliProvider', () => {
 
     it('names the MCP servers of the user as they are configured', async () => {
       const output = await provider('stream', {
-        userMcpServers: ['claude.ai Linear', 'linear'],
+        mcpNames: [{ name: 'claude.ai Linear' }, { name: 'linear' }],
       }).review(withTools)
 
       expect(output.externalCalls).toEqual([
@@ -506,6 +516,31 @@ describe('ClaudeCliProvider.runSkill', () => {
     const index = argv.indexOf(flag)
     return index === -1 ? undefined : argv[index + 1]
   }
+
+  it('allows declared MCP tools in a native skill run', async () => {
+    await provider('success', { mcpNames: [{ name: 'linear', tools: ['get_issue'] }] }).runSkill(
+      request({
+        tools: {
+          definitions: [
+            { name: 'read_file', description: 'r', inputSchema: { type: 'object' } },
+            {
+              name: 'tickets__get_ticket',
+              description: 't',
+              inputSchema: { type: 'object' },
+              server: 'tickets',
+            },
+          ],
+          call: async () => ({ text: '', isError: false }),
+          touchedPaths: () => [],
+        },
+      }),
+    )
+
+    const allowed = argAfter(readCapture().argv, '--allowedTools')?.split(',') ?? []
+    expect(allowed).toContain('mcp__phada__tickets__get_ticket')
+    expect(allowed).toContain('mcp__linear__get_issue')
+    expect(allowed).not.toContain('mcp__linear')
+  })
 
   it('runs the skill in the checkout with the restricted tools', async () => {
     await provider('success', {

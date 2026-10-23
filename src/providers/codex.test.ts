@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { CodexCliProvider } from './codex.js'
+import { CodexMcpServerSchema } from './codex-mcp.js'
 import type { CodexCliProviderOptions } from './codex.js'
 import { ProviderError } from './types.js'
 import type { ReviewPrompt } from './types.js'
@@ -39,7 +40,7 @@ interface Capture {
   instructions: string | null
   outputSchema: string | null
   cwd: string
-  env: { GITHUB_TOKEN?: string; GH_TOKEN?: string }
+  env: { GITHUB_TOKEN?: string; GH_TOKEN?: string; PHADA_MCP_1?: string }
 }
 
 let workDir: string
@@ -398,6 +399,48 @@ describe('CodexCliProvider', () => {
         (JSON.parse(args?.slice('mcp_servers.phada.args='.length) ?? '[]') as string[]).at(-1) ?? ''
       expect(socket).not.toBe('')
       expect(existsSync(dirname(socket))).toBe(false)
+    })
+  })
+  describe('with named MCP servers', () => {
+    const named = CodexMcpServerSchema.parse({
+      name: 'stitch',
+      enabled: true,
+      disabled_reason: null,
+      transport: {
+        type: 'streamable_http',
+        url: 'https://stitch.example/mcp',
+        bearer_token_env_var: null,
+        http_headers: { 'X-Api-Key': 'literal-api-key-value' },
+        env_http_headers: null,
+        http_headers_helper: null,
+      },
+      enabled_tools: null,
+      disabled_tools: null,
+      startup_timeout_sec: null,
+      tool_timeout_sec: null,
+      auth_status: 'unsupported',
+    })
+
+    it('passes the server before the prompt and its header values through the environment', async () => {
+      await provider('success', { mcpNames: [{ server: named }] }).review(PROMPT)
+
+      const { argv, env } = readCapture()
+      expect(argv).toContain('mcp_servers.stitch.url="https://stitch.example/mcp"')
+      expect(argv.indexOf('mcp_servers.stitch.url="https://stitch.example/mcp"')).toBeLessThan(
+        argv.indexOf('-'),
+      )
+      expect(argv.join(' ')).not.toContain('literal-api-key-value')
+      expect(env.PHADA_MCP_1).toBe('literal-api-key-value')
+    })
+
+    it('keeps the arguments of a run without named servers', async () => {
+      await provider('success').review(PROMPT)
+      const without = readCapture().argv
+      await provider('success', { mcpNames: [] }).review(PROMPT)
+
+      const withEmpty = readCapture().argv
+      expect(withEmpty).toHaveLength(without.length)
+      expect(withEmpty.some((arg) => arg.startsWith('mcp_servers.'))).toBe(false)
     })
   })
 })

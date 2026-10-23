@@ -49,11 +49,16 @@ describe('allowedSkillTools', () => {
   })
 
   it('allows Phada tools and the user MCP servers', () => {
-    const allowed = allowedSkillTools('read-only', ['read_file', 'callers'], ['mcp__linear'])
+    const allowed = allowedSkillTools(
+      'read-only',
+      ['read_file', 'callers'],
+      ['mcp__linear', 'mcp__docs__get'],
+    )
 
     expect(allowed).toContain('mcp__phada__read_file')
     expect(allowed).toContain('mcp__phada__callers')
     expect(allowed).toContain('mcp__linear')
+    expect(allowed).toContain('mcp__docs__get')
   })
 })
 

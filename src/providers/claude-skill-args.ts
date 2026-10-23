@@ -24,7 +24,7 @@ const WRAPPER_PLUGIN = 'phada-skills'
 export function allowedSkillTools(
   policy: CommandPolicy,
   toolNames: readonly string[],
-  userMcpPrefixes: readonly string[],
+  userMcpAllowed: readonly string[],
 ): string[] {
   const shell =
     policy === 'all'
@@ -36,7 +36,7 @@ export function allowedSkillTools(
     ...ALWAYS_ALLOWED,
     ...shell,
     ...toolNames.map((name) => `mcp__${MCP_SERVER_NAME}__${name}`),
-    ...userMcpPrefixes,
+    ...userMcpAllowed,
   ]
 }
 
