@@ -231,6 +231,34 @@ describe('answerGh', () => {
     expect(calls[0]?.query?.q).toBe('repo:acme/shop is:pr')
   })
 
+  it('turns pr list filters into a search of the repository', async () => {
+    const { read, calls } = github({ 'search/issues': { items: [] } })
+
+    await gh('pr list --author dev --label bug --base main --head feat/x --draft', read)
+
+    expect(calls[0]).toEqual({
+      path: 'search/issues',
+      query: {
+        q: 'author:dev label:bug base:main head:feat/x draft:true repo:acme/shop is:pr',
+        per_page: '30',
+      },
+    })
+  })
+
+  it('refuses --template', async () => {
+    const { answer } = await gh('pr view --json title --template x')
+
+    expect(answer.exitCode).toBe(1)
+  })
+
+  it('keeps the event of a captured review', async () => {
+    expect((await gh('pr review --approve -b ok')).captured?.command).toBe('gh pr review --approve')
+    expect((await gh('pr review --request-changes -b no')).captured?.command).toBe(
+      'gh pr review --request-changes',
+    )
+    expect((await gh('pr review -b hm')).captured?.command).toBe('gh pr review')
+  })
+
   it('captures a comment and never asks GitHub', async () => {
     const { read, calls } = github()
 

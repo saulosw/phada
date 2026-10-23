@@ -416,8 +416,9 @@ terminal, in a temporary checkout of the pull request head:
 
 - **The change is where a skill expects it.** The base branch is `origin/<base>`, pointing at
   where the pull request branched off, so `git diff origin/<base>...HEAD`,
-  `git log origin/<base>..HEAD` and `git merge-base` show the pull request; the diff is also in a
-  file next to the checkout.
+  `git log origin/<base>..HEAD` and `git merge-base` show the pull request; the diff is also in
+  `.git/pull-request.diff` inside the checkout. Symlinks of the pull request are checked out as
+  plain files.
 - **What it can do.** Read and search files, run subagents, use Phada's
   [investigation tools](#repository-investigation) and the MCP servers your config names in
   `mcp`. Bash runs only git reads (`diff`, `log`, `show`, `blame`, `status`, `rev-parse`,
@@ -429,9 +430,11 @@ terminal, in a temporary checkout of the pull request head:
 - **`gh` is answered by Phada.** `gh pr view` and `gh pr diff` come from the data Phada already
   fetched; the pull request shows as open and not a draft, without the reviews and comments of the
   token's owner. Other reads of the same repository (`gh pr list`, `gh issue view`,
-  `gh issue list`, `gh search prs`, `gh search issues`, `gh repo view`, `gh api` GET under
-  `repos/<owner>/<repo>/`) go through Phada with its token, up to 60 per pass; searches only
-  ever look in that repository. `gh pr comment`,
+  `gh issue list`, `gh search prs`, `gh search issues`, `gh repo view`, and `gh api` GET of the
+  repository and its pulls, issues, commits, compare, contents, git, branches, labels,
+  milestones, releases, tags, contributors, languages and readme) go through Phada with its
+  token, up to 60 per pass; searches only ever look in that repository, and settings, secrets,
+  alerts, webhooks and Actions are never read. `gh pr comment`,
   `gh pr review` and `gh api` posts of comments or reviews on this pull request are kept as the
   skill's output and **never sent**. Anything else fails with a message that lists what works;
   `--jq` takes paths like `.files[].path`.

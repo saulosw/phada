@@ -93,25 +93,29 @@ async function answer(command: GhCommand, data: GhPullData, read: ReadGitHub): P
     case 'pr-list': {
       checkRepo(command.repo, data)
       const items =
-        command.search === undefined
+        command.search === undefined && command.filters === undefined
           ? await read(`${repoPath}/pulls`, {
               state: listState(command.state),
               per_page: String(command.limit ?? 30),
             })
-          : await searchItems(scopedQuery(command.search, data, 'is:pr'), command.limit, read)
+          : await searchItems(scopedQuery(searchText(command), data, 'is:pr'), command.limit, read)
       return ok(listing(asArray(items), command))
     }
     case 'issue-list': {
       checkRepo(command.repo, data)
       const items =
-        command.search === undefined
+        command.search === undefined && command.filters === undefined
           ? asArray(
               await read(`${repoPath}/issues`, {
                 state: listState(command.state),
                 per_page: String(command.limit ?? 30),
               }),
             ).filter((item) => !isRecord(item) || item.pull_request === undefined)
-          : await searchItems(scopedQuery(command.search, data, 'is:issue'), command.limit, read)
+          : await searchItems(
+              scopedQuery(searchText(command), data, 'is:issue'),
+              command.limit,
+              read,
+            )
       return ok(listing(asArray(items), command))
     }
     case 'search': {
@@ -153,7 +157,11 @@ async function answer(command: GhCommand, data: GhPullData, read: ReadGitHub): P
     case 'pr-review':
       checkRepo(command.repo, data)
       checkPull(command.target, data)
-      return captured(data, { command: 'gh pr review', body: command.body, comments: [] })
+      return captured(data, {
+        command: command.event === 'comment' ? 'gh pr review' : `gh pr review --${command.event}`,
+        body: command.body,
+        comments: [],
+      })
     case 'auth-status':
       return ok('Phada answers GitHub requests during this review.\n')
     case 'unsupported':
@@ -353,6 +361,13 @@ async function searchItems(
 }
 
 const SCOPE_QUALIFIER = /^-?(?:repo|org|user|owner):/i
+
+function searchText(command: { search?: string; filters?: string[] }): string {
+  return [
+    ...(command.filters ?? []),
+    ...(command.search === undefined ? [] : [command.search]),
+  ].join(' ')
+}
 
 function scopedQuery(query: string, data: GhPullData, kind?: string): string {
   const words = query.split(/\s+/).filter((word) => word !== '' && !SCOPE_QUALIFIER.test(word))

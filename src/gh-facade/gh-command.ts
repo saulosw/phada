@@ -17,8 +17,6 @@ const JSON_FLAGS = {
   '--json': 'json',
   '-q': 'jq',
   '--jq': 'jq',
-  '-t': 'template',
-  '--template': 'template',
 }
 const LIST = {
   ...REPO,
@@ -140,6 +138,7 @@ export function parseGhCommand(argv: readonly string[], input: GhCommandInput): 
         ...optional('state', one('state')),
         ...optional('search', one('search')),
         ...optional('limit', limitOf(one('limit'))),
+        ...optional('filters', listFilters(flags, name === 'pr list')),
       }
     case 'pr comment':
       return {
@@ -208,6 +207,17 @@ export function filesToRead(argv: readonly string[]): string[] {
     if (inline === undefined) index++
   }
   return files
+}
+
+function listFilters(flags: ParsedFlags, pulls: boolean): string[] | undefined {
+  const filters = [
+    ...(flags.values.get('author') ?? []).map((value) => `author:${value}`),
+    ...(flags.values.get('label') ?? []).map((value) => `label:${value}`),
+    ...(pulls ? (flags.values.get('base') ?? []).map((value) => `base:${value}`) : []),
+    ...(pulls ? (flags.values.get('head') ?? []).map((value) => `head:${value}`) : []),
+    ...(pulls && flags.bools.has('draft') ? ['draft:true'] : []),
+  ]
+  return filters.length === 0 ? undefined : filters
 }
 
 function apiCommand(flags: ParsedFlags, path: string, input: GhCommandInput): GhCommand {

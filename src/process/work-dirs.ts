@@ -22,7 +22,13 @@ export async function closeWorkDir(dir: string): Promise<void> {
 }
 
 export function removeOpenWorkDirs(): void {
-  for (const dir of openDirs) rmSync(dir, { recursive: true, force: true })
+  for (const dir of openDirs) {
+    try {
+      rmSync(dir, { recursive: true, force: true })
+    } catch {
+      continue
+    }
+  }
   openDirs.clear()
 }
 

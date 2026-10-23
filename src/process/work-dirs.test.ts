@@ -85,3 +85,20 @@ describe('sweepOrphanWorkDirs on a shared temp folder', () => {
     }
   })
 })
+
+describe('removeOpenWorkDirs', () => {
+  it('goes on when a folder cannot be removed', async () => {
+    const stuck = await openWorkDir(root)
+    const other = await openWorkDir(root)
+    mkdirSync(join(stuck, 'inner'))
+    writeFileSync(join(stuck, 'inner', 'f'), 'x')
+    chmodSync(join(stuck, 'inner'), 0o500)
+
+    try {
+      expect(() => removeOpenWorkDirs()).not.toThrow()
+      expect(existsSync(other)).toBe(false)
+    } finally {
+      chmodSync(join(stuck, 'inner'), 0o700)
+    }
+  })
+})

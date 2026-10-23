@@ -107,6 +107,11 @@ export async function buildPasses(input: {
       continue
     }
     warnings.push(...(skill.warnings ?? []))
+    if (entry.mode === 'native' && !input.native && skill.native.kind !== 'builtin') {
+      warnings.push(
+        `Skill ${entry.name}: this provider does not run skills natively; its text is sent instead.`,
+      )
+    }
     if (skill.omitted.length > 0) {
       warnings.push(
         `Skill ${entry.name}: ${skill.omitted.join(', ')} did not fit in 32 KB and was left out.`,

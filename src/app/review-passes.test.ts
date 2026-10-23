@@ -368,3 +368,23 @@ describe('buildPasses native mode with paths', () => {
     expect(planned.nativeSkills.size).toBe(0)
   })
 })
+
+describe('buildPasses native mode on a provider without skills', () => {
+  it('warns that a skill asked to run natively runs as text', async () => {
+    const planned = await build(
+      {
+        skills: {
+          entries: [{ name: 'code-review', mode: 'native' }],
+          origin: 'user:config.yml',
+          source: 'local',
+        },
+      },
+      { native: false },
+    )
+
+    expect(planned.passes?.[0]?.mode).toBeUndefined()
+    expect(planned.warnings).toContain(
+      'Skill code-review: this provider does not run skills natively; its text is sent instead.',
+    )
+  })
+})

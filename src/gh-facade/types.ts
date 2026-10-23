@@ -41,7 +41,13 @@ interface Listing {
 export type GhCommand =
   | ({ kind: 'pr-view'; target?: string; comments: boolean } & Listing)
   | { kind: 'pr-diff'; target?: string; repo?: string; nameOnly: boolean }
-  | ({ kind: 'pr-list'; state?: string; search?: string; limit?: number } & Listing)
+  | ({
+      kind: 'pr-list'
+      state?: string
+      search?: string
+      limit?: number
+      filters?: string[]
+    } & Listing)
   | { kind: 'pr-comment'; target?: string; repo?: string; body: string }
   | {
       kind: 'pr-review'
@@ -51,7 +57,13 @@ export type GhCommand =
       body: string
     }
   | ({ kind: 'issue-view'; target: string; comments: boolean } & Listing)
-  | ({ kind: 'issue-list'; state?: string; search?: string; limit?: number } & Listing)
+  | ({
+      kind: 'issue-list'
+      state?: string
+      search?: string
+      limit?: number
+      filters?: string[]
+    } & Listing)
   | ({ kind: 'search'; type: 'prs' | 'issues'; query: string; limit?: number } & Listing)
   | ({ kind: 'repo-view'; target?: string } & Listing)
   | {
