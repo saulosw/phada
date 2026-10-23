@@ -48,6 +48,32 @@ describe('formatInvestigationLine', () => {
     ).toBe('Investigated: 3 reads, 1 search, 1 list (8.0 KB) · 3 MCP calls (linear, notion)')
   })
 
+  it('counts the MCP calls made through Phada with the ones made by the AI CLI', () => {
+    expect(
+      formatInvestigationLine({
+        ...used,
+        calls: [
+          call('read_file', 'src/a.ts'),
+          call('tickets__get_ticket', '{"id":"ABC-1"}', { server: 'tickets' }),
+          call('tickets__search', '{}', { server: 'tickets' }),
+        ],
+        external: [{ server: 'linear', tool: 'get_issue' }],
+        totals: { calls: 3, bytes: 6144 },
+      }),
+    ).toBe('Investigated: 1 read (6.0 KB) · 3 MCP calls (tickets, linear)')
+  })
+
+  it('shows only the MCP calls when the AI made no other call', () => {
+    expect(
+      formatInvestigationLine({
+        ...used,
+        calls: [],
+        external: [{ server: 'linear', tool: 'get_issue' }],
+        totals: { calls: 0, bytes: 0 },
+      }),
+    ).toBe('Investigated: 1 MCP call (linear)')
+  })
+
   it('counts graph queries and history lookups', () => {
     expect(
       formatInvestigationLine({
@@ -125,6 +151,57 @@ describe('formatInvestigationSection', () => {
         totals: { calls: 1, bytes: 2048 },
       }),
     ).toBe(['## Investigation', '', '- grep ab (2.0 KB)', '- MCP linear: get_issue', ''].join('\n'))
+  })
+
+  it('lists the calls through Phada and each MCP server with its state', () => {
+    expect(
+      formatInvestigationSection({
+        status: 'used',
+        calls: [call('tickets__get_ticket', '{"id":"ABC-1"}', { server: 'tickets', bytes: 1229 })],
+        external: [],
+        mcp: [
+          { server: 'linear', via: 'cli', status: 'connected', tools: [], hidden: [] },
+          { server: 'jira', via: 'cli', status: 'connected', tools: ['get_issue'], hidden: [] },
+          {
+            server: 'tickets',
+            via: 'phada',
+            status: 'connected',
+            tools: ['get_ticket', 'search'],
+            hidden: ['create_ticket'],
+          },
+          {
+            server: 'big',
+            via: 'phada',
+            status: 'connected',
+            tools: [],
+            hidden: ['a', 'b', 'c', 'd', 'e', 'f'],
+          },
+          {
+            server: 'docs',
+            via: 'phada',
+            status: 'failed',
+            tools: [],
+            hidden: [],
+            reason: 'MCP server docs refused the credentials (HTTP 401).',
+          },
+          { server: 'off\u0007', via: 'phada', status: 'off', tools: [], hidden: [] },
+        ],
+        totals: { calls: 1, bytes: 1229 },
+      }),
+    ).toBe(
+      [
+        '## Investigation',
+        '',
+        '- tickets__get_ticket {"id":"ABC-1"} (1.2 KB)',
+        '- MCP linear (AI CLI): connected',
+        '- MCP jira (AI CLI): connected, tools get_issue',
+        '- MCP tickets: connected, 2 tools (1 hidden: create_ticket)',
+        '- MCP big: connected, 0 tools (6 hidden: a, b, c, d, e, …)',
+        '- MCP docs: failed: MCP server docs refused the credentials (HTTP 401).',
+        '- MCP off: off (outside author)',
+        '',
+      ].join('\n'),
+    )
   })
 
   it('explains an investigation that did not run', () => {

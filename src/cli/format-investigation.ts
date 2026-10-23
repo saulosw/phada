@@ -1,4 +1,8 @@
-import type { InvestigationCallReport, InvestigationReport } from '../investigation/tools/report.js'
+import type {
+  InvestigationCallReport,
+  InvestigationReport,
+  McpServerReport,
+} from '../investigation/tools/report.js'
 import { toTerminalText } from './terminal-text.js'
 import { formatBytes, formatCount } from './units.js'
 
@@ -12,14 +16,14 @@ const NOUNS: Readonly<Record<string, string>> = {
   similar: 'graph query',
   history: 'history lookup',
 }
+const MAX_HIDDEN_SHOWN = 5
 
 export function formatInvestigationLine(report: InvestigationReport): string | undefined {
   if (report.status === 'off') return 'Investigation: off'
   if (report.status === 'unavailable') return undefined
-  const external = externalPart(report)
-  if (report.calls.length === 0 && external === '') return 'Investigated: no tool calls'
   const counts = new Map<string, number>()
   for (const call of report.calls) {
+    if (call.server !== null) continue
     const noun = NOUNS[call.tool] ?? 'call'
     counts.set(noun, (counts.get(noun) ?? 0) + 1)
   }
@@ -28,11 +32,11 @@ export function formatInvestigationLine(report: InvestigationReport): string | u
       .replace(/searchs$/, 'searches')
       .replace(/querys$/, 'queries'),
   )
-  const calls =
-    parts.length === 0
-      ? 'no tool calls'
-      : `${parts.join(', ')} (${formatBytes(report.totals.bytes)})`
-  return `Investigated: ${calls}${external}`
+  const sections = [
+    ...(parts.length === 0 ? [] : [`${parts.join(', ')} (${formatBytes(report.totals.bytes)})`]),
+    ...mcpPart(report),
+  ]
+  return `Investigated: ${sections.length === 0 ? 'no tool calls' : sections.join(' · ')}`
 }
 
 export function formatInvestigationSection(report: InvestigationReport): string {
@@ -46,6 +50,7 @@ export function formatInvestigationSection(report: InvestigationReport): string 
     ...report.external.map(
       ({ server, tool }) => `- MCP ${toTerminalText(server)}: ${toTerminalText(tool)}`,
     ),
+    ...(report.mcp ?? []).map(serverLine),
   ]
   return `${heading}${lines.length === 0 ? 'No tool calls.' : lines.join('\n')}\n`
 }
@@ -67,8 +72,28 @@ function callLine({
   return `- ${toTerminalText(tool)} ${toTerminalText(target)} ${notes.join(' ')}`
 }
 
-function externalPart(report: InvestigationReport): string {
-  if (report.external.length === 0) return ''
-  const servers = [...new Set(report.external.map(({ server }) => toTerminalText(server)))]
-  return ` · ${formatCount(report.external.length, 'MCP call')} (${servers.join(', ')})`
+function mcpPart(report: InvestigationReport): string[] {
+  const servers = [
+    ...report.calls.flatMap(({ server }) => (server === null ? [] : [server])),
+    ...report.external.map(({ server }) => server),
+  ]
+  if (servers.length === 0) return []
+  const names = [...new Set(servers.map(toTerminalText))]
+  return [`${formatCount(servers.length, 'MCP call')} (${names.join(', ')})`]
+}
+
+function serverLine({ server, via, status, tools, hidden, reason }: McpServerReport): string {
+  const name = `- MCP ${toTerminalText(server)}${via === 'cli' ? ' (AI CLI)' : ''}`
+  if (status === 'off') return `${name}: off (outside author)`
+  if (status === 'failed') return `${name}: failed: ${toTerminalText(reason ?? '')}`
+  if (via === 'cli') {
+    return tools.length === 0
+      ? `${name}: connected`
+      : `${name}: connected, tools ${tools.join(', ')}`
+  }
+  const shown = hidden.slice(0, MAX_HIDDEN_SHOWN).map(toTerminalText)
+  const more = hidden.length > MAX_HIDDEN_SHOWN ? ', …' : ''
+  const hiddenText =
+    hidden.length === 0 ? '' : ` (${hidden.length} hidden: ${shown.join(', ')}${more})`
+  return `${name}: connected, ${formatCount(tools.length, 'tool')}${hiddenText}`
 }

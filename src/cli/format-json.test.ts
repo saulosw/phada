@@ -469,6 +469,46 @@ describe('publication', () => {
     })
   })
 
+  it('adds the MCP servers and the server of each call to the investigation', () => {
+    const investigation = {
+      status: 'used' as const,
+      calls: [
+        {
+          pass: 'review' as const,
+          tool: 'tickets__get_ticket',
+          server: 'tickets',
+          target: '{"id":"ABC-1"}',
+          bytes: 10,
+          error: null,
+          inSources: false,
+        },
+      ],
+      external: [],
+      mcp: [
+        {
+          server: 'tickets',
+          via: 'phada' as const,
+          status: 'connected' as const,
+          tools: ['get_ticket'],
+          hidden: ['create_ticket'],
+        },
+      ],
+      totals: { calls: 1, bytes: 10 },
+    }
+
+    const output = parse(
+      formatReviewJson(
+        pullRequestFixture(),
+        { status: 'reviewed', result: RESULT },
+        null,
+        null,
+        investigation,
+      ),
+    )
+
+    expect(output).toMatchObject({ investigation })
+  })
+
   it('adds the investigation report', () => {
     const investigation = {
       status: 'used' as const,
