@@ -166,3 +166,71 @@ describe('verification prompt with the repository tools', () => {
     expect(prompt).not.toHaveProperty('tools')
   })
 })
+
+describe('review prompt with MCP servers', () => {
+  const withMcp: Toolbox = {
+    ...toolbox,
+    definitions: [
+      ...toolbox.definitions,
+      {
+        name: 'tickets__get_ticket',
+        description: 'Read a ticket.',
+        inputSchema: { type: 'object' },
+        server: 'tickets',
+      },
+    ],
+    mcpServers: [
+      { name: 'tickets', description: 'Ticket cited in the PR title', prefix: 'tickets__' },
+      { name: 'linear' },
+    ],
+  }
+
+  it('lists only the repository tools as the tools that read the repository', () => {
+    const { instructions } = buildReviewPrompt(
+      { pullRequest: pullRequestFixture() },
+      NONCE,
+      withMcp,
+    )
+
+    expect(instructions).toContain('with the\nread_file, grep, list tools.')
+    expect(instructions).not.toContain('list, tickets__get_ticket')
+  })
+
+  it('names each MCP server, its tools and what it is for', () => {
+    const { instructions } = buildReviewPrompt(
+      { pullRequest: pullRequestFixture() },
+      NONCE,
+      withMcp,
+    )
+
+    expect(instructions).toContain(
+      [
+        'The user connected these MCP servers; use them when they help you judge the change:',
+        '- tickets (tools tickets__*): Ticket cited in the PR title',
+        '- linear',
+      ].join('\n'),
+    )
+  })
+
+  it('tells the verifier about the MCP servers too', () => {
+    const { instructions } = buildVerifyPrompt(
+      { pullRequest: pullRequestFixture() },
+      [findingFixture()],
+      NONCE,
+      withMcp,
+    )
+
+    expect(instructions).toContain('- tickets (tools tickets__*): Ticket cited in the PR title')
+  })
+
+  it('keeps the instructions of a toolbox without MCP servers as they were', () => {
+    const plain = buildReviewPrompt({ pullRequest: pullRequestFixture() }, NONCE, toolbox)
+    const same = buildReviewPrompt({ pullRequest: pullRequestFixture() }, NONCE, {
+      ...toolbox,
+      mcpServers: [],
+    })
+
+    expect(same.instructions).toBe(plain.instructions)
+    expect(plain.instructions).not.toContain('MCP servers')
+  })
+})

@@ -1,5 +1,5 @@
 import type { ReviewPrompt } from '../providers/types.js'
-import type { Toolbox } from '../investigation/toolbox.js'
+import type { McpServerInfo, Toolbox } from '../investigation/toolbox.js'
 import { annotateDiff } from './diff-lines.js'
 import {
   block,
@@ -17,6 +17,7 @@ import {
   pullRequestDetails,
   rulesSection,
   SEVERITY,
+  mcpServersOf,
   toolNamesOf,
 } from './prompt-parts.js'
 import { REVIEW_REPORT_JSON_SCHEMA } from './report-schema.js'
@@ -84,7 +85,7 @@ export interface PromptPart {
 export type InstructionOptions = Pick<
   ReviewRequest,
   'language' | 'verify' | 'context' | 'impact' | 'related'
-> & { toolNames?: readonly string[] }
+> & { toolNames?: readonly string[]; mcpServers?: readonly McpServerInfo[] }
 
 const PHADA = 'phada'
 
@@ -96,7 +97,11 @@ export function buildReviewPrompt(
 ): ReviewPrompt {
   const toolNames = toolNamesOf(tools)
   const parts = reviewInstructionParts(
-    { ...request, ...(toolNames === undefined ? {} : { toolNames }) },
+    {
+      ...request,
+      ...(toolNames === undefined ? {} : { toolNames }),
+      mcpServers: mcpServersOf(tools),
+    },
     pass,
   )
   return {
@@ -138,7 +143,7 @@ function byBlockOrder(a: string, b: string): number {
 }
 
 export function reviewInstructionParts(
-  { language, verify, context, impact, related, toolNames }: InstructionOptions,
+  { language, verify, context, impact, related, toolNames, mcpServers }: InstructionOptions,
   pass?: SkillPass,
 ): PromptPart[] {
   const floor = verify === true ? VERIFY_CANDIDATE_FLOOR : CONFIDENCE_FLOOR
@@ -166,7 +171,7 @@ export function reviewInstructionParts(
     phada('context', hasImpact(impact) ? IMPACT : ''),
     phada('contract', `${CONFIDENCE_SCALE}\nReport every candidate rated ${floor} or higher.`),
     phada('contract', SEVERITY),
-    phada('context', diffScope(context, toolNames)),
+    phada('context', diffScope(context, toolNames, mcpServers)),
     phada('contract', LINE_NUMBERS),
     phada('contract', OUTPUT_FORMAT),
     phada('contract', [UNTRUSTED_DATA, ...languageLine].join('\n')),
