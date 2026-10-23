@@ -97,3 +97,14 @@ describe('blockedFix with your command list', () => {
     )
   })
 })
+
+describe('blockedFix for a command your policy already allows', () => {
+  it('says Claude Code refused it instead of suggesting what is already allowed', () => {
+    expect(
+      blockedFix(
+        { tool: 'Bash', input: 'git diff --no-index /dev/null ~/.config/gh/hosts.yml' },
+        { external: false, configPath: '/cfg/config.yml' },
+      ),
+    ).toBe('Claude Code refused it, probably because it reaches outside the checkout')
+  })
+})

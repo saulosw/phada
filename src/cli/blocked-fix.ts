@@ -54,6 +54,9 @@ export function blockedFix({ tool, input }: BlockedCommand, context: FixContext)
   const prefixes = commandPrefixes(input, context.policy ?? 'read-only').map(
     (prefix) => `"${prefix}"`,
   )
+  if (prefixes.length === 0) {
+    return 'Claude Code refused it, probably because it reaches outside the checkout'
+  }
   return `allow it with review.commands: [${prefixes.join(', ')}] in ${context.configPath}`
 }
 
@@ -78,8 +81,7 @@ function commandPrefixes(command: string, policy: CommandPolicy): string[] {
     .map((segment) => words(segment))
     .filter((segment) => segment.length > 0)
   const denied = segments.filter((segment) => !allowed(segment, policy))
-  const chosen = denied.length > 0 ? denied : segments.slice(0, 1)
-  return [...new Set(chosen.map(prefixOf))]
+  return [...new Set(denied.map(prefixOf))]
 }
 
 function prefixOf(segment: readonly string[]): string {
