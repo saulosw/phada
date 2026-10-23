@@ -1,3 +1,4 @@
+import type { BlockedCommand } from '../providers/types.js'
 import type { RelatedReport } from '../app/related-report.js'
 import type { ContextReport } from '../context/types.js'
 import type { ImpactReport } from '../graph/report.js'
@@ -56,6 +57,7 @@ export function formatReviewJson(
   impact: ImpactReport | null = null,
   related: RelatedReport | null = null,
   recheck: RecheckReport | null = null,
+  fixFor?: (blocked: BlockedCommand) => string,
 ): string {
   const pullRequest = pullRequestJson(pr)
   const publicationBlock = publication === null ? null : publicationJson(publication)
@@ -78,7 +80,7 @@ export function formatReviewJson(
           schemaVersion: SCHEMA_VERSION,
           status: outcome.status,
           pullRequest,
-          review: reviewJson(outcome.result),
+          review: reviewJson(outcome.result, fixFor),
           publication: publicationBlock,
           context: contextBlock,
           investigation,
@@ -184,7 +186,7 @@ function skipJson(reason: SkipReason) {
   }
 }
 
-function reviewJson(result: ReviewResult) {
+function reviewJson(result: ReviewResult, fixFor?: (blocked: BlockedCommand) => string) {
   const { score, dropped } = result
   return {
     score: { value: score.value, reason: score.reason },
@@ -211,15 +213,24 @@ function reviewJson(result: ReviewResult) {
     durationMs: result.durationMs,
     usage: usageJson(result.usage),
     passes:
-      result.passes?.map(({ skill, origin, status, durationMs, usage, findings, reason }) => ({
-        skill,
-        origin,
-        status,
-        durationMs,
-        usage: usageJson(usage),
-        findings,
-        reason: reason ?? null,
+      result.passes?.map((pass) => ({
+        skill: pass.skill,
+        origin: pass.origin,
+        status: pass.status,
+        mode: pass.mode ?? 'text',
+        durationMs: pass.durationMs,
+        usage: usageJson(pass.usage),
+        findings: pass.findings,
+        reason: pass.reason ?? null,
+        output: pass.output ?? null,
+        captured: pass.captured ?? null,
+        blocked: (pass.blocked ?? []).map((item) => ({
+          tool: item.tool,
+          input: item.input,
+          fix: fixFor?.(item) ?? null,
+        })),
       })) ?? null,
+    skillBodies: result.skillBodies ?? null,
   }
 }
 

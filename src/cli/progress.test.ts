@@ -108,3 +108,28 @@ describe('withProgress', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 })
+
+describe('withProgress and native skills', () => {
+  it('passes a native skill run through with its own label', async () => {
+    const output = recorder(false)
+    const runSkill = vi.fn(async () => ({ text: 'ok', durationMs: 1, blocked: [] }))
+    const provider: ReviewProvider = {
+      id: 'claude-cli',
+      review: () => Promise.reject(new Error('unused')),
+      runSkill,
+    }
+
+    const wrapped = withProgress(provider, output)
+    const result = await wrapped.runSkill?.({} as never)
+
+    expect(result?.text).toBe('ok')
+    expect(runSkill).toHaveBeenCalledOnce()
+    expect(output.written.join('')).toContain('Running the skill with claude-cli…')
+  })
+
+  it('does not run skills when the provider does not', () => {
+    const provider: ReviewProvider = { id: 'ollama', review: () => Promise.reject(new Error('x')) }
+
+    expect(withProgress(provider, recorder(false)).runSkill).toBeUndefined()
+  })
+})

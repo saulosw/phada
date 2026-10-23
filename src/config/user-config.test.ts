@@ -136,3 +136,21 @@ describe('loadUserLayers review prompt', () => {
     ])
   })
 })
+
+describe('loadUserLayers review readDirs', () => {
+  it('resolves readDirs against the folder of the config', async () => {
+    const files = memoryFiles({
+      '/cfg/config.yml': 'review:\n  readDirs: [rules, "~/x", /abs]',
+    })
+
+    const layers = await loadUserLayers({
+      env: { PHADA_CONFIG_HOME: '/cfg' },
+      home: '/home/u',
+      owner: 'acme',
+      repo: 'shop',
+      files,
+    })
+
+    expect(layers[0]?.config.review?.readDirs).toEqual(['/cfg/rules', '~/x', '/abs'])
+  })
+})

@@ -31,3 +31,7 @@ export function assertProviderChoice(
     )
   }
 }
+
+export function providerRunsSkills(provider: string): boolean {
+  return provider === 'claude'
+}

@@ -12,7 +12,9 @@ import { InvalidReviewReportError } from './errors.js'
 import { buildReviewPrompt } from './prompt.js'
 import { REVIEW_REPORT_JSON_SCHEMA } from './report-schema.js'
 import { DEFAULT_MIN_CONFIDENCE, runReview } from './run-review.js'
-import type { SkillPass } from './types.js'
+import { buildConvertPrompt } from './convert-prompt.js'
+import { skillOutputText } from './skill-output.js'
+import type { NativeSkillRun, SkillPass } from './types.js'
 import { buildVerifyPrompt } from './verify-prompt.js'
 
 class FakeProvider implements ReviewProvider {
@@ -984,5 +986,204 @@ describe('runReview with several skill passes', () => {
 
     expect(result.findings[0]?.sources).toEqual(['src/a.ts', 'src/b.ts'])
     expect(result.externalCalls).toEqual([{ server: 'linear', tool: 'get_issue' }])
+  })
+})
+
+describe('runReview with a native skill pass', () => {
+  const NATIVE: SkillPass = {
+    skill: 'code-review:code-review',
+    mode: 'native',
+    lens: { kind: 'skill', name: 'code-review:code-review', text: 'Five agents.', origin: '/p' },
+  }
+  const PHADA: SkillPass = { skill: 'phada', lens: { kind: 'default' } }
+  const skillRun = (overrides: Partial<NativeSkillRun> = {}): NativeSkillRun => ({
+    text: 'Found 1 issue: spend ignores the balance (src/shop.ts:1).',
+    captured: [],
+    durationMs: 60_000,
+    model: 'claude-opus',
+    usage: { inputTokens: 100_000, outputTokens: 5_000 },
+    blocked: [{ tool: 'Bash', input: 'npm test' }],
+    ...overrides,
+  })
+
+  async function nativeReview(
+    passes: SkillPass[],
+    outputs: ReviewOutput[],
+    run: NativeSkillRun | Error = skillRun(),
+    extra: { verify?: boolean } = {},
+  ) {
+    const provider = new FakeProvider(inTurn(...outputs))
+    const ran: SkillPass[] = []
+    const outcome = await runReview(
+      { pullRequest: pullRequestFixture(), passes, ...extra },
+      {
+        provider,
+        runSkill: async (pass) => {
+          ran.push(pass)
+          if (run instanceof Error) throw run
+          return run
+        },
+        createNonce: () => 'abcdefabcdef',
+      },
+    )
+    return { outcome, provider, ran }
+  }
+
+  it('runs the skill, then converts its output without tools', async () => {
+    const { outcome, provider, ran } = await nativeReview([NATIVE], [OUTPUT])
+
+    expect(ran).toEqual([NATIVE])
+    expect(provider.prompts).toEqual([
+      buildConvertPrompt(
+        { pullRequest: pullRequestFixture(), passes: [NATIVE] },
+        'abcdefabcdef',
+        NATIVE,
+        skillOutputText(skillRun()),
+      ),
+    ])
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(outcome.result.findings).toEqual([
+      { ...findingFixture(), skill: 'code-review:code-review' },
+    ])
+    expect(outcome.result.durationMs).toBe(60_000 + 1234)
+    expect(outcome.result.usage).toEqual({ inputTokens: 103_512, outputTokens: 5_420 })
+    expect(outcome.result.model).toBe('claude-opus')
+    expect(outcome.result.passes).toEqual([
+      {
+        skill: 'code-review:code-review',
+        origin: '/p',
+        status: 'reviewed',
+        mode: 'native',
+        durationMs: 61_234,
+        usage: { inputTokens: 103_512, outputTokens: 5_420 },
+        findings: 1,
+        output: skillOutputText(skillRun()),
+        captured: 0,
+        blocked: [{ tool: 'Bash', input: 'npm test' }],
+      },
+    ])
+    expect(outcome.result.skillBodies).toBeUndefined()
+  })
+
+  it('uses the skill output as the review body when the conversion is not readable', async () => {
+    const { outcome } = await nativeReview([NATIVE], [{ ...OUTPUT, text: 'not a report' }])
+
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(outcome.result.findings).toEqual([])
+    expect(outcome.result.skillBodies).toEqual([
+      { skill: 'code-review:code-review', text: skillRun().text },
+    ])
+    expect(outcome.result.warnings).toContain(
+      'Skill code-review:code-review: Phada could not read the converted review; the skill output is used as the review body.',
+    )
+  })
+
+  it('uses the skill output as the body when none of its findings is in the diff', async () => {
+    const outside = reviewReportJson({ findings: [findingFixture({ line: 999 })] })
+    const { outcome } = await nativeReview([NATIVE], [{ ...OUTPUT, text: outside }])
+
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(outcome.result.skillBodies).toEqual([
+      { skill: 'code-review:code-review', text: skillRun().text },
+    ])
+  })
+
+  it('uses the skill output as the body when its findings in the diff are below the floor', async () => {
+    const weak = reviewReportJson({ findings: [findingFixture({ confidence: 40 })] })
+    const { outcome } = await nativeReview([NATIVE], [{ ...OUTPUT, text: weak }])
+
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(outcome.result.findings).toEqual([])
+    expect(outcome.result.skillBodies).toEqual([
+      { skill: 'code-review:code-review', text: skillRun().text },
+    ])
+  })
+
+  it('gives the body only of the native pass that found nothing in the diff', async () => {
+    const empty = reviewReportJson({ findings: [] })
+    const { outcome } = await nativeReview([PHADA, NATIVE], [OUTPUT, { ...OUTPUT, text: empty }])
+
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(outcome.result.findings).toHaveLength(1)
+    expect(outcome.result.skillBodies?.map(({ skill }) => skill)).toEqual([
+      'code-review:code-review',
+    ])
+  })
+
+  it('does not use the body when the verifier rejected the findings', async () => {
+    const { outcome } = await nativeReview(
+      [NATIVE],
+      [
+        OUTPUT,
+        { ...OUTPUT, text: verificationJson([verdictFixture({ id: 1, verdict: 'rejected' })]) },
+      ],
+      skillRun(),
+      { verify: true },
+    )
+
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(outcome.result.findings).toEqual([])
+    expect(outcome.result.skillBodies).toBeUndefined()
+  })
+
+  it('takes the body from what the skill tried to publish', async () => {
+    const run = skillRun({
+      captured: [{ command: 'gh pr comment', body: 'Posted review.', comments: [] }],
+    })
+    const { outcome } = await nativeReview([NATIVE], [{ ...OUTPUT, text: 'nope' }], run)
+
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(outcome.result.skillBodies).toEqual([
+      { skill: 'code-review:code-review', text: 'Posted review.' },
+    ])
+    expect(outcome.result.passes?.[0]?.captured).toBe(1)
+  })
+
+  it('fails the review when the skill run fails, even with other passes', async () => {
+    await expect(
+      nativeReview(
+        [PHADA, NATIVE],
+        [OUTPUT],
+        new ProviderError('claude-cli', 'timeout', 'Claude did not answer within 1800s.'),
+      ),
+    ).rejects.toThrow('Claude did not answer within 1800s.')
+  })
+
+  it('turns an unreadable skill run into a warning when other passes answer', async () => {
+    const { outcome } = await nativeReview(
+      [PHADA, NATIVE],
+      [OUTPUT],
+      new ProviderError(
+        'claude-cli',
+        'invalid-output',
+        'Claude did not finish the skill within 100 turns.',
+      ),
+    )
+
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(outcome.result.findings).toHaveLength(1)
+    expect(outcome.result.passes?.[1]).toMatchObject({
+      skill: 'code-review:code-review',
+      status: 'failed',
+      mode: 'native',
+      reason: 'Claude did not finish the skill within 100 turns.',
+    })
+    expect(outcome.result.warnings).toContain(
+      'Skill code-review:code-review failed: Claude did not finish the skill within 100 turns.',
+    )
+  })
+
+  it('still fails a single native pass whose run is unreadable', async () => {
+    await expect(
+      nativeReview([NATIVE], [], new ProviderError('claude-cli', 'invalid-output', 'empty')),
+    ).rejects.toThrow('empty')
+  })
+
+  it('refuses a native pass without a skill runner', async () => {
+    const provider = new FakeProvider(inTurn(OUTPUT))
+
+    await expect(
+      runReview({ pullRequest: pullRequestFixture(), passes: [NATIVE] }, { provider }),
+    ).rejects.toThrow('Skill code-review:code-review runs natively but no skill runner was given.')
   })
 })

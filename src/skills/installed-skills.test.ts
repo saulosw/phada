@@ -91,6 +91,28 @@ describe('listInstalledSkills', () => {
     ])
   })
 
+  it('invokes a plugin skill by the plugin.json name', async () => {
+    const files = memoryFiles({
+      [`${PLUGINS}/installed_plugins.json`]: installed({ 'p@m': `${PLUGINS}/cache/m/p/1` }),
+      [`${PLUGINS}/cache/m/p/1/.claude-plugin/plugin.json`]: '{"name":"pp"}',
+      [`${PLUGINS}/cache/m/p/1/skills/r/SKILL.md`]: 'Review.',
+      '/home/u/.claude/skills/own/SKILL.md': 'Own.',
+    })
+
+    const listing = await listInstalledSkills(files, roots)
+
+    expect(
+      listing.skills.map(({ qualified, pluginName, pluginDir }) => [
+        qualified,
+        pluginName,
+        pluginDir,
+      ]),
+    ).toEqual([
+      ['own', undefined, undefined],
+      ['p:r', 'pp', `${PLUGINS}/cache/m/p/1`],
+    ])
+  })
+
   it('reads skills/*/SKILL.md of a plugin without a skills list', async () => {
     const files = memoryFiles({
       [`${PLUGINS}/installed_plugins.json`]: installed({ 'sp@m': `${PLUGINS}/cache/m/sp/7.0.0` }),

@@ -7,8 +7,35 @@ output can change between minor versions.
 
 ## Unreleased
 
+## 0.7.0 - 2026-10-22
+
 ### Added
 
+- With Claude Code, the skills in `review.skills` (other than `phada`) run natively as
+  `/<name>` in a temporary checkout of the pull request head, with the base as `origin/<base>`,
+  read tools, subagents, Phada's investigation tools and the MCP servers in `mcp`. What the skill
+  tried to post, or its final answer, is turned into findings on the diff lines and goes through
+  the usual checks, verification and score; when none of its findings points at a changed line,
+  its output becomes the body of the review. `--dry-run` and the JSON (`passes[].output`,
+  `skillBodies`) show the skill's output.
+- `gh` inside a native skill is answered by Phada: pull request reads from Phada's data, other
+  reads and searches of the same repository through Phada's token (60 per pass), and `gh pr comment`,
+  `gh pr review` and `gh api` posts of comments or reviews kept as the skill's output and never
+  sent.
+- `review.commands` (`read-only` by default, a list of commands, or `all`), `review.readDirs`
+  and `review.timeout` (default `30m`), read only from your own config. Pull requests of public
+  repositories from outside authors always run read-only. Each command or read a skill was
+  refused is shown on stderr, in `--dry-run` and in the JSON (`passes[].blocked`) with the
+  config line that allows it.
+- `git` inside a native skill refuses options that could run a program, write a file or read
+  outside the checkout.
+- In a native skill's checkout, symlinks of the pull request are plain files; `gh api` reads only
+  the repository's code and conversations (pulls, issues, commits, contents and the like), never
+  its settings, secrets, alerts, webhooks or Actions.
+- `{ name, mode: text }` keeps a skill in text mode; `claude:<name>` names a skill built into
+  Claude Code. Codex and Ollama keep text mode.
+- `phada prompt` shows a native pass: the message, the context Phada adds, the commands and
+  folders it may use, and the conversion instructions.
 - `review.prompt` in `.phada/config.yml` or your own config changes what the reviewer looks for:
   `append` (the default) adds the text of a file to the built-in focus, `replace` swaps the
   built-in role, scope and list of what not to report. The output format, line numbers,
@@ -25,6 +52,12 @@ output can change between minor versions.
 - `phada prompt owner/repo#N` prints the prompt a review would send, pass by pass, with where
   each part comes from and the size of the data blocks, without calling the AI;
   `phada prompt --default` prints the built-in prompt; `--format json`.
+
+### Changed
+
+- Ctrl-C during `phada review` stops it at once and removes its temporary files.
+- Text Phada publishes on a pull request is checked for token patterns, which are replaced by
+  `[REDACTED]`.
 
 ## 0.6.0 - 2026-10-22
 

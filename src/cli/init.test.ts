@@ -102,3 +102,24 @@ describe('config templates with review focus and skills', () => {
     expect(template).toContain('#   skills: [phada, security-review]')
   })
 })
+
+describe('config templates with native skills', () => {
+  it('comments the command policy, folders and timeout only in your own config', () => {
+    expect(USER_CONFIG_TEMPLATE).toContain('#   commands: read-only')
+    expect(USER_CONFIG_TEMPLATE).toContain('#   readDirs: ["~/review-rules"]')
+    expect(USER_CONFIG_TEMPLATE).toContain('#   timeout: 30m')
+    expect(REPOSITORY_CONFIG_TEMPLATE).not.toContain('commands:')
+  })
+
+  it('parses once the review block is uncommented', () => {
+    const block = USER_CONFIG_TEMPLATE.split('\n')
+      .filter((line) => line.startsWith('# review:') || line.startsWith('#   '))
+      .filter(
+        (line, index, lines) =>
+          index < lines.findIndex((other) => other.startsWith('#   timeout:')) + 1,
+      )
+      .map((line) => line.replace(/^# ?/, '').replace(/\s+#.*$/, ''))
+      .join('\n')
+    expect(parseConfigText(block)).toMatchObject({ ok: true })
+  })
+})

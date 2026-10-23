@@ -136,7 +136,10 @@ export async function reviewAndPublish(
 
   const resolve = input.options.resolveThreads ?? loaded.options.resolveThreads ?? true
   const recheck = resolve ? await threadsWithChanges(state, pullRequest, deps) : []
-  const reviewed = await reviewPullRequest({ ...review, loaded, recheck }, reviewDeps)
+  const reviewed = await reviewPullRequest(
+    { ...review, loaded, recheck, viewer: state.viewer },
+    reviewDeps,
+  )
   const fixed = (reviewed.recheck?.verdicts ?? []).filter(({ verdict }) => verdict === 'fixed')
   const { outcome } = reviewed
   if (outcome.status === 'skipped') {

@@ -1,5 +1,7 @@
 import type { PullRequest } from '../github/pull-request.js'
-import type { ExternalToolCall, TokenUsage } from '../providers/types.js'
+import type { BlockedCommand, ExternalToolCall, TokenUsage } from '../providers/types.js'
+
+export type { BlockedCommand }
 
 export interface ContextRule {
   key: string
@@ -86,6 +88,7 @@ export type ReviewerLens =
 export interface SkillPass {
   skill: string
   lens: ReviewerLens
+  mode?: 'native'
   paths?: string[]
   skip?: string
 }
@@ -176,10 +179,43 @@ export interface PassReport {
   skill: string
   origin: string
   status: 'reviewed' | 'skipped' | 'failed'
+  mode?: 'native'
   durationMs: number
   usage?: TokenUsage
   findings: number
   reason?: string
+  output?: string
+  captured?: number
+  blocked?: BlockedCommand[]
+}
+
+export interface CapturedComment {
+  path: string
+  line?: number
+  startLine?: number
+  body: string
+}
+
+export interface CapturedWrite {
+  command: string
+  body: string
+  comments: CapturedComment[]
+}
+
+export interface NativeSkillRun {
+  text: string
+  captured: CapturedWrite[]
+  durationMs: number
+  model?: string
+  usage?: TokenUsage
+  blocked: BlockedCommand[]
+  externalCalls?: ExternalToolCall[]
+  warnings?: string[]
+}
+
+export interface SkillBody {
+  skill: string
+  text: string
 }
 
 export interface ReviewResult {
@@ -203,6 +239,7 @@ export interface ReviewResult {
   externalCalls?: ExternalToolCall[]
   warnings?: string[]
   passes?: PassReport[]
+  skillBodies?: SkillBody[]
 }
 
 export interface RecheckThread {

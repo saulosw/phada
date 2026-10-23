@@ -442,3 +442,51 @@ describe('mergeConfig review skills that are empty', () => {
     expect(merged.review.skills?.entries).toEqual([{ name: 'code-review' }])
   })
 })
+
+describe('mergeConfig review settings for native skills', () => {
+  it('takes commands, readDirs and timeout from your own config, the repository one first', () => {
+    const merged = mergeConfig([
+      user({ review: { commands: 'all', readDirs: ['/u/rules'], timeout: '1h' } }),
+      userRepo({ review: { commands: ['npm test'] } }),
+    ])
+
+    expect(merged.review.commands).toEqual({
+      policy: ['npm test'],
+      origin: 'user:repos/acme/shop/config.yml',
+    })
+    expect(merged.review.readDirs).toEqual({ dirs: ['/u/rules'], origin: 'user:config.yml' })
+    expect(merged.review.timeoutMs).toBe(3_600_000)
+  })
+
+  it.each([
+    ['root', root],
+    ['subfolder', (config: Config) => sub('src', config)],
+  ])('ignores commands, readDirs and timeout in a repository %s with a warning', (_kind, layer) => {
+    const merged = mergeConfig([
+      layer({ review: { commands: 'all', readDirs: ['/x'], timeout: '1h', skills: ['a'] } }),
+    ])
+
+    expect(merged.review.commands).toBeUndefined()
+    expect(merged.review.readDirs).toBeUndefined()
+    expect(merged.review.timeoutMs).toBeUndefined()
+    for (const key of ['commands', 'readDirs', 'timeout']) {
+      expect(
+        merged.warnings.some((warning) =>
+          warning.includes(`review.${key} is only read from your own config; ignored.`),
+        ),
+      ).toBe(true)
+    }
+  })
+
+  it('reads an empty command list as read-only', () => {
+    expect(mergeConfig([user({ review: { commands: [] } })]).review.commands?.policy).toBe(
+      'read-only',
+    )
+  })
+
+  it('keeps the mode of a skill entry', () => {
+    const merged = mergeConfig([user({ review: { skills: [{ name: 'a', mode: 'text' }] } })])
+
+    expect(merged.review.skills?.entries).toEqual([{ name: 'a', mode: 'text' }])
+  })
+})

@@ -59,9 +59,13 @@ export interface CheckoutOptions {
   deepenAs?: string
 }
 
+export interface FetchOptions {
+  depth?: number
+}
+
 export interface GitMirror {
   readonly dir: string
-  fetch(ref: string, keepAs: string): Promise<string>
+  fetch(ref: string, keepAs: string, options?: FetchOptions): Promise<string>
   checkout(sha: string, options?: CheckoutOptions): Checkout
   deepen(sha: string, keepAs: string): Promise<boolean>
   listFiles(sha: string): Promise<TreeFile[]>
@@ -106,7 +110,7 @@ class GitMirrorRepository implements GitMirror {
     this.#env = env
   }
 
-  async fetch(ref: string, keepAs: string): Promise<string> {
+  async fetch(ref: string, keepAs: string, options: FetchOptions = {}): Promise<string> {
     const { owner, repo } = this.#options
     try {
       return await withMirrorLock(
@@ -116,7 +120,7 @@ class GitMirrorRepository implements GitMirror {
           staleMs: FETCH_TIMEOUT_MS + 30_000,
         },
         async () => {
-          await this.#fetchLocked(ref, keepAs)
+          await this.#fetchLocked(ref, keepAs, options.depth)
           const sha = await this.#resolve(keepAs)
           if (keepAs.startsWith(PULL_REFS)) await this.#dropOldPullRefs(keepAs)
           return sha

@@ -35,11 +35,11 @@ const FALSE_POSITIVES = `Do not report:
 - style nitpicks, naming preferences, or general remarks about tests and docs
 - behavior changes that are clearly intentional for this pull request`
 
-const LINE_NUMBERS = `${DIFF_LINE_NUMBERS}
+export const LINE_NUMBERS = `${DIFF_LINE_NUMBERS}
 Use that number for line. Removed lines have no number: point
 to the nearest numbered line.`
 
-const OUTPUT_FORMAT = `The review is a single JSON object shaped like this:
+export const OUTPUT_FORMAT = `The review is a single JSON object shaped like this:
 {"summary": "...", "files": [{"path": "src/app.ts", "change": "..."}], "findings": [{"severity": "P1", "confidence": 90, "file": "src/app.ts", "line": <number>, "title": "...", "why": "...", "fix": "...", "rule": null, "sources": [], "suggestion": null}]}
 - summary: two to four sentences on what the pull request changes.
 - files: one entry per changed file worth mentioning, with a one-line description of its change.

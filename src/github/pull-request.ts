@@ -27,6 +27,7 @@ export interface PullRequest {
   title: string
   description: string
   author: string
+  association: string
   state: 'open' | 'closed'
   draft: boolean
   baseRef: string
@@ -126,6 +127,10 @@ async function fetchDiff(
   return diff
 }
 
+function associationOf(value: unknown): string {
+  return typeof value === 'string' && value !== '' ? value : 'NONE'
+}
+
 function toPullRequestMetadata(json: unknown): PullRequestMetadata {
   const baseRepo = stringField(json, 'base.repo.full_name')
   const headRepo =
@@ -142,6 +147,7 @@ function toPullRequestMetadata(json: unknown): PullRequestMetadata {
     title: stringField(json, 'title'),
     description: body ?? '',
     author: stringField(json, 'user.login'),
+    association: associationOf(field(json, 'author_association')),
     state,
     draft: booleanField(json, 'draft'),
     baseRef: stringField(json, 'base.ref'),

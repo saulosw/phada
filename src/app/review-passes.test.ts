@@ -7,9 +7,25 @@ import type { SkillCatalog } from './review-passes.js'
 
 const catalog = (known: Record<string, string>, omitted: string[] = []): SkillCatalog => ({
   find: async (name) => {
-    const text = known[name]
-    if (text === undefined) throw new SkillError(`Skill "${name}" is not installed.`)
-    return { name, origin: `/skills/${name}/SKILL.md`, text, omitted }
+    const builtIn = name.startsWith('claude:')
+    const text = known[name] ?? (builtIn ? `Skill built into Claude Code: ${name}.` : undefined)
+    if (text === undefined && !name.startsWith('claude:'))
+      throw new SkillError(`Skill "${name}" is not installed.`)
+    return {
+      name,
+      origin: `/skills/${name}/SKILL.md`,
+      text: text as string,
+      omitted,
+      native: name.startsWith('claude:')
+        ? { kind: 'builtin', invoke: name.slice('claude:'.length) }
+        : {
+            kind: 'file',
+            fileKind: 'skill',
+            path: `/skills/${name}/SKILL.md`,
+            dir: `/skills/${name}`,
+            name,
+          },
+    }
   },
 })
 
@@ -21,6 +37,7 @@ function build(
     repoFiles?: Record<string, string>
     localFiles?: Record<string, string>
     skills?: SkillCatalog
+    native?: boolean
   } = {},
 ) {
   return buildPasses({
@@ -30,6 +47,7 @@ function build(
     readRepoFile: async (path) => options.repoFiles?.[path] ?? null,
     readLocalFile: async (path) => options.localFiles?.[path] ?? null,
     skills: options.skills ?? catalog({ 'code-review': 'Find bugs.', sec: 'Auth.' }),
+    native: options.native ?? false,
   })
 }
 
@@ -43,7 +61,7 @@ const repoSkills = (...names: string[]): ReviewSettings => ({
 
 describe('buildPasses', () => {
   it('leaves the passes out without review settings', async () => {
-    expect(await build(undefined)).toEqual({ plan: [], warnings: [] })
+    expect(await build(undefined)).toEqual({ plan: [], warnings: [], nativeSkills: new Map() })
   })
 
   it('gives the phada pass the repository prompt in append mode', async () => {
@@ -70,7 +88,12 @@ describe('buildPasses', () => {
       },
     ])
     expect(planned.plan).toEqual([
-      { skill: 'phada', origin: '.phada/config.yml → .phada/review.md', status: 'planned' },
+      {
+        skill: 'phada',
+        origin: '.phada/config.yml → .phada/review.md',
+        status: 'planned',
+        mode: 'text',
+      },
     ])
   })
 
@@ -163,7 +186,7 @@ describe('buildPasses', () => {
   })
 
   it('treats an empty list of skills as no skills', async () => {
-    expect(await build(repoSkills())).toEqual({ plan: [], warnings: [] })
+    expect(await build(repoSkills())).toEqual({ plan: [], warnings: [], nativeSkills: new Map() })
   })
 
   it('runs a repeated skill once, with a warning', async () => {
@@ -263,5 +286,105 @@ describe('buildPasses falling back to phada', () => {
     )
 
     expect(planned.passes?.[0]?.lens).toMatchObject({ kind: 'append', text: 'Flag missing tests.' })
+  })
+})
+
+describe('buildPasses native mode', () => {
+  const userSkills = (
+    ...entries: { name: string; mode?: 'native' | 'text' }[]
+  ): ReviewSettings => ({
+    skills: { entries, origin: 'user:config.yml', source: 'local' },
+  })
+
+  it('runs skills other than phada natively when the provider runs skills', async () => {
+    const planned = await build(userSkills({ name: 'phada' }, { name: 'code-review' }), {
+      native: true,
+    })
+
+    expect(planned.passes?.map(({ skill, mode }) => [skill, mode])).toEqual([
+      ['phada', undefined],
+      ['code-review', 'native'],
+    ])
+    expect(planned.plan.map(({ mode }) => mode)).toEqual(['text', 'native'])
+    expect([...planned.nativeSkills.keys()]).toEqual(['code-review'])
+    expect(planned.nativeSkills.get('code-review')).toMatchObject({ kind: 'file' })
+  })
+
+  it('keeps a skill in text mode when its entry asks for it', async () => {
+    const planned = await build(userSkills({ name: 'code-review', mode: 'text' }), { native: true })
+
+    expect(planned.passes?.[0]?.mode).toBeUndefined()
+    expect(planned.nativeSkills.size).toBe(0)
+  })
+
+  it('runs skills in text mode when the provider does not run skills', async () => {
+    const planned = await build(userSkills({ name: 'code-review' }), { native: false })
+
+    expect(planned.passes?.[0]?.mode).toBeUndefined()
+  })
+
+  it.each([
+    ['a provider that does not run skills', false, undefined],
+    ['text mode', true, 'text' as const],
+  ])('fails on a built-in Claude Code skill with %s', async (_case, native, mode) => {
+    await expect(
+      build(
+        userSkills({ name: 'claude:security-review', ...(mode === undefined ? {} : { mode }) }),
+        { native },
+      ),
+    ).rejects.toThrow(
+      new SkillError(
+        'Skill claude:security-review is built into Claude Code and only runs natively with provider claude.',
+      ),
+    )
+  })
+
+  it('skips a built-in skill the repository asks for on another provider, with a warning', async () => {
+    const planned = await build(repoSkills('claude:security-review', 'code-review'), {
+      native: false,
+    })
+
+    expect(planned.passes?.map(({ skill }) => skill)).toEqual(['code-review'])
+    expect(planned.warnings).toEqual([
+      '.phada/config.yml: Skill claude:security-review is built into Claude Code and only runs natively with provider claude. Skipped.',
+    ])
+  })
+})
+
+describe('buildPasses native mode with paths', () => {
+  it('leaves a skipped native pass out of the native skills', async () => {
+    const planned = await build(
+      {
+        skills: {
+          entries: [{ name: 'code-review', paths: ['docs/**'] }],
+          origin: 'user:config.yml',
+          source: 'local',
+        },
+      },
+      { native: true, changedFiles: ['src/shop.ts'] },
+    )
+
+    expect(planned.passes?.[0]?.skip).toBeDefined()
+    expect(planned.nativeSkills.size).toBe(0)
+  })
+})
+
+describe('buildPasses native mode on a provider without skills', () => {
+  it('warns that a skill asked to run natively runs as text', async () => {
+    const planned = await build(
+      {
+        skills: {
+          entries: [{ name: 'code-review', mode: 'native' }],
+          origin: 'user:config.yml',
+          source: 'local',
+        },
+      },
+      { native: false },
+    )
+
+    expect(planned.passes?.[0]?.mode).toBeUndefined()
+    expect(planned.warnings).toContain(
+      'Skill code-review: this provider does not run skills natively; its text is sent instead.',
+    )
   })
 })

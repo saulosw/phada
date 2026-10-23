@@ -4,13 +4,25 @@ import type { PullRequest } from '../github/pull-request.js'
 import { reviewDataBlocks, reviewInstructionParts } from '../review/prompt.js'
 import type { PromptPart } from '../review/prompt.js'
 import type { SkillPass } from '../review/types.js'
+import type { CommandPolicy } from '../providers/types.js'
+import { buildConvertPrompt } from '../review/convert-prompt.js'
+import { nativeSkillContext } from '../review/native-context.js'
+import { skillPolicy } from './native-skill.js'
 import { BUILT_IN_SKILL, buildPasses } from './review-passes.js'
 import type { PassPlan, SkillCatalog } from './review-passes.js'
+
+export interface NativePassView {
+  message: string
+  commands: CommandPolicy
+  readDirs: string[]
+}
 
 export interface PromptPassView {
   skill: string
   origin: string
   status: 'planned' | 'skipped'
+  mode: 'text' | 'native'
+  native?: NativePassView
   reason?: string
   parts: PromptPart[]
   data: { name: string; bytes: number }[]
@@ -34,6 +46,8 @@ export const REVIEW_TOOL_NAMES = [
   'similar',
 ]
 
+const PHADA_ORIGIN = 'phada'
+
 const TOOLS_NOTE = 'Tool sections are as a review sends them when the repository index is ready.'
 const COMPUTED_NOTE =
   'The impact of the change and related repositories are computed during a review and are not shown here.'
@@ -43,6 +57,7 @@ export async function inspectPrompt(input: {
   loaded: LoadedContext
   cliSkills?: readonly string[]
   investigate: boolean
+  native?: boolean
   skills: SkillCatalog
   readRepoFile(path: string): Promise<string | null>
   readLocalFile(path: string): Promise<string | null>
@@ -55,6 +70,7 @@ export async function inspectPrompt(input: {
     readRepoFile: input.readRepoFile,
     readLocalFile: input.readLocalFile,
     skills: input.skills,
+    native: input.native ?? false,
   })
   const request = { pullRequest: { ...pullRequest, diff: loaded.diff }, context: loaded.context }
   const data = reviewDataBlocks(request).map(({ name, content }) => ({
@@ -70,7 +86,7 @@ export async function inspectPrompt(input: {
   const passes = planned.passes ?? [{ skill: BUILT_IN_SKILL, lens: { kind: 'default' } }]
   const plans: PassPlan[] =
     planned.passes === undefined
-      ? [{ skill: BUILT_IN_SKILL, origin: BUILT_IN_SKILL, status: 'planned' }]
+      ? [{ skill: BUILT_IN_SKILL, origin: BUILT_IN_SKILL, status: 'planned', mode: 'text' }]
       : planned.plan
   return {
     pullRequest: {
@@ -79,14 +95,28 @@ export async function inspectPrompt(input: {
       baseSha: pullRequest.baseSha,
       headSha: pullRequest.headSha,
     },
-    passes: passes.map((pass, index) =>
-      passView(
+    passes: passes.map((pass, index) => {
+      const view = passView(
         pass,
         plans[index],
-        pass.skip === undefined ? reviewInstructionParts(options, pass) : [],
+        pass.skip === undefined
+          ? pass.mode === 'native'
+            ? nativeParts(request, pass, loaded.options.language)
+            : reviewInstructionParts(options, pass)
+          : [],
         pass.skip === undefined ? data : [],
-      ),
-    ),
+      )
+      if (pass.mode !== 'native') return view
+      const policy = skillPolicy(pullRequest, loaded.options.review ?? {})
+      return {
+        ...view,
+        native: {
+          message: `/${pass.skill} ${pullRequest.url}`,
+          commands: policy.commands,
+          readDirs: policy.readDirs,
+        },
+      }
+    }),
     notes: [...(input.investigate ? [TOOLS_NOTE] : []), COMPUTED_NOTE],
     warnings: [...loaded.report.warnings, ...planned.warnings],
   }
@@ -100,6 +130,7 @@ export function defaultPromptView(): PromptView {
         skill: BUILT_IN_SKILL,
         origin: BUILT_IN_SKILL,
         status: 'planned',
+        mode: 'text',
         parts: reviewInstructionParts({ verify: true, toolNames: REVIEW_TOOL_NAMES }),
         data: [],
       },
@@ -107,6 +138,30 @@ export function defaultPromptView(): PromptView {
     notes: [TOOLS_NOTE],
     warnings: [],
   }
+}
+
+function nativeParts(
+  request: Parameters<typeof buildConvertPrompt>[0],
+  pass: SkillPass,
+  language: string | undefined,
+): PromptPart[] {
+  const context = nativeSkillContext({
+    pullRequest: request.pullRequest,
+    baseRef: request.pullRequest.baseRef,
+    mergeBase: '<found during the review>',
+    diffFile: '<pull-request.diff in the work folder>',
+    ...(language === undefined ? {} : { language }),
+  })
+  const conversion = buildConvertPrompt(
+    { ...request, ...(language === undefined ? {} : { language }) },
+    'x',
+    pass,
+    '',
+  ).instructions
+  return [
+    { section: 'context', origin: PHADA_ORIGIN, text: context },
+    { section: 'contract', origin: PHADA_ORIGIN, text: conversion },
+  ]
 }
 
 function passView(
@@ -119,6 +174,7 @@ function passView(
     skill: pass.skill,
     origin: plan?.origin ?? BUILT_IN_SKILL,
     status: plan?.status ?? 'planned',
+    mode: pass.mode ?? 'text',
     ...(plan?.reason === undefined ? {} : { reason: plan.reason }),
     parts,
     data,

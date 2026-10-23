@@ -5,7 +5,11 @@ export type IneligibleReason = 'draft' | 'bot' | 'external' | 'author' | 'label'
 
 export type Eligibility = { eligible: true } | { eligible: false; reason: IneligibleReason }
 
-const TRUSTED = new Set(['OWNER', 'MEMBER', 'COLLABORATOR'])
+export const TRUSTED_ASSOCIATIONS: ReadonlySet<string> = new Set([
+  'OWNER',
+  'MEMBER',
+  'COLLABORATOR',
+])
 
 export function eligibility(pull: OpenPull, repo: WatchedRepoSettings): Eligibility {
   const reason = ineligibleReason(pull, repo)
@@ -15,7 +19,8 @@ export function eligibility(pull: OpenPull, repo: WatchedRepoSettings): Eligibil
 function ineligibleReason(pull: OpenPull, repo: WatchedRepoSettings): IneligibleReason | undefined {
   if (pull.draft) return 'draft'
   if (pull.authorIsBot) return 'bot'
-  if (!pull.private && !repo.allowExternal && !TRUSTED.has(pull.association)) return 'external'
+  if (!pull.private && !repo.allowExternal && !TRUSTED_ASSOCIATIONS.has(pull.association))
+    return 'external'
   if (repo.authors !== undefined && !includesIgnoringCase(repo.authors, [pull.author])) {
     return 'author'
   }

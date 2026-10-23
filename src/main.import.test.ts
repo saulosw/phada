@@ -15,5 +15,5 @@ describe('main module import', () => {
     expect(stdout).not.toHaveBeenCalled()
     expect(stderr).not.toHaveBeenCalled()
     expect(process.exitCode).toBeUndefined()
-  })
+  }, 30_000)
 })

@@ -1,6 +1,7 @@
 import { ConfigError } from '../config/errors.js'
 import type { ReviewPromptRef, ReviewSettings, SkillEntry } from '../config/merge-config.js'
 import { matcher } from '../context/ignore.js'
+import type { NativeSkillRef } from '../providers/types.js'
 import type { ReviewerLens, SkillPass } from '../review/types.js'
 import { SkillError } from '../skills/errors.js'
 
@@ -9,6 +10,8 @@ export interface CatalogSkill {
   origin: string
   text: string
   omitted: string[]
+  native: NativeSkillRef
+  warnings?: string[]
 }
 
 export interface SkillCatalog {
@@ -19,6 +22,7 @@ export interface PassPlan {
   skill: string
   origin: string
   status: 'planned' | 'skipped'
+  mode: 'text' | 'native'
   reason?: string
   omitted?: string[]
 }
@@ -27,9 +31,16 @@ export interface PlannedPasses {
   passes?: SkillPass[]
   plan: PassPlan[]
   warnings: string[]
+  nativeSkills: Map<string, NativeSkillRef>
 }
 
 export const BUILT_IN_SKILL = 'phada'
+
+export function builtInSkillError(name: string): SkillError {
+  return new SkillError(
+    `Skill ${name} is built into Claude Code and only runs natively with provider claude.`,
+  )
+}
 
 export async function buildPasses(input: {
   review?: ReviewSettings
@@ -38,27 +49,31 @@ export async function buildPasses(input: {
   readRepoFile(path: string): Promise<string | null>
   readLocalFile(path: string): Promise<string | null>
   skills: SkillCatalog
+  native: boolean
 }): Promise<PlannedPasses> {
   const { review = {}, cliSkills } = input
   const listed =
     cliSkills !== undefined && cliSkills.length > 0
       ? {
-          entries: cliSkills.map((name) => ({ name })),
+          entries: cliSkills.map((name): SkillEntry => ({ name })),
           origin: '--skill',
           source: 'local' as const,
         }
       : review.skills !== undefined && review.skills.entries.length > 0
         ? review.skills
         : undefined
-  if (listed === undefined && review.prompt === undefined) return { plan: [], warnings: [] }
+  if (listed === undefined && review.prompt === undefined) {
+    return { plan: [], warnings: [], nativeSkills: new Map() }
+  }
 
   const warnings: string[] = []
-  const entries = listed?.entries ?? [{ name: BUILT_IN_SKILL }]
+  const entries: readonly SkillEntry[] = listed?.entries ?? [{ name: BUILT_IN_SKILL }]
   const phadaLens =
     review.prompt === undefined || !entries.some(({ name }) => name === BUILT_IN_SKILL)
       ? undefined
       : await promptLens(review.prompt, input)
   const planned: { pass: SkillPass; plan: PassPlan }[] = []
+  const nativeSkills = new Map<string, NativeSkillRef>()
   const seen = new Set<string>()
   for (const entry of entries) {
     if (seen.has(entry.name)) {
@@ -79,12 +94,23 @@ export async function buildPasses(input: {
       continue
     }
     let skill: CatalogSkill
+    let native: boolean
     try {
       skill = await input.skills.find(entry.name)
+      native = (entry.mode ?? (input.native ? 'native' : 'text')) === 'native' && input.native
+      if (skill.native.kind === 'builtin' && !native) {
+        throw builtInSkillError(entry.name)
+      }
     } catch (error) {
       if (!(error instanceof SkillError) || listed?.source === 'local') throw error
       warnings.push(`${listed?.origin}: ${error.message} Skipped.`)
       continue
+    }
+    warnings.push(...(skill.warnings ?? []))
+    if (entry.mode === 'native' && !input.native && skill.native.kind !== 'builtin') {
+      warnings.push(
+        `Skill ${entry.name}: this provider does not run skills natively; its text is sent instead.`,
+      )
     }
     if (skill.omitted.length > 0) {
       warnings.push(
@@ -96,7 +122,9 @@ export async function buildPasses(input: {
       { kind: 'skill', name: entry.name, text: skill.text, origin: skill.origin },
       skill.origin,
       input.changedFiles,
+      native,
     )
+    if (native && next.pass.skip === undefined) nativeSkills.set(entry.name, skill.native)
     planned.push(
       skill.omitted.length === 0
         ? next
@@ -121,6 +149,7 @@ export async function buildPasses(input: {
     passes: planned.map(({ pass }) => pass),
     plan: planned.map(({ plan }) => plan),
     warnings,
+    nativeSkills,
   }
 }
 
@@ -148,6 +177,7 @@ function withPaths(
   lens: ReviewerLens,
   origin: string,
   changedFiles: readonly string[],
+  native = false,
 ): { pass: SkillPass; plan: PassPlan } {
   const paths = entry.paths
   const skip =
@@ -158,6 +188,7 @@ function withPaths(
     pass: {
       skill: entry.name,
       lens,
+      ...(native ? { mode: 'native' as const } : {}),
       ...(paths === undefined ? {} : { paths }),
       ...(skip === undefined ? {} : { skip }),
     },
@@ -165,6 +196,7 @@ function withPaths(
       skill: entry.name,
       origin,
       status: skip === undefined ? 'planned' : 'skipped',
+      mode: native ? 'native' : 'text',
       ...(skip === undefined ? {} : { reason: skip }),
     },
   }

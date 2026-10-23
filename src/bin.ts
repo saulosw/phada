@@ -19,6 +19,7 @@ import { listOpenPullRequests } from './github/list-pull-requests.js'
 import { fetchPullRequest, fetchPullRequestHead } from './github/pull-request.js'
 import { fetchBranchHead, fetchRepository } from './github/repository.js'
 import { killDetachedChildren } from './process/run-command.js'
+import { removeOpenWorkDirs } from './process/work-dirs.js'
 import { lockHolder, withMirrorLock } from './repository/mirror-lock.js'
 import { createProvider, run } from './main.js'
 
@@ -63,6 +64,7 @@ process.exitCode = await run(process.argv.slice(2), {
   killDetachedChildren,
   abort: (code) => {
     killDetachedChildren()
+    removeOpenWorkDirs()
     process.exit(code)
   },
   sleep: (ms, signal) => wait(ms, undefined, { signal }).catch(() => undefined),

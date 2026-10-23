@@ -601,3 +601,67 @@ describe('formatIgnoredOnlyReview', () => {
     expect(body).toContain('Fora do review: `yarn.lock`')
   })
 })
+
+describe('formatGitHubReview with native skills', () => {
+  const TOKEN = `ghp_${'A1b2C3d4E5'.repeat(4)}`
+
+  it('puts the output of a skill that anchored nothing in the body', () => {
+    const body = formatGitHubReview(
+      {
+        ...RESULT,
+        skillBodies: [
+          { skill: 'code-review:code-review', text: '### Code review\nNo issues found.' },
+        ],
+      },
+      PLAN,
+    ).body
+
+    expect(body).toContain(
+      '**Review by skill code-review:code-review**\n\n\\### Code review\nNo issues found.',
+    )
+  })
+
+  it('labels the body of each skill', () => {
+    const body = formatGitHubReview(
+      {
+        ...RESULT,
+        skillBodies: [
+          { skill: 'a', text: 'From a.' },
+          { skill: 'b', text: 'From b.' },
+        ],
+      },
+      PLAN,
+    ).body
+
+    expect(body).toContain('**Review by skill a**\n\nFrom a.\n\n**Review by skill b**\n\nFrom b.')
+  })
+
+  it('writes the label in the review language', () => {
+    const body = formatGitHubReview(
+      { ...RESULT, skillBodies: [{ skill: 'x', text: 'Sem problemas.' }] },
+      PLAN,
+      undefined,
+      messagesFor('pt-BR'),
+    ).body
+
+    expect(body).toContain('**Revisão da skill x**')
+  })
+
+  it('never publishes a token the AI wrote', () => {
+    const leaking = findingFixture({ line: 3, why: `The token ${TOKEN} is in the code.` })
+    const review = formatGitHubReview(
+      {
+        ...RESULT,
+        summary: `Summary ${TOKEN}`,
+        findings: [leaking],
+        skillBodies: [{ skill: 'x', text: `Posted ${TOKEN}` }],
+      },
+      plan([leaking]),
+    )
+
+    expect(review.body).not.toContain(TOKEN)
+    expect(review.body).toContain('[REDACTED]')
+    expect(review.comments.every((comment) => !comment.body.includes(TOKEN))).toBe(true)
+    expect(formatResolvedReply(SHA, `fixed ${TOKEN}`, messagesFor(undefined))).not.toContain(TOKEN)
+  })
+})

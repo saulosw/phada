@@ -14,6 +14,7 @@ const VIEW: PromptView = {
       skill: 'phada',
       origin: 'phada',
       status: 'planned',
+      mode: 'text',
       parts: [
         { section: 'lens', origin: 'phada', text: 'You are a senior engineer.' },
         { section: 'contract', origin: 'phada', text: 'Answer in JSON.' },
@@ -27,6 +28,7 @@ const VIEW: PromptView = {
       skill: 'sec',
       origin: '/s/sec/SKILL.md',
       status: 'skipped',
+      mode: 'text',
       reason: 'no changed file matches src/auth/**',
       parts: [],
       data: [],
@@ -76,5 +78,35 @@ describe('formatPromptJson', () => {
     const parsed = JSON.parse(formatPromptJson(VIEW)) as Record<string, unknown>
 
     expect(parsed).toEqual({ schemaVersion: 1, ...JSON.parse(JSON.stringify(VIEW)) })
+  })
+})
+
+describe('formatPromptText with a native pass', () => {
+  it('shows the message and the command policy', () => {
+    const text = formatPromptText({
+      pullRequest: null,
+      passes: [
+        {
+          skill: 'sec',
+          origin: '/s/sec/SKILL.md',
+          status: 'planned',
+          mode: 'native',
+          native: {
+            message: '/sec https://github.com/acme/shop/pull/12',
+            commands: 'read-only',
+            readDirs: [],
+          },
+          parts: [{ section: 'context', origin: 'phada', text: 'You are running inside Phada.' }],
+          data: [],
+        },
+      ],
+      notes: [],
+      warnings: [],
+    })
+
+    expect(text).toContain('## Pass 1: sec (native, /s/sec/SKILL.md)')
+    expect(text).toContain('Message: /sec https://github.com/acme/shop/pull/12')
+    expect(text).toContain('Commands: read-only')
+    expect(text).toContain('Read folders: the checkout and the skill folder only')
   })
 })

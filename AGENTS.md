@@ -36,7 +36,7 @@ src/
                          #   createProvider()
   architecture.test.ts   # allowed imports of src/review/, src/publish/, src/watch/, src/context/,
                          #   src/investigation/, src/repository/, src/repo-map/, src/store/,
-                         #   src/graph/, src/app/ and src/skills/
+                         #   src/graph/, src/app/, src/skills/ and src/gh-facade/
   app/                   # use cases any caller can run (CLI today), with injected readers
     review-pull-request.ts # reviewPullRequest(): repository context → mirror → index of the head
                          #   (60 s budget) → related repositories → graph and impact of the diff
@@ -68,6 +68,9 @@ src/
                          #   per skill (paths matched here), SkillCatalog, PassPlan
     inspect-prompt.ts    #   inspectPrompt(), defaultPromptView(): the prompt of each pass and the
                          #   size of its data blocks, without the AI
+    native-skill.ts      #   openNativeRunner(): work folder → work tree → gh facade → the skill
+                         #   run by the provider; skillPolicy(): commands and folders, read-only
+                         #   for outside authors
   cli/                   # terminal edge
     args.ts              #   parseCliArgs(): `review` (--dry-run, --force, --verify/--no-verify,
                          #   --investigate/--no-investigate, --no-resolve, --skill), `init`, `index`
@@ -84,7 +87,11 @@ src/
                          #   the default branch, printed as text or JSON
     prompt-command.ts    #   runPrompt(): the built-in prompt, or the prompt of a pull request
     format-prompt.ts     #   formatPromptText(), formatPromptJson() (schemaVersion 1)
-    skill-catalog.ts     #   diskSkillCatalog(): the installed skills, listed once, found by name
+    skill-catalog.ts     #   diskSkillCatalog(): the installed skills, listed once, found by name;
+                         #   claude:<name> for a skill built into Claude Code
+    blocked-fix.ts       #   blockedFix(), blockedFixer(): the config line that allows a blocked
+                         #   command or read
+    read-dirs.ts         #   readDirResolver(): review.readDirs → existing folders (~ expanded)
     format-passes.ts     #   the "Skills:" line and the skills section of --dry-run
     watch-command.ts     #   runWatch(): settings, providers checked on start, history, lock, the
                          #   watch deps, one job's review
@@ -97,7 +104,7 @@ src/
                          #   (schemaVersion 1)
     format-watch.ts      #   formatWatchEvent(), formatWatchStatus(), formatWatchStatusJson()
     provider-choice.ts   #   assertProviderChoice(): known provider, model for ollama, mcp only
-                         #   with claude
+                         #   with claude; providerRunsSkills()
     classify-failure.ts  #   classifyFailure(): an error → transient, usage-limit, rate-limit,
                          #   definitive or fatal
     review-wiring.ts     #   pullRequestReviewDeps(), renderReview, reviewRunJson(): shared by
@@ -184,6 +191,20 @@ src/
     repository-files.ts  #   fetchRepositoryTree(), fetchRepositoryFile(): the repository at a commit
     repository.ts        #   fetchRepository(): visibility, default branch, empty; fetchBranchHead()
     list-pull-requests.ts #  listOpenPullRequests(): open pull requests, ETag of the first page
+    read-repository.ts   #   repositoryReader(): GET reads of one repository (and search/issues)
+                         #   for the gh facade
+  gh-facade/             # the gh a native skill runs: answered by Phada, writes captured
+    gh-command.ts        #   parseGhCommand(), filesToRead(): gh argv → command
+    gh-jq.ts             #   applyJq(): --jq with paths only
+    gh-answer.ts         #   answerGh(): reads from Phada's data or the repository reader, writes
+                         #   captured, the rest refused
+    gh-server.ts         #   serveGhFacade(): socket server, bin/gh and bin/git, read limit per pass,
+                         #   captures
+    gh-bridge.ts         #   the executable bin/gh runs: argv, stdin and files in the checkout
+                         #   → the socket
+    git-guard.ts         #   gitRefusal(): git options a native skill may not use
+    git-bridge.ts        #   the executable bin/git runs: refuse or exec the real git
+    types.ts             #   GhPullData, GhCommand, ReadGitHub, GhFacadeError
   graph/                 # the repository graph, resolved on demand from the index of a commit
     types.ts             #   RepositoryGraph, GraphSymbol, Site, Dependency, …
     project-config.ts    #   tsconfig/jsconfig paths, package.json of the repository's own
@@ -220,11 +241,14 @@ src/
   process/               # safe subprocess runner (stdin, timeout, typed errors)
     run-command.ts       #   runCommand(), runCommandBytes(): return the exit code, never interpret it;
                          #   detached children in their own process group, killDetachedChildren()
+    work-dirs.ts         #   openWorkDir(), closeWorkDir(), removeOpenWorkDirs() (Ctrl-C),
+                         #   sweepOrphanWorkDirs(): the phada-native-* folders
   providers/             # ReviewProvider and its implementations
     types.ts             #   ReviewProvider, ReviewPrompt, ReviewOutput, ProviderError
     cli-run.ts           #   shared by AI CLIs: temp dir, env without GitHub tokens, typed errors
     redact-secrets.ts    #   redacts token patterns from CLI output in error messages
-    claude.ts            #   ClaudeCliProvider (+ claude-model.ts: model resolution)
+    claude.ts            #   ClaudeCliProvider: review() and runSkill() (+ claude-model.ts: model
+                         #   resolution; claude-skill-args.ts: allowed tools, temporary plugin)
     codex.ts             #   CodexCliProvider (+ codex-model.ts: model resolution)
     ollama.ts            #   OllamaProvider over HTTP (+ ollama-host.ts, node-http-fetch.ts)
   publish/               # pure: what to publish, data in, decision out
@@ -252,6 +276,8 @@ src/
                          #   cat-file --batch
     mirror-lock.ts       #   withMirrorLock(): one fetch at a time per mirror, stale locks taken over
     repo-path.ts         #   toRepoPath(): paths inside the repository only
+    work-tree.ts         #   materializeWorkTree(): a checkout of the head with origin/<base> at
+                         #   the merge base, objects shared with the mirror, the diff in a file
   repo-map/              # the code elements of a file, with tree-sitter (WASM)
     languages.ts         #   languageOf(): extension → TypeScript, TSX, JavaScript, Python, Go
     grammars.ts          #   readGrammar(): dist/grammars/ in the package, node_modules in development
@@ -295,6 +321,9 @@ src/
                          #   each new-side line
     diff-fingerprint.ts  #   diffFingerprint(): paths and +/- lines of the filtered diff, hashed
     suggestions.ts       #   checkSuggestion(), checkSuggestions(): a code suggestion against the diff
+    convert-prompt.ts    #   buildConvertPrompt(): a native skill's output → Phada's report
+    native-context.ts    #   nativeSkillContext(): what a native skill is told about the checkout
+    skill-output.ts      #   skillOutputText(), skillBodyText(): what a native skill wrote, 64 KB
     recheck-prompt.ts    #   buildRecheckPrompt(): earlier comments and what changed since them
     recheck-schema.ts    #   Zod schema of the recheck verdicts (fixed, still-valid, unsure)
     recheck-threads.ts   #   recheckThreads(): one call for the changed threads, verdicts per thread
@@ -306,8 +335,9 @@ src/
     select-findings.ts   #   candidate filtering, confidence cut, worth checking, ordering
     score.ts             #   scoreFindings(): the 0–5 score, computed by Phada
     errors.ts            #   InvalidReviewReportError
-    run-review.ts        #   runReview(): one pass per skill (prompt → provider → parse), merged →
-                         #   suggestions → [verify] → select → score
+    run-review.ts        #   runReview(): one pass per skill (prompt → provider → parse, or a
+                         #   native run → conversion), merged → suggestions → [verify] → select →
+                         #   score; skill bodies for native passes without findings in the diff
 scripts/smoke.ts         # packs the package, installs the tarball, runs the installed `phada`
 scripts/copy-grammars.ts # build step: the tree-sitter grammars into dist/grammars/
 test/fixtures/bin/       # fake AI CLIs used by the provider tests
@@ -342,6 +372,9 @@ CLI, a concrete provider or the GitHub client, nor prints: it reports through ev
 `main.ts` turns them into terminal output.
 `src/skills/` reads the skills of the AI CLIs only through the `LocalFileSystem` it is given; its
 only value imports from outside the folder are `node:path` and `src/context/frontmatter.ts`.
+`src/gh-facade/` never imports the GitHub client: reads go through the `ReadGitHub` function it
+is given, and writes are only captured. `src/app/native-skill.ts` runs a native skill with the
+work tree, the gh facade and the work folders, and never sees the token.
 `src/architecture.test.ts` enforces the allowed imports of these folders and forbids
 `process`/`console` inside them (`console` only, in `src/investigation/`). `src/repo-map/` parses
 text it is given (`web-tree-sitter`, reading only its grammars) and `src/store/` only talks to

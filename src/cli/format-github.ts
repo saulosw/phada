@@ -1,4 +1,5 @@
 import type { ReviewComment } from '../github/create-review.js'
+import { redactSecrets } from '../providers/redact-secrets.js'
 import { FINDING_MARKER, reviewMarker } from '../publish/markers.js'
 import type { PublicationPlan } from '../publish/types.js'
 import { scoreFocus } from '../review/score.js'
@@ -23,6 +24,7 @@ export interface GitHubReview {
 interface BodyParts {
   reason: string
   summary: string
+  skillBodies: string
   files: string
   model: string
   stillOpen: Finding[]
@@ -38,11 +40,18 @@ export function formatGitHubReview(
   messages: Messages = english,
 ): GitHubReview {
   if (plan.comments.length === 0 && plan.stillOpen.length > 0) {
-    return { body: onlyStillOpenBody(result, plan, messages), comments: [] }
+    return redacted({ body: onlyStillOpenBody(result, plan, messages), comments: [] })
   }
-  return {
+  return redacted({
     body: reviewBody(result, plan, limit, messages),
     comments: plan.comments.map((finding) => findingComment(finding, limit, messages)),
+  })
+}
+
+function redacted({ body, comments }: GitHubReview): GitHubReview {
+  return {
+    body: redactSecrets(body),
+    comments: comments.map((comment) => ({ ...comment, body: redactSecrets(comment.body) })),
   }
 }
 
@@ -70,7 +79,7 @@ export function formatResolvedReply(
   reason: string,
   messages: Messages = english,
 ): string {
-  return messages.github.resolvedReply(shortSha(headSha), githubBlock(reason))
+  return redactSecrets(messages.github.resolvedReply(shortSha(headSha), githubBlock(reason)))
 }
 
 export function formatGitHubPreview(
@@ -110,6 +119,12 @@ function reviewBody(
   const parts: BodyParts = {
     reason: messages.scoreReason(scoreFocus(result.findings)),
     summary: result.summary,
+    skillBodies: (result.skillBodies ?? [])
+      .map(
+        ({ skill, text }) =>
+          `**${messages.github.skillBody(githubLine(skill))}**\n\n${githubBlock(text)}`,
+      )
+      .join('\n\n'),
     files: filesDetails(result.files, messages),
     model: modelLabel(result),
     stillOpen: [...plan.stillOpen],
@@ -121,7 +136,7 @@ function reviewBody(
   if (render().length > limit && parts.files !== '') {
     parts.files = messages.github.filesTruncated(result.files.length)
   }
-  fit(parts, ['summary', 'reason'], render, limit, messages)
+  fit(parts, ['skillBodies', 'summary', 'reason'], render, limit, messages)
   omitToFit(parts, 'worthChecking', 'worthCheckingOmitted', render, limit)
   omitToFit(parts, 'stillOpen', 'stillOpenOmitted', render, limit)
   fit(parts, ['model'], render, limit, messages)
@@ -140,6 +155,7 @@ function renderBody(
     `## ${messages.github.heading}: ${score.value}/5 (${messages.scoreLabels[score.value]})`,
     capitalize(githubBlock(parts.reason)),
     summary === '' ? '' : `### ${messages.summary}\n\n${summary}`,
+    parts.skillBodies,
     parts.files,
     countsLine(plan, messages),
     fixedLine(result, plan, messages),

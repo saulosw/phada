@@ -124,6 +124,31 @@ const SKILLS: Boundary = {
   types: new Set(['../config/local-files.js']),
   expected: ['installed-skills.ts', 'resolve-skill.ts', 'skill-locations.ts', 'skill-text.ts'],
 }
+const GH_FACADE: Boundary = {
+  dir: 'gh-facade',
+  values: new Set([
+    'node:child_process',
+    'node:fs',
+    'node:crypto',
+    'node:fs/promises',
+    'node:net',
+    'node:os',
+    'node:path',
+    'node:url',
+  ]),
+  types: new Set(['../review/types.js']),
+  expected: [
+    'gh-answer.ts',
+    'gh-bridge.ts',
+    'gh-command.ts',
+    'gh-jq.ts',
+    'gh-server.ts',
+    'git-bridge.ts',
+    'git-guard.ts',
+    'types.ts',
+  ],
+  globals: ['console'],
+}
 const GRAPH: Boundary = {
   dir: 'graph',
   values: new Set(['node:path', '../review/diff-lines.js']),
@@ -153,6 +178,13 @@ const GRAPH: Boundary = {
 const APP: Boundary = {
   dir: 'app',
   values: new Set([
+    'node:path',
+    '../gh-facade/gh-server.js',
+    '../process/work-dirs.js',
+    '../repository/work-tree.js',
+    '../review/native-context.js',
+    '../review/convert-prompt.js',
+    '../watch/filters.js',
     '../config/errors.js',
     '../context/load-context.js',
     '../context/list-context.js',
@@ -189,6 +221,9 @@ const APP: Boundary = {
     '../watch/time.js',
   ]),
   types: new Set([
+    '../gh-facade/gh-server.js',
+    '../gh-facade/types.js',
+    '../repository/work-tree.js',
     '../config/types.js',
     '../config/watch-settings.js',
     '../context/types.js',
@@ -504,6 +539,7 @@ describe.each([
   GRAPH,
   APP,
   SKILLS,
+  GH_FACADE,
 ])('$dir boundary', (boundary) => {
   const sources = sourcesOf(boundary)
 

@@ -10,6 +10,8 @@ export interface InstalledSkill {
   root: 'claude' | 'claude-plugin' | 'codex' | 'agents'
   path: string
   dir: string
+  pluginDir?: string
+  pluginName?: string
 }
 
 export interface SkillListing {
@@ -109,8 +111,13 @@ async function pluginSkills(
   const found: InstalledSkill[] = []
   for (const [plugin, installPath] of plugins) {
     const manifest = await readManifest(files, installPath)
-    found.push(...(await pluginSkillFolders(files, plugin, installPath, manifest)))
-    found.push(...(await pluginCommands(files, plugin, installPath, manifest)))
+    const own = { pluginDir: installPath, pluginName: manifest.name ?? plugin }
+    for (const skill of [
+      ...(await pluginSkillFolders(files, plugin, installPath, manifest)),
+      ...(await pluginCommands(files, plugin, installPath, manifest)),
+    ]) {
+      found.push({ ...skill, ...own })
+    }
   }
   return found.sort((a, b) => compareText(a.qualified, b.qualified))
 }
@@ -195,6 +202,7 @@ function installPaths(text: string): [string, string][] | undefined {
 }
 
 interface PluginManifest {
+  name?: string
   skills?: string[]
   commands?: string[]
   commandNames?: Map<string, string>
@@ -213,7 +221,10 @@ async function readManifest(files: LocalFileSystem, installPath: string): Promis
       commandMap === undefined
         ? undefined
         : new Map([...commandMap].map(([source, name]) => [posix.join(installPath, source), name]))
+    const name =
+      typeof parsed.name === 'string' && parsed.name.trim() !== '' ? parsed.name.trim() : undefined
     return {
+      ...(name === undefined ? {} : { name }),
       ...(skills === undefined ? {} : { skills }),
       ...(commands === undefined ? {} : { commands }),
       ...(commandNames === undefined ? {} : { commandNames }),

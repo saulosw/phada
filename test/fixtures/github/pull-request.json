@@ -28,5 +28,6 @@
   "url": "https://api.github.com/repos/saulosw/phada-dev-web/pulls/3",
   "user": {
     "login": "saulosw"
-  }
+  },
+  "author_association": "OWNER"
 }

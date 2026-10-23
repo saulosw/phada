@@ -30,7 +30,13 @@ function loaded(overrides: Partial<LoadedContext> = {}): LoadedContext {
 const skills: SkillCatalog = {
   find: async (name) => {
     if (name !== 'sec') throw new SkillError(`Skill "${name}" is not installed.`)
-    return { name, origin: '/s/sec/SKILL.md', text: 'Auth.', omitted: [] }
+    return {
+      name,
+      origin: '/s/sec/SKILL.md',
+      text: 'Auth.',
+      omitted: [],
+      native: { kind: 'file', fileKind: 'skill', path: '/s/sec/SKILL.md', dir: '/s/sec', name },
+    }
   },
 }
 
@@ -141,5 +147,47 @@ describe('defaultPromptView of a default review', () => {
     expect(view.notes).toContain(
       'Tool sections are as a review sends them when the repository index is ready.',
     )
+  })
+})
+
+describe('inspectPrompt with a native skill', () => {
+  const withSkill = (review: LoadedContext['options']['review']) =>
+    inspect({ native: true, cliSkills: ['sec'], loaded: loaded({ options: { review } }) })
+
+  it('shows the message, the context, the command policy and the conversion', async () => {
+    const view = await withSkill({
+      commands: { policy: ['npm test'], origin: 'user:config.yml' },
+      readDirs: { dirs: ['/rules'], origin: 'user:config.yml' },
+    })
+
+    const pass = view.passes[0]
+    expect(pass?.mode).toBe('native')
+    expect(pass?.native).toEqual({
+      message: `/sec ${pullRequest.url}`,
+      commands: ['npm test'],
+      readDirs: ['/rules'],
+    })
+    expect(pass?.parts.map(({ section }) => section)).toEqual(['context', 'contract'])
+    expect(pass?.parts[0]?.text).toContain('You are running inside Phada')
+    expect(pass?.parts[1]?.text).toContain('code review guide sec')
+    expect(pass?.data.map(({ name }) => name)).toEqual(['PHADA_PR', 'PHADA_DIFF'])
+  })
+
+  it('shows read-only for an outside author of a public repository', async () => {
+    const view = await inspect({
+      native: true,
+      cliSkills: ['sec'],
+      pullRequest: { ...pullRequest, association: 'NONE', private: false },
+      loaded: loaded({ options: { review: { commands: { policy: 'all', origin: 'u' } } } }),
+    })
+
+    expect(view.passes[0]?.native?.commands).toBe('read-only')
+  })
+
+  it('keeps text passes as before', async () => {
+    const view = await inspect({ cliSkills: ['sec'] })
+
+    expect(view.passes[0]?.mode).toBe('text')
+    expect(view.passes[0]?.native).toBeUndefined()
   })
 })

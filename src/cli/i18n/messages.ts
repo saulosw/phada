@@ -32,6 +32,7 @@ export interface Messages {
     tokens(input: string, output: string): string
   }
   github: {
+    skillBody(skill: string): string
     heading: string
     generatedWith: string
     inlineComments(bySeverity: string, count: number): string

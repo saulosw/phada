@@ -16,7 +16,7 @@ import type { ReviewPass } from '../investigation/tools/tool-log.js'
 import type { LocalFileSystem } from '../config/local-files.js'
 import type { RepositoryInfo } from '../github/repository.js'
 import type { RepositoryFilesOptions } from '../github/repository-files.js'
-import type { ReviewProvider } from '../providers/types.js'
+import type { BlockedCommand, ReviewProvider } from '../providers/types.js'
 import type { Extractor } from '../repo-map/extract.js'
 import type { GitMirror, GitMirrorOptions } from '../repository/git-mirror.js'
 import type { IndexStore } from '../store/index-store.js'
@@ -42,7 +42,12 @@ import { formatPassesLine } from './format-passes.js'
 import { formatRelatedLine } from './format-related.js'
 import { messagesFor } from './i18n/messages.js'
 import { indexProgress, withProgress } from './progress.js'
+import { providerRunsSkills } from './provider-choice.js'
+import { readDirResolver } from './read-dirs.js'
 import { diskSkillCatalog } from './skill-catalog.js'
+import { repositoryReader } from '../github/read-repository.js'
+import type { RepositoryReaderOptions } from '../github/read-repository.js'
+import type { ReadGitHub } from '../gh-facade/types.js'
 import { toTerminalText } from './terminal-text.js'
 
 export interface ReviewWiringDeps extends ContextReaders {
@@ -56,6 +61,9 @@ export interface ReviewWiringDeps extends ContextReaders {
   openObservedStore: (path: string) => Promise<ObservedStore>
   createExtractor: () => Extractor
   createProvider: (name: string, options: ProviderOptions) => ReviewProvider
+  repositoryReader?: (options: RepositoryReaderOptions) => ReadGitHub
+  runsSkills?: (provider: string) => boolean
+  openNativeRunner?: PullRequestReviewDeps['openNativeRunner']
 }
 
 export type PublishTarget = PullRequestRef & { token: string }
@@ -129,6 +137,11 @@ export function pullRequestReviewDeps(
       }),
     watchProvider: (provider, pass) => withProgress(provider, deps.stderr, PROGRESS_LABELS[pass]),
     skills: diskSkillCatalog(deps.files, deps.env, deps.home),
+    runsSkills: (deps.runsSkills ?? providerRunsSkills)(choice.provider),
+    readGitHub: (deps.repositoryReader ?? repositoryReader)({ repo: `${owner}/${repo}`, token }),
+    env: deps.env,
+    resolveDir: readDirResolver(deps.files, deps.home),
+    ...(deps.openNativeRunner === undefined ? {} : { openNativeRunner: deps.openNativeRunner }),
     related: {
       readRepository: (name) =>
         deps.fetchRepository({ ...splitRepoName(name), token }).catch((error: unknown) => {
@@ -172,7 +185,10 @@ export function pullRequestReviewDeps(
   }
 }
 
-export function reviewRunJson(run: ReviewRun): string {
+export function reviewRunJson(
+  run: ReviewRun,
+  fixFor?: (blocked: BlockedCommand) => string,
+): string {
   const { pullRequest } = run
   if (run.status === 'skipped') return formatAlreadyReviewedJson(pullRequest, run.reason)
   const { reviewed } = run
@@ -192,6 +208,7 @@ export function reviewRunJson(run: ReviewRun): string {
       null,
       null,
       reviewed.recheck ?? null,
+      fixFor,
     )
   }
   const { plan, rendered } = run
@@ -214,6 +231,7 @@ export function reviewRunJson(run: ReviewRun): string {
     impact,
     related,
     reviewed.recheck ?? null,
+    fixFor,
   )
 }
 
