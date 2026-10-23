@@ -29,6 +29,9 @@ output can change between minor versions.
   config line that allows it.
 - `git` inside a native skill refuses options that could run a program, write a file or read
   outside the checkout.
+- In a native skill's checkout, symlinks of the pull request are plain files; `gh api` reads only
+  the repository's code and conversations (pulls, issues, commits, contents and the like), never
+  its settings, secrets, alerts, webhooks or Actions.
 - `{ name, mode: text }` keeps a skill in text mode; `claude:<name>` names a skill built into
   Claude Code. Codex and Ollama keep text mode.
 - `phada prompt` shows a native pass: the message, the context Phada adds, the commands and
