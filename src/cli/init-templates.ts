@@ -80,9 +80,17 @@ ${CONTEXT}
 # Files or folders on this machine to send as context (folders: every .md inside).
 # localFiles: ["~/notes/team-rules"]
 
-# MCP servers of your Claude Code that the AI may use during reviews, by name
-# (claude.ai connectors as "claude.ai <Name>"). Only with provider claude.
-# mcp: [linear]
+# MCP servers the AI may use during reviews: named as your Claude Code or Codex shows
+# them (claude.ai connectors as "claude.ai <Name>"), or declared here for any provider.
+# Secrets come from environment variables. Never used for pull requests from outside
+# authors.
+# mcp:
+#   - linear
+#   - name: tickets
+#     command: npx
+#     args: [-y, '@acme/tickets-mcp']
+#     env: { TICKETS_TOKEN: '\${TICKETS_TOKEN}' }
+#     description: The ticket cited in the pull request title
 `
 
 export const RULES_TEMPLATE = `<!--

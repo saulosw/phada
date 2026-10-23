@@ -7,6 +7,30 @@ output can change between minor versions.
 
 ## Unreleased
 
+### Added
+
+- MCP servers declared in your own config, for Claude Code, Codex and Ollama alike: started by
+  Phada (`command`, `args`, `env`) or reached over streamable HTTP (`url`, `headers`). Their
+  tools are offered to the AI next to the investigation tools, in the same budget of calls and
+  bytes, and each call shows up in `--dry-run` and the JSON with its server.
+- Codex servers can be named in `mcp`, like Claude Code ones: Phada reads them with
+  `codex mcp get` and passes them to the run without putting header or environment values on the
+  command line.
+- `tools` narrows a server to the tools listed, and `description` tells the AI what a server is
+  for.
+- Secrets of a declared server come from environment variables (`${NAME}`); a value that looks
+  like a secret written in the config is refused.
+- `--dry-run` and the JSON (`investigation.mcp`) list each MCP server with its state and the tools
+  it hid.
+
+### Changed
+
+- Pull requests of public repositories from outside authors are reviewed without any of your MCP
+  servers.
+- A declared server offers only the tools it marks as read-only unless `tools` lists others.
+- MCP server names are checked with your AI CLI before the review; an unknown name, or a name
+  with Ollama, stops the command.
+
 ## 0.7.0 - 2026-10-22
 
 ### Added

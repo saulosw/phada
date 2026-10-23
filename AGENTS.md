@@ -71,6 +71,8 @@ src/
     native-skill.ts      #   openNativeRunner(): work folder → work tree → gh facade → the skill
                          #   run by the provider; skillPolicy(): commands and folders, read-only
                          #   for outside authors
+    open-mcp.ts          #   openMcp(): declared MCP servers connected → their tools for the
+                         #   investigation and a report per server; none for outside authors
   cli/                   # terminal edge
     args.ts              #   parseCliArgs(): `review` (--dry-run, --force, --verify/--no-verify,
                          #   --investigate/--no-investigate, --no-resolve, --skill), `init`, `index`
@@ -103,8 +105,10 @@ src/
     format-history.ts    #   formatHistoryText/Json(), feedbackStats(), formatStatsText/Json()
                          #   (schemaVersion 1)
     format-watch.ts      #   formatWatchEvent(), formatWatchStatus(), formatWatchStatusJson()
-    provider-choice.ts   #   assertProviderChoice(): known provider, model for ollama, mcp only
-                         #   with claude; providerRunsSkills()
+    provider-choice.ts   #   assertProviderChoice(): known provider, model for ollama, no MCP
+                         #   server names with ollama; providerRunsSkills()
+    mcp-names.ts         #   checkMcpNames(): MCP server names checked with `claude mcp get` or
+                         #   read with `codex mcp get --json` before the review
     classify-failure.ts  #   classifyFailure(): an error → transient, usage-limit, rate-limit,
                          #   definitive or fatal
     review-wiring.ts     #   pullRequestReviewDeps(), renderReview, reviewRunJson(): shared by
@@ -142,6 +146,8 @@ src/
     parse-config.ts      #   parseConfigText(): YAML → config or an error naming the key
     merge-config.ts      #   mergeConfig(): layers → options, rules, files, ignore with origins (pure);
                          #   resolveProvider(): provider and model as a pair
+    mcp-servers.ts       #   userMcp(), resolveMcp(): MCP server names and declared servers, with
+                         #   ${VAR} expanded from the environment
     user-config.ts       #   the user's folder (PHADA_CONFIG_HOME › XDG › ~/.config/phada),
                          #   loadUserLayers(), loadTopLevelUserLayers()
     local-files.ts       #   LocalFileSystem and its node:fs implementation
@@ -232,10 +238,13 @@ src/
       related-repo.ts    #     the repo argument of the tools; owner/repo:path
       history-tool.ts    #     history: commits and blame of a file, pull request from the subject
       graph-tools.ts     #     find_symbol, callers, dependencies and similar
+      mcp-tools.ts       #     mcpTools(): the read-only (or listed) tools of connected MCP
+                         #     servers as <server>__<tool>
       budget.ts          #     calls and bytes per review pass, answer size
       tool-log.ts        #     ToolLog: one record per tool call
       report.ts          #     buildInvestigationReport(): what the AI read, for the CLI and the JSON
-    mcp/                 #   how the AI CLIs reach the tools
+    mcp/                 #   how the AI CLIs reach the tools, and how Phada reaches MCP servers
+      mcp-client.ts      #     connectMcp(): an MCP client over stdio or streamable HTTP
       mcp-server.ts      #     the tools as a local MCP server (JSON-RPC over a socket)
       mcp-bridge.ts      #     what the AI CLI starts: stdio ↔ the socket of mcp-server.ts
   process/               # safe subprocess runner (stdin, timeout, typed errors)
@@ -249,7 +258,9 @@ src/
     redact-secrets.ts    #   redacts token patterns from CLI output in error messages
     claude.ts            #   ClaudeCliProvider: review() and runSkill() (+ claude-model.ts: model
                          #   resolution; claude-skill-args.ts: allowed tools, temporary plugin)
-    codex.ts             #   CodexCliProvider (+ codex-model.ts: model resolution)
+    codex.ts             #   CodexCliProvider (+ codex-model.ts: model resolution; codex-mcp.ts:
+                         #   named MCP servers as -c settings; mcp-env-launcher.ts: runs a server
+                         #   with the env of a private file)
     ollama.ts            #   OllamaProvider over HTTP (+ ollama-host.ts, node-http-fetch.ts)
   publish/               # pure: what to publish, data in, decision out
     markers.ts           #   the review (with the diff fingerprint), finding and resolved markers,
@@ -365,7 +376,9 @@ data. Its records (`src/watch/types.ts`) are the watch's own; `src/store/` store
 (`ReviewWiringDeps`, `WatchCommandDeps`); `MainDeps` extends them. `src/repository/` runs `git` through
 `src/process/run-command.ts`. `src/investigation/` reads the repository only through a `Checkout`
 (`src/repository/checkout.ts`) and a `RepositoryGraph` (`src/graph/types.ts`) the caller passes
-in, and never imports the mirror, the store, the CLI, the engine or a concrete provider; the
+in, and never imports the mirror, the store, the CLI, the engine or a concrete provider; its MCP
+client (`mcp/mcp-client.ts`) starts the declared servers with `node:child_process` and gets their
+definitions (`src/config/mcp-servers.ts`, as a type) and the environment as data; the
 engine sees its tools only as a `Toolbox` (`src/investigation/toolbox.ts`) that the caller passes
 in. `src/app/` orchestrates a review from injected readers and factories and never imports the
 CLI, a concrete provider or the GitHub client, nor prints: it reports through events, and
