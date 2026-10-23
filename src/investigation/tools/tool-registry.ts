@@ -34,13 +34,19 @@ export interface RegisteredTool<A> {
   run(args: A): Promise<ToolOutput>
 }
 
+export interface ToolboxOptions {
+  budget?: ToolBudget
+  mcpServers?: readonly McpServerInfo[]
+}
+
 export function createToolbox(
   tools: readonly RegisteredTool<any>[],
   log: ToolLog,
   pass: ReviewPass,
-  budget: ToolBudget = DEFAULT_TOOL_BUDGET,
-  mcpServers: readonly McpServerInfo[] = [],
+  options: ToolboxOptions = {},
 ): Toolbox {
+  const budget = options.budget ?? DEFAULT_TOOL_BUDGET
+  const mcpServers = options.mcpServers ?? []
   const byName = new Map(tools.map((tool) => [tool.definition.name, tool]))
   const touched = new Set<string>()
   let calls = 0

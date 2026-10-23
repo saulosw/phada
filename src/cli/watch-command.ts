@@ -46,7 +46,7 @@ import {
 } from './review-wiring.js'
 import { mcpNameChecker } from './review-wiring.js'
 import type { Choice, ReviewWiringDeps } from './review-wiring.js'
-import type { CheckedNames } from './mcp-names.js'
+import type { CheckedNames, NameCheck } from './mcp-names.js'
 import type { McpNameEntry, ResolvedMcp } from '../config/mcp-servers.js'
 import { printWatchEvents } from './watch-events.js'
 import { watchStatusText } from './watch-status.js'
@@ -278,11 +278,6 @@ interface JobSetup {
   choice: Choice
   mcp: ResolvedMcp
 }
-
-type NameCheck = (
-  provider: string,
-  names: readonly McpNameEntry[],
-) => Promise<CheckedNames | undefined>
 
 function memoized(check: NameCheck): NameCheck {
   const checked = new Map<string, Promise<CheckedNames | undefined>>()

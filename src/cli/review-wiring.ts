@@ -3,7 +3,7 @@ import type { McpNameEntry } from '../config/mcp-servers.js'
 import { connectMcp } from '../investigation/mcp/mcp-client.js'
 import { withoutGitHubTokens } from '../providers/cli-run.js'
 import { checkMcpNames } from './mcp-names.js'
-import type { CheckedNames } from './mcp-names.js'
+import type { CheckedNames, NameCheck } from './mcp-names.js'
 import type { FeedbackRefreshDeps } from '../app/feedback.js'
 import type { PullRequestReviewDeps } from '../app/review-pull-request.js'
 import type { PublicationResult, RenderedReview, ReviewRun } from '../app/review-and-publish.js'
@@ -70,10 +70,7 @@ export interface ReviewWiringDeps extends ContextReaders {
   repositoryReader?: (options: RepositoryReaderOptions) => ReadGitHub
   runsSkills?: (provider: string) => boolean
   openNativeRunner?: PullRequestReviewDeps['openNativeRunner']
-  checkMcpNames?: (
-    provider: string,
-    names: readonly McpNameEntry[],
-  ) => Promise<CheckedNames | undefined>
+  checkMcpNames?: NameCheck
 }
 
 export type PublishTarget = PullRequestRef & { token: string }
@@ -287,9 +284,7 @@ function toPublication(
   }
 }
 
-export function mcpNameChecker(
-  deps: ReviewWiringDeps,
-): (provider: string, names: readonly McpNameEntry[]) => Promise<CheckedNames | undefined> {
+export function mcpNameChecker(deps: ReviewWiringDeps): NameCheck {
   return (
     deps.checkMcpNames ?? ((provider, names) => checkMcpNames(provider, names, { env: deps.env }))
   )

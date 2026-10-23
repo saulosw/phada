@@ -44,7 +44,10 @@ export function createInvestigation(
   ]
   return {
     log,
-    tools: (pass) => createToolbox(tools, log, pass, undefined, options.mcp?.servers),
+    tools: (pass) =>
+      createToolbox(tools, log, pass, {
+        ...(options.mcp === undefined ? {} : { mcpServers: options.mcp.servers }),
+      }),
     close: async () => {
       try {
         await options.mcp?.close()

@@ -377,8 +377,9 @@ data. Its records (`src/watch/types.ts`) are the watch's own; `src/store/` store
 `src/process/run-command.ts`. `src/investigation/` reads the repository only through a `Checkout`
 (`src/repository/checkout.ts`) and a `RepositoryGraph` (`src/graph/types.ts`) the caller passes
 in, and never imports the mirror, the store, the CLI, the engine or a concrete provider; its MCP
-client (`mcp/mcp-client.ts`) starts the declared servers with `node:child_process` and gets their
-definitions (`src/config/mcp-servers.ts`, as a type) and the environment as data; the
+client (`mcp/mcp-client.ts`) starts the declared servers with `node:child_process`, redacts what
+leaves it with `src/providers/redact-secrets.ts`, and gets their definitions
+(`src/config/mcp-servers.ts`, as a type) and the environment as data; the
 engine sees its tools only as a `Toolbox` (`src/investigation/toolbox.ts`) that the caller passes
 in. `src/app/` orchestrates a review from injected readers and factories and never imports the
 CLI, a concrete provider or the GitHub client, nor prints: it reports through events, and

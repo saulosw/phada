@@ -117,7 +117,7 @@ describe('mcpTools', () => {
       },
     ])
     const log = new ToolLog()
-    const toolbox = createToolbox(tools, log, 'review', { calls: 3, bytes: 512_000 })
+    const toolbox = createToolbox(tools, log, 'review', { budget: { calls: 3, bytes: 512_000 } })
 
     expect(await toolbox.call('tickets__get_ticket', { id: 'ABC-1' })).toEqual({
       text: 'get_ticket {"id":"ABC-1"}',
