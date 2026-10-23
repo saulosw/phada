@@ -7,7 +7,8 @@ import { watchRepositories } from '../app/watch-repositories.js'
 import type { WatchDeps } from '../app/watch-repositories.js'
 import { repositoryCache } from '../config/cache-paths.js'
 import { dataFiles } from '../config/data-paths.js'
-import { mergeConfig, resolveProvider, userMcpServers } from '../config/merge-config.js'
+import { mergeConfig, resolveProvider } from '../config/merge-config.js'
+import { resolveMcp, userMcp } from '../config/mcp-servers.js'
 import { BUILT_IN_SKILL, builtInSkillError } from '../app/review-passes.js'
 import { loadTopLevelUserLayers, loadUserLayers } from '../config/user-config.js'
 import { historyEnabled, resolveWatchSettings } from '../config/watch-settings.js'
@@ -275,7 +276,7 @@ interface JobSetup {
 async function jobSetup(repo: string, deps: WatchCommandDeps): Promise<JobSetup> {
   const userLayers = await loadUserLayers({ ...deps, ...splitRepoName(repo) })
   const choice = resolveProvider({}, userLayers)
-  const mcp = userMcpServers(userLayers)
+  const mcp = resolveMcp(userMcp(userLayers), deps.env).names.map(({ name }) => name)
   assertProviderChoice(
     choice.provider,
     { ...(choice.model === undefined ? {} : { model: choice.model }), userMcpServers: mcp },

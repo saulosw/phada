@@ -42,7 +42,8 @@ export { assertProviderChoice } from './cli/provider-choice.js'
 export type { ProviderOptions } from './cli/provider-choice.js'
 import type { Choice } from './cli/review-wiring.js'
 import { toTerminalText } from './cli/terminal-text.js'
-import { resolveProvider, userMcpServers } from './config/merge-config.js'
+import { resolveProvider } from './config/merge-config.js'
+import { resolveMcp, userMcp } from './config/mcp-servers.js'
 import { loadUserLayers } from './config/user-config.js'
 import { formatPullRequestRef } from './github/pull-request-ref.js'
 import type { PullRequest } from './github/pull-request.js'
@@ -121,7 +122,7 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
       files: deps.files,
     })
     const choice = resolveProvider({ provider: command.provider, model: command.model }, userLayers)
-    const mcp = userMcpServers(userLayers)
+    const mcp = resolveMcp(userMcp(userLayers), deps.env).names.map(({ name }) => name)
     assertProviderChoice(choice.provider, {
       ...(choice.model === undefined ? {} : { model: choice.model }),
       userMcpServers: mcp,

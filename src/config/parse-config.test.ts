@@ -154,6 +154,138 @@ describe('parseConfigText', () => {
     if (!parsed.ok) expect(parsed.message).toContain('use the server name as your AI CLI shows it')
   })
 
+  it('reads MCP servers declared with a command or a url, and named ones with options', () => {
+    const text = [
+      'mcp:',
+      '  - linear',
+      "  - name: 'claude.ai Linear'",
+      '    tools: [get_issue]',
+      '    description: Ticket cited in the title',
+      '  - name: tickets',
+      '    command: npx',
+      "    args: [-y, '@acme/tickets-mcp']",
+      "    env: { TICKETS_TOKEN: '${TICKETS_TOKEN}' }",
+      '    tools: [get_ticket]',
+      '  - name: docs',
+      '    url: https://mcp.acme.dev/mcp',
+      "    headers: { Authorization: 'Bearer ${DOCS_TOKEN}', X-Project: acme }",
+    ].join('\n')
+
+    expect(parseConfigText(text)).toEqual({
+      ok: true,
+      config: {
+        mcp: [
+          'linear',
+          {
+            name: 'claude.ai Linear',
+            tools: ['get_issue'],
+            description: 'Ticket cited in the title',
+          },
+          {
+            name: 'tickets',
+            command: 'npx',
+            args: ['-y', '@acme/tickets-mcp'],
+            env: { TICKETS_TOKEN: '${TICKETS_TOKEN}' },
+            tools: ['get_ticket'],
+          },
+          {
+            name: 'docs',
+            url: 'https://mcp.acme.dev/mcp',
+            headers: { Authorization: 'Bearer ${DOCS_TOKEN}', 'X-Project': 'acme' },
+          },
+        ],
+      },
+    })
+  })
+
+  it.each([
+    [
+      'command and url together',
+      'mcp: [{ name: a, command: x, url: "https://x" }]',
+      'use either command or url',
+    ],
+    [
+      'the name phada',
+      'mcp: [{ name: phada, command: x }]',
+      "phada is the name of Phada's own server",
+    ],
+    [
+      'a declared name with a space',
+      'mcp: [{ name: "a b", command: x }]',
+      'use letters, digits, dashes or underscores',
+    ],
+    ['an empty tools list', 'mcp: [{ name: a, tools: [] }]', 'mcp.0.tools'],
+    [
+      'a long description',
+      `mcp: [{ name: a, description: "${'x'.repeat(301)}" }]`,
+      'mcp.0.description',
+    ],
+    [
+      'env without command',
+      'mcp: [{ name: a, url: "https://x", env: { A: b } }]',
+      'env goes with command',
+    ],
+    [
+      'headers without url',
+      'mcp: [{ name: a, command: x, headers: { A: b } }]',
+      'headers go with url',
+    ],
+    ['an invalid variable name', 'mcp: [{ name: a, command: x, args: ["${1X}"] }]', 'mcp.0.args.0'],
+    ['a server listed twice', 'mcp: [a, { name: a, tools: [t] }]', 'a is listed twice'],
+  ])('refuses %s', (_name, text, message) => {
+    const parsed = parseConfigText(text)
+    expect(parsed.ok).toBe(false)
+    if (!parsed.ok) expect(parsed.message).toContain(message)
+  })
+
+  it.each([
+    [
+      'an env key that names a secret',
+      'env: { API_TOKEN: abc123 }',
+      'mcp.0.env.API_TOKEN',
+      'API_TOKEN',
+      'abc123',
+    ],
+    [
+      'an Authorization header',
+      'headers: { Authorization: "Bearer abc" }',
+      'mcp.0.headers.Authorization',
+      'DOCS_AUTHORIZATION',
+      'Bearer abc',
+    ],
+    [
+      'a token in args',
+      `args: ["--token=ghp_${'a'.repeat(36)}"]`,
+      'mcp.0.args.0',
+      'TOKEN',
+      `ghp_${'a'.repeat(36)}`,
+    ],
+    [
+      'a token in the url',
+      `url: "https://x/mcp?k=sk-${'a'.repeat(24)}"`,
+      'mcp.0.url',
+      'TOKEN',
+      `sk-${'a'.repeat(24)}`,
+    ],
+  ])('refuses a literal secret: %s', (_name, fields, key, variable, value) => {
+    const transport = fields.startsWith('headers') || fields.startsWith('url') ? '' : 'command: x, '
+    const url = fields.startsWith('headers') ? 'url: "https://x", ' : ''
+    const parsed = parseConfigText(`mcp: [{ name: docs, ${transport}${url}${fields} }]`)
+    expect(parsed.ok).toBe(false)
+    if (parsed.ok) return
+    expect(parsed.message).toContain(
+      `${key}: put the secret in an environment variable, e.g. '\${${variable}}'`,
+    )
+    expect(parsed.message).not.toContain(value)
+  })
+
+  it('accepts literal values that do not look like secrets', () => {
+    const parsed = parseConfigText(
+      'mcp: [{ name: docs, url: "https://x", headers: { X-Project: acme, Authorization: "Bearer ${T}" } }]',
+    )
+    expect(parsed.ok).toBe(true)
+  })
+
   it('reads the watch block and history', () => {
     const text = [
       'history: false',

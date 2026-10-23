@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { looksLikeSecret } from '../providers/redact-secrets.js'
 import { DURATION, durationMs } from './duration.js'
 
 export const LANGUAGE_TAG = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/
@@ -127,6 +128,96 @@ const ContextFileSchema = z.strictObject({
   description: z.string().optional(),
 })
 
+const MCP_NAME = /^[\w .-]+$/
+const DECLARED_MCP_NAME = /^[A-Za-z0-9_-]{1,32}$/
+const VARIABLE_REFERENCE = /\$\{([^}]*)\}/g
+const VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
+const SECRET_KEY = /authorization|token|key|secret|password|credential/i
+export const PHADA_MCP_NAME = 'phada'
+
+const McpName = z.string().trim().regex(MCP_NAME, 'use the server name as your AI CLI shows it')
+
+const McpObjectSchema = z
+  .strictObject({
+    name: McpName,
+    command: z.string().trim().min(1).optional(),
+    args: z.array(z.string()).optional(),
+    env: z.record(z.string(), z.string()).optional(),
+    url: z.string().trim().min(1).optional(),
+    headers: z.record(z.string(), z.string()).optional(),
+    tools: z.array(z.string().trim().min(1)).min(1).optional(),
+    description: z.string().trim().min(1).max(300).optional(),
+  })
+  .superRefine(checkMcpObject)
+
+const McpEntrySchema = z.union([McpName, McpObjectSchema])
+
+export type McpObject = z.infer<typeof McpObjectSchema>
+export type McpEntry = z.infer<typeof McpEntrySchema>
+
+function checkMcpObject(entry: McpObject, context: z.RefinementCtx): void {
+  const issue = (path: (string | number)[], message: string) =>
+    context.addIssue({ code: 'custom', path, message })
+  if (entry.command !== undefined && entry.url !== undefined) {
+    issue([], 'use either command or url')
+  }
+  const declared = entry.command !== undefined || entry.url !== undefined
+  if (declared && entry.name === PHADA_MCP_NAME) {
+    issue(['name'], "phada is the name of Phada's own server; choose another name")
+  } else if (declared && !DECLARED_MCP_NAME.test(entry.name)) {
+    issue(['name'], 'use letters, digits, dashes or underscores (up to 32)')
+  }
+  if ((entry.args !== undefined || entry.env !== undefined) && entry.command === undefined) {
+    issue([entry.env === undefined ? 'args' : 'env'], 'env goes with command (args too)')
+  }
+  if (entry.headers !== undefined && entry.url === undefined) {
+    issue(['headers'], 'headers go with url')
+  }
+  const values: [(string | number)[], string, string | undefined][] = [
+    ...(entry.args ?? []).map((value, index): [(string | number)[], string, undefined] => [
+      ['args', index],
+      value,
+      undefined,
+    ]),
+    ...Object.entries(entry.env ?? {}).map(
+      ([key, value]): [(string | number)[], string, string] => [['env', key], value, key],
+    ),
+    ...Object.entries(entry.headers ?? {}).map(
+      ([key, value]): [(string | number)[], string, string] => [
+        ['headers', key],
+        value,
+        `${entry.name}_${key}`,
+      ],
+    ),
+    ...(entry.url === undefined
+      ? []
+      : [[['url'], entry.url, undefined] as [(string | number)[], string, undefined]]),
+  ]
+  for (const [path, value, variable] of values) {
+    const references = [...value.matchAll(VARIABLE_REFERENCE)].map((match) => match[1] ?? '')
+    const invalid = references.find((name) => !VARIABLE_NAME.test(name))
+    if (invalid !== undefined) {
+      issue(path, `\${${invalid}} is not a variable name; use letters, digits and underscores`)
+      continue
+    }
+    const literal = value.replace(VARIABLE_REFERENCE, '')
+    const keyed = variable !== undefined && path[0] !== 'url' && SECRET_KEY.test(String(path[1]))
+    if (looksLikeSecret(literal) || (keyed && references.length === 0)) {
+      const suggestion = (variable ?? 'TOKEN').toUpperCase().replace(/[^A-Z0-9_]/g, '_')
+      issue(path, `put the secret in an environment variable, e.g. '\${${suggestion}}'`)
+    }
+  }
+}
+
+function noRepeatedServer(entries: readonly McpEntry[], context: z.RefinementCtx): void {
+  const seen = new Set<string>()
+  for (const entry of entries) {
+    const name = typeof entry === 'string' ? entry : entry.name
+    if (seen.has(name)) context.addIssue({ code: 'custom', message: `${name} is listed twice` })
+    seen.add(name)
+  }
+}
+
 export const ConfigFileSchema = z.strictObject({
   provider: z.enum(['claude', 'codex', 'ollama']).optional(),
   model: z.string().trim().min(1).optional(),
@@ -136,14 +227,7 @@ export const ConfigFileSchema = z.strictObject({
   verify: z.boolean().optional(),
   investigate: z.boolean().optional(),
   resolveThreads: z.boolean().optional(),
-  mcp: z
-    .array(
-      z
-        .string()
-        .trim()
-        .regex(/^[\w .-]+$/, 'use the server name as your AI CLI shows it'),
-    )
-    .optional(),
+  mcp: z.array(McpEntrySchema).superRefine(noRepeatedServer).optional(),
   ignore: Globs.optional(),
   rules: z.array(RuleSchema).optional(),
   disabledRules: z.array(z.string().trim().min(1)).optional(),
