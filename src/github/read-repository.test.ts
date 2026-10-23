@@ -32,6 +32,7 @@ describe('repositoryReader', () => {
     'repos/acme/shop/../../x',
     'repos/acme/shop/%2e%2e/%2e%2e/victim/private/contents/.env',
     'repos/acme/shop/%2E%2E/x',
+    'repos/acme/shop/contents/%2e%2e/%2e%2e/%2e%2e/victim/private/contents/.env',
     'repos/acme/shop/./pulls',
     'repos/acme/shop\\..\\x',
     'repos/acme/shop/actions/variables',
