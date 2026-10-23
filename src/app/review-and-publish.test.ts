@@ -197,7 +197,7 @@ const INPUT: ReviewAndPublishInput = {
   publish: true,
   options: { investigate: false, verify: false },
   userLayers: [],
-  userMcpServers: [],
+  mcp: { names: [], declared: [] },
 }
 
 describe('reviewAndPublish', () => {

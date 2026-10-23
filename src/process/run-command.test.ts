@@ -7,7 +7,13 @@ import {
   CommandOutputTooLargeError,
   CommandTimeoutError,
 } from './errors.js'
-import { killDetachedChildren, runCommand, runCommandBytes } from './run-command.js'
+import { spawn } from 'node:child_process'
+import {
+  killDetachedChildren,
+  runCommand,
+  runCommandBytes,
+  trackDetachedChild,
+} from './run-command.js'
 
 const NODE = process.execPath
 
@@ -208,5 +214,35 @@ describe('detached children', () => {
 
     expect(result.exitCode).toBe(0)
     expect(() => killDetachedChildren()).not.toThrow()
+  })
+
+  it('stops a child someone else started and tracked', async () => {
+    const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30_000)'], {
+      detached: true,
+      stdio: 'ignore',
+    })
+    const exited = new Promise((done) => child.once('exit', done))
+    trackDetachedChild(child.pid ?? 0)
+
+    killDetachedChildren()
+
+    await exited
+    expect(child.signalCode).toBe('SIGTERM')
+  })
+
+  it('leaves a child alone once it is untracked', async () => {
+    const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30_000)'], {
+      detached: true,
+      stdio: 'ignore',
+    })
+    const untrack = trackDetachedChild(child.pid ?? 0)
+    untrack()
+
+    killDetachedChildren()
+
+    await new Promise((done) => setTimeout(done, 200))
+    expect(child.exitCode).toBeNull()
+    expect(child.signalCode).toBeNull()
+    child.kill('SIGKILL')
   })
 })

@@ -81,6 +81,7 @@ interface Harness {
   stdout: () => string
   stderr: () => string
   fetches: FetchPullRequestOptions[]
+  mcpChecks: [string, string[]][]
   stateFetches: FetchReviewStateOptions[]
   posts: CreateReviewOptions[]
   comparisons: CompareOptions[]
@@ -185,6 +186,7 @@ function harness(
   const out: string[] = []
   const err: string[] = []
   const fetches: FetchPullRequestOptions[] = []
+  const mcpChecks: [string, string[]][] = []
   const stateFetches: FetchReviewStateOptions[] = []
   const posts: CreateReviewOptions[] = []
   const comparisons: CompareOptions[] = []
@@ -297,6 +299,11 @@ function harness(
     createExtractor: () => extractor,
     runsSkills: () => false,
     pathSize: async () => 2048,
+    checkMcpNames: async (provider, names) => {
+      if (names.length === 0) return undefined
+      mcpChecks.push([provider, names.map(({ name }) => name)])
+      return provider === 'claude' ? { provider, names: [...names] } : undefined
+    },
     createProvider: (name, options) => {
       providers.push({ name, options })
       if (name !== 'claude') return createProvider(name, options)
@@ -333,6 +340,7 @@ function harness(
     kills: () => kills,
     aborts,
     fetches,
+    mcpChecks,
     stateFetches,
     posts,
     comparisons,
@@ -1394,7 +1402,11 @@ describe('run with the repository investigation', () => {
 
     await run(['review', 'acme/shop#12', '--dry-run'], h.deps)
 
-    expect(h.providers[0]?.options).toEqual({ model: undefined, userMcpServers: ['linear'] })
+    expect(h.providers[0]?.options).toEqual({
+      model: undefined,
+      mcpNames: { provider: 'claude', names: [{ name: 'linear' }] },
+    })
+    expect(h.mcpChecks).toEqual([['claude', ['linear']]])
   })
 
   it("leaves the user's MCP servers out when the investigation is off", async () => {
@@ -1402,7 +1414,7 @@ describe('run with the repository investigation', () => {
 
     await run(['review', 'acme/shop#12', '--dry-run', '--no-investigate'], h.deps)
 
-    expect(h.providers[0]?.options).not.toHaveProperty('userMcpServers')
+    expect(h.providers[0]?.options).not.toHaveProperty('mcpNames')
   })
 
   it("leaves the user's MCP servers out when the head cannot be fetched", async () => {
@@ -1414,8 +1426,39 @@ describe('run with the repository investigation', () => {
 
     await run(['review', 'acme/shop#12', '--dry-run'], h.deps)
 
-    expect(h.providers[0]?.options).not.toHaveProperty('userMcpServers')
+    expect(h.providers[0]?.options).not.toHaveProperty('mcpNames')
     expect(h.stderr()).not.toContain('is public')
+  })
+
+  it('checks no MCP server name without mcp in the config', async () => {
+    const h = harness()
+
+    await run(['review', 'acme/shop#12', '--dry-run'], h.deps)
+
+    expect(h.mcpChecks).toEqual([])
+  })
+
+  it('stops before fetching when a variable of a declared MCP server is not set', async () => {
+    const h = harness({
+      files: memoryFiles({
+        '/cfg/config.yml':
+          "mcp: [{ name: tickets, command: node, env: { TICKETS_TOKEN: '${TICKETS_TOKEN}' } }]",
+      }),
+    })
+
+    expect(await run(['review', 'acme/shop#12', '--dry-run'], h.deps)).toBe(2)
+    expect(h.stderr()).toContain('mcp server tickets: TICKETS_TOKEN is not set.')
+    expect(h.fetches).toHaveLength(0)
+  })
+
+  it('stops before fetching when a named MCP server is unknown', async () => {
+    const h = harness({ files: memoryFiles({ '/cfg/config.yml': 'mcp: [nope]' }) })
+    h.deps.checkMcpNames = async () => {
+      throw new UsageError('Claude Code has no MCP server named "nope".')
+    }
+
+    expect(await run(['review', 'acme/shop#12', '--dry-run'], h.deps)).toBe(2)
+    expect(h.fetches).toHaveLength(0)
   })
 
   it('warns that MCP servers can leak into a review on a public repository', async () => {
@@ -1439,12 +1482,14 @@ describe('run with the repository investigation', () => {
     expect(h.stderr()).not.toContain('is public')
   })
 
-  it('refuses mcp with another provider before fetching', async () => {
+  it('refuses a named MCP server with Ollama before fetching', async () => {
     const h = harness({ files: memoryFiles({ '/cfg/config.yml': 'mcp: [linear]' }) })
 
-    expect(await run(['review', 'acme/shop#12', '--provider', 'codex'], h.deps)).toBe(2)
+    expect(
+      await run(['review', 'acme/shop#12', '--provider', 'ollama', '--model', 'qwen'], h.deps),
+    ).toBe(2)
     expect(h.stderr()).toContain(
-      'phada: mcp in your config works only with --provider claude for now.',
+      'phada: MCP server linear: Ollama has no MCP servers of its own; declare it with command or url in your config.',
     )
     expect(h.fetches).toHaveLength(0)
   })
@@ -1827,6 +1872,20 @@ describe('phada watch', () => {
     expect(h.providers[0]?.options).toMatchObject({ detached: true })
     expect(h.stderr()).toMatch(/\[\d\d:\d\d\] Reviewing acme\/shop#12 at a1b2c3d…/)
     expect(h.stderr()).toContain(`Published acme/shop#12: ${REVIEW_URL}`)
+  })
+
+  it('checks the MCP server names once, when the watch starts', async () => {
+    const h = harness({
+      files: withConfig(`${WATCH_CONFIG}mcp: [linear]\n`),
+      listPulls: listed,
+      review: () => Promise.resolve(WITH_FINDING),
+    })
+
+    expect(await run(['watch', '--once', '--backfill'], h.deps)).toBe(0)
+    expect(h.mcpChecks).toEqual([['claude', ['linear']]])
+    expect(h.providers[0]?.options).toMatchObject({
+      mcpNames: { provider: 'claude', names: [{ name: 'linear' }] },
+    })
   })
 
   it('saves the findings a watch review published', async () => {

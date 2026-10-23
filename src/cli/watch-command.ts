@@ -7,7 +7,8 @@ import { watchRepositories } from '../app/watch-repositories.js'
 import type { WatchDeps } from '../app/watch-repositories.js'
 import { repositoryCache } from '../config/cache-paths.js'
 import { dataFiles } from '../config/data-paths.js'
-import { mergeConfig, resolveProvider, userMcpServers } from '../config/merge-config.js'
+import { mergeConfig, resolveProvider } from '../config/merge-config.js'
+import { resolveMcp, userMcp } from '../config/mcp-servers.js'
 import { BUILT_IN_SKILL, builtInSkillError } from '../app/review-passes.js'
 import { loadTopLevelUserLayers, loadUserLayers } from '../config/user-config.js'
 import { historyEnabled, resolveWatchSettings } from '../config/watch-settings.js'
@@ -43,7 +44,10 @@ import {
   renderReview,
   reviewRunJson,
 } from './review-wiring.js'
+import { mcpNameChecker } from './review-wiring.js'
 import type { Choice, ReviewWiringDeps } from './review-wiring.js'
+import type { CheckedNames, NameCheck } from './mcp-names.js'
+import type { McpNameEntry, ResolvedMcp } from '../config/mcp-servers.js'
 import { printWatchEvents } from './watch-events.js'
 import { watchStatusText } from './watch-status.js'
 import { ABORTED_EXIT_CODE, createStopControl, trackRunningJob } from './watch-stop.js'
@@ -111,9 +115,10 @@ export async function runWatch(command: WatchCommand, deps: WatchCommandDeps): P
   }
   const token = deps.env.GITHUB_TOKEN?.trim() || deps.env.GH_TOKEN?.trim()
   if (!token) throw new MissingGitHubTokenError()
+  const check = memoized(mcpNameChecker(deps))
   for (const { repo } of settings.repos) {
     try {
-      await jobSetup(repo, deps)
+      await jobSetup(repo, deps, check)
     } catch (error) {
       if (!(error instanceof UsageError)) throw error
       throw new UsageError(`${repo}: ${error.message}`)
@@ -123,7 +128,7 @@ export async function runWatch(command: WatchCommand, deps: WatchCommandDeps): P
   try {
     return await deps.withLock(files.lock, () => {
       locked = true
-      return watchUnderLock(command, settings, token, deps)
+      return watchUnderLock(command, settings, token, deps, check)
     })
   } catch (error) {
     if (locked || !(error instanceof MirrorLockTimeoutError)) throw error
@@ -139,6 +144,7 @@ async function watchUnderLock(
   settings: WatchSettings,
   token: string,
   deps: WatchCommandDeps,
+  check: NameCheck,
 ): Promise<number> {
   const history = await deps.openHistoryStore(dataFiles(deps.env, deps.home).history)
   const stop = createStopControl({
@@ -150,7 +156,7 @@ async function watchUnderLock(
   })
   const watched = watchRepositories(
     { settings, backfill: command.backfill, once: command.once },
-    watchDeps(settings, token, history, stop, deps),
+    watchDeps(settings, token, history, stop, deps, check),
   ).then((exit) => {
     if (stop.abortedTwice()) return ABORTED_EXIT_CODE
     history.close()
@@ -172,6 +178,7 @@ function watchDeps(
   history: HistoryStore,
   stop: StopControl,
   deps: WatchCommandDeps,
+  check: NameCheck,
 ): WatchDeps {
   const choices = new Map<number, Choice>()
   const events = trackRunningJob(
@@ -188,7 +195,7 @@ function watchDeps(
     branchHead: (repo, branch, etag) =>
       deps.fetchBranchHead({ ...splitRepoName(repo), branch, token, ...withEtag(etag) }),
     runJob: async (job) => {
-      const setup = await jobSetup(job.repo, deps)
+      const setup = await jobSetup(job.repo, deps, check)
       choices.set(job.id, setup.choice)
       return runJob(job, setup, settings, token, deps)
     },
@@ -269,18 +276,29 @@ async function refreshDefaultBranch(
 interface JobSetup {
   userLayers: ConfigLayer[]
   choice: Choice
-  mcp: string[]
+  mcp: ResolvedMcp
 }
 
-async function jobSetup(repo: string, deps: WatchCommandDeps): Promise<JobSetup> {
+function memoized(check: NameCheck): NameCheck {
+  const checked = new Map<string, Promise<CheckedNames | undefined>>()
+  return (provider, names) => {
+    const key = JSON.stringify([provider, names])
+    const known = checked.get(key) ?? check(provider, names)
+    checked.set(key, known)
+    return known
+  }
+}
+
+async function jobSetup(repo: string, deps: WatchCommandDeps, check: NameCheck): Promise<JobSetup> {
   const userLayers = await loadUserLayers({ ...deps, ...splitRepoName(repo) })
   const choice = resolveProvider({}, userLayers)
-  const mcp = userMcpServers(userLayers)
+  const mcp = resolveMcp(userMcp(userLayers), deps.env)
   assertProviderChoice(
     choice.provider,
-    { ...(choice.model === undefined ? {} : { model: choice.model }), userMcpServers: mcp },
+    { ...(choice.model === undefined ? {} : { model: choice.model }), mcp },
     'config',
   )
+  const mcpNames = await check(choice.provider, mcp.names)
   const skills = diskSkillCatalog(deps.files, deps.env, deps.home)
   const native = (deps.runsSkills ?? providerRunsSkills)(choice.provider)
   for (const { name, mode } of mergeConfig(userLayers).review.skills?.entries ?? []) {
@@ -290,7 +308,7 @@ async function jobSetup(repo: string, deps: WatchCommandDeps): Promise<JobSetup>
       throw builtInSkillError(name)
     }
   }
-  return { userLayers, choice, mcp }
+  return { userLayers, choice: mcpNames === undefined ? choice : { ...choice, mcpNames }, mcp }
 }
 
 async function runJob(
@@ -313,7 +331,7 @@ async function runJob(
       publish: repo?.publish ?? true,
       options: {},
       userLayers,
-      userMcpServers: mcp,
+      mcp,
     },
     {
       fetchPullRequest: (pull) => deps.fetchPullRequest({ ...pull, token }),

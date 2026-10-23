@@ -56,7 +56,7 @@ export function snippet(text: string, maxLength: number): string {
   return redactSecrets(text).trim().slice(0, maxLength)
 }
 
-function withoutGitHubTokens(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+export function withoutGitHubTokens(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return Object.fromEntries(Object.entries(env).filter(([key]) => !GITHUB_TOKEN_KEYS.has(key)))
 }
 

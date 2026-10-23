@@ -174,13 +174,6 @@ export function resolveProvider(
   return model === undefined ? { provider } : { provider, model }
 }
 
-export function userMcpServers(userLayers: readonly ConfigLayer[]): string[] {
-  const servers = (['user-repo', 'user'] as const).flatMap((kind) =>
-    userLayers.filter((layer) => layer.kind === kind).flatMap((layer) => layer.config.mcp ?? []),
-  )
-  return [...new Set(servers)]
-}
-
 function reviewUserSettings(
   commandsLayer: ConfigLayer | undefined,
   readDirsLayer: ConfigLayer | undefined,

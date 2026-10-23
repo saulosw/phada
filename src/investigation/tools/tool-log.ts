@@ -3,6 +3,7 @@ export type ReviewPass = 'review' | 'verify' | 'recheck'
 export interface ToolCallRecord {
   pass: ReviewPass
   tool: string
+  server?: string
   args: unknown
   paths: string[]
   touched: string[]

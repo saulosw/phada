@@ -35,14 +35,20 @@ import { runInit } from './cli/init.js'
 import { runPrompt } from './cli/prompt-command.js'
 import { runRules } from './cli/rules-command.js'
 import { runHistory, runHistoryPrune } from './cli/history-command.js'
-import { pullRequestReviewDeps, renderReview, reviewRunJson } from './cli/review-wiring.js'
+import {
+  mcpNameChecker,
+  pullRequestReviewDeps,
+  renderReview,
+  reviewRunJson,
+} from './cli/review-wiring.js'
 import { assertProviderChoice } from './cli/provider-choice.js'
 import type { ProviderOptions } from './cli/provider-choice.js'
 export { assertProviderChoice } from './cli/provider-choice.js'
 export type { ProviderOptions } from './cli/provider-choice.js'
 import type { Choice } from './cli/review-wiring.js'
 import { toTerminalText } from './cli/terminal-text.js'
-import { resolveProvider, userMcpServers } from './config/merge-config.js'
+import { resolveProvider } from './config/merge-config.js'
+import { resolveMcp, userMcp } from './config/mcp-servers.js'
 import { loadUserLayers } from './config/user-config.js'
 import { formatPullRequestRef } from './github/pull-request-ref.js'
 import type { PullRequest } from './github/pull-request.js'
@@ -62,9 +68,15 @@ export function createProvider(name: string, options: ProviderOptions): ReviewPr
   assertProviderChoice(name, options)
   switch (name) {
     case 'claude':
-      return new ClaudeCliProvider(options)
+      return new ClaudeCliProvider({
+        ...cliOptions(options),
+        ...(options.mcpNames?.provider === 'claude' ? { mcpNames: options.mcpNames.names } : {}),
+      })
     case 'codex':
-      return new CodexCliProvider(options)
+      return new CodexCliProvider({
+        ...cliOptions(options),
+        ...(options.mcpNames?.provider === 'codex' ? { mcpNames: options.mcpNames.names } : {}),
+      })
     default:
       return new OllamaProvider({ model: options.model ?? '' })
   }
@@ -121,11 +133,13 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
       files: deps.files,
     })
     const choice = resolveProvider({ provider: command.provider, model: command.model }, userLayers)
-    const mcp = userMcpServers(userLayers)
+    const mcp = resolveMcp(userMcp(userLayers), deps.env)
     assertProviderChoice(choice.provider, {
       ...(choice.model === undefined ? {} : { model: choice.model }),
-      userMcpServers: mcp,
+      mcp,
     })
+    const mcpNames = await mcpNameChecker(deps)(choice.provider, mcp.names)
+    const checked = mcpNames === undefined ? choice : { ...choice, mcpNames }
 
     deps.onSignal(() => deps.abort(130))
     deps.stderr.write(`Fetching ${formatPullRequestRef(command.ref)}…\n`)
@@ -148,9 +162,9 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
           ...(command.skills === undefined ? {} : { skills: command.skills }),
         },
         userLayers,
-        userMcpServers: mcp,
+        mcp,
       },
-      reviewAndPublishDeps(deps, token, choice, command),
+      reviewAndPublishDeps(deps, token, checked, command),
     )
     await saveRun(deps, userLayers, reviewRun, {
       source: 'manual',
@@ -348,5 +362,12 @@ function saveFeedback(deps: Pick<MainDeps, 'stderr'>, save: () => void): void {
     deps.stderr.write(
       `Warning: could not save the comments' feedback in the history (${toTerminalText(errorMessage(error))}).\n`,
     )
+  }
+}
+
+function cliOptions({ model, detached }: ProviderOptions): { model?: string; detached?: boolean } {
+  return {
+    ...(model === undefined ? {} : { model }),
+    ...(detached === undefined ? {} : { detached }),
   }
 }

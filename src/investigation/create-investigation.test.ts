@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { z } from 'zod'
 import { indexFixture } from '../../test/support/index-fixture.js'
 import { openRepositoryGraph } from '../graph/repository-graph.js'
 import type { Checkout } from '../repository/checkout.js'
@@ -75,5 +76,45 @@ describe('createInvestigation with related repositories', () => {
 
     expect(withRepo).toEqual(['read_file', 'grep', 'list'])
     expect(closed).toEqual(['reviewed'])
+  })
+
+  it('adds the MCP tools after the repository tools, lists the servers and closes them', async () => {
+    let closed = false
+    const investigation = createInvestigation(checkout(), {
+      mcp: {
+        tools: [
+          {
+            definition: {
+              name: 'tickets__get_ticket',
+              description: 'Read a ticket.',
+              inputSchema: { type: 'object' },
+              server: 'tickets',
+            },
+            args: z.record(z.string(), z.unknown()),
+            run: async () => ({ text: 'ticket', paths: [], touched: [] }),
+          },
+        ],
+        servers: [
+          { name: 'tickets', description: 'Tickets', prefix: 'tickets__' },
+          { name: 'linear' },
+        ],
+        close: async () => {
+          closed = true
+        },
+      },
+    })
+    const toolbox = investigation.tools('review')
+
+    expect(toolbox.definitions.map(({ name }) => name).at(-1)).toBe('tickets__get_ticket')
+    expect(toolbox.mcpServers).toEqual([
+      { name: 'tickets', description: 'Tickets', prefix: 'tickets__' },
+      { name: 'linear' },
+    ])
+    await investigation.close()
+    expect(closed).toBe(true)
+  })
+
+  it('has no MCP servers on the toolbox without MCP', () => {
+    expect(createInvestigation(checkout()).tools('review')).not.toHaveProperty('mcpServers')
   })
 })

@@ -1,3 +1,4 @@
+import type { ResolvedMcp } from '../config/mcp-servers.js'
 import type { ConfigLayer } from '../config/types.js'
 import { loadContext } from '../context/load-context.js'
 import { splitDiff } from '../context/split-diff.js'
@@ -40,7 +41,11 @@ import {
   relatedSummaries,
 } from './related-report.js'
 import type { RankedRelated, RelatedReport } from './related-report.js'
+import { connectMcp } from '../investigation/mcp/mcp-client.js'
+import type { McpServerReport } from '../investigation/tools/report.js'
 import { openNativeRunner } from './native-skill.js'
+import { fromOutsideAuthor, hasMcp, mcpOff, openMcp } from './open-mcp.js'
+import type { ConnectMcp, OpenedMcp } from './open-mcp.js'
 import type { NativeRunner, NativeRunnerDeps, NativeRunnerInput } from './native-skill.js'
 import { buildPasses } from './review-passes.js'
 import type { PassPlan, SkillCatalog } from './review-passes.js'
@@ -61,7 +66,7 @@ export interface ReviewOptions {
 export interface PullRequestReviewInput {
   pullRequest: PullRequest
   userLayers: readonly ConfigLayer[]
-  userMcpServers: readonly string[]
+  mcp: ResolvedMcp
   options: ReviewOptions
   loaded?: LoadedContext
   recheck?: readonly RecheckThread[]
@@ -86,7 +91,8 @@ export interface PullRequestReviewDeps {
   openObservedStore: () => Promise<ObservedStore>
   extractor: Extractor
   now: () => number
-  createProvider: (userMcpServers: readonly string[]) => ReviewProvider
+  createProvider: (useNames: boolean) => ReviewProvider
+  connectMcp?: ConnectMcp
   watchProvider?: (provider: ReviewProvider, pass: ReviewPass) => ReviewProvider
   related?: RelatedDeps
   skills: SkillCatalog
@@ -170,6 +176,8 @@ export async function reviewPullRequest(
   let relatedStatus: RelatedReport['status'] =
     loaded.repos.length === 0 ? 'none' : investigate ? 'unavailable' : 'off'
   let relatedReason: string | undefined
+  let mcpOpened: OpenedMcp | undefined
+  const outside = hasMcp(input.mcp) && fromOutsideAuthor(pullRequest)
   try {
     if (investigate && loaded.diff.trim() !== '') {
       let fetched: { mirror: GitMirror; sha: string; checkout: Checkout } | undefined
@@ -221,7 +229,19 @@ export async function reviewPullRequest(
           }
         }
         if (graph === undefined) kept = rankOpened(opened, undefined)
+        if (outside) {
+          deps.events.warning(
+            `${pullRequest.repo}#${pullRequest.number} is from an outside author: reviewing without your MCP servers.`,
+          )
+        } else if (hasMcp(input.mcp)) {
+          mcpOpened = await openMcp(
+            input.mcp,
+            deps.connectMcp ?? ((server) => connectMcp(server, { env: deps.env ?? {} })),
+            deps.events.warning,
+          )
+        }
         investigation = createInvestigation(fetched.checkout, {
+          ...(mcpOpened?.investigation === undefined ? {} : { mcp: mcpOpened.investigation }),
           ...(graph === undefined ? {} : { graph }),
           related: kept.map(({ item }) => ({
             repo: item.repo,
@@ -258,14 +278,16 @@ export async function reviewPullRequest(
     })
     deps.events.relatedReady(relatedReport)
 
-    const servers = investigation === undefined ? [] : input.userMcpServers
+    const servers = investigation === undefined ? [] : (mcpOpened?.readFrom ?? [])
     if (servers.length > 0 && !pullRequest.private) {
       deps.events.warning(
         `${pullRequest.repo} is public: what the AI reads from ${servers.join(', ')} may end up in the published review.`,
       )
     }
 
-    const provider = deps.createProvider(servers)
+    const provider = deps.createProvider(
+      investigation !== undefined && !outside && input.mcp.names.length > 0,
+    )
     const watch = deps.watchProvider ?? ((watched: ReviewProvider) => watched)
     if (planned.nativeSkills.size > 0) {
       native = await (deps.openNativeRunner ?? openNativeRunner)(
@@ -324,6 +346,7 @@ export async function reviewPullRequest(
       ...(investigation === undefined ? {} : { log: investigation.log }),
       findings: reviewed?.findings ?? [],
       external: reviewed?.externalCalls ?? [],
+      ...mcpReports(investigation !== undefined, outside, input.mcp, mcpOpened),
     })
     return {
       outcome,
@@ -522,4 +545,15 @@ function learn(
     events.warning(`Could not save what this review learned (${errorMessage(error)}).`)
     return []
   }
+}
+
+function mcpReports(
+  investigated: boolean,
+  outside: boolean,
+  mcp: ResolvedMcp,
+  opened: OpenedMcp | undefined,
+): { mcp?: McpServerReport[] } {
+  if (!investigated) return {}
+  const reports = outside ? mcpOff(mcp) : (opened?.reports ?? [])
+  return reports.length === 0 ? {} : { mcp: reports }
 }

@@ -17,6 +17,7 @@ import {
   pullRequestDetails,
   rulesSection,
   SEVERITY,
+  mcpServersOf,
   toolNamesOf,
 } from './prompt-parts.js'
 import type { Finding, ReviewRequest, SkillPass } from './types.js'
@@ -119,7 +120,7 @@ function instructionsFor(
     hasImpact(impact) ? IMPACT : '',
     CONFIDENCE_SCALE,
     SEVERITY,
-    diffScope(context, toolNamesOf(tools)),
+    diffScope(context, toolNamesOf(tools), mcpServersOf(tools)),
     LINE_NUMBERS,
     OUTPUT_FORMAT,
   ].filter((section) => section !== '')

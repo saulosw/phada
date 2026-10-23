@@ -10,3 +10,9 @@ const SECRET_PATTERNS: readonly RegExp[] = [
 export function redactSecrets(text: string): string {
   return SECRET_PATTERNS.reduce((redacted, pattern) => redacted.replace(pattern, REDACTED), text)
 }
+
+export function looksLikeSecret(text: string): boolean {
+  return SECRET_PATTERNS.some((pattern) =>
+    new RegExp(pattern.source, pattern.flags.replace('g', '')).test(text),
+  )
+}

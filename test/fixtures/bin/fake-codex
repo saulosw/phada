@@ -28,7 +28,11 @@ if (env.FAKE_CODEX_CAPTURE) {
         ? readFileSync(outputSchemaPath, 'utf8')
         : null,
     cwd: process.cwd(),
-    env: { GITHUB_TOKEN: env.GITHUB_TOKEN, GH_TOKEN: env.GH_TOKEN },
+    env: {
+      GITHUB_TOKEN: env.GITHUB_TOKEN,
+      GH_TOKEN: env.GH_TOKEN,
+      ...Object.fromEntries(Object.entries(env).filter(([key]) => key.startsWith('PHADA_MCP_'))),
+    },
   }
   writeFileSync(env.FAKE_CODEX_CAPTURE, JSON.stringify(captured))
 }

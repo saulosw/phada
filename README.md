@@ -611,21 +611,60 @@ Related: acme/web (consumer, 4 call sites) · acme/sdk (linked) · acme/admin (n
   the review goes on. `--dry-run` shows a `Related repositories` section, and the JSON a `related`
   block with each repository, its commit, its link and why one was skipped.
 
-### Your AI's MCP servers
+### MCP servers
 
-With Claude Code, your own config can let the AI use some of the MCP servers you set up in Claude
-Code, for example to read the ticket a pull request refers to:
+Your own config can give the AI MCP servers to read from during the review, for example the
+ticket a pull request refers to. A server is either **named**, as your AI CLI already knows it,
+or **declared** in Phada's config, for any provider:
 
 ```yaml
 # ~/.config/phada/config.yml
-mcp: [linear, 'claude.ai Linear']
+mcp:
+  - linear # a server of your Claude Code or Codex
+  - name: 'claude.ai Linear' # a claude.ai connector, narrowed to some tools
+    tools: [get_issue]
+  - name: tickets # declared: Phada starts it
+    command: npx
+    args: [-y, '@acme/tickets-mcp']
+    env: { TICKETS_TOKEN: '${TICKETS_TOKEN}' }
+    description: The ticket cited in the pull request title; read it before judging business rules
+  - name: docs # declared: streamable HTTP
+    url: https://mcp.acme.dev/mcp
+    headers: { Authorization: 'Bearer ${DOCS_TOKEN}' }
 ```
 
-Only the servers you name are allowed, and only from your own config (never from the
-repository's `.phada/`); claude.ai connectors are named as `claude.ai <Name>`. Calls to them are
-counted in the `Investigated:` line and the JSON, and a finding based on one cites it as
-`<server>: <what it read>`. On a public repository Phada warns that what the AI read there may end
-up in the published review. `mcp` does not work with Codex or Ollama yet.
+- **Named servers** run inside your AI CLI. With Claude Code, any server it has (`claude mcp
+list`; claude.ai connectors as `claude.ai <Name>`). With Codex, Phada reads the server with
+  `codex mcp get <name> --json` and passes it to the run, keeping header and environment values
+  off the command line. Every tool of a named server is allowed unless `tools` lists the ones
+  to allow. Ollama has no servers of its own: declare them instead. A name your AI CLI does not
+  know, or a server disabled in Codex, stops the command before the review.
+- **Declared servers** are started (`command`, `args`, `env`) or reached over streamable HTTP
+  (`url`, `headers`) by Phada itself, which offers their tools to the AI next to the
+  [investigation tools](#repository-investigation), with Claude Code, Codex and Ollama alike, in
+  the same budget of calls and bytes. Only the tools a server marks as read-only are offered;
+  `tools` lists exactly the ones to allow instead, write tools included, at your own risk. A
+  server that does not start or refuses the credentials is reported and the review goes on
+  without it. HTTP servers that need an OAuth login are not supported: name them in your AI CLI.
+- **Secrets** come from environment variables: `${NAME}` in `env`, `headers`, `args` and `url`,
+  whole or inside a value (`Bearer ${DOCS_TOKEN}`). A value that looks like a secret written
+  in the file (a token, or any value of a key such as `Authorization`, `*_TOKEN` or `*_KEY`) is
+  refused when the config is read, and a variable that is not set stops the command before the
+  review. A declared server gets your environment without the GitHub token, plus its `env`.
+  The value of a variable used for a secret (a key or variable such as `Authorization`,
+  `*_TOKEN` or `*_KEY`, or a value shaped like a token) is replaced with `[REDACTED]` in what the
+  server answers and in its error messages; other values, such as `${HOME}`, are left as they are.
+- `description` tells the AI what a server is for; it is added to the prompt only when a server
+  is configured.
+
+Servers are read only from your own config (never from the repository's `.phada/`), only while
+the [investigation](#repository-investigation) runs, and never for a pull request of a public
+repository from an outside author (not an owner, member or collaborator): Phada reviews those
+without any of your servers and says so. Calls count in the `Investigated:` line
+(`· 3 MCP calls (tickets, linear)`), `--dry-run` lists each call and each server with its state
+and the tools it hid, and the JSON has them in `investigation.calls[].server` and
+`investigation.mcp`. A finding based on a server cites it as `<server>: <what it read>`. On a
+public repository Phada warns that what the AI read there may end up in the published review.
 
 ## Repository map
 
@@ -716,7 +755,7 @@ context:
 | `verify`                  | Verify findings, like `--verify`                                                                                                             | both (root)             |
 | `investigate`             | `false` turns the [repository investigation](#repository-investigation) off, like `--no-investigate`                                         | both (root)             |
 | `resolveThreads`          | `false` turns off the [recheck of earlier comments](#comments-fixed-in-a-new-commit), like `--no-resolve`                                    | both (root)             |
-| `mcp`                     | Names of your Claude Code MCP servers the AI may use (see [Your AI's MCP servers](#your-ais-mcp-servers))                                    | your config             |
+| `mcp`                     | MCP servers the AI may use: names from your AI CLI or servers declared with `command` or `url` (see [MCP servers](#mcp-servers))             | your config             |
 | `context.defaults`        | `false` sends only the files listed in `context.files`, not the docs Phada picks                                                             | both (root)             |
 | `context.files`           | Files of the repository to always send (globs allowed), first in line for the budget                                                         | both                    |
 | `context.repos`           | Other repositories the review may read (see [Related repositories](#related-repositories))                                                   | both (root)             |
@@ -796,14 +835,15 @@ Claude Code runs without its own tools or your personal settings (hooks, plugins
 `CLAUDE.md`). A skill named in `review.skills` runs natively in a checkout of the pull request
 with only that skill or plugin loaded and the limits described in
 [Skills that run natively](#skills-that-run-natively). The only MCP servers it can use are
-Phada's and the ones your config names in `mcp`.
+Phada's (which also carries the servers declared in `mcp`) and the ones `mcp` names.
 
 Codex keeps a few built-in tools enabled that, with Codex CLI 0.160.0, can neither read your
 files nor reach the network. Phada also turns off the apps connected to your ChatGPT account,
 the shell, web search, plugins and sub-agents, and runs it read-only. Codex adds features
 between versions, so the list of disabled features was checked with that version. Codex also
 still reads your global `~/.codex/AGENTS.md` (or `$CODEX_HOME/AGENTS.md`) on every review, so
-keep it free of instructions you do not want applied to your reviews.
+keep it free of instructions you do not want applied to your reviews. Your own MCP servers stay
+off unless `mcp` names them (see [MCP servers](#mcp-servers)).
 
 ### Local models with Ollama
 

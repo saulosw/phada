@@ -22,6 +22,13 @@ export function killDetachedChildren(): void {
   detachedChildren.clear()
 }
 
+export function trackDetachedChild(pid: number): () => void {
+  detachedChildren.add(pid)
+  return () => {
+    detachedChildren.delete(pid)
+  }
+}
+
 export interface RunCommandOptions {
   stdin?: string
   cwd?: string

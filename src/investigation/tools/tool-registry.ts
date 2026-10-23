@@ -1,5 +1,11 @@
 import { z } from 'zod'
-import type { ToolCallOptions, ToolDefinition, ToolResult, Toolbox } from '../toolbox.js'
+import type {
+  McpServerInfo,
+  ToolCallOptions,
+  ToolDefinition,
+  ToolResult,
+  Toolbox,
+} from '../toolbox.js'
 import { BUDGET_EXHAUSTED, DEFAULT_TOOL_BUDGET, MAX_ANSWER_BYTES } from './budget.js'
 import type { ToolBudget } from './budget.js'
 import { CheckoutError } from '../../repository/checkout.js'
@@ -28,12 +34,19 @@ export interface RegisteredTool<A> {
   run(args: A): Promise<ToolOutput>
 }
 
+export interface ToolboxOptions {
+  budget?: ToolBudget
+  mcpServers?: readonly McpServerInfo[]
+}
+
 export function createToolbox(
   tools: readonly RegisteredTool<any>[],
   log: ToolLog,
   pass: ReviewPass,
-  budget: ToolBudget = DEFAULT_TOOL_BUDGET,
+  options: ToolboxOptions = {},
 ): Toolbox {
+  const budget = options.budget ?? DEFAULT_TOOL_BUDGET
+  const mcpServers = options.mcpServers ?? []
   const byName = new Map(tools.map((tool) => [tool.definition.name, tool]))
   const touched = new Set<string>()
   let calls = 0
@@ -41,6 +54,7 @@ export function createToolbox(
 
   return {
     definitions: tools.map((tool) => tool.definition),
+    ...(mcpServers.length === 0 ? {} : { mcpServers }),
     touchedPaths: () => [...touched],
     async call(name: string, args: unknown, options: ToolCallOptions = {}): Promise<ToolResult> {
       const startedAt = performance.now()
@@ -49,10 +63,12 @@ export function createToolbox(
         touched?: string[]
         bytes?: number
         error?: string
-      }) =>
+      }) => {
+        const server = byName.get(name)?.definition.server
         log.add({
           pass,
           tool: name,
+          ...(server === undefined ? {} : { server }),
           args,
           paths: fields.paths ?? [],
           touched: fields.touched ?? [],
@@ -60,6 +76,7 @@ export function createToolbox(
           durationMs: performance.now() - startedAt,
           ...(fields.error === undefined ? {} : { error: fields.error }),
         })
+      }
 
       if (calls >= budget.calls || bytes >= budget.bytes) {
         record({ error: 'budget' })

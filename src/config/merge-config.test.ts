@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mergeConfig, resolveProvider, userMcpServers } from './merge-config.js'
+import { mergeConfig, resolveProvider } from './merge-config.js'
 import type { ConfigLayer } from './types.js'
 
 type Config = ConfigLayer['config']
@@ -307,16 +307,6 @@ describe('investigation options', () => {
     expect(merged.warnings).toEqual([
       '.phada/config.yml: mcp is only read from your own config; ignored.',
     ])
-  })
-
-  it('joins the MCP servers of the user layers once', () => {
-    expect(
-      userMcpServers([
-        user({ mcp: ['linear', 'notion'] }),
-        userRepo({ mcp: ['notion', 'jira'] }),
-        root({ mcp: ['evil'] }),
-      ]),
-    ).toEqual(['notion', 'jira', 'linear'])
   })
 })
 

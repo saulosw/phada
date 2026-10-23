@@ -1,3 +1,4 @@
+import type { ResolvedMcp } from '../config/mcp-servers.js'
 import type { ConfigLayer } from '../config/types.js'
 import type { ComparedFile } from '../github/compare-commits.js'
 import type { ReviewComment } from '../github/create-review.js'
@@ -69,7 +70,7 @@ export interface ReviewAndPublishInput {
   publish: boolean
   options: ReviewOptions
   userLayers: readonly ConfigLayer[]
-  userMcpServers: readonly string[]
+  mcp: ResolvedMcp
 }
 
 export interface ReviewAndPublishEvents {
@@ -124,7 +125,7 @@ export async function reviewAndPublish(
   const review = {
     pullRequest,
     userLayers: input.userLayers,
-    userMcpServers: input.userMcpServers,
+    mcp: input.mcp,
     options: input.options,
   }
   const loaded = await loadPullRequestContext(review, reviewDeps)

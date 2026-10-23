@@ -51,8 +51,10 @@ describe('createToolbox answer size', () => {
 
   it('cuts an answer to what is left of the byte budget', async () => {
     const toolbox = createToolbox([bigTool(1000)], new ToolLog(), 'review', {
-      calls: 10,
-      bytes: 600,
+      budget: {
+        calls: 10,
+        bytes: 600,
+      },
     })
 
     await toolbox.call('big', { path: 'a' })
@@ -73,8 +75,10 @@ describe('createToolbox answer size', () => {
 
   it('never returns more than the budget allows in one call', async () => {
     const toolbox = createToolbox([bigTool(1000)], new ToolLog(), 'review', {
-      calls: 10,
-      bytes: 400,
+      budget: {
+        calls: 10,
+        bytes: 400,
+      },
     })
 
     const first = await toolbox.call('big', { path: 'a' })
@@ -146,7 +150,9 @@ describe('createToolbox', () => {
   it('stops at the call budget without running the tool', async () => {
     const runs: string[] = []
     const log = new ToolLog()
-    const toolbox = createToolbox([echoTool(runs)], log, 'review', { calls: 2, bytes: 1000 })
+    const toolbox = createToolbox([echoTool(runs)], log, 'review', {
+      budget: { calls: 2, bytes: 1000 },
+    })
 
     await toolbox.call('echo', { path: 'a' })
     await toolbox.call('nope', {})
@@ -160,8 +166,10 @@ describe('createToolbox', () => {
   it('stops at the byte budget', async () => {
     const runs: string[] = []
     const toolbox = createToolbox([echoTool(runs)], new ToolLog(), 'review', {
-      calls: 10,
-      bytes: 10,
+      budget: {
+        calls: 10,
+        bytes: 10,
+      },
     })
 
     await toolbox.call('echo', { path: 'long-path' })
@@ -173,8 +181,8 @@ describe('createToolbox', () => {
 
   it('keeps one budget per pass and one log', async () => {
     const log = new ToolLog()
-    const review = createToolbox([echoTool()], log, 'review', { calls: 1, bytes: 1000 })
-    const verify = createToolbox([echoTool()], log, 'verify', { calls: 1, bytes: 1000 })
+    const review = createToolbox([echoTool()], log, 'review', { budget: { calls: 1, bytes: 1000 } })
+    const verify = createToolbox([echoTool()], log, 'verify', { budget: { calls: 1, bytes: 1000 } })
 
     await review.call('echo', { path: 'a' })
     const verified = await verify.call('echo', { path: 'b' })

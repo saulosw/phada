@@ -1,4 +1,5 @@
-import { readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { z } from 'zod'
 import { MCP_SERVER_NAME, serveMcp } from '../investigation/mcp/mcp-server.js'
@@ -7,6 +8,8 @@ import type { RunCommandResult } from '../process/run-command.js'
 import { runCli, snippet, USAGE_LIMIT, withTempDir } from './cli-run.js'
 import type { CliNames } from './cli-run.js'
 import { resolveCodexModel } from './codex-model.js'
+import { codexMcpArgs } from './codex-mcp.js'
+import type { CodexNamedServer } from './codex-mcp.js'
 import { ProviderError } from './types.js'
 import type {
   ExternalToolCall,
@@ -21,6 +24,7 @@ const NAMES: CliNames = { product: 'Codex CLI', short: 'Codex' }
 const DEFAULT_COMMAND = 'codex'
 const DEFAULT_TIMEOUT_MS = 900_000
 const TEMP_DIR_PREFIX = 'phada-codex-'
+const MCP_ENV_DIR_PREFIX = 'phada-codex-mcp-env-'
 const INSTRUCTIONS_FILE = 'instructions.md'
 const OUTPUT_FILE = 'last-message.txt'
 const OUTPUT_SCHEMA_FILE = 'output-schema.json'
@@ -84,6 +88,7 @@ export interface CodexCliProviderOptions {
   detached?: boolean
   env?: NodeJS.ProcessEnv
   homeDir?: string
+  mcpNames?: CodexNamedServer[]
 }
 
 export class CodexCliProvider implements ReviewProvider {
@@ -94,6 +99,7 @@ export class CodexCliProvider implements ReviewProvider {
   readonly #env: NodeJS.ProcessEnv
   readonly #homeDir: string | undefined
   readonly #detached: boolean
+  readonly #mcpNames: readonly CodexNamedServer[]
 
   constructor(options: CodexCliProviderOptions = {}) {
     this.#command = options.command ?? DEFAULT_COMMAND
@@ -102,6 +108,7 @@ export class CodexCliProvider implements ReviewProvider {
     this.#detached = options.detached ?? false
     this.#env = options.env ?? process.env
     this.#homeDir = options.homeDir
+    this.#mcpNames = options.mcpNames ?? []
   }
 
   review(prompt: ReviewPrompt): Promise<ReviewOutput> {
@@ -116,6 +123,9 @@ export class CodexCliProvider implements ReviewProvider {
         env: this.#env,
         homeDir: this.#homeDir,
       })
+      const envDir =
+        this.#mcpNames.length === 0 ? undefined : await mkdtemp(join(tmpdir(), MCP_ENV_DIR_PREFIX))
+      const named = await codexMcpArgs(this.#mcpNames, envDir ?? cwd)
       const server = prompt.tools === undefined ? undefined : await serveMcp(prompt.tools)
       try {
         const run = await runCli({
@@ -123,10 +133,17 @@ export class CodexCliProvider implements ReviewProvider {
           names: NAMES,
           command: this.#command,
           detached: this.#detached,
-          args: codexArgs({ instructionsPath, schemaPath, outputPath, model, mcp: server?.launch }),
+          args: codexArgs({
+            instructionsPath,
+            schemaPath,
+            outputPath,
+            model,
+            mcp: server?.launch,
+            named: named.args,
+          }),
           stdin: prompt.data,
           cwd,
-          env: this.#env,
+          env: { ...this.#env, ...named.env },
           timeoutMs: this.#timeoutMs,
         })
         const events = parseEvents(run.stdout)
@@ -134,6 +151,7 @@ export class CodexCliProvider implements ReviewProvider {
         return toReviewOutput(run, events, model, await readOutput(outputPath))
       } finally {
         await server?.close()
+        if (envDir !== undefined) await rm(envDir, { recursive: true, force: true })
       }
     })
   }
@@ -145,9 +163,17 @@ interface CodexArgsOptions {
   outputPath: string
   model: string | undefined
   mcp: McpLaunch | undefined
+  named: readonly string[]
 }
 
-function codexArgs({ instructionsPath, schemaPath, outputPath, model, mcp }: CodexArgsOptions) {
+function codexArgs({
+  instructionsPath,
+  schemaPath,
+  outputPath,
+  model,
+  mcp,
+  named,
+}: CodexArgsOptions) {
   const server = `mcp_servers.${MCP_SERVER_NAME}`
   return [
     ...BASE_ARGS,
@@ -165,6 +191,7 @@ function codexArgs({ instructionsPath, schemaPath, outputPath, model, mcp }: Cod
           '-c',
           `${server}.args=${JSON.stringify(mcp.args)}`,
         ]),
+    ...named,
     ...(model === undefined ? [] : [`--model=${model}`]),
     '-',
   ]
