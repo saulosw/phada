@@ -57,6 +57,7 @@ const CONTEXT: Boundary = {
 const INVESTIGATION: Boundary = {
   dir: 'investigation',
   values: new Set([
+    'node:child_process',
     'node:crypto',
     'node:fs/promises',
     'node:net',
@@ -67,18 +68,21 @@ const INVESTIGATION: Boundary = {
     'zod',
     '../repository/checkout.js',
     '../repository/repo-path.js',
+    '../providers/redact-secrets.js',
   ]),
   types: new Set([
     '../providers/types.js',
     '../review/types.js',
     '../repository/checkout.js',
     '../graph/types.js',
+    '../config/mcp-servers.js',
   ]),
   expected: [
     'toolbox.ts',
     'create-investigation.ts',
     'tools/graph-tools.ts',
     'tools/history-tool.ts',
+    'mcp/mcp-client.ts',
     'mcp/mcp-server.ts',
     'tools/repository-tools.ts',
     'tools/tool-registry.ts',
