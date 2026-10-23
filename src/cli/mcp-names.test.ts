@@ -115,6 +115,17 @@ describe('checkMcpNames', () => {
     )
   })
 
+  it('refuses an answer of codex mcp get that is not the expected JSON', async () => {
+    const { run } = fakeRun({ odd: { exitCode: 0, stdout: 'not json' } })
+
+    const error = await checkMcpNames('codex', [{ name: 'odd' }], { env, run }).catch(
+      (caught: unknown) => caught,
+    )
+
+    expect(error).toBeInstanceOf(UsageError)
+    expect(String(error)).toContain('Codex printed an unexpected answer for MCP server odd.')
+  })
+
   it('says when the AI CLI is not installed', async () => {
     const run = async (): Promise<RunCommandResult> => {
       throw new CommandNotFoundError('codex')

@@ -91,7 +91,7 @@ export async function codexMcpArgs(
       set('bearer_token_env_var', transport.bearer_token_env_var)
       const headers: Record<string, string> = { ...transport.env_http_headers }
       for (const [header, value] of Object.entries(transport.http_headers ?? {})) {
-        const variable = `PHADA_MCP_${Object.keys(run.env).length + 1}`
+        const variable = `PHADA_MCP_TOKEN_${Object.keys(run.env).length + 1}`
         run.env[variable] = value
         headers[header] = variable
       }

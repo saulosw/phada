@@ -73,7 +73,7 @@ describe('resolveMcp', () => {
           },
           description: 'Tickets',
           tools: ['get_ticket'],
-          secrets: ['/opt/t', 's3cret'],
+          secrets: ['s3cret'],
         },
         {
           name: 'docs',
@@ -82,10 +82,27 @@ describe('resolveMcp', () => {
             url: 'https://mcp.acme.dev/mcp',
             headers: { Authorization: 'Bearer s3cret' },
           },
-          secrets: ['mcp.acme.dev', 's3cret'],
+          secrets: ['s3cret'],
         },
       ],
     })
+  })
+
+  it('keeps as secrets only values that come from a secret-looking key, variable or value', () => {
+    const token = `ghp_${'x'.repeat(36)}`
+    const [server] = resolveMcp(
+      [
+        {
+          name: 'files',
+          command: 'npx',
+          args: ['${HOME}/docs', '--key=${API_KEY}', '--auth=${GH}'],
+          env: { LOG_LEVEL: '${LEVEL}' },
+        },
+      ],
+      { HOME: '/home/ana', API_KEY: 'k-123456', GH: token, LEVEL: 'debug' },
+    ).declared
+
+    expect(server?.secrets).toEqual(['k-123456', token])
   })
 
   it('fails naming the server and the variable when a variable is not set', () => {

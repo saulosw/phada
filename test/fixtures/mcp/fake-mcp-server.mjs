@@ -70,7 +70,19 @@ for await (const line of createInterface({ input: process.stdin, crlfDelay: Infi
       if (mode === 'crash-on-call') process.exit(3)
       if (mode === 'silent-calls') break
       const { name, arguments: args } = message.params
-      if (mode === 'echo-secret') {
+      if (mode === 'echo-github-token') {
+        send({
+          id: message.id,
+          result: {
+            content: [
+              {
+                type: 'text',
+                text: `github: ${process.env.GITHUB_TOKEN ?? 'none'}/${process.env.GH_TOKEN ?? 'none'}`,
+              },
+            ],
+          },
+        })
+      } else if (mode === 'echo-secret') {
         send({
           id: message.id,
           result: { content: [{ type: 'text', text: `token is ${process.env.SECRET_TOKEN}` }] },

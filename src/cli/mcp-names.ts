@@ -9,6 +9,11 @@ import { UsageError } from './errors.js'
 export type CheckedNames =
   { provider: 'claude'; names: McpNameEntry[] } | { provider: 'codex'; names: CodexNamedServer[] }
 
+export type NameCheck = (
+  provider: string,
+  names: readonly McpNameEntry[],
+) => Promise<CheckedNames | undefined>
+
 export interface CheckMcpNamesDeps {
   env: NodeJS.ProcessEnv
   run?: typeof runCommand
@@ -56,7 +61,7 @@ export async function checkMcpNames(
       }
       const parsed = CodexMcpServerSchema.safeParse(parseJson(result.stdout))
       if (!parsed.success)
-        throw new Error(`Codex printed an unexpected answer for MCP server ${name}.`)
+        throw new UsageError(`Codex printed an unexpected answer for MCP server ${name}.`)
       if (!parsed.data.enabled)
         throw new UsageError(`MCP server ${name} is disabled in your Codex config.`)
       servers.push(tools === undefined ? { server: parsed.data } : { server: parsed.data, tools })

@@ -231,7 +231,8 @@ describe('parseConfigText', () => {
       'headers go with url',
     ],
     ['an invalid variable name', 'mcp: [{ name: a, command: x, args: ["${1X}"] }]', 'mcp.0.args.0'],
-    ['a server listed twice', 'mcp: [a, { name: a, tools: [t] }]', 'a is listed twice'],
+    ['a server listed twice', 'mcp: [a, { name: a, tools: [t] }]', 'mcp.1: a is listed twice'],
+    ['an invalid variable in command', 'mcp: [{ name: a, command: "${1X}" }]', 'mcp.0.command'],
   ])('refuses %s', (_name, text, message) => {
     const parsed = parseConfigText(text)
     expect(parsed.ok).toBe(false)
@@ -267,8 +268,15 @@ describe('parseConfigText', () => {
       'TOKEN',
       `sk-${'a'.repeat(24)}`,
     ],
+    [
+      'a token in the command',
+      `command: "ghp_${'a'.repeat(36)}"`,
+      'mcp.0.command',
+      'TOKEN',
+      `ghp_${'a'.repeat(36)}`,
+    ],
   ])('refuses a literal secret: %s', (_name, fields, key, variable, value) => {
-    const transport = fields.startsWith('headers') || fields.startsWith('url') ? '' : 'command: x, '
+    const transport = /^(headers|url|command)/.test(fields) ? '' : 'command: x, '
     const url = fields.startsWith('headers') ? 'url: "https://x", ' : ''
     const parsed = parseConfigText(`mcp: [{ name: docs, ${transport}${url}${fields} }]`)
     expect(parsed.ok).toBe(false)

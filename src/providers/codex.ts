@@ -1,4 +1,5 @@
-import { readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { z } from 'zod'
 import { MCP_SERVER_NAME, serveMcp } from '../investigation/mcp/mcp-server.js'
@@ -23,6 +24,7 @@ const NAMES: CliNames = { product: 'Codex CLI', short: 'Codex' }
 const DEFAULT_COMMAND = 'codex'
 const DEFAULT_TIMEOUT_MS = 900_000
 const TEMP_DIR_PREFIX = 'phada-codex-'
+const MCP_ENV_DIR_PREFIX = 'phada-codex-mcp-env-'
 const INSTRUCTIONS_FILE = 'instructions.md'
 const OUTPUT_FILE = 'last-message.txt'
 const OUTPUT_SCHEMA_FILE = 'output-schema.json'
@@ -121,7 +123,9 @@ export class CodexCliProvider implements ReviewProvider {
         env: this.#env,
         homeDir: this.#homeDir,
       })
-      const named = await codexMcpArgs(this.#mcpNames, cwd)
+      const envDir =
+        this.#mcpNames.length === 0 ? undefined : await mkdtemp(join(tmpdir(), MCP_ENV_DIR_PREFIX))
+      const named = await codexMcpArgs(this.#mcpNames, envDir ?? cwd)
       const server = prompt.tools === undefined ? undefined : await serveMcp(prompt.tools)
       try {
         const run = await runCli({
@@ -147,6 +151,7 @@ export class CodexCliProvider implements ReviewProvider {
         return toReviewOutput(run, events, model, await readOutput(outputPath))
       } finally {
         await server?.close()
+        if (envDir !== undefined) await rm(envDir, { recursive: true, force: true })
       }
     })
   }

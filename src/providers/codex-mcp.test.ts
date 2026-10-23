@@ -129,9 +129,9 @@ describe('codexMcpArgs', () => {
     expect(settings(args)).toEqual([
       'mcp_servers.stitch.url="https://stitch.example/mcp"',
       'mcp_servers.stitch.bearer_token_env_var="STITCH_TOKEN"',
-      'mcp_servers.stitch.env_http_headers={"X-Org" = "STITCH_ORG", "X-Goog-Api-Key" = "PHADA_MCP_1"}',
+      'mcp_servers.stitch.env_http_headers={"X-Org" = "STITCH_ORG", "X-Goog-Api-Key" = "PHADA_MCP_TOKEN_1"}',
     ])
-    expect(env).toEqual({ PHADA_MCP_1: API_KEY })
+    expect(env).toEqual({ PHADA_MCP_TOKEN_1: API_KEY })
   })
 
   it('never puts header or env values of a Codex server in argv', async () => {

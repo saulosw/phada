@@ -40,7 +40,7 @@ interface Capture {
   instructions: string | null
   outputSchema: string | null
   cwd: string
-  env: { GITHUB_TOKEN?: string; GH_TOKEN?: string; PHADA_MCP_1?: string }
+  env: { GITHUB_TOKEN?: string; GH_TOKEN?: string; PHADA_MCP_TOKEN_1?: string }
 }
 
 let workDir: string
@@ -430,7 +430,33 @@ describe('CodexCliProvider', () => {
         argv.indexOf('-'),
       )
       expect(argv.join(' ')).not.toContain('literal-api-key-value')
-      expect(env.PHADA_MCP_1).toBe('literal-api-key-value')
+      expect(env.PHADA_MCP_TOKEN_1).toBe('literal-api-key-value')
+    })
+
+    it('keeps the environment file of a stdio server outside the folder Codex runs in', async () => {
+      const stdio = CodexMcpServerSchema.parse({
+        ...named,
+        name: 'gh',
+        transport: {
+          type: 'stdio',
+          command: 'gh-mcp',
+          args: [],
+          cwd: null,
+          env: { GH_PAT: 'pat-value' },
+          env_vars: null,
+        },
+      })
+      await provider('success', { mcpNames: [{ server: stdio }] }).review(PROMPT)
+
+      const { argv, cwd } = readCapture()
+      const setting = argv.find((arg) => arg.startsWith('mcp_servers.gh.args=')) ?? ''
+      const envFile =
+        (JSON.parse(setting.slice('mcp_servers.gh.args='.length)) as string[]).find((arg) =>
+          /mcp-env-\d+\.json$/.test(arg),
+        ) ?? ''
+      expect(envFile).not.toBe('')
+      expect(envFile.startsWith(cwd)).toBe(false)
+      expect(existsSync(envFile)).toBe(false)
     })
 
     it('keeps the arguments of a run without named servers', async () => {

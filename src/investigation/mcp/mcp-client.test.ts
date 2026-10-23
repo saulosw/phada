@@ -197,6 +197,15 @@ describe('connectMcp over stdio', () => {
     expect(() => process.kill(-(connection.pid ?? 0), 0)).toThrow()
   })
 
+  it('never passes the GitHub token to a server', async () => {
+    const connection = await connectMcp(stdioServer({ FAKE_MCP_MODE: 'echo-github-token' }), {
+      env: { PATH: process.env.PATH ?? '', GITHUB_TOKEN: 'gh-1', GH_TOKEN: 'gh-2' },
+    })
+    opened.push(connection)
+
+    expect((await connection.call('get_ticket', {})).text).toBe('github: none/none')
+  })
+
   it('stops the server process on close', async () => {
     const connection = await connectMcp(stdioServer(), { env: {} })
     const pid = connection.pid ?? 0
@@ -375,6 +384,33 @@ describe('connectMcp over streamable HTTP', () => {
     expect(await connection.call('lookup', {})).toEqual({ text: 'doc text', isError: false })
     expect(sessions).toBe(2)
     expect(requests.at(-1)?.headers['mcp-session-id']).toBe('session-2')
+  })
+
+  it('starts one new session for calls that find the old one expired together', async () => {
+    let sessions = 0
+    const expiredSession = new Set<string>()
+    const { fetch } = httpFetch(async (request) => {
+      if (request.body?.method === 'initialize') sessions += 1
+      const session = request.headers['mcp-session-id']
+      if (request.body?.method === 'tools/call' && session === 'session-1') {
+        expiredSession.add(session)
+        await new Promise((done) => setTimeout(done, 20))
+        return new Response('', { status: 404 })
+      }
+      return rpcResult(request, `session-${sessions}`)
+    })
+    const connection = await connect(httpServer, { fetch })
+
+    const answers = await Promise.all([
+      connection.call('lookup', {}),
+      connection.call('lookup', {}),
+    ])
+
+    expect(answers).toEqual([
+      { text: 'doc text', isError: false },
+      { text: 'doc text', isError: false },
+    ])
+    expect(sessions).toBe(2)
   })
 
   it('ends the session on close', async () => {

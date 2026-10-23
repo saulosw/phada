@@ -132,7 +132,7 @@ const MCP_NAME = /^[\w .-]+$/
 const DECLARED_MCP_NAME = /^[A-Za-z0-9_-]{1,32}$/
 const VARIABLE_REFERENCE = /\$\{([^}]*)\}/g
 const VARIABLE_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/
-const SECRET_KEY = /authorization|token|key|secret|password|credential/i
+export const SECRET_KEY = /authorization|token|key|secret|password|credential/i
 export const PHADA_MCP_NAME = 'phada'
 
 const McpName = z.string().trim().regex(MCP_NAME, 'use the server name as your AI CLI shows it')
@@ -173,27 +173,24 @@ function checkMcpObject(entry: McpObject, context: z.RefinementCtx): void {
   if (entry.headers !== undefined && entry.url === undefined) {
     issue(['headers'], 'headers go with url')
   }
-  const values: [(string | number)[], string, string | undefined][] = [
-    ...(entry.args ?? []).map((value, index): [(string | number)[], string, undefined] => [
-      ['args', index],
+  const values: CheckedValue[] = [
+    ...(entry.command === undefined ? [] : [{ path: ['command'], value: entry.command }]),
+    ...(entry.args ?? []).map((value, index) => ({ path: ['args', index], value })),
+    ...Object.entries(entry.env ?? {}).map(([key, value]) => ({
+      path: ['env', key],
       value,
-      undefined,
-    ]),
-    ...Object.entries(entry.env ?? {}).map(
-      ([key, value]): [(string | number)[], string, string] => [['env', key], value, key],
-    ),
-    ...Object.entries(entry.headers ?? {}).map(
-      ([key, value]): [(string | number)[], string, string] => [
-        ['headers', key],
-        value,
-        `${entry.name}_${key}`,
-      ],
-    ),
-    ...(entry.url === undefined
-      ? []
-      : [[['url'], entry.url, undefined] as [(string | number)[], string, undefined]]),
+      key,
+      variable: key,
+    })),
+    ...Object.entries(entry.headers ?? {}).map(([key, value]) => ({
+      path: ['headers', key],
+      value,
+      key,
+      variable: `${entry.name}_${key}`,
+    })),
+    ...(entry.url === undefined ? [] : [{ path: ['url'], value: entry.url }]),
   ]
-  for (const [path, value, variable] of values) {
+  for (const { path, value, key, variable } of values) {
     const references = [...value.matchAll(VARIABLE_REFERENCE)].map((match) => match[1] ?? '')
     const invalid = references.find((name) => !VARIABLE_NAME.test(name))
     if (invalid !== undefined) {
@@ -201,7 +198,7 @@ function checkMcpObject(entry: McpObject, context: z.RefinementCtx): void {
       continue
     }
     const literal = value.replace(VARIABLE_REFERENCE, '')
-    const keyed = variable !== undefined && path[0] !== 'url' && SECRET_KEY.test(String(path[1]))
+    const keyed = key !== undefined && SECRET_KEY.test(key)
     if (looksLikeSecret(literal) || (keyed && references.length === 0)) {
       const suggestion = (variable ?? 'TOKEN').toUpperCase().replace(/[^A-Z0-9_]/g, '_')
       issue(path, `put the secret in an environment variable, e.g. '\${${suggestion}}'`)
@@ -209,13 +206,22 @@ function checkMcpObject(entry: McpObject, context: z.RefinementCtx): void {
   }
 }
 
+interface CheckedValue {
+  path: (string | number)[]
+  value: string
+  key?: string
+  variable?: string
+}
+
 function noRepeatedServer(entries: readonly McpEntry[], context: z.RefinementCtx): void {
   const seen = new Set<string>()
-  for (const entry of entries) {
+  entries.forEach((entry, index) => {
     const name = typeof entry === 'string' ? entry : entry.name
-    if (seen.has(name)) context.addIssue({ code: 'custom', message: `${name} is listed twice` })
+    if (seen.has(name)) {
+      context.addIssue({ code: 'custom', path: [index], message: `${name} is listed twice` })
+    }
     seen.add(name)
-  }
+  })
 }
 
 export const ConfigFileSchema = z.strictObject({

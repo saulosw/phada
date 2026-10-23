@@ -651,6 +651,9 @@ list`; claude.ai connectors as `claude.ai <Name>`). With Codex, Phada reads the 
   in the file (a token, or any value of a key such as `Authorization`, `*_TOKEN` or `*_KEY`) is
   refused when the config is read, and a variable that is not set stops the command before the
   review. A declared server gets your environment without the GitHub token, plus its `env`.
+  The value of a variable used for a secret (a key or variable such as `Authorization`,
+  `*_TOKEN` or `*_KEY`, or a value shaped like a token) is replaced with `[REDACTED]` in what the
+  server answers and in its error messages; other values, such as `${HOME}`, are left as they are.
 - `description` tells the AI what a server is for; it is added to the prompt only when a server
   is configured.
 

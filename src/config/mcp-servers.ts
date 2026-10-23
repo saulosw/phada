@@ -1,4 +1,6 @@
+import { looksLikeSecret } from '../providers/redact-secrets.js'
 import { ConfigError } from './errors.js'
+import { SECRET_KEY } from './schema.js'
 import type { McpEntry, McpObject } from './schema.js'
 import type { ConfigLayer } from './types.js'
 
@@ -55,23 +57,29 @@ export function resolveMcp(entries: readonly McpEntry[], env: NodeJS.ProcessEnv)
 
 function declaredServer(entry: McpObject, env: NodeJS.ProcessEnv): DeclaredMcpServer {
   const secrets = new Set<string>()
-  const expand = (text: string) =>
+  const expand = (text: string, key?: string) =>
     text.replace(VARIABLE_REFERENCE, (_match, name: string) => {
       const value = env[name]
       if (value === undefined || value === '') {
         throw new ConfigError(`mcp server ${entry.name}: ${name} is not set.`)
       }
-      if (value.length >= MIN_SECRET_LENGTH) secrets.add(value)
+      const secret =
+        SECRET_KEY.test(name) ||
+        (key !== undefined && SECRET_KEY.test(key)) ||
+        looksLikeSecret(value)
+      if (secret && value.length >= MIN_SECRET_LENGTH) secrets.add(value)
       return value
     })
   const expandAll = (record: Record<string, string> | undefined) =>
-    Object.fromEntries(Object.entries(record ?? {}).map(([key, value]) => [key, expand(value)]))
+    Object.fromEntries(
+      Object.entries(record ?? {}).map(([key, value]) => [key, expand(value, key)]),
+    )
   const transport: McpTransport =
     entry.command !== undefined
       ? {
           kind: 'stdio',
           command: expand(entry.command),
-          args: (entry.args ?? []).map(expand),
+          args: (entry.args ?? []).map((arg) => expand(arg)),
           env: expandAll(entry.env),
         }
       : { kind: 'http', url: expand(entry.url ?? ''), headers: expandAll(entry.headers) }

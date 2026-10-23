@@ -15,6 +15,7 @@ const STDERR_KEPT_BYTES = 2_048
 const MAX_TOOL_PAGES = 20
 const METHOD_NOT_FOUND = -32601
 const REDACTED = '[REDACTED]'
+const GITHUB_TOKEN_KEYS: ReadonlySet<string> = new Set(['GITHUB_TOKEN', 'GH_TOKEN'])
 
 export interface McpTool {
   name: string
@@ -51,10 +52,10 @@ export class McpConnectError extends Error {
   }
 }
 
-class StoppedError extends Error {}
-class TimeoutError extends Error {}
-class RpcError extends Error {}
-class HttpStatusError extends Error {
+class McpStopped extends Error {}
+class McpTimeout extends Error {}
+class McpRpcError extends Error {}
+class McpHttpStatus extends Error {
   readonly status: number
 
   constructor(status: number) {
@@ -62,7 +63,14 @@ class HttpStatusError extends Error {
     this.status = status
   }
 }
-class SessionExpiredError extends Error {}
+class McpSessionExpired extends Error {
+  readonly session: string
+
+  constructor(session: string) {
+    super('session expired')
+    this.session = session
+  }
+}
 
 interface Transport {
   readonly pid?: number
@@ -112,8 +120,7 @@ export async function connectMcp(
     server.transport.kind === 'stdio'
       ? openStdio(server.transport, options)
       : openHttp(server.transport, options.fetch ?? globalThis.fetch, initialize)
-  const deadline = performance.now() + connectTimeoutMs
-  const remaining = () => Math.max(1, Math.ceil(deadline - performance.now()))
+  const remaining = deadlineIn(connectTimeoutMs)
   const hide = secretHider(server.secrets ?? [])
   let tools: McpTool[]
   try {
@@ -184,6 +191,10 @@ function contentText(item: Record<string, unknown>): string {
   return `[${type} omitted]`
 }
 
+function withoutGitHubTokens(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return Object.fromEntries(Object.entries(env).filter(([key]) => !GITHUB_TOKEN_KEYS.has(key)))
+}
+
 function secretHider(secrets: readonly string[]): (text: string) => string {
   return (text) => secrets.reduce((hidden, secret) => hidden.split(secret).join(REDACTED), text)
 }
@@ -194,23 +205,23 @@ function seconds(ms: number): string {
 
 function connectFailure(server: DeclaredMcpServer, error: unknown, timeoutMs: number): string {
   const name = server.name
-  if (error instanceof TimeoutError)
+  if (error instanceof McpTimeout)
     return `MCP server ${name} did not answer within ${seconds(timeoutMs)}.`
-  if (error instanceof HttpStatusError && (error.status === 401 || error.status === 403)) {
+  if (error instanceof McpHttpStatus && (error.status === 401 || error.status === 403)) {
     return `MCP server ${name} refused the credentials (HTTP ${error.status}).`
   }
-  if (error instanceof StoppedError) return `MCP server ${name} could not start: ${error.message}`
+  if (error instanceof McpStopped) return `MCP server ${name} could not start: ${error.message}`
   if (error instanceof z.ZodError) return `MCP server ${name} sent an unexpected answer.`
   const detail = error instanceof Error ? error.message : String(error)
   return `MCP server ${name} is not reachable: ${redactSecrets(detail)}`
 }
 
 function callFailure(name: string, error: unknown, timeoutMs: number): string {
-  if (error instanceof TimeoutError)
+  if (error instanceof McpTimeout)
     return `MCP server ${name} did not answer within ${seconds(timeoutMs)}.`
-  if (error instanceof StoppedError) return `MCP server ${name} stopped.`
-  if (error instanceof RpcError) return `MCP server ${name}: ${redactSecrets(error.message)}`
-  if (error instanceof HttpStatusError) return `MCP server ${name} answered ${error.message}.`
+  if (error instanceof McpStopped) return `MCP server ${name} stopped.`
+  if (error instanceof McpRpcError) return `MCP server ${name}: ${redactSecrets(error.message)}`
+  if (error instanceof McpHttpStatus) return `MCP server ${name} answered ${error.message}.`
   if (error instanceof z.ZodError) return `MCP server ${name} sent an unexpected answer.`
   return `MCP server ${name} failed.`
 }
@@ -226,7 +237,7 @@ function openStdio(
 ): Transport {
   const detached = options.detached === true
   const child: ChildProcessWithoutNullStreams = spawn(transport.command, transport.args, {
-    env: { ...options.env, ...transport.env },
+    env: { ...withoutGitHubTokens(options.env), ...transport.env },
     stdio: 'pipe',
     detached,
   })
@@ -234,9 +245,9 @@ function openStdio(
   const pending = new Map<number, Pending>()
   let nextId = 1
   let stderr = ''
-  let stopped: StoppedError | undefined
+  let stopped: McpStopped | undefined
   const exited = new Promise<void>((resolve) => {
-    const stop = (error: StoppedError) => {
+    const stop = (error: McpStopped) => {
       stopped ??= error
       untrack?.()
       for (const request of pending.values()) request.reject(stopped)
@@ -245,7 +256,7 @@ function openStdio(
     }
     child.once('error', (error: NodeJS.ErrnoException) =>
       stop(
-        new StoppedError(
+        new McpStopped(
           error.code === 'ENOENT' ? `${transport.command} was not found.` : error.message,
         ),
       ),
@@ -253,7 +264,7 @@ function openStdio(
     child.once('exit', (code) => {
       const tail = redactSecrets(stderr.trim().split('\n').slice(-3).join(' '))
       stop(
-        new StoppedError(`it exited with code ${code ?? 'null'}${tail === '' ? '.' : `: ${tail}`}`),
+        new McpStopped(`it exited with code ${code ?? 'null'}${tail === '' ? '.' : `: ${tail}`}`),
       )
     })
   })
@@ -283,7 +294,7 @@ function openStdio(
       if (request === undefined) continue
       pending.delete(message.id)
       if (message.error !== undefined)
-        request.reject(new RpcError(message.error.message ?? 'error'))
+        request.reject(new McpRpcError(message.error.message ?? 'error'))
       else request.resolve(message.result)
     }
   })()
@@ -337,6 +348,7 @@ function openHttp(
     ...(initialized ? { 'MCP-Protocol-Version': MCP_PROTOCOL_VERSION } : {}),
   })
   const post = async (message: Record<string, unknown>, timeoutMs: number): Promise<Response> => {
+    const used = sessionId
     let response: Response
     try {
       response = await fetch(transport.url, {
@@ -346,11 +358,11 @@ function openHttp(
         signal: AbortSignal.timeout(timeoutMs),
       })
     } catch (error) {
-      if (isAbort(error)) throw new TimeoutError()
+      if (isAbort(error)) throw new McpTimeout()
       throw error
     }
-    if (response.status === 404 && sessionId !== undefined) throw new SessionExpiredError()
-    if (!response.ok) throw new HttpStatusError(response.status)
+    if (response.status === 404 && used !== undefined) throw new McpSessionExpired(used)
+    if (!response.ok) throw new McpHttpStatus(response.status)
     return response
   }
   const send = async (method: string, params: unknown, timeoutMs: number): Promise<unknown> => {
@@ -358,9 +370,9 @@ function openHttp(
     const response = await post({ id, method, params }, timeoutMs)
     if (method === 'initialize') sessionId = response.headers.get('mcp-session-id') ?? undefined
     const message = await answerOf(response, id).catch((error: unknown) => {
-      throw isAbort(error) ? new TimeoutError() : error
+      throw isAbort(error) ? new McpTimeout() : error
     })
-    if (message.error !== undefined) throw new RpcError(message.error.message ?? 'error')
+    if (message.error !== undefined) throw new McpRpcError(message.error.message ?? 'error')
     return message.result
   }
   const notify = async (method: string, params: unknown, timeoutMs: number) => {
@@ -368,18 +380,28 @@ function openHttp(
     await response.body?.cancel()
     if (method === 'notifications/initialized') initialized = true
   }
+  let renewing: Promise<void> | undefined
+  const renew = (expired: string, timeoutMs: number): Promise<void> => {
+    if (renewing !== undefined) return renewing
+    if (sessionId !== expired) return Promise.resolve()
+    sessionId = undefined
+    initialized = false
+    renewing = (async () => {
+      await send('initialize', initialize, timeoutMs)
+      await notify('notifications/initialized', undefined, timeoutMs)
+    })().finally(() => {
+      renewing = undefined
+    })
+    return renewing
+  }
   return {
     request: async (method, params, timeoutMs) => {
-      const deadline = performance.now() + timeoutMs
-      const remaining = () => Math.max(1, Math.ceil(deadline - performance.now()))
+      const remaining = deadlineIn(timeoutMs)
       try {
         return await send(method, params, remaining())
       } catch (error) {
-        if (!(error instanceof SessionExpiredError)) throw error
-        sessionId = undefined
-        initialized = false
-        await send('initialize', initialize, remaining())
-        await notify('notifications/initialized', undefined, remaining())
+        if (!(error instanceof McpSessionExpired)) throw error
+        await renew(error.session, remaining())
         return send(method, params, remaining())
       }
     },
@@ -406,11 +428,11 @@ async function answerOf(response: Response, id: number): Promise<JsonRpcMessage>
     const body: unknown = JSON.parse(await response.text())
     const messages = Array.isArray(body) ? body : [body]
     const found = messages.map(parseValue).find((message) => message?.id === id)
-    if (found === undefined) throw new RpcError('no answer to the request')
+    if (found === undefined) throw new McpRpcError('no answer to the request')
     return found
   }
   const reader = response.body?.getReader()
-  if (reader === undefined) throw new RpcError('no answer to the request')
+  if (reader === undefined) throw new McpRpcError('no answer to the request')
   const decoder = new TextDecoder()
   let buffer = ''
   for (;;) {
@@ -430,8 +452,13 @@ async function answerOf(response: Response, id: number): Promise<JsonRpcMessage>
         return message
       }
     }
-    if (done) throw new RpcError('no answer to the request')
+    if (done) throw new McpRpcError('no answer to the request')
   }
+}
+
+function deadlineIn(ms: number): () => number {
+  const deadline = performance.now() + ms
+  return () => Math.max(1, Math.ceil(deadline - performance.now()))
 }
 
 function isAbort(error: unknown): boolean {
@@ -455,7 +482,7 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, onTimeout: () =>
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => {
       onTimeout()
-      reject(new TimeoutError())
+      reject(new McpTimeout())
     }, timeoutMs)
     promise.then(
       (value) => {
