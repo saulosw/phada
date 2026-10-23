@@ -35,6 +35,9 @@ describe('gitRefusal', () => {
     ['--exec-path=/tmp log', '--exec-path'],
     ['ls-files --exclude-from=/home/u/.ssh/id_rsa', '--exclude-from'],
     ['grep -f /home/u/.ssh/id_rsa', '-f'],
+    ['grep -iOsh PWNED', '-O'],
+    ['--no-pager grep -nOsh x', '-O'],
+    ['grep -if /etc/passwd', '-f'],
   ])('refuses %s', (line, option) => {
     expect(refusal(line)).toBe(
       `phada: git ${option} is not available during a Phada review: it could run a program, write a file or read outside the checkout.`,

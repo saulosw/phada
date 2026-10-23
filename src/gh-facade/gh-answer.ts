@@ -36,6 +36,22 @@ const LINE_COMMENTS = /^repos\/[^/]+\/[^/]+\/pulls\/(\d+)\/comments$/
 const REVIEWS = /^repos\/[^/]+\/[^/]+\/pulls\/(\d+)\/reviews$/
 const ISSUE_COMMENTS = /^repos\/[^/]+\/[^/]+\/issues\/(\d+)\/comments$/
 const MAX_PAGES = 10
+const READABLE_SECTIONS: ReadonlySet<string> = new Set([
+  'pulls',
+  'issues',
+  'commits',
+  'compare',
+  'contents',
+  'git',
+  'branches',
+  'labels',
+  'milestones',
+  'releases',
+  'tags',
+  'contributors',
+  'languages',
+  'readme',
+])
 
 export async function answerGh(
   command: GhCommand,
@@ -165,6 +181,10 @@ async function api(
     query.q = scopedQuery(query.q ?? '', data)
   } else if (!sameRepoPath(path, data)) {
     throw new GhFacadeError(`phada: only ${data.repo} can be read during this review.`)
+  } else if (!readableSection(path, data)) {
+    throw new GhFacadeError(
+      `phada: gh api ${path} is not available during a Phada review. Readable: the repository and its ${[...READABLE_SECTIONS].join(', ')}.`,
+    )
   }
   let value: unknown
   if (command.paginate) {
@@ -445,6 +465,11 @@ function sameRepoPath(path: string, data: GhPullData): boolean {
   const prefix = `repos/${data.repo}`.toLowerCase()
   const lower = path.toLowerCase()
   return lower === prefix || lower.startsWith(`${prefix}/`)
+}
+
+function readableSection(path: string, data: GhPullData): boolean {
+  const rest = path.slice(`repos/${data.repo}`.length + 1)
+  return rest === '' || READABLE_SECTIONS.has(rest.split('/')[0]?.toLowerCase() ?? '')
 }
 
 function byViewer(item: unknown, data: GhPullData): boolean {

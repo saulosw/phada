@@ -34,12 +34,35 @@ describe('repositoryReader', () => {
     'repos/acme/shop/%2E%2E/x',
     'repos/acme/shop/./pulls',
     'repos/acme/shop\\..\\x',
+    'repos/acme/shop/actions/variables',
+    'repos/acme/shop/hooks',
+    'repos/acme/shop/secret-scanning/alerts',
+    'repos/acme/shop/collaborators',
   ])('refuses %s without a request', async (path) => {
     const github = createFakeFetch({})
     const read = repositoryReader({ repo: 'acme/shop', token: TOKEN, fetch: github.fetch })
 
     await expect(read(path)).rejects.toThrow('Only acme/shop can be read during this review.')
     expect(github.calls).toEqual([])
+  })
+})
+
+describe('repositoryReader allowed reads', () => {
+  it.each([
+    'repos/acme/shop',
+    'repos/acme/shop/pulls/12/files',
+    'repos/acme/shop/issues/3/comments',
+    'repos/acme/shop/commits/abc',
+    'repos/acme/shop/contents/README.md',
+    'repos/acme/shop/git/trees/abc',
+    'repos/acme/shop/compare/a...b',
+  ])('reads %s', async (path) => {
+    const github = createFakeFetch({ [ACCEPT_JSON]: [{ status: 200, body: '{}' }] })
+    const read = repositoryReader({ repo: 'acme/shop', token: TOKEN, fetch: github.fetch })
+
+    await read(path)
+
+    expect(github.calls).toHaveLength(1)
   })
 })
 

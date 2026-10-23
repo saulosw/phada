@@ -32,7 +32,8 @@ export function gitRefusal(argv: readonly string[]): string | undefined {
   const isGrep = argv[subcommand] === 'grep'
   for (const arg of argv.slice(subcommand + 1)) {
     if (arg === '--') break
-    if (isGrep && arg.startsWith('-O')) return refused('-O')
+    if (isGrep && /^-[A-Za-z0-9]*O/.test(arg)) return refused('-O')
+    if (isGrep && /^-[A-Za-z0-9]*f/.test(arg)) return refused('-f')
     const option = [...REFUSED, ...(isGrep ? GREP_REFUSED : [])].find(
       (name) => arg === name || arg.startsWith(`${name}=`),
     )

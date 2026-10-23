@@ -162,6 +162,18 @@ describe('answerGh', () => {
     expect(JSON.parse(answer.stdout)).toEqual([COMMENTS[1]])
   })
 
+  it('refuses an admin endpoint of the repository', async () => {
+    const { read, calls } = github()
+
+    const { answer } = await gh('api repos/acme/shop/actions/variables', read)
+
+    expect(answer.exitCode).toBe(1)
+    expect(answer.stderr).toContain(
+      'phada: gh api repos/acme/shop/actions/variables is not available during a Phada review.',
+    )
+    expect(calls).toEqual([])
+  })
+
   it('refuses an api path of another repository', async () => {
     const { answer } = await gh('api repos/x/y/pulls/1')
 

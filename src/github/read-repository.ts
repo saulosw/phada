@@ -4,6 +4,22 @@ import type { GitHubRequestContext } from './request.js'
 
 const DEFAULT_TIMEOUT_MS = 30_000
 const SEARCH_PATH = 'search/issues'
+const READABLE_SECTIONS: ReadonlySet<string> = new Set([
+  'pulls',
+  'issues',
+  'commits',
+  'compare',
+  'contents',
+  'git',
+  'branches',
+  'labels',
+  'milestones',
+  'releases',
+  'tags',
+  'contributors',
+  'languages',
+  'readme',
+])
 const SCOPE_QUALIFIER = /^-?(?:repo|org|user|owner):(.*)$/i
 
 export interface RepositoryReaderOptions {
@@ -24,7 +40,9 @@ export function repositoryReader(
   const prefix = `repos/${options.repo}`.toLowerCase()
   const inRepository = (path: string) => {
     const lower = path.toLowerCase()
-    return lower === SEARCH_PATH || lower === prefix || lower.startsWith(`${prefix}/`)
+    if (lower === SEARCH_PATH || lower === prefix) return true
+    if (!lower.startsWith(`${prefix}/`)) return false
+    return READABLE_SECTIONS.has(lower.slice(prefix.length + 1).split('/')[0] ?? '')
   }
   return async (path, query) => {
     const plain =
