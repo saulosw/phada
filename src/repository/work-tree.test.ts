@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, lstatSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -33,6 +33,8 @@ beforeAll(() => {
   git(repository.dir, 'checkout', '-q', '-b', 'feat/x')
   repository.commit({ 'src/a.ts': 'export const a = 2\n' }, 'pr 1')
   repository.commit({ 'src/c.ts': 'export const c = 1\n' }, 'pr 2')
+  symlinkSync('/etc', join(repository.dir, 'notes'))
+  git(repository.dir, 'add', 'notes')
   headSha = repository.commit({ 'src/a.ts': 'export const a = 3\n' }, 'pr 3')
   git(repository.dir, 'checkout', '-q', '-')
   baseSha = repository.commit({ 'README.md': 'later on main\n' }, 'main moves on')
@@ -85,6 +87,7 @@ describe('materializeWorkTree', () => {
     expect(git(tree.dir, 'rev-parse', 'origin/main')).toBe(mergeBase)
     expect(git(tree.dir, 'merge-base', 'origin/main', 'HEAD')).toBe(mergeBase)
     expect(git(tree.dir, 'diff', '--name-only', 'origin/main...HEAD').split('\n')).toEqual([
+      'notes',
       'src/a.ts',
       'src/c.ts',
     ])
@@ -104,6 +107,13 @@ describe('materializeWorkTree', () => {
     expect(tree.diffFile).toBe(join(tree.dir, '.git', 'pull-request.diff'))
     expect(git(tree.dir, 'status', '--porcelain')).toBe('')
     expect(readFileSync(tree.diffFile, 'utf8')).toBe('diff --git a/src/a.ts b/src/a.ts\n')
+  })
+
+  it('checks out a committed symlink as a plain file', async () => {
+    const { tree } = await materialize()
+
+    expect(lstatSync(join(tree.dir, 'notes')).isSymbolicLink()).toBe(false)
+    expect(readFileSync(join(tree.dir, 'notes'), 'utf8')).toBe('/etc')
   })
 
   it('keeps origin/<base> out of the mirror', async () => {

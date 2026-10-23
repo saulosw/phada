@@ -182,6 +182,34 @@ describe('serveGhFacade git guard', () => {
     expect(refused.stderr).toContain('phada: git -O is not available')
     expect(existsSync(join(cwd, 'pwned'))).toBe(false)
   })
+
+  it('drops git variables that could run a program', async () => {
+    const gh = await start()
+    execFileSync('git', ['init', '-q'], { cwd })
+    writeFileSync(join(cwd, 'a.ts'), 'one\n')
+    execFileSync('git', ['add', 'a.ts'], { cwd })
+    writeFileSync(join(cwd, 'a.ts'), 'two\n')
+
+    const result = await new Promise<{ stdout: string; code: number }>((resolve) => {
+      execFile(
+        join(gh.binDir, 'git'),
+        ['diff'],
+        {
+          cwd,
+          env: {
+            ...process.env,
+            ...gh.env,
+            GIT_CONFIG_PARAMETERS: "'diff.external=touch pwned-env'",
+          },
+        },
+        (error, stdout) => resolve({ stdout, code: error === null ? 0 : Number(error.code ?? 1) }),
+      )
+    })
+
+    expect(result.code).toBe(0)
+    expect(result.stdout).toContain('+two')
+    expect(existsSync(join(cwd, 'pwned-env'))).toBe(false)
+  })
 })
 
 describe('serveGhFacade root', () => {

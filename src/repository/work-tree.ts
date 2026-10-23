@@ -63,6 +63,7 @@ export async function materializeWorkTree(
 
   await mkdir(input.dir, { recursive: true })
   await must(['init', '-q'], 'prepare the checkout of the pull request')
+  await must(['config', 'core.symlinks', 'false'], 'prepare the checkout of the pull request')
   await writeFile(
     join(input.dir, '.git', 'objects', 'info', 'alternates'),
     `${join(mirror.dir, 'objects')}\n`,

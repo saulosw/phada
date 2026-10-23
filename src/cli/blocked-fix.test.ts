@@ -108,3 +108,26 @@ describe('blockedFix for a command your policy already allows', () => {
     ).toBe('Claude Code refused it, probably because it reaches outside the checkout')
   })
 })
+
+describe('blockedFix for secret locations', () => {
+  const context = { external: false, configPath: '/home/u/.config/phada/config.yml' }
+
+  it.each([
+    '/home/u/.ssh/id_rsa',
+    '/home/u/.aws/credentials',
+    '/home/u/.config/gh/hosts.yml',
+    '/home/u/.netrc',
+    '/etc/shadow',
+    '/home/u/.gnupg/private-keys-v1.d',
+  ])('never suggests allowing %s', (path) => {
+    expect(blockedFix({ tool: 'Read', input: path }, context)).toBe(
+      `the skill tried to read ${path}, which holds credentials; Phada never suggests allowing it`,
+    )
+  })
+
+  it('suggests the folder of a file read without an extension', () => {
+    expect(blockedFix({ tool: 'Read', input: '/home/u/rules/STYLE' }, context)).toBe(
+      'allow it with review.readDirs: ["/home/u/rules"] in /home/u/.config/phada/config.yml',
+    )
+  })
+})

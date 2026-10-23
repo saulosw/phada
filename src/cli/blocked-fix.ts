@@ -38,6 +38,12 @@ const PLUMBING: ReadonlySet<string> = new Set([
   'xargs',
 ])
 const ENV_ASSIGNMENT = /^[A-Za-z_]\w*=/
+const CREDENTIAL_PLACES: readonly RegExp[] = [
+  /(^|\/)\.(ssh|aws|gnupg|docker|kube|azure)(\/|$)/,
+  /(^|\/)\.config\/(gh|gcloud|hub)(\/|$)/,
+  /(^|\/)\.(netrc|npmrc|pypirc|git-credentials)$/,
+  /^\/etc(\/|$)/,
+]
 const MAX_PREFIX_WORDS = 2
 
 export function blockedFix({ tool, input }: BlockedCommand, context: FixContext): string {
@@ -48,7 +54,10 @@ export function blockedFix({ tool, input }: BlockedCommand, context: FixContext)
     return 'this pull request is from an outside author: the skill always runs read-only'
   }
   if (FILE_TOOLS.has(tool)) {
-    const folder = /\.[\w-]+$/.test(input) ? dirname(input) : input
+    if (CREDENTIAL_PLACES.some((place) => place.test(input))) {
+      return `the skill tried to read ${input}, which holds credentials; Phada never suggests allowing it`
+    }
+    const folder = tool === 'Read' ? dirname(input) : input
     return `allow it with review.readDirs: ["${folder}"] in ${context.configPath}`
   }
   const prefixes = commandPrefixes(input, context.policy ?? 'read-only').map(

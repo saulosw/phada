@@ -8,10 +8,12 @@ if (refusal !== undefined || realGit === undefined || realGit === '') {
   process.stderr.write(`${refusal ?? 'phada: git is only available inside a Phada review.'}\n`)
   process.exitCode = 1
 } else {
-  const { GIT_EXTERNAL_DIFF: _external, ...env } = process.env
-  const child = spawn(realGit, argv, {
+  const env = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')),
+  )
+  const child = spawn(realGit, ['-c', 'credential.helper=', ...argv], {
     stdio: 'inherit',
-    env: { ...env, GIT_PAGER: 'cat', PAGER: 'cat' },
+    env: { ...env, GIT_PAGER: 'cat', PAGER: 'cat', GIT_TERMINAL_PROMPT: '0' },
   })
   child.on('error', (error) => {
     process.stderr.write(`phada: ${error.message}\n`)
