@@ -476,6 +476,7 @@ describe('publication', () => {
         {
           pass: 'review' as const,
           tool: 'read_file',
+          server: null,
           target: 'src/a.ts',
           bytes: 10,
           error: null,

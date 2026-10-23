@@ -45,6 +45,7 @@ describe('buildInvestigationReport', () => {
         {
           pass: 'review',
           tool: 'read_file',
+          server: null,
           target: 'src/a.ts',
           bytes: 100,
           error: null,
@@ -53,6 +54,7 @@ describe('buildInvestigationReport', () => {
         {
           pass: 'review',
           tool: 'read_file',
+          server: null,
           target: 'src/b.ts:10-20',
           bytes: 100,
           error: null,
@@ -61,16 +63,34 @@ describe('buildInvestigationReport', () => {
         {
           pass: 'review',
           tool: 'grep',
+          server: null,
           target: 'authorize\\( in src',
           bytes: 100,
           error: null,
           inSources: true,
         },
-        { pass: 'review', tool: 'grep', target: 'x', bytes: 100, error: null, inSources: false },
-        { pass: 'verify', tool: 'list', target: '.', bytes: 100, error: null, inSources: false },
+        {
+          pass: 'review',
+          tool: 'grep',
+          server: null,
+          target: 'x',
+          bytes: 100,
+          error: null,
+          inSources: false,
+        },
+        {
+          pass: 'verify',
+          tool: 'list',
+          server: null,
+          target: '.',
+          bytes: 100,
+          error: null,
+          inSources: false,
+        },
         {
           pass: 'review',
           tool: 'read_file',
+          server: null,
           target: 'big',
           bytes: 0,
           error: 'budget',
@@ -118,5 +138,39 @@ describe('buildInvestigationReport', () => {
       'history src/a.ts:10-20',
       'history src/b.ts',
     ])
+  })
+
+  it('names the server of an MCP call and shows its arguments as compact JSON', () => {
+    const log = logOf(
+      {
+        ...base,
+        tool: 'tickets__get_ticket',
+        server: 'tickets',
+        args: { id: 'ABC-1', note: 'x'.repeat(100) },
+        paths: [],
+      },
+      { ...base, tool: 'read_file', args: { path: 'src/a.ts' }, paths: ['src/a.ts'] },
+    )
+
+    const report = buildInvestigationReport({
+      status: 'used',
+      log,
+      findings: [],
+      mcp: [
+        { server: 'tickets', via: 'phada', status: 'connected', tools: ['get_ticket'], hidden: [] },
+      ],
+    })
+
+    expect(report.calls[0]?.server).toBe('tickets')
+    expect(report.calls[0]?.target).toBe(`{"id":"ABC-1","note":"${'x'.repeat(57)}…`)
+    expect(report.calls[0]?.target).toHaveLength(80)
+    expect(report.calls[1]?.server).toBeNull()
+    expect(report.mcp).toEqual([
+      { server: 'tickets', via: 'phada', status: 'connected', tools: ['get_ticket'], hidden: [] },
+    ])
+  })
+
+  it('has no mcp block without MCP', () => {
+    expect(buildInvestigationReport({ status: 'used', findings: [] })).not.toHaveProperty('mcp')
   })
 })

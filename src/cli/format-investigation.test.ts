@@ -9,6 +9,7 @@ const call = (
 ) => ({
   pass: 'review' as const,
   tool,
+  server: null,
   target,
   bytes: 2048,
   error: null,
@@ -103,6 +104,7 @@ describe('formatInvestigationSection', () => {
         {
           pass: 'recheck' as const,
           tool: 'read_file',
+          server: null,
           target: 'src/a.ts',
           bytes: 10,
           error: null,

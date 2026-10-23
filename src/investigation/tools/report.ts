@@ -7,6 +7,7 @@ export type InvestigationStatus = 'used' | 'off' | 'unavailable'
 export interface InvestigationCallReport {
   pass: ReviewPass
   tool: string
+  server: string | null
   target: string
   bytes: number
   error: string | null
@@ -18,7 +19,17 @@ export interface InvestigationReport {
   reason?: string
   calls: InvestigationCallReport[]
   external: ExternalToolCall[]
+  mcp?: McpServerReport[]
   totals: { calls: number; bytes: number }
+}
+
+export interface McpServerReport {
+  server: string
+  via: 'phada' | 'cli'
+  status: 'connected' | 'failed' | 'off'
+  tools: string[]
+  hidden: string[]
+  reason?: string
 }
 
 export interface InvestigationReportInput {
@@ -27,9 +38,11 @@ export interface InvestigationReportInput {
   log?: ToolLog
   findings: readonly Finding[]
   external?: readonly ExternalToolCall[]
+  mcp?: readonly McpServerReport[]
 }
 
 const LINE_SUFFIX = /:\d+(?:-\d+)?$/
+const MAX_MCP_TARGET = 80
 
 export function buildInvestigationReport(input: InvestigationReportInput): InvestigationReport {
   const cited = new Set(
@@ -40,6 +53,7 @@ export function buildInvestigationReport(input: InvestigationReportInput): Inves
   const calls = (input.log?.records ?? []).map((record) => ({
     pass: record.pass,
     tool: record.tool,
+    server: record.server ?? null,
     target: targetOf(record),
     bytes: record.bytes,
     error: record.error ?? null,
@@ -50,6 +64,7 @@ export function buildInvestigationReport(input: InvestigationReportInput): Inves
     ...(input.reason === undefined ? {} : { reason: input.reason }),
     calls,
     external: [...(input.external ?? [])],
+    ...(input.mcp === undefined ? {} : { mcp: [...input.mcp] }),
     totals: {
       calls: calls.length,
       bytes: calls.reduce((sum, call) => sum + call.bytes, 0),
@@ -57,7 +72,11 @@ export function buildInvestigationReport(input: InvestigationReportInput): Inves
   }
 }
 
-function targetOf({ tool, args }: ToolCallRecord): string {
+function targetOf({ tool, args, server }: ToolCallRecord): string {
+  if (server !== undefined) {
+    const text = JSON.stringify(args ?? {})
+    return text.length <= MAX_MCP_TARGET ? text : `${text.slice(0, MAX_MCP_TARGET - 1)}…`
+  }
   const path = stringArg(args, 'path')
   if (tool === 'read_file') {
     const from = numberArg(args, 'from')
