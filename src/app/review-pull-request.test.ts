@@ -2,6 +2,9 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
+import type { DeclaredMcpServer } from '../config/mcp-servers.js'
+import { McpConnectError } from '../investigation/mcp/mcp-client.js'
+import type { McpConnection } from '../investigation/mcp/mcp-client.js'
 import { SkillError } from '../skills/errors.js'
 import { findingFixture } from '../../test/support/finding.js'
 import { pullRequestFixture } from '../../test/support/pull-request.js'
@@ -124,7 +127,7 @@ function freshPath(name: string): string {
 function setup(overrides: Partial<PullRequestReviewDeps> = {}, outputs: ReviewOutput[] = [OUTPUT]) {
   const events: string[] = []
   const prompts: ReviewPrompt[] = []
-  const servers: (readonly string[])[] = []
+  const servers: boolean[] = []
   const fetched: string[] = []
   let closed = 0
   let observed: ObservedStore | undefined
@@ -151,8 +154,8 @@ function setup(overrides: Partial<PullRequestReviewDeps> = {}, outputs: ReviewOu
     },
     extractor,
     now: () => 0,
-    createProvider: (userMcpServers) => {
-      servers.push(userMcpServers)
+    createProvider: (useNames) => {
+      servers.push(useNames)
       return provider
     },
     skills: {
@@ -199,7 +202,7 @@ const input = {
   pullRequest: pullRequestFixture(),
   token: 'token',
   userLayers: [],
-  userMcpServers: ['linear'],
+  mcp: { names: [{ name: 'linear' }], declared: [] },
   options: { verify: false },
 }
 
@@ -231,7 +234,7 @@ describe('reviewPullRequest', () => {
       'dependencies',
       'similar',
     ])
-    expect(h.servers).toEqual([['linear']])
+    expect(h.servers).toEqual([true])
     expect(h.closed()).toBe(1)
     expect(result.outcome.status).toBe('reviewed')
     expect(result.impact).toMatchObject({
@@ -377,7 +380,7 @@ describe('reviewPullRequest', () => {
       'review',
     ])
     expect(h.prompts[0]?.tools).toBeUndefined()
-    expect(h.servers).toEqual([[]])
+    expect(h.servers).toEqual([false])
     expect(result.investigation).toMatchObject({
       status: 'unavailable',
       reason: 'git was not found',
@@ -943,5 +946,168 @@ describe('reviewPullRequest with native skills', () => {
     )
 
     expect(h.opened).toHaveLength(0)
+  })
+})
+
+describe('reviewPullRequest with MCP servers', () => {
+  const tickets: DeclaredMcpServer = {
+    name: 'tickets',
+    transport: { kind: 'stdio', command: 'tickets-mcp', args: [], env: {} },
+    description: 'Ticket cited in the title',
+  }
+  const docs: DeclaredMcpServer = {
+    name: 'docs',
+    transport: { kind: 'http', url: 'https://docs/mcp', headers: {} },
+  }
+
+  function fakeConnection(name: string, closed: string[]): McpConnection {
+    return {
+      name,
+      tools: [
+        {
+          name: 'get_ticket',
+          description: 'Read',
+          inputSchema: { type: 'object' },
+          readOnly: true,
+        },
+        {
+          name: 'create_ticket',
+          description: 'Write',
+          inputSchema: { type: 'object' },
+          readOnly: false,
+        },
+      ],
+      call: async () => ({ text: 'TICKET ABC-1', isError: false }),
+      close: async () => {
+        closed.push(name)
+      },
+    }
+  }
+
+  const withMcp = { ...input, mcp: { names: [{ name: 'linear' }], declared: [tickets, docs] } }
+
+  it('connects declared servers, offers their read-only tools and reports every server', async () => {
+    const closed: string[] = []
+    const connected: string[] = []
+    const h = setup({
+      connectMcp: async (server) => {
+        connected.push(server.name)
+        if (server.name === 'docs') {
+          throw new McpConnectError('docs', 'MCP server docs refused the credentials (HTTP 401).')
+        }
+        return fakeConnection(server.name, closed)
+      },
+    })
+
+    const result = await reviewPullRequest(withMcp, h.deps)
+
+    expect(connected).toEqual(['tickets', 'docs'])
+    expect(toolNames(h.prompts[0])).toContain('tickets__get_ticket')
+    expect(toolNames(h.prompts[0])).not.toContain('tickets__create_ticket')
+    expect(h.prompts[0]?.tools?.mcpServers).toEqual([
+      { name: 'linear' },
+      { name: 'tickets', description: 'Ticket cited in the title', prefix: 'tickets__' },
+    ])
+    expect(h.events).toContain(
+      'warning: MCP server docs refused the credentials (HTTP 401). Reviewing without it.',
+    )
+    expect(h.events).toContain(
+      'warning: acme/shop is public: what the AI reads from linear, tickets may end up in the published review.',
+    )
+    expect(result.investigation.mcp).toEqual([
+      { server: 'linear', via: 'cli', status: 'connected', tools: [], hidden: [] },
+      {
+        server: 'tickets',
+        via: 'phada',
+        status: 'connected',
+        tools: ['get_ticket'],
+        hidden: ['create_ticket'],
+      },
+      {
+        server: 'docs',
+        via: 'phada',
+        status: 'failed',
+        tools: [],
+        hidden: [],
+        reason: 'MCP server docs refused the credentials (HTTP 401).',
+      },
+    ])
+    expect(closed).toEqual(['tickets'])
+  })
+
+  it('reviews a pull request from an outside author without any MCP server', async () => {
+    const connected: string[] = []
+    const h = setup({
+      connectMcp: async (server) => {
+        connected.push(server.name)
+        return fakeConnection(server.name, [])
+      },
+    })
+
+    const result = await reviewPullRequest(
+      { ...withMcp, pullRequest: pullRequestFixture({ association: 'CONTRIBUTOR' }) },
+      h.deps,
+    )
+
+    expect(connected).toEqual([])
+    expect(h.servers).toEqual([false])
+    expect(h.prompts[0]?.tools?.mcpServers).toBeUndefined()
+    expect(h.events).toContain(
+      'warning: acme/shop#12 is from an outside author: reviewing without your MCP servers.',
+    )
+    expect(h.events.some((event) => event.includes('is public'))).toBe(false)
+    expect(result.investigation.mcp?.map(({ server, status }) => [server, status])).toEqual([
+      ['linear', 'off'],
+      ['tickets', 'off'],
+      ['docs', 'off'],
+    ])
+  })
+
+  it('uses the MCP servers on a private repository whatever the author', async () => {
+    const h = setup({ connectMcp: async (server) => fakeConnection(server.name, []) })
+
+    await reviewPullRequest(
+      {
+        ...withMcp,
+        pullRequest: pullRequestFixture({ association: 'CONTRIBUTOR', private: true }),
+      },
+      h.deps,
+    )
+
+    expect(h.servers).toEqual([true])
+    expect(toolNames(h.prompts[0])).toContain('tickets__get_ticket')
+  })
+
+  it('connects nothing without the investigation', async () => {
+    const connected: string[] = []
+    const h = setup({
+      connectMcp: async (server) => {
+        connected.push(server.name)
+        return fakeConnection(server.name, [])
+      },
+    })
+
+    const result = await reviewPullRequest(
+      { ...withMcp, options: { verify: false, investigate: false } },
+      h.deps,
+    )
+
+    expect(connected).toEqual([])
+    expect(h.servers).toEqual([false])
+    expect(result.investigation.mcp).toBeUndefined()
+  })
+
+  it('closes the MCP servers when the review fails', async () => {
+    const closed: string[] = []
+    const h = setup({ connectMcp: async (server) => fakeConnection(server.name, closed) })
+    h.deps.createProvider = () => ({
+      id: 'broken',
+      review: async () => {
+        throw new Error('provider down')
+      },
+    })
+
+    await expect(reviewPullRequest(withMcp, h.deps)).rejects.toThrow('provider down')
+    expect(closed).toEqual(['tickets', 'docs'])
   })
 })

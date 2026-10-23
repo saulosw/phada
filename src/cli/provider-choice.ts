@@ -1,16 +1,18 @@
+import type { ResolvedMcp } from '../config/mcp-servers.js'
 import { UsageError } from './errors.js'
+import type { CheckedNames } from './mcp-names.js'
 
 const PROVIDERS = ['claude', 'codex', 'ollama'] as const
 
 export interface ProviderOptions {
   model?: string
-  userMcpServers?: string[]
+  mcpNames?: CheckedNames
   detached?: boolean
 }
 
 export function assertProviderChoice(
   name: string,
-  options: { model?: string; userMcpServers?: readonly string[] },
+  options: { model?: string; mcp?: ResolvedMcp },
   source: 'flags' | 'config' = 'flags',
 ): void {
   if (!(PROVIDERS as readonly string[]).includes(name)) {
@@ -25,9 +27,10 @@ export function assertProviderChoice(
       `${fix}, e.g. qwen2.5-coder:7b, llama3.1:8b or gpt-oss:120b-cloud (see "ollama list").`,
     )
   }
-  if ((options.userMcpServers?.length ?? 0) > 0 && name !== 'claude') {
+  const [named] = options.mcp?.names ?? []
+  if (name === 'ollama' && named !== undefined) {
     throw new UsageError(
-      `mcp in your config works only with ${source === 'flags' ? '--provider claude' : 'provider: claude'} for now.`,
+      `MCP server ${named.name}: Ollama has no MCP servers of its own; declare it with command or url in your config.`,
     )
   }
 }

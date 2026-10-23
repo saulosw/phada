@@ -1,3 +1,8 @@
+import type { McpNameEntry } from '../config/mcp-servers.js'
+import { connectMcp } from '../investigation/mcp/mcp-client.js'
+import { withoutGitHubTokens } from '../providers/cli-run.js'
+import { checkMcpNames } from './mcp-names.js'
+import type { CheckedNames } from './mcp-names.js'
 import type { FeedbackRefreshDeps } from '../app/feedback.js'
 import type { PullRequestReviewDeps } from '../app/review-pull-request.js'
 import type { PublicationResult, RenderedReview, ReviewRun } from '../app/review-and-publish.js'
@@ -64,10 +69,14 @@ export interface ReviewWiringDeps extends ContextReaders {
   repositoryReader?: (options: RepositoryReaderOptions) => ReadGitHub
   runsSkills?: (provider: string) => boolean
   openNativeRunner?: PullRequestReviewDeps['openNativeRunner']
+  checkMcpNames?: (
+    provider: string,
+    names: readonly McpNameEntry[],
+  ) => Promise<CheckedNames | undefined>
 }
 
 export type PublishTarget = PullRequestRef & { token: string }
-export type Choice = { provider: string; model?: string }
+export type Choice = { provider: string; model?: string; mcpNames?: CheckedNames }
 
 const PROGRESS_LABELS: Readonly<Record<ReviewPass, string>> = {
   review: 'Reviewing',
@@ -129,12 +138,14 @@ export function pullRequestReviewDeps(
     openObservedStore: () => deps.openObservedStore(cache.observed),
     extractor: deps.createExtractor(),
     now: () => performance.now(),
-    createProvider: (servers) =>
+    createProvider: (useNames) =>
       deps.createProvider(choice.provider, {
         ...(choice.model === undefined ? {} : { model: choice.model }),
         ...(choice.detached === true ? { detached: true } : {}),
-        ...(servers.length === 0 ? {} : { userMcpServers: [...servers] }),
+        ...(useNames && choice.mcpNames !== undefined ? { mcpNames: choice.mcpNames } : {}),
       }),
+    connectMcp: (server) =>
+      connectMcp(server, { env: withoutGitHubTokens(deps.env), clientVersion: deps.version }),
     watchProvider: (provider, pass) => withProgress(provider, deps.stderr, PROGRESS_LABELS[pass]),
     skills: diskSkillCatalog(deps.files, deps.env, deps.home),
     runsSkills: (deps.runsSkills ?? providerRunsSkills)(choice.provider),
@@ -269,4 +280,12 @@ function toPublication(
     default:
       return publication
   }
+}
+
+export function mcpNameChecker(
+  deps: ReviewWiringDeps,
+): (provider: string, names: readonly McpNameEntry[]) => Promise<CheckedNames | undefined> {
+  return (
+    deps.checkMcpNames ?? ((provider, names) => checkMcpNames(provider, names, { env: deps.env }))
+  )
 }
