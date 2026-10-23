@@ -1,3 +1,4 @@
+import { trackDetachedChild } from '../process/run-command.js'
 import type { McpNameEntry } from '../config/mcp-servers.js'
 import { connectMcp } from '../investigation/mcp/mcp-client.js'
 import { withoutGitHubTokens } from '../providers/cli-run.js'
@@ -145,7 +146,11 @@ export function pullRequestReviewDeps(
         ...(useNames && choice.mcpNames !== undefined ? { mcpNames: choice.mcpNames } : {}),
       }),
     connectMcp: (server) =>
-      connectMcp(server, { env: withoutGitHubTokens(deps.env), clientVersion: deps.version }),
+      connectMcp(server, {
+        env: withoutGitHubTokens(deps.env),
+        clientVersion: deps.version,
+        ...(choice.detached === true ? { detached: true, trackChild: trackDetachedChild } : {}),
+      }),
     watchProvider: (provider, pass) => withProgress(provider, deps.stderr, PROGRESS_LABELS[pass]),
     skills: diskSkillCatalog(deps.files, deps.env, deps.home),
     runsSkills: (deps.runsSkills ?? providerRunsSkills)(choice.provider),

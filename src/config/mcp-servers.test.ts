@@ -73,6 +73,7 @@ describe('resolveMcp', () => {
           },
           description: 'Tickets',
           tools: ['get_ticket'],
+          secrets: ['/opt/t', 's3cret'],
         },
         {
           name: 'docs',
@@ -81,6 +82,7 @@ describe('resolveMcp', () => {
             url: 'https://mcp.acme.dev/mcp',
             headers: { Authorization: 'Bearer s3cret' },
           },
+          secrets: ['mcp.acme.dev', 's3cret'],
         },
       ],
     })

@@ -14,6 +14,7 @@ const CLOSE_GRACE_MS = 2_000
 const STDERR_KEPT_BYTES = 2_048
 const MAX_TOOL_PAGES = 20
 const METHOD_NOT_FOUND = -32601
+const REDACTED = '[REDACTED]'
 
 export interface McpTool {
   name: string
@@ -36,6 +37,8 @@ export interface ConnectMcpOptions {
   connectTimeoutMs?: number
   callTimeoutMs?: number
   clientVersion?: string
+  detached?: boolean
+  trackChild?: (pid: number) => () => void
 }
 
 export class McpConnectError extends Error {
@@ -64,7 +67,7 @@ class SessionExpiredError extends Error {}
 interface Transport {
   readonly pid?: number
   request(method: string, params: unknown, timeoutMs: number): Promise<unknown>
-  notify(method: string, params?: unknown): Promise<void>
+  notify(method: string, params: unknown, timeoutMs: number): Promise<void>
   close(): Promise<void>
 }
 
@@ -107,18 +110,19 @@ export async function connectMcp(
   }
   const transport =
     server.transport.kind === 'stdio'
-      ? openStdio(server.transport, options.env)
+      ? openStdio(server.transport, options)
       : openHttp(server.transport, options.fetch ?? globalThis.fetch, initialize)
   const deadline = performance.now() + connectTimeoutMs
   const remaining = () => Math.max(1, Math.ceil(deadline - performance.now()))
+  const hide = secretHider(server.secrets ?? [])
   let tools: McpTool[]
   try {
     await transport.request('initialize', initialize, remaining())
-    await transport.notify('notifications/initialized')
+    await transport.notify('notifications/initialized', undefined, remaining())
     tools = await listTools(transport, remaining)
   } catch (error) {
     await transport.close()
-    throw new McpConnectError(server.name, connectFailure(server, error, connectTimeoutMs), {
+    throw new McpConnectError(server.name, hide(connectFailure(server, error, connectTimeoutMs)), {
       cause: error,
     })
   }
@@ -131,9 +135,9 @@ export async function connectMcp(
         const result = CallResult.parse(
           await transport.request('tools/call', { name: tool, arguments: args }, callTimeoutMs),
         )
-        return { text: resultText(result), isError: result.isError === true }
+        return { text: hide(resultText(result)), isError: result.isError === true }
       } catch (error) {
-        return { text: callFailure(server.name, error, callTimeoutMs), isError: true }
+        return { text: hide(callFailure(server.name, error, callTimeoutMs)), isError: true }
       }
     },
     close: () => transport.close(),
@@ -180,6 +184,10 @@ function contentText(item: Record<string, unknown>): string {
   return `[${type} omitted]`
 }
 
+function secretHider(secrets: readonly string[]): (text: string) => string {
+  return (text) => secrets.reduce((hidden, secret) => hidden.split(secret).join(REDACTED), text)
+}
+
 function seconds(ms: number): string {
   return `${ms / 1000}s`
 }
@@ -214,12 +222,15 @@ interface Pending {
 
 function openStdio(
   transport: Extract<DeclaredMcpServer['transport'], { kind: 'stdio' }>,
-  baseEnv: NodeJS.ProcessEnv,
+  options: ConnectMcpOptions,
 ): Transport {
+  const detached = options.detached === true
   const child: ChildProcessWithoutNullStreams = spawn(transport.command, transport.args, {
-    env: { ...baseEnv, ...transport.env },
+    env: { ...options.env, ...transport.env },
     stdio: 'pipe',
+    detached,
   })
+  const untrack = detached && child.pid !== undefined ? options.trackChild?.(child.pid) : undefined
   const pending = new Map<number, Pending>()
   let nextId = 1
   let stderr = ''
@@ -227,6 +238,7 @@ function openStdio(
   const exited = new Promise<void>((resolve) => {
     const stop = (error: StoppedError) => {
       stopped ??= error
+      untrack?.()
       for (const request of pending.values()) request.reject(stopped)
       pending.clear()
       resolve()
@@ -292,9 +304,17 @@ function openStdio(
     notify: async (method, params) => write(params === undefined ? { method } : { method, params }),
     close: async () => {
       if (stopped !== undefined) return
+      const kill = (signal: NodeJS.Signals) => {
+        try {
+          if (detached && child.pid !== undefined) process.kill(-child.pid, signal)
+          else child.kill(signal)
+        } catch {
+          child.kill(signal)
+        }
+      }
       child.stdin.end()
-      child.kill('SIGTERM')
-      const timer = setTimeout(() => child.kill('SIGKILL'), CLOSE_GRACE_MS)
+      kill('SIGTERM')
+      const timer = setTimeout(() => kill('SIGKILL'), CLOSE_GRACE_MS)
       await exited
       clearTimeout(timer)
     },
@@ -326,7 +346,7 @@ function openHttp(
         signal: AbortSignal.timeout(timeoutMs),
       })
     } catch (error) {
-      if (error instanceof Error && error.name === 'TimeoutError') throw new TimeoutError()
+      if (isAbort(error)) throw new TimeoutError()
       throw error
     }
     if (response.status === 404 && sessionId !== undefined) throw new SessionExpiredError()
@@ -337,29 +357,30 @@ function openHttp(
     const id = nextId++
     const response = await post({ id, method, params }, timeoutMs)
     if (method === 'initialize') sessionId = response.headers.get('mcp-session-id') ?? undefined
-    const message = await answerOf(response, id)
+    const message = await answerOf(response, id).catch((error: unknown) => {
+      throw isAbort(error) ? new TimeoutError() : error
+    })
     if (message.error !== undefined) throw new RpcError(message.error.message ?? 'error')
     return message.result
   }
-  const notify = async (method: string, params?: unknown) => {
-    const response = await post(
-      params === undefined ? { method } : { method, params },
-      DEFAULT_CALL_TIMEOUT_MS,
-    )
+  const notify = async (method: string, params: unknown, timeoutMs: number) => {
+    const response = await post(params === undefined ? { method } : { method, params }, timeoutMs)
     await response.body?.cancel()
     if (method === 'notifications/initialized') initialized = true
   }
   return {
     request: async (method, params, timeoutMs) => {
+      const deadline = performance.now() + timeoutMs
+      const remaining = () => Math.max(1, Math.ceil(deadline - performance.now()))
       try {
-        return await send(method, params, timeoutMs)
+        return await send(method, params, remaining())
       } catch (error) {
         if (!(error instanceof SessionExpiredError)) throw error
         sessionId = undefined
         initialized = false
-        await send('initialize', initialize, timeoutMs)
-        await notify('notifications/initialized')
-        return send(method, params, timeoutMs)
+        await send('initialize', initialize, remaining())
+        await notify('notifications/initialized', undefined, remaining())
+        return send(method, params, remaining())
       }
     },
     notify,
@@ -411,6 +432,10 @@ async function answerOf(response: Response, id: number): Promise<JsonRpcMessage>
     }
     if (done) throw new RpcError('no answer to the request')
   }
+}
+
+function isAbort(error: unknown): boolean {
+  return error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')
 }
 
 function parseMessage(line: string): JsonRpcMessage | undefined {

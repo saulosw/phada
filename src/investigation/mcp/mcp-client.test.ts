@@ -17,10 +17,12 @@ afterEach(async () => {
 function stdioServer(
   env: Record<string, string> = {},
   command = process.execPath,
+  secrets?: string[],
 ): DeclaredMcpServer {
   return {
     name: 'tickets',
     transport: { kind: 'stdio', command, args: command === process.execPath ? [FIXTURE] : [], env },
+    ...(secrets === undefined ? {} : { secrets }),
   }
 }
 
@@ -142,6 +144,59 @@ describe('connectMcp over stdio', () => {
     })
   })
 
+  it('hides the values of its secrets in the reason a server failed', async () => {
+    const error = await connect(
+      stdioServer(
+        { FAKE_MCP_MODE: 'leak-and-exit', SECRET_TOKEN: 'acme-internal-7f3k' },
+        process.execPath,
+        ['acme-internal-7f3k'],
+      ),
+    ).catch((caught: unknown) => caught)
+
+    expect(String(error)).toContain('auth failed for token [REDACTED]')
+    expect(String(error)).not.toContain('acme-internal-7f3k')
+  })
+
+  it('hides the values of its secrets in what a tool answers', async () => {
+    const connection = await connect(
+      stdioServer(
+        { FAKE_MCP_MODE: 'echo-secret', SECRET_TOKEN: 'acme-internal-7f3k' },
+        process.execPath,
+        ['acme-internal-7f3k'],
+      ),
+    )
+
+    expect((await connection.call('get_ticket', { id: '1' })).text).toBe('token is [REDACTED]')
+  })
+
+  it('runs the server in its own process group and tracks it when detached', async () => {
+    const tracked: number[] = []
+    let untracked = 0
+    const connection = await connectMcp(stdioServer(), {
+      env: { PATH: process.env.PATH ?? '' },
+      detached: true,
+      trackChild: (pid) => {
+        tracked.push(pid)
+        return () => {
+          untracked += 1
+        }
+      },
+    })
+    const pid = connection.pid ?? 0
+
+    expect(tracked).toEqual([pid])
+    expect(() => process.kill(-pid, 0)).not.toThrow()
+    await connection.close()
+    expect(isRunning(pid)).toBe(false)
+    expect(untracked).toBe(1)
+  })
+
+  it("keeps the server in Phada's process group when not detached", async () => {
+    const connection = await connect(stdioServer())
+
+    expect(() => process.kill(-(connection.pid ?? 0), 0)).toThrow()
+  })
+
   it('stops the server process on close', async () => {
     const connection = await connectMcp(stdioServer(), { env: {} })
     const pid = connection.pid ?? 0
@@ -158,7 +213,9 @@ interface HttpRequest {
   body: { id?: string | number; method?: string; params?: unknown } | undefined
 }
 
-function httpFetch(answer: (request: HttpRequest) => Response | Promise<Response>) {
+function httpFetch(
+  answer: (request: HttpRequest, signal?: AbortSignal | null) => Response | Promise<Response>,
+) {
   const requests: HttpRequest[] = []
   const fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
     const request: HttpRequest = {
@@ -167,7 +224,7 @@ function httpFetch(answer: (request: HttpRequest) => Response | Promise<Response
       body: typeof init?.body === 'string' ? JSON.parse(init.body) : undefined,
     }
     requests.push(request)
-    return answer(request)
+    return answer(request, init?.signal)
   }) as typeof globalThis.fetch
   return { fetch, requests }
 }
@@ -255,6 +312,43 @@ describe('connectMcp over streamable HTTP', () => {
     const connection = await connect(httpServer, { fetch })
 
     expect(connection.tools.map(({ name }) => name)).toEqual(['lookup'])
+  })
+
+  it('keeps to the connection deadline when the server holds the initialized notification', async () => {
+    const { fetch } = httpFetch((request, signal) => {
+      if (request.body?.method !== 'notifications/initialized') return rpcResult(request)
+      return new Promise<Response>((_resolve, reject) =>
+        signal?.addEventListener('abort', () => reject(signal.reason)),
+      )
+    })
+    const started = performance.now()
+    const error = await connect(httpServer, { fetch, connectTimeoutMs: 200 }).catch(
+      (caught: unknown) => caught,
+    )
+
+    expect(String(error)).toContain('MCP server docs did not answer within 0.2s.')
+    expect(performance.now() - started).toBeLessThan(2000)
+  })
+
+  it('says the server did not answer when its event stream times out', async () => {
+    const { fetch } = httpFetch((request) => {
+      if (request.body?.method !== 'tools/list') return rpcResult(request)
+      const body = new ReadableStream({
+        pull: (controller) =>
+          new Promise<void>((resolve) =>
+            setTimeout(() => {
+              controller.error(new DOMException('The operation timed out.', 'TimeoutError'))
+              resolve()
+            }, 20),
+          ),
+      })
+      return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+    })
+    const error = await connect(httpServer, { fetch, connectTimeoutMs: 5000 }).catch(
+      (caught: unknown) => caught,
+    )
+
+    expect(String(error)).toContain('MCP server docs did not answer within 5s.')
   })
 
   it('reports refused credentials', async () => {

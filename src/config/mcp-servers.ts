@@ -17,6 +17,7 @@ export interface DeclaredMcpServer {
   transport: McpTransport
   tools?: string[]
   description?: string
+  secrets?: string[]
 }
 
 export interface ResolvedMcp {
@@ -27,6 +28,7 @@ export interface ResolvedMcp {
 export const NO_MCP: ResolvedMcp = { names: [], declared: [] }
 
 const VARIABLE_REFERENCE = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g
+const MIN_SECRET_LENGTH = 4
 
 export function userMcp(userLayers: readonly ConfigLayer[]): McpEntry[] {
   const entries = (['user-repo', 'user'] as const).flatMap((kind) =>
@@ -52,12 +54,14 @@ export function resolveMcp(entries: readonly McpEntry[], env: NodeJS.ProcessEnv)
 }
 
 function declaredServer(entry: McpObject, env: NodeJS.ProcessEnv): DeclaredMcpServer {
+  const secrets = new Set<string>()
   const expand = (text: string) =>
     text.replace(VARIABLE_REFERENCE, (_match, name: string) => {
       const value = env[name]
       if (value === undefined || value === '') {
         throw new ConfigError(`mcp server ${entry.name}: ${name} is not set.`)
       }
+      if (value.length >= MIN_SECRET_LENGTH) secrets.add(value)
       return value
     })
   const expandAll = (record: Record<string, string> | undefined) =>
@@ -71,7 +75,11 @@ function declaredServer(entry: McpObject, env: NodeJS.ProcessEnv): DeclaredMcpSe
           env: expandAll(entry.env),
         }
       : { kind: 'http', url: expand(entry.url ?? ''), headers: expandAll(entry.headers) }
-  return optionsOf(entry, { name: entry.name, transport })
+  return optionsOf(entry, {
+    name: entry.name,
+    transport,
+    ...(secrets.size === 0 ? {} : { secrets: [...secrets] }),
+  })
 }
 
 function optionsOf<T extends object>(entry: McpObject, base: T): T & McpNameEntry {

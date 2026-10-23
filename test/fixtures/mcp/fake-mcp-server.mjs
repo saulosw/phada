@@ -27,6 +27,10 @@ const send = (message) =>
 let pendingList
 
 if (mode === 'noisy') process.stdout.write('Starting tickets server v1.2…\n')
+if (mode === 'leak-and-exit') {
+  process.stderr.write(`auth failed for token ${process.env.SECRET_TOKEN}\n`)
+  process.exit(1)
+}
 process.stderr.write('server log line\n')
 
 for await (const line of createInterface({ input: process.stdin, crlfDelay: Infinity })) {
@@ -66,7 +70,12 @@ for await (const line of createInterface({ input: process.stdin, crlfDelay: Infi
       if (mode === 'crash-on-call') process.exit(3)
       if (mode === 'silent-calls') break
       const { name, arguments: args } = message.params
-      if (mode === 'error-tool') {
+      if (mode === 'echo-secret') {
+        send({
+          id: message.id,
+          result: { content: [{ type: 'text', text: `token is ${process.env.SECRET_TOKEN}` }] },
+        })
+      } else if (mode === 'error-tool') {
         send({
           id: message.id,
           result: { content: [{ type: 'text', text: 'no such ticket' }], isError: true },
