@@ -61,15 +61,20 @@ async function callSlack(
   body: Record<string, unknown>,
   options: SlackWebApiOptions,
 ): Promise<Record<string, unknown>> {
-  const response = await (options.fetch ?? globalThis.fetch)(`${API}/${method}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json; charset=utf-8',
-    },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS),
-  })
+  let response: Response
+  try {
+    response = await (options.fetch ?? globalThis.fetch)(`${API}/${method}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json; charset=utf-8',
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS),
+    })
+  } catch (error) {
+    throw new SlackApiError(method, error instanceof Error ? error.message : String(error))
+  }
   if (!response.ok) throw new SlackApiError(method, `HTTP ${response.status}`)
   const answer = (await response.json()) as Record<string, unknown>
   if (answer.ok === true) return answer

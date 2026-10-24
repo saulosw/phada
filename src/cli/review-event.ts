@@ -6,6 +6,25 @@ import type { JobRecord, PublishTarget, RequestRecord, RequestSource } from '../
 
 const SCHEMA_VERSION = 1
 
+export interface ReviewedFinding {
+  severity: string
+  confidence?: number
+  file: string
+  line: number
+  title: string
+  why: string
+}
+
+export interface ReviewDocument {
+  verdict?: Verdict
+  review?: {
+    summary?: string
+    score?: { value: number }
+    findings?: ReviewedFinding[]
+    worthChecking?: ReviewedFinding[]
+  }
+}
+
 export interface ReviewEvent {
   schemaVersion: typeof SCHEMA_VERSION
   event: ReviewEventName
@@ -14,7 +33,7 @@ export interface ReviewEvent {
   verdict: Verdict | null
   reason?: string
   publication: { status: RunStatus; url?: string } | null
-  review?: unknown
+  review?: ReviewDocument
   error?: string
 }
 
@@ -44,7 +63,7 @@ export function reviewEvent(event: JobEvent, run: RunRecord | undefined): Review
         ? { status: run.status, ...(run.url === undefined ? {} : { url: run.url }) }
         : null,
     ...(kind === 'finished' && run?.resultJson !== undefined
-      ? { review: JSON.parse(run.resultJson) as unknown }
+      ? { review: JSON.parse(run.resultJson) as ReviewDocument }
       : {}),
     ...(error === undefined ? {} : { error }),
   }

@@ -35,16 +35,16 @@ describe('whenChecker', () => {
     expect(await check('echo "only the payments team" >&2; exit 1', INPUT)).toBe(
       'only the payments team',
     )
-    expect(await check('exit 2', INPUT)).toBe('it exited with 2')
+    expect(await check('exit 2', INPUT)).toBe('exited with 2')
   })
 
   it('refuses when the command takes longer than its time', async () => {
     const check = whenChecker({ cwd: dir, env: ENV, timeoutMs: 300 })
-    expect(await check('sleep 5', INPUT)).toBe('it did not answer within 0.3s')
+    expect(await check('sleep 5', INPUT)).toBe('did not finish within 0.3s and was stopped')
   })
 
   it('refuses when the command cannot run', async () => {
     const check = whenChecker({ cwd: join(dir, 'missing'), env: ENV })
-    expect(await check('true', INPUT)).toMatch(/^it could not run: /)
+    expect(await check('true', INPUT)).toMatch(/^could not run: /)
   })
 })

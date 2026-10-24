@@ -57,11 +57,11 @@ export function connectSocketMode(options: SocketModeOptions): SocketModeConnect
     const socket = new Socket(url)
     let replaced = false
     let greeted = false
-    const reconnect = (asked: boolean) => {
+    const reconnect = (why: 'asked' | 'dropped') => {
       if (replaced || stopped) return
       replaced = true
       socket.close()
-      void connect(greeted ? (asked ? 0 : AFTER_DROP_MS) : backoff())
+      void connect(!greeted ? backoff() : why === 'asked' ? 0 : AFTER_DROP_MS)
     }
     socket.addEventListener('message', ({ data }) => {
       const message = parse(data)
@@ -73,13 +73,13 @@ export function connectSocketMode(options: SocketModeOptions): SocketModeConnect
         greeted = true
         failures = 0
       }
-      if (message.type === 'disconnect') return reconnect(true)
+      if (message.type === 'disconnect') return reconnect('asked')
       const event = (message.payload as { event?: unknown } | undefined)?.event
       if (message.type === 'events_api' && typeof event === 'object' && event !== null) {
         options.onEvent(event as Record<string, unknown>)
       }
     })
-    socket.addEventListener('close', () => reconnect(false))
+    socket.addEventListener('close', () => reconnect('dropped'))
     socket.addEventListener('error', () =>
       options.onError('Slack connection dropped; reconnecting.'),
     )

@@ -1,5 +1,5 @@
 import type { SlackEmojis, SlackReply } from '../config/watch-settings.js'
-import type { ReviewEvent } from './review-event.js'
+import type { ReviewedFinding, ReviewEvent } from './review-event.js'
 import { shortSha } from './review-text.js'
 import { toTerminalText } from './terminal-text.js'
 import { formatCount } from './units.js'
@@ -24,19 +24,11 @@ const SKIP_REASONS: Readonly<Record<string, string>> = {
   superseded: 'A newer commit replaced this one.',
 }
 
-interface FindingView {
-  severity: string
-  file: string
-  line: number
-  title: string
-  why: string
-}
-
 interface ReviewView {
   summary?: string
   score?: { value: number }
-  findings: FindingView[]
-  worthChecking: FindingView[]
+  findings: ReviewedFinding[]
+  worthChecking: ReviewedFinding[]
 }
 
 export function slackReplies(event: ReviewEvent, reply: SlackReply, emojis: SlackEmojis): string[] {
@@ -91,7 +83,7 @@ function countsLine(review: ReviewView): string {
   return parts.join(' · ')
 }
 
-function findingBlock(finding: FindingView, event: ReviewEvent): string {
+function findingBlock(finding: ReviewedFinding, event: ReviewEvent): string {
   const { repo, headSha } = event.job
   const place = `${finding.file}:${finding.line}`
   const link = `https://github.com/${repo}/blob/${headSha}/${encodeURI(finding.file)}#L${finding.line}`
@@ -132,7 +124,7 @@ function size(parts: readonly string[]): number {
 }
 
 function reviewView(event: ReviewEvent): ReviewView | undefined {
-  const review = (event.review as { review?: Partial<ReviewView> } | undefined)?.review
+  const review = event.review?.review
   if (review === undefined) return undefined
   return {
     ...(review.summary === undefined ? {} : { summary: review.summary }),

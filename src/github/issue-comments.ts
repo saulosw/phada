@@ -1,12 +1,11 @@
 import { field, numberField, stringField } from './json-fields.js'
 import { RepositoryAccessError } from './repository.js'
 import type { RepositoryFilesOptions } from './repository-files.js'
-import { ACCEPT_JSON, API_ORIGIN, ensureOk, readJson, sendGitHubRequest } from './request.js'
+import { ACCEPT_JSON, ensureOk, nextPagePath, readJson, sendGitHubRequest } from './request.js'
 import type { GitHubRequestContext } from './request.js'
 
 const DEFAULT_TIMEOUT_MS = 30_000
 export const MAX_COMMENT_PAGES = 5
-const NEXT_LINK = /<([^>]+)>;\s*rel="next"/
 const ISSUE_NUMBER = /\/issues\/(\d+)$/
 
 export interface IssueComment {
@@ -52,7 +51,7 @@ export async function listIssueComments(
       throw new RepositoryAccessError(`${options.owner}/${options.repo}`, response.status)
     }
     comments.push(...items.map(toComment))
-    path = nextPath(response.headers.get('link'))
+    path = nextPagePath(response.headers.get('link'))
   }
   return { status: 'ok', ...(etag === undefined ? {} : { etag }), comments }
 }
@@ -96,10 +95,4 @@ function context(options: RepositoryFilesOptions): GitHubRequestContext {
 
 function repoPath(options: { owner: string; repo: string }): string {
   return `/repos/${encodeURIComponent(options.owner)}/${encodeURIComponent(options.repo)}`
-}
-
-function nextPath(link: string | null): string | undefined {
-  const url = link === null ? undefined : NEXT_LINK.exec(link)?.[1]
-  if (url === undefined || !url.startsWith(`${API_ORIGIN}/`)) return undefined
-  return url.slice(API_ORIGIN.length)
 }

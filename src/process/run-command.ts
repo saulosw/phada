@@ -13,7 +13,7 @@ const KILL_GRACE_MS = 2_000
 const detachedChildren = new Set<number>()
 
 export function killDetachedChildren(): void {
-  for (const pid of detachedChildren) killGroup(pid, 'SIGTERM')
+  for (const pid of detachedChildren) signalGroup(pid, 'SIGTERM')
   detachedChildren.clear()
 }
 
@@ -22,14 +22,6 @@ function signalGroup(pid: number, signal: NodeJS.Signals): void {
     process.kill(-pid, signal)
   } catch {
     return
-  }
-}
-
-function killGroup(pid: number, signal: NodeJS.Signals): void {
-  try {
-    process.kill(-pid, signal)
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error
   }
 }
 

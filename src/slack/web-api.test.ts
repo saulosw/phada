@@ -70,4 +70,15 @@ describe('slackWebApi', () => {
     expect(error).toBeInstanceOf(SlackApiError)
     expect((error as Error).message).toBe('Slack chat.postMessage failed: not_in_channel')
   })
+
+  it('turns a network failure into a Slack error', async () => {
+    const fetch = (async () => {
+      throw new TypeError('fetch failed')
+    }) as typeof globalThis.fetch
+    const error = await slackWebApi({ botToken: BOT, appToken: APP, fetch })
+      .addReaction('C1', '1.2', 'eyes')
+      .catch((thrown: unknown) => thrown)
+    expect(error).toBeInstanceOf(SlackApiError)
+    expect((error as Error).message).toBe('Slack reactions.add failed: fetch failed')
+  })
 })

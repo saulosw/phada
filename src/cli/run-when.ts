@@ -1,5 +1,5 @@
 import type { WhenInput } from '../app/submit-request.js'
-import { runShell } from './run-shell.js'
+import { runShell, shellFailure } from './run-shell.js'
 
 export const WHEN_TIMEOUT_MS = 10_000
 
@@ -18,15 +18,7 @@ export function whenChecker(
       env: options.env,
       timeoutMs: options.timeoutMs ?? WHEN_TIMEOUT_MS,
     })
-    switch (outcome.status) {
-      case 'ok':
-        return undefined
-      case 'exited':
-        return outcome.firstLine ?? `it exited with ${outcome.exitCode}`
-      case 'timeout':
-        return `it did not answer within ${outcome.timeoutMs / 1000}s`
-      case 'error':
-        return `it could not run: ${outcome.message}`
-    }
+    if (outcome.status === 'exited' && outcome.firstLine !== undefined) return outcome.firstLine
+    return shellFailure(outcome)
   }
 }

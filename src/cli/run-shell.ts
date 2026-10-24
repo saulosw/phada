@@ -38,3 +38,16 @@ export async function runShell(
     return { status: 'error', message: errorMessage(error) }
   }
 }
+
+export function shellFailure(outcome: ShellOutcome): string | undefined {
+  switch (outcome.status) {
+    case 'ok':
+      return undefined
+    case 'exited':
+      return `exited with ${outcome.exitCode}${outcome.firstLine === undefined ? '' : `: ${outcome.firstLine}`}`
+    case 'timeout':
+      return `did not finish within ${outcome.timeoutMs / 1000}s and was stopped`
+    case 'error':
+      return `could not run: ${outcome.message}`
+  }
+}

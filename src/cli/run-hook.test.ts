@@ -52,7 +52,7 @@ describe('runHook', () => {
   it('reports and stops a command that takes too long', async () => {
     const started = Date.now()
     expect(await runHook(EVENT, settings({ 'review.finished': 'sleep 5' }, 300), ENV)).toBe(
-      'The review.finished hook did not finish within 0.3s and was stopped.',
+      'The review.finished hook did not finish within 0.3s and was stopped',
     )
     expect(Date.now() - started).toBeLessThan(3_000)
   })

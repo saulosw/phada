@@ -1,13 +1,12 @@
 import { arrayField, booleanField, field, numberField, stringField } from './json-fields.js'
 import { RepositoryAccessError } from './repository.js'
 import type { RepositoryFilesOptions } from './repository-files.js'
-import { ACCEPT_JSON, API_ORIGIN, ensureOk, readJson, sendGitHubRequest } from './request.js'
+import { ACCEPT_JSON, ensureOk, nextPagePath, readJson, sendGitHubRequest } from './request.js'
 import type { GitHubRequestContext } from './request.js'
 import { GitHubAuthError } from './errors.js'
 
 const DEFAULT_TIMEOUT_MS = 30_000
 export const MAX_PULL_PAGES = 10
-const NEXT_LINK = /<([^>]+)>;\s*rel="next"/
 
 export interface OpenPull {
   number: number
@@ -59,7 +58,7 @@ export async function listOpenPullRequests(
     const items = await readJson(response, ctx)
     if (!Array.isArray(items)) throw new RepositoryAccessError(name, response.status)
     pulls.push(...items.map(toOpenPull))
-    path = nextPath(response.headers.get('link'))
+    path = nextPagePath(response.headers.get('link'))
   }
   return { status: 'ok', ...(etag === undefined ? {} : { etag }), pulls }
 }
@@ -78,10 +77,4 @@ function toOpenPull(json: unknown): OpenPull {
     baseRef: stringField(json, 'base.ref'),
     private: booleanField(json, 'base.repo.private'),
   }
-}
-
-function nextPath(link: string | null): string | undefined {
-  const url = link === null ? undefined : NEXT_LINK.exec(link)?.[1]
-  if (url === undefined || !url.startsWith(`${API_ORIGIN}/`)) return undefined
-  return url.slice(API_ORIGIN.length)
 }
