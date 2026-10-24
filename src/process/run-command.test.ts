@@ -209,6 +209,16 @@ describe('detached children', () => {
     expect(performance.now() - started).toBeLessThan(5_000)
   })
 
+  it('stops a detached child and the children it started once the time is up', async () => {
+    const started = performance.now()
+    const error = await captureError(
+      runCommand('/bin/sh', ['-c', 'sleep 5; echo late'], { detached: true, timeoutMs: 300 }),
+    )
+
+    expect(error).toBeInstanceOf(CommandTimeoutError)
+    expect(performance.now() - started).toBeLessThan(3_000)
+  })
+
   it('forgets a detached child once it exits', async () => {
     const result = await runCommand(...node('process.exit(0)'), { detached: true })
 

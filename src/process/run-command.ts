@@ -12,14 +12,16 @@ const DEFAULT_MAX_OUTPUT_LENGTH = 10_000_000
 const detachedChildren = new Set<number>()
 
 export function killDetachedChildren(): void {
-  for (const pid of detachedChildren) {
-    try {
-      process.kill(-pid, 'SIGTERM')
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error
-    }
-  }
+  for (const pid of detachedChildren) killGroup(pid, 'SIGTERM')
   detachedChildren.clear()
+}
+
+function killGroup(pid: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(-pid, signal)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error
+  }
 }
 
 export function trackDetachedChild(pid: number): () => void {
@@ -98,13 +100,22 @@ async function execute(
   })
   const pid = options.detached === true ? child.pid : undefined
   if (pid !== undefined) detachedChildren.add(pid)
+  let groupTimedOut = false
+  const groupTimer =
+    pid === undefined
+      ? undefined
+      : setTimeout(() => {
+          groupTimedOut = true
+          killGroup(pid, 'SIGKILL')
+        }, timeoutMs)
   const result = await child.finally(() => {
+    clearTimeout(groupTimer)
     if (pid !== undefined) detachedChildren.delete(pid)
   })
   const durationMs = performance.now() - startedAt
 
   if (result.code === 'ENOENT') throw new CommandNotFoundError(command)
-  if (result.timedOut) throw new CommandTimeoutError(command, timeoutMs)
+  if (result.timedOut || groupTimedOut) throw new CommandTimeoutError(command, timeoutMs)
   if (result.isMaxBuffer) throw new CommandOutputTooLargeError(command, maxOutputLength)
   if (result.exitCode === undefined) {
     const cause = result.signal ?? result.code ?? 'an unknown reason'
