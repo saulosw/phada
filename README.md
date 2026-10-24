@@ -359,8 +359,9 @@ hooks:
   timeout: 30s # how long a hook may run (default 30s, 10m at most)
 ```
 
-Each hook is a shell command run from your config folder, with your environment, for the jobs of
-the queue. It gets the event as JSON on stdin (`schemaVersion: 1`):
+Each hook is a shell command run from your config folder, with your environment (tokens
+included, as in your own shell: do not let a hook print it), for the jobs of the queue. It gets
+the event as JSON on stdin (`schemaVersion: 1`):
 
 ```json
 {
@@ -408,7 +409,8 @@ watch:
       when: { command: ./web-rules.sh } # instead, for this one
 ```
 
-The command gets the pull request and the request as JSON on stdin and has 10 seconds to exit:
+The command runs like a hook and gets the pull request and the request as JSON on stdin; it has
+10 seconds to exit:
 0 lets the request through; anything else, an error or no answer refuses it, with the first line
 the command wrote to stderr as the reason. It runs for every request and for every push the
 polling finds (a refused push is not asked again until a new commit).

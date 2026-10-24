@@ -87,6 +87,12 @@ describe('slackReplies', () => {
     for (const reply of replies) expect(reply.length).toBeLessThanOrEqual(MAX_SLACK_MESSAGE)
     expect(replies[1]?.startsWith('*P2* ')).toBe(true)
     expect(replies.at(-1)).toMatch(/\+\d+ more findings: see the review on GitHub\.$/)
+    const silent = slackReplies(
+      event({ verdict: 'comments', publication: { status: 'not-published' } }, findings),
+      'full',
+      DEFAULT_SLACK_EMOJIS,
+    )
+    expect(silent.at(-1)).toMatch(/\n\+\d+ more findings\.$/)
   })
 
   it('escapes what the AI wrote so it cannot mention or link', () => {

@@ -59,7 +59,12 @@ export function planCycle(input: CycleInput): CycleAction[] {
         actions.push({ kind: 'supersede', jobId: job.id })
       }
     }
-    const known = jobs.some((job) => job.headSha === pull.headSha && blocks(job))
+    const known = jobs.some(
+      (job) =>
+        job.headSha === pull.headSha &&
+        blocks(job) &&
+        !(repo.publish && job.status !== 'queued' && job.publish === 'none'),
+    )
     if (!eligible || current.baselineSha === pull.headSha) continue
     if (known) {
       const asked = jobs.find(

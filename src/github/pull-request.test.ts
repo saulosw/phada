@@ -381,6 +381,23 @@ describe('fetchPullRequestMetadata', () => {
       association: meta.author_association,
     })
     expect(pull).not.toHaveProperty('diff')
+    expect(pull).not.toHaveProperty('labels')
     expect(calls).toHaveLength(1)
+  })
+
+  it('reads the labels when the pull request has them', async () => {
+    const { fetch } = fakeGitHub([
+      ok(JSON.stringify({ ...metadata(), labels: [{ name: 'phada' }, { name: 'ui' }] })),
+    ])
+
+    const pull = await fetchPullRequestMetadata({
+      owner: 'saulosw',
+      repo: 'phada-dev-web',
+      number: 3,
+      token: TOKEN,
+      fetch,
+    })
+
+    expect(pull.labels).toEqual(['phada', 'ui'])
   })
 })

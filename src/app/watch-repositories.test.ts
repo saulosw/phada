@@ -298,6 +298,50 @@ describe('watchRepositories', () => {
     expect(h.notified).toEqual(['skipped #3 closed [mcp]'])
   })
 
+  it('gives a moved request the review the new commit already has', async () => {
+    const h = await setup({
+      listings: (cycle) => ({
+        status: 'ok',
+        pulls: [pull(3, cycle === 1 ? A : B, { draft: true })],
+      }),
+      readPull: () => ({ headSha: B }),
+      stopWhen: ({ sleeps }) => sleeps === 2,
+    })
+    h.store.saveRepo({ repo: 'acme/shop', baselineAt: new Date(START - MIN).toISOString() })
+    h.store.addJob({
+      repo: 'acme/shop',
+      number: 3,
+      headSha: A,
+      status: 'queued',
+      attempts: 0,
+      notBefore: new Date(START + 60 * MIN).toISOString(),
+      publish: 'none',
+      createdAt: new Date(START).toISOString(),
+    })
+    h.store.addRequest({
+      jobId: 1,
+      source: 'mcp',
+      publish: 'none',
+      createdAt: new Date(START).toISOString(),
+    })
+
+    h.store.addJob({
+      repo: 'acme/shop',
+      number: 3,
+      headSha: B,
+      status: 'done',
+      attempts: 0,
+      notBefore: new Date(START).toISOString(),
+      publish: 'pr',
+      createdAt: new Date(START).toISOString(),
+      finishedAt: new Date(START).toISOString(),
+    })
+    await watchRepositories(input(), h.deps)
+
+    expect(h.ran).toEqual([])
+    expect(h.notified).toEqual(['finished #3 [mcp]'])
+  })
+
   it('asks the when command before queueing a push, and remembers the refusal for the commit', async () => {
     const asked: string[] = []
     const settings = { ...SETTINGS, repos: [{ ...SETTINGS.repos[0]!, when: './team.sh' }] }

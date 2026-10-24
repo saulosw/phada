@@ -50,7 +50,7 @@ export function decideRequest(input: PolicyInput): RequestDecision {
   const sameCommit = input.jobs.filter(
     (job) => job.number === pull.number && job.headSha === pull.headSha,
   )
-  const satisfies = (job: JobRecord) => request.publish === 'none' || publishOf(job) === 'pr'
+  const satisfies = (job: JobRecord) => request.publish === 'none' || publishOf(job, repo) === 'pr'
   const queued = sameCommit.find((job) => job.status === 'queued')
   if (queued !== undefined) return { action: 'join', jobId: queued.id, readyNow: true }
   const running = sameCommit.find((job) => job.status === 'running' && satisfies(job))
@@ -90,8 +90,8 @@ export function gateRefusal(
   return undefined
 }
 
-export function publishOf(job: JobRecord): PublishTarget {
-  return job.publish ?? 'pr'
+export function publishOf(job: JobRecord, repo: WatchedRepoSettings): PublishTarget {
+  return job.publish ?? (repo.publish ? 'pr' : 'none')
 }
 
 function reviewedCommit(job: JobRecord): boolean {

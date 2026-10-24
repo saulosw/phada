@@ -50,6 +50,7 @@ export function formatSubmitJson(result: SubmitResult, watchRunning: boolean): s
           reason: result.reason,
           ...job,
           ...(result.until === undefined ? {} : { until: result.until }),
+          ...(result.message === undefined ? {} : { message: result.message }),
           watchRunning,
         }
       : { schemaVersion: SCHEMA_VERSION, status: result.status, ...job, watchRunning }

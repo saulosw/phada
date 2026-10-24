@@ -90,6 +90,11 @@ describe('reviewEvent', () => {
       event: 'review.failed',
       verdict: 'failed',
       error: 'GitHub 502',
+      publication: null,
+    })
+    const run = { ...RUN, status: 'failed' as const, error: 'GitHub 502' }
+    expect(reviewEvent({ kind: 'failed', job: failed, requests: [] }, run).publication).toEqual({
+      status: 'failed',
     })
   })
 })

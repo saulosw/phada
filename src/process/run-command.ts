@@ -8,12 +8,21 @@ import {
 
 const DEFAULT_TIMEOUT_MS = 600_000
 const DEFAULT_MAX_OUTPUT_LENGTH = 10_000_000
+const KILL_GRACE_MS = 2_000
 
 const detachedChildren = new Set<number>()
 
 export function killDetachedChildren(): void {
   for (const pid of detachedChildren) killGroup(pid, 'SIGTERM')
   detachedChildren.clear()
+}
+
+function signalGroup(pid: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(-pid, signal)
+  } catch {
+    return
+  }
 }
 
 function killGroup(pid: number, signal: NodeJS.Signals): void {
@@ -101,15 +110,18 @@ async function execute(
   const pid = options.detached === true ? child.pid : undefined
   if (pid !== undefined) detachedChildren.add(pid)
   let groupTimedOut = false
+  let graceTimer: NodeJS.Timeout | undefined
   const groupTimer =
     pid === undefined
       ? undefined
       : setTimeout(() => {
           groupTimedOut = true
-          killGroup(pid, 'SIGKILL')
+          signalGroup(pid, 'SIGTERM')
+          graceTimer = setTimeout(() => signalGroup(pid, 'SIGKILL'), KILL_GRACE_MS)
         }, timeoutMs)
   const result = await child.finally(() => {
     clearTimeout(groupTimer)
+    clearTimeout(graceTimer)
     if (pid !== undefined) detachedChildren.delete(pid)
   })
   const durationMs = performance.now() - startedAt

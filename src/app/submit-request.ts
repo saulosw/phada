@@ -64,12 +64,13 @@ export async function submitRequest(
       now,
       ...(whenRefusal === undefined ? {} : { whenRefusal }),
     })
+    const existing =
+      decision.action === 'create' ? undefined : jobs.find(({ id }) => id === decision.jobId)
     if (decision.action === 'refuse') {
-      const job = jobs.find(({ id }) => id === decision.jobId)
       return {
         status: 'refused',
         reason: decision.reason,
-        ...(job === undefined ? {} : { job }),
+        ...(existing === undefined ? {} : { job: existing }),
         ...(decision.until === undefined ? {} : { until: decision.until }),
         ...(decision.message === undefined ? {} : { message: decision.message }),
       }
@@ -85,7 +86,7 @@ export async function submitRequest(
       const requestId = history.addRequest({ ...request, jobId: id })
       return { status: 'queued', job: { ...decision.job, id }, requestId }
     }
-    const existing = jobs.find(({ id }) => id === decision.jobId)!
+    if (existing === undefined) throw new Error(`job ${decision.jobId} is not in the queue`)
     const changes: Partial<JobRecord> = {
       ...(decision.readyNow && existing.notBefore > now ? { notBefore: now } : {}),
       ...(input.publish === 'pr' && existing.publish === 'none' ? { publish: 'pr' } : {}),

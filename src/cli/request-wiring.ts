@@ -47,5 +47,6 @@ export async function readPullFacts(
     draft: pull.draft,
     baseRef: pull.baseRef,
     title: pull.title,
+    labels: pull.labels ?? [],
   }
 }

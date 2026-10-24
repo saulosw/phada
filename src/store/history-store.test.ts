@@ -220,7 +220,7 @@ describe('HistoryStore records', () => {
     store.close()
   })
 
-  it('lists when the jobs created since a time were created', async () => {
+  it('lists when the jobs created since a time were created, but not the ones dropped before they ran', async () => {
     const store = await openHistoryStore(fresh())
     store.addJob({ ...JOB, createdAt: '2026-10-18T11:00:00.000Z' })
     store.addJob({ ...JOB, createdAt: '2026-10-18T12:30:00.000Z' })

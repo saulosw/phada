@@ -139,6 +139,19 @@ describe('planCycle', () => {
     ).toEqual([{ kind: 'seen', pull: { ...stored(3), headSeenAt: NOW, eligible: false } }])
   })
 
+  it('queues a job that publishes for a commit only reviewed without publishing', () => {
+    for (const status of ['done', 'running'] as const) {
+      const silent = job(7, 3, { status, publish: 'none' })
+      expect(planCycle(input({ pulls: [open(3)], jobs: [silent] }))).toEqual([
+        { kind: 'seen', pull: { ...stored(3), headSeenAt: NOW } },
+        queued(3, A, at(3)),
+      ])
+      expect(
+        planCycle(input({ repo: { ...REPO, publish: false }, pulls: [open(3)], jobs: [silent] })),
+      ).toEqual([{ kind: 'seen', pull: { ...stored(3), headSeenAt: NOW, eligible: true } }])
+    }
+  })
+
   it('replaces the queued job of an older commit with the new one', () => {
     const actions = planCycle(
       input({ pulls: [open(3, B)], stored: [stored(3)], jobs: [job(7, 3)] }),

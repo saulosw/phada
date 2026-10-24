@@ -322,7 +322,11 @@ class SqliteHistoryStore implements HistoryStore {
 
   jobsCreatedSince(iso: string): string[] {
     return this.#db
-      .prepare('select created_at from job where created_at > ? order by created_at')
+      .prepare(
+        `select created_at from job where created_at > ?
+         and not (status in ('superseded', 'skipped') and started_at is null)
+         order by created_at`,
+      )
       .all(iso)
       .map((row) => String(row.created_at))
   }

@@ -89,6 +89,31 @@ describe('connectSocketMode', () => {
     connection.close()
   })
 
+  it('waits longer before each new try when sockets keep closing before Slack says hello', async () => {
+    FakeSocket.opened = []
+    const sleeps: number[] = []
+    const connection = connectSocketMode({
+      openUrl: async () => 'wss://slack.test',
+      WebSocket: FakeSocket,
+      onEvent: () => undefined,
+      onError: () => undefined,
+      sleep: async (ms) => {
+        sleeps.push(ms)
+      },
+    })
+    for (let attempt = 0; attempt < 4; attempt++) {
+      await flush()
+      FakeSocket.opened.at(-1)!.close()
+    }
+    await flush()
+    FakeSocket.opened.at(-1)!.receive({ type: 'hello' })
+    FakeSocket.opened.at(-1)!.close()
+    await flush()
+
+    expect(sleeps).toEqual([1_000, 5_000, 30_000, 30_000, 1_000])
+    connection.close()
+  })
+
   it('stops for good once closed', async () => {
     const { connection, urls } = setup()
     await flush()

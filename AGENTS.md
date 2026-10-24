@@ -403,7 +403,7 @@ repository and of the local disk as data, and its only value imports from outsid
 `src/publish/` imports only types from outside the folder (`src/review/types.ts`,
 `src/github/pull-request-reviews.ts`, `src/github/compare-commits.ts`). `src/store/` stores the
 feedback records of `src/publish/feedback.ts` as types only. `src/watch/` imports only types from outside the folder
-(the watch settings and the listed pull requests) and never reads the clock: `now` comes in as
+(the watch settings, the listed pull requests and the issue comments) and never reads the clock: `now` comes in as
 data. Its records (`src/watch/types.ts`) are the watch's own; `src/store/` stores them.
 `src/cli/review-wiring.ts` and `src/cli/watch-command.ts` declare the deps they need
 (`ReviewWiringDeps`, `WatchCommandDeps`); `MainDeps` extends them. `src/repository/` runs `git` through

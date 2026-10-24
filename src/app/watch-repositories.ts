@@ -398,6 +398,7 @@ async function refusedByWhen(
     draft: listed.draft,
     baseRef: listed.baseRef,
     labels: listed.labels,
+    ...(listed.title === undefined ? {} : { title: listed.title }),
   }
   const refusal = await deps.checkWhen(
     repo.when,
@@ -433,7 +434,17 @@ async function follow(job: JobRecord, settings: WatchSettings, deps: WatchDeps):
       )
       if (result.status === 'queued') deps.events.queued(result.job)
       if (result.status === 'refused') {
-        await deps.notify({ kind: 'skipped', job, requests: [request], reason: result.reason })
+        const reviewed = result.reason === 'already-reviewed' ? result.job : undefined
+        await deps.notify(
+          reviewed === undefined
+            ? { kind: 'skipped', job, requests: [request], reason: result.reason }
+            : {
+                kind: reviewed.status === 'done' ? 'finished' : 'skipped',
+                job: reviewed,
+                requests: [request],
+                ...(reviewed.reason === undefined ? {} : { reason: reviewed.reason }),
+              },
+        )
       }
     } catch (error) {
       deps.events.warning(

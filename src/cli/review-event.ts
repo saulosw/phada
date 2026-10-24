@@ -1,7 +1,7 @@
 import type { JobEvent } from '../app/watch-repositories.js'
 import type { ReviewEventName } from '../config/schema.js'
 import type { Verdict } from '../review/verdict.js'
-import type { RunRecord, RunStatus } from '../store/history-store.js'
+import type { HistoryStore, RunRecord, RunStatus } from '../store/history-store.js'
 import type { JobRecord, PublishTarget, RequestRecord, RequestSource } from '../watch/types.js'
 
 const SCHEMA_VERSION = 1
@@ -20,7 +20,7 @@ export interface ReviewEvent {
 
 export function reviewEvent(event: JobEvent, run: RunRecord | undefined): ReviewEvent {
   const { job, kind } = event
-  const ended = kind === 'finished' || kind === 'skipped'
+  const ended = kind !== 'started'
   const error = kind === 'failed' ? (job.error ?? run?.error) : undefined
   return {
     schemaVersion: SCHEMA_VERSION,
@@ -61,6 +61,10 @@ function verdictOf(kind: JobEvent['kind'], run: RunRecord | undefined): Verdict 
     case 'finished':
       return run?.verdict ?? null
   }
+}
+
+export function eventOfJob(history: HistoryStore, job: JobRecord): ReviewEvent | undefined {
+  return storedEvent(job, history.requests([job.id]), history.runOfJob(job.id))
 }
 
 export function storedEvent(

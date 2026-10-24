@@ -7,7 +7,7 @@ import type { HistoryStore, StatusJob } from '../store/history-store.js'
 import type { JobRecord } from '../watch/types.js'
 import { NOTHING_TO_WATCH } from './errors.js'
 import { jobJson, NO_WATCH_WARNING, refusalText } from './format-request.js'
-import { storedEvent } from './review-event.js'
+import { eventOfJob } from './review-event.js'
 
 export const WAIT_DEFAULT_SECONDS = 300
 export const WAIT_MAX_SECONDS = 1800
@@ -129,14 +129,7 @@ async function reviewPullRequest(
       ...(watchRunning ? {} : { note: NO_WATCH_WARNING }),
     })
   }
-  const event =
-    result.job === undefined
-      ? undefined
-      : storedEvent(
-          result.job,
-          deps.history.requests([result.job.id]),
-          deps.history.runOfJob(result.job.id),
-        )
+  const event = result.job === undefined ? undefined : eventOfJob(deps.history, result.job)
   return answer({
     status: 'refused',
     reason: result.reason,
@@ -165,7 +158,7 @@ async function waitForJob(
   const deadline = deps.now().getTime() + Math.min(Math.max(asked, 1), WAIT_MAX_SECONDS) * 1000
   let job = first
   for (;;) {
-    const event = storedEvent(job, deps.history.requests([job.id]), deps.history.runOfJob(job.id))
+    const event = eventOfJob(deps.history, job)
     if (event !== undefined) {
       const newer = job.status === 'superseded' ? newerJob(job, deps.history) : undefined
       return answer({ timedOut: false, event, ...(newer === undefined ? {} : { newerJob: newer }) })
@@ -188,7 +181,7 @@ function statusOf(job: JobRecord, history: HistoryStore) {
   const { queued, running } = queue(history)
   const listed = [...queued, ...running].find(({ id }) => id === job.id)
   const index = queued.findIndex(({ id }) => id === job.id)
-  const event = storedEvent(job, history.requests([job.id]), history.runOfJob(job.id))
+  const event = eventOfJob(history, job)
   return {
     job: listed ?? jobJson(job),
     ...(index === -1 ? {} : { position: index + 1 }),

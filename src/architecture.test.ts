@@ -44,7 +44,16 @@ const WATCH: Boundary = {
     '../github/list-pull-requests.js',
     '../github/issue-comments.js',
   ]),
-  expected: ['failures.ts', 'filters.ts', 'next-job.ts', 'plan-cycle.ts', 'time.ts', 'types.ts'],
+  expected: [
+    'failures.ts',
+    'filters.ts',
+    'next-job.ts',
+    'plan-cycle.ts',
+    'pr-commands.ts',
+    'request-policy.ts',
+    'time.ts',
+    'types.ts',
+  ],
   globals: ['process', 'console', 'Date.now', 'setTimeout'],
 }
 const CONTEXT: Boundary = {

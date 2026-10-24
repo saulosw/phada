@@ -136,6 +136,14 @@ describe('decideRequest', () => {
     ).toEqual({ action: 'refuse', reason: 'already-reviewed', jobId: 3 })
   })
 
+  it('treats an older job without a target as the target of its repository', () => {
+    const legacy = job(3, { status: 'done' })
+    expect(decideRequest(input({ jobs: [legacy] })).action).toBe('refuse')
+    expect(decideRequest(input({ jobs: [legacy], repo: { ...REPO, publish: false } })).action).toBe(
+      'create',
+    )
+  })
+
   it('ignores failed, superseded and closed jobs of the commit', () => {
     const jobs = [
       job(1, { status: 'failed' }),

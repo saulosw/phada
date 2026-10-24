@@ -45,6 +45,7 @@ import type { RepositoryFilesOptions } from '../github/repository-files.js'
 import type { TextOutput } from './progress.js'
 import { MirrorLockTimeoutError } from '../repository/mirror-lock.js'
 import type { HistoryStore } from '../store/history-store.js'
+import { publishOf } from '../watch/request-policy.js'
 import type { JobRecord, RequestRecord } from '../watch/types.js'
 import type { IndexFormat } from './args.js'
 import { classifyFailure } from './classify-failure.js'
@@ -462,7 +463,7 @@ async function runJob(
       mode: 'watch',
       force: false,
       dryRun: false,
-      publish: job.publish === undefined ? (repo?.publish ?? true) : job.publish === 'pr',
+      publish: repo === undefined ? job.publish !== 'none' : publishOf(job, repo) === 'pr',
       acceptDraft: asked,
       options: {},
       userLayers,

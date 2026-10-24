@@ -219,6 +219,16 @@ describe('detached children', () => {
     expect(performance.now() - started).toBeLessThan(3_000)
   })
 
+  it('kills a detached group that ignores the request to stop, shortly after the time is up', async () => {
+    const started = performance.now()
+    const error = await captureError(
+      runCommand('/bin/sh', ['-c', "trap '' TERM; sleep 8"], { detached: true, timeoutMs: 300 }),
+    )
+
+    expect(error).toBeInstanceOf(CommandTimeoutError)
+    expect(performance.now() - started).toBeLessThan(5_000)
+  })
+
   it('forgets a detached child once it exits', async () => {
     const result = await runCommand(...node('process.exit(0)'), { detached: true })
 

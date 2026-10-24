@@ -7,7 +7,7 @@ import type { SlackWebApi } from '../slack/web-api.js'
 import type { HistoryStore } from '../store/history-store.js'
 import { refusalText } from './format-request.js'
 import { slackReplies } from './format-slack.js'
-import { storedEvent } from './review-event.js'
+import { eventOfJob } from './review-event.js'
 import type { ReviewEvent } from './review-event.js'
 
 export interface SlackPortDeps {
@@ -67,14 +67,7 @@ export function slackPort(deps: SlackPortDeps): SlackPort {
             return
           }
           if (result.reason === 'not-watched') return
-          const stored =
-            result.job === undefined
-              ? undefined
-              : storedEvent(
-                  result.job,
-                  deps.history.requests([result.job.id]),
-                  deps.history.runOfJob(result.job.id),
-                )
+          const stored = result.job === undefined ? undefined : eventOfJob(deps.history, result.job)
           if (result.reason === 'already-reviewed' && stored !== undefined) {
             await answer(place, stored, channel)
             return

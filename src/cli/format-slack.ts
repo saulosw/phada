@@ -61,7 +61,7 @@ export function slackReplies(event: ReviewEvent, reply: SlackReply, emojis: Slac
         : findingBlock(finding, event),
     ),
   ]
-  return chunk(opening, blocks)
+  return chunk(opening, blocks, event.publication?.url !== undefined)
 }
 
 function headerText(event: ReviewEvent, emojis: SlackEmojis): string {
@@ -99,7 +99,7 @@ function findingBlock(finding: FindingView, event: ReviewEvent): string {
   return `*${escape(finding.severity)}* <${link}|${escape(place)}> ${escape(finding.title)}\n${escape(why)}`
 }
 
-function chunk(opening: string, blocks: readonly string[]): string[] {
+function chunk(opening: string, blocks: readonly string[], published: boolean): string[] {
   const messages: string[][] = []
   let last = [opening]
   let placed = 0
@@ -116,7 +116,8 @@ function chunk(opening: string, blocks: readonly string[]): string[] {
   }
   let left = blocks.length - placed
   if (left > 0) {
-    const more = () => `+${left} more findings: see the review on GitHub.`
+    const more = () =>
+      published ? `+${left} more findings: see the review on GitHub.` : `+${left} more findings.`
     while (size([...last, more()]) > MAX_SLACK_MESSAGE && last.length > 1) {
       last.pop()
       left += 1

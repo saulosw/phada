@@ -1,4 +1,5 @@
 const RETRY_DELAYS_MS = [1_000, 5_000, 30_000]
+const AFTER_DROP_MS = 1_000
 
 export interface SocketLike {
   send(data: string): void
@@ -29,20 +30,25 @@ export function connectSocketMode(options: SocketModeOptions): SocketModeConnect
   let current: SocketLike | undefined
   let failures = 0
 
-  const connect = async (): Promise<void> => {
+  const backoff = (): number => {
+    const delay = RETRY_DELAYS_MS[Math.min(failures, RETRY_DELAYS_MS.length - 1)] ?? AFTER_DROP_MS
+    failures += 1
+    return delay
+  }
+
+  const connect = async (delayMs = 0): Promise<void> => {
+    if (delayMs > 0) await sleep(delayMs)
     while (!stopped) {
       try {
         const url = await options.openUrl()
         if (stopped) return
-        failures = 0
         current = open(url)
         return
       } catch (error) {
         options.onError(
           `Slack connection failed: ${error instanceof Error ? error.message : String(error)}`,
         )
-        await sleep(RETRY_DELAYS_MS[Math.min(failures, RETRY_DELAYS_MS.length - 1)] ?? 30_000)
-        failures += 1
+        await sleep(backoff())
       }
     }
   }
@@ -50,11 +56,12 @@ export function connectSocketMode(options: SocketModeOptions): SocketModeConnect
   const open = (url: string): SocketLike => {
     const socket = new Socket(url)
     let replaced = false
-    const reconnect = () => {
+    let greeted = false
+    const reconnect = (asked: boolean) => {
       if (replaced || stopped) return
       replaced = true
       socket.close()
-      void connect()
+      void connect(greeted ? (asked ? 0 : AFTER_DROP_MS) : backoff())
     }
     socket.addEventListener('message', ({ data }) => {
       const message = parse(data)
@@ -62,13 +69,17 @@ export function connectSocketMode(options: SocketModeOptions): SocketModeConnect
       if (typeof message.envelope_id === 'string') {
         socket.send(JSON.stringify({ envelope_id: message.envelope_id }))
       }
-      if (message.type === 'disconnect') return reconnect()
+      if (message.type === 'hello') {
+        greeted = true
+        failures = 0
+      }
+      if (message.type === 'disconnect') return reconnect(true)
       const event = (message.payload as { event?: unknown } | undefined)?.event
       if (message.type === 'events_api' && typeof event === 'object' && event !== null) {
         options.onEvent(event as Record<string, unknown>)
       }
     })
-    socket.addEventListener('close', reconnect)
+    socket.addEventListener('close', () => reconnect(false))
     socket.addEventListener('error', () =>
       options.onError('Slack connection dropped; reconnecting.'),
     )

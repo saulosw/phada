@@ -31,12 +31,17 @@ export async function runMcp(deps: McpCommandDeps): Promise<number> {
     now: deps.clock,
     sleep: (ms) => deps.sleep(ms, never),
   })
+  const pending = new Set<Promise<void>>()
   try {
     for await (const line of createInterface({ input: deps.stdin, crlfDelay: Infinity })) {
       if (line.trim() === '') continue
-      const response = await handleMcpMessage(toolbox, line)
-      if (response !== undefined) deps.stdout.write(`${response}\n`)
+      const answered = handleMcpMessage(toolbox, line).then((response) => {
+        if (response !== undefined) deps.stdout.write(`${response}\n`)
+      })
+      pending.add(answered)
+      void answered.finally(() => pending.delete(answered))
     }
+    await Promise.all(pending)
   } finally {
     history.close()
   }

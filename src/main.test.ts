@@ -1929,6 +1929,12 @@ describe('phada enqueue', () => {
     expect(h.stderr()).toContain(
       'Refused acme/shop#12: the when command refused it (only the payments team).',
     )
+    expect(await run(['enqueue', 'acme/shop#12', '--format', 'json'], h.deps)).toBe(1)
+    expect(JSON.parse(h.stdout())).toMatchObject({
+      status: 'refused',
+      reason: 'when-command',
+      message: 'only the payments team',
+    })
   })
 
   it('lets the watch review a queued draft at once, without publishing when asked so', async () => {
@@ -1970,10 +1976,13 @@ describe('phada mcp', () => {
           name: 'review_pull_request',
           arguments: { pr: 'acme/shop#12', publish: 'none' },
         }),
-        line(3, 'tools/call', { name: 'wait_for_job', arguments: { job: 1, timeoutSeconds: 4 } }),
       ],
     })
 
+    expect(await run(['mcp'], h.deps)).toBe(0)
+    h.deps.stdin = Readable.from([
+      `${line(3, 'tools/call', { name: 'wait_for_job', arguments: { job: 1, timeoutSeconds: 4 } })}\n`,
+    ])
     expect(await run(['mcp'], h.deps)).toBe(0)
 
     const [init, list, review, wait] = answers(h.stdout())
@@ -1991,6 +2000,35 @@ describe('phada mcp', () => {
     })
     expect(toolJson(wait!)).toMatchObject({ timedOut: true, job: { status: 'queued' } })
     expect(h.posts).toHaveLength(0)
+  })
+
+  it('answers other calls while a wait_for_job waits', async () => {
+    const h = harness({ files: memoryFiles({ '/cfg/config.yml': WATCH_CONFIG }), lockHolder: 7 })
+    expect(await run(['enqueue', 'acme/shop#12'], h.deps)).toBe(0)
+    const waiting: (() => void)[] = []
+    const out: string[] = []
+    const advance = h.deps.sleep
+    let released = false
+    h.deps.sleep = (ms, signal) =>
+      released ? advance(ms, signal) : new Promise<void>((resolve) => waiting.push(resolve))
+    h.deps.stdin = Readable.from([
+      `${line(1, 'tools/call', { name: 'wait_for_job', arguments: { job: 1, timeoutSeconds: 4 } })}\n`,
+      `${line(2, 'tools/call', { name: 'list_queue', arguments: {} })}\n`,
+    ])
+    h.deps.stdout = {
+      write: (text: string) => {
+        out.push(text)
+        if (text.includes('"id":2')) {
+          released = true
+          for (const resolve of waiting) resolve()
+        }
+        return true
+      },
+    }
+
+    expect(await run(['mcp'], h.deps)).toBe(0)
+
+    expect(out.map((text) => (JSON.parse(text) as { id: number }).id)).toEqual([2, 1])
   })
 
   it('answers review_pull_request with an error when there is no token', async () => {
