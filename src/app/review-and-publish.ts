@@ -68,6 +68,7 @@ export interface ReviewAndPublishInput {
   force: boolean
   dryRun: boolean
   publish: boolean
+  acceptDraft?: boolean
   options: ReviewOptions
   userLayers: readonly ConfigLayer[]
   mcp: ResolvedMcp
@@ -107,7 +108,10 @@ export async function reviewAndPublish(
 ): Promise<ReviewRun> {
   const pullRequest = await deps.fetchPullRequest(input.ref)
   deps.events.fetched(pullRequest)
-  if (input.mode === 'watch' && (pullRequest.state === 'closed' || pullRequest.draft)) {
+  if (
+    input.mode === 'watch' &&
+    (pullRequest.state === 'closed' || (pullRequest.draft && input.acceptDraft !== true))
+  ) {
     return { status: 'skipped', pullRequest, reason: { kind: 'closed-or-draft' } }
   }
   const state = await deps.fetchReviewState(input.ref)

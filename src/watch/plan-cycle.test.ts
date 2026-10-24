@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { WatchedRepoSettings } from '../config/watch-settings.js'
 import type { OpenPull } from '../github/list-pull-requests.js'
-import type { JobRecord, PullRecord } from './types.js'
+import type { JobRecord, PullRecord, RequestRecord } from './types.js'
 import { planCycle } from './plan-cycle.js'
 import type { CycleInput } from './plan-cycle.js'
 
@@ -9,7 +9,7 @@ const NOW = '2026-10-18T12:00:00.000Z'
 const at = (minutes: number) => new Date(Date.parse(NOW) + minutes * 60_000).toISOString()
 const A = 'a'.repeat(40)
 const B = 'b'.repeat(40)
-const REPO: WatchedRepoSettings = { repo: 'acme/shop', publish: true, allowExternal: false }
+const REPO: WatchedRepoSettings = { repo: 'acme/shop', publish: 'pr', allowExternal: false }
 
 const open = (number: number, headSha = A, overrides: Partial<OpenPull> = {}): OpenPull => ({
   number,
@@ -52,6 +52,7 @@ const input = (overrides: Partial<CycleInput>): CycleInput => ({
   backfill: false,
   now: NOW,
   settleMs: 180_000,
+  requests: [],
   ...overrides,
 })
 const queued = (number: number, headSha: string, notBefore: string) => ({
@@ -63,6 +64,7 @@ const queued = (number: number, headSha: string, notBefore: string) => ({
     status: 'queued',
     attempts: 0,
     notBefore,
+    publish: 'pr',
     createdAt: NOW,
   },
 })
@@ -101,6 +103,53 @@ describe('planCycle', () => {
       { kind: 'seen', pull: { ...stored(3), headSeenAt: NOW } },
       queued(3, A, at(3)),
     ])
+  })
+
+  it('queues a job that does not publish for a repository with publish: false', () => {
+    const actions = planCycle(input({ repo: { ...REPO, publish: 'none' }, pulls: [open(3)] }))
+    expect(actions[1]).toMatchObject({ kind: 'enqueue', job: { publish: 'none' } })
+  })
+
+  it('joins the queued job another source asked for on the same commit', () => {
+    const slack: RequestRecord = {
+      id: 1,
+      jobId: 7,
+      source: 'slack',
+      publish: 'none',
+      createdAt: at(-1),
+    }
+    const explicit = job(7, 3, { publish: 'none' })
+    expect(planCycle(input({ pulls: [open(3)], jobs: [explicit], requests: [slack] }))).toEqual([
+      { kind: 'seen', pull: { ...stored(3), headSeenAt: NOW } },
+      { kind: 'join', jobId: 7 },
+    ])
+    expect(
+      planCycle(
+        input({
+          pulls: [open(3)],
+          jobs: [explicit],
+          requests: [slack, { ...slack, id: 2, source: 'watch', publish: 'pr' }],
+        }),
+      ),
+    ).toEqual([{ kind: 'seen', pull: { ...stored(3), headSeenAt: NOW } }])
+    expect(
+      planCycle(
+        input({ pulls: [open(3, A, { draft: true })], jobs: [explicit], requests: [slack] }),
+      ),
+    ).toEqual([{ kind: 'seen', pull: { ...stored(3), headSeenAt: NOW, eligible: false } }])
+  })
+
+  it('queues a job that publishes for a commit only reviewed without publishing', () => {
+    for (const status of ['done', 'running'] as const) {
+      const silent = job(7, 3, { status, publish: 'none' })
+      expect(planCycle(input({ pulls: [open(3)], jobs: [silent] }))).toEqual([
+        { kind: 'seen', pull: { ...stored(3), headSeenAt: NOW } },
+        queued(3, A, at(3)),
+      ])
+      expect(
+        planCycle(input({ repo: { ...REPO, publish: 'none' }, pulls: [open(3)], jobs: [silent] })),
+      ).toEqual([{ kind: 'seen', pull: { ...stored(3), headSeenAt: NOW, eligible: true } }])
+    }
   })
 
   it('replaces the queued job of an older commit with the new one', () => {

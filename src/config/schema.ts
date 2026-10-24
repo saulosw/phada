@@ -42,6 +42,8 @@ export const MIN_WATCH_INTERVAL_MS = 60_000
 
 const Duration = z.string().trim().regex(DURATION, 'use a duration like 90s, 5m or 1h')
 
+const WhenSchema = z.strictObject({ command: z.string().trim().min(1, 'give the command to run') })
+
 const WatchedRepoSchema = z.union([
   RepoName,
   z.strictObject({
@@ -51,6 +53,7 @@ const WatchedRepoSchema = z.union([
     authors: z.array(z.string().trim().min(1)).optional(),
     labels: z.array(z.string().trim().min(1)).optional(),
     baseBranches: z.array(z.string().trim().min(1)).optional(),
+    when: WhenSchema.optional(),
   }),
 ])
 
@@ -61,6 +64,7 @@ const WatchSchema = z.strictObject({
   ).optional(),
   settle: Duration.optional(),
   maxReviewsPerHour: z.number().int().min(1).max(60).optional(),
+  when: WhenSchema.optional(),
   repos: z
     .array(WatchedRepoSchema)
     .min(1, 'list at least one owner/repo')
@@ -72,6 +76,63 @@ const WatchSchema = z.strictObject({
         seen.add(name)
       }
     }),
+})
+
+export const REVIEW_EVENTS = [
+  'review.started',
+  'review.finished',
+  'review.failed',
+  'review.skipped',
+] as const
+export type ReviewEventName = (typeof REVIEW_EVENTS)[number]
+
+const MAX_HOOK_TIMEOUT_MS = 600_000
+const HookCommand = z.string().trim().min(1, 'give the command to run')
+
+const HooksSchema = z.strictObject({
+  'review.started': HookCommand.optional(),
+  'review.finished': HookCommand.optional(),
+  'review.failed': HookCommand.optional(),
+  'review.skipped': HookCommand.optional(),
+  timeout: Duration.refine(
+    (text) => !DURATION.test(text) || durationMs(text) <= MAX_HOOK_TIMEOUT_MS,
+    'must be 10m at most',
+  ).optional(),
+})
+
+export const SLACK_CHANNEL = /^[CGD][A-Z0-9]+$/
+const SlackChannel = z
+  .string()
+  .trim()
+  .regex(SLACK_CHANNEL, 'use the channel ID, like C0123ABCD (channel details, at the bottom)')
+const SlackEmoji = z
+  .string()
+  .trim()
+  .regex(/^[\w+-]+$/, 'use the emoji name without the colons, like white_check_mark')
+
+const SlackSchema = z.strictObject({
+  channels: z
+    .array(
+      z.preprocess(
+        (entry) => (typeof entry === 'string' ? { id: entry } : entry),
+        z.strictObject({
+          id: SlackChannel,
+          publish: z.enum(['pr', 'none']).optional(),
+          reply: z.enum(['link', 'summary', 'full']).optional(),
+        }),
+      ),
+    )
+    .min(1, 'list at least one channel ID'),
+  emojis: z
+    .strictObject({
+      queued: SlackEmoji.optional(),
+      clean: SlackEmoji.optional(),
+      comments: SlackEmoji.optional(),
+      blocking: SlackEmoji.optional(),
+      failed: SlackEmoji.optional(),
+      skipped: SlackEmoji.optional(),
+    })
+    .optional(),
 })
 
 export const SKILL_NAME = /^[\w.-]+(:[\w.-]+)?$/
@@ -248,6 +309,8 @@ export const ConfigFileSchema = z.strictObject({
   history: z.boolean().optional(),
   review: ReviewSchema.optional(),
   watch: WatchSchema.optional(),
+  hooks: HooksSchema.optional(),
+  slack: SlackSchema.optional(),
 })
 
 export type ConfigFile = z.infer<typeof ConfigFileSchema>

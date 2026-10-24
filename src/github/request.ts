@@ -13,6 +13,13 @@ export const ACCEPT_JSON = 'application/vnd.github+json'
 export const ACCEPT_DIFF = 'application/vnd.github.diff'
 export const ACCEPT_SHA = 'application/vnd.github.sha'
 export const API_ORIGIN = API_BASE_URL
+const NEXT_LINK = /<([^>]+)>;\s*rel="next"/
+
+export function nextPagePath(link: string | null): string | undefined {
+  const url = link === null ? undefined : NEXT_LINK.exec(link)?.[1]
+  if (url === undefined || !url.startsWith(`${API_ORIGIN}/`)) return undefined
+  return url.slice(API_ORIGIN.length)
+}
 
 export interface GitHubRequestInit {
   method?: 'GET' | 'POST'

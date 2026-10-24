@@ -2,9 +2,11 @@ import { errorMessage } from '../app/error-message.js'
 import type { PublicationResult, ReviewRun } from '../app/review-and-publish.js'
 import type { RunOutcome } from '../app/watch-repositories.js'
 import { ProviderError } from '../providers/types.js'
+import { phadaReviewUrlAt } from '../publish/phada-state.js'
 import { InvalidReviewReportError } from '../review/errors.js'
+import { reviewVerdict } from '../review/verdict.js'
 import type { RunRecord, RunStatus } from '../store/history-store.js'
-import type { FailureKind, JobRecord } from '../watch/types.js'
+import type { FailureKind, JobRecord, RequestRecord, RequestSource } from '../watch/types.js'
 import { errorSummary } from './format-error.js'
 
 export interface RunMeta {
@@ -15,6 +17,7 @@ export interface RunMeta {
   provider: string
   model?: string
   errorKind?: FailureKind
+  requestSource?: RequestSource
 }
 
 export function historyRun(run: ReviewRun, json: string, meta: RunMeta): RunRecord {
@@ -22,6 +25,7 @@ export function historyRun(run: ReviewRun, json: string, meta: RunMeta): RunReco
   const base = {
     ...(meta.jobId === undefined ? {} : { jobId: meta.jobId }),
     source: meta.source,
+    ...(meta.requestSource === undefined ? {} : { requestSource: meta.requestSource }),
     repo: pullRequest.repo,
     number: pullRequest.number,
     headSha: pullRequest.headSha,
@@ -32,7 +36,18 @@ export function historyRun(run: ReviewRun, json: string, meta: RunMeta): RunReco
     resultJson: json,
   }
   if (run.status === 'skipped') {
-    return { ...base, status: 'skipped', aiCalled: false, reason: run.reason.kind }
+    const url =
+      run.reason.kind === 'already-reviewed' && run.reviewState !== undefined
+        ? phadaReviewUrlAt(run.reviewState, pullRequest.headSha)
+        : undefined
+    return {
+      ...base,
+      status: 'skipped',
+      aiCalled: false,
+      reason: run.reason.kind,
+      verdict: 'skipped',
+      ...(url === undefined ? {} : { url }),
+    }
   }
   const outcome = run.reviewed.outcome
   const result = outcome.status === 'reviewed' ? outcome.result : undefined
@@ -40,6 +55,7 @@ export function historyRun(run: ReviewRun, json: string, meta: RunMeta): RunReco
     ...base,
     ...publicationFields(run.publication, run.status === 'nothing' ? 'nothing' : 'published'),
     aiCalled: result !== undefined,
+    verdict: result === undefined ? 'skipped' : reviewVerdict(result),
     ...(result === undefined
       ? {}
       : {
@@ -78,6 +94,7 @@ export function watchRun(
   return {
     jobId: job.id,
     source: meta.source,
+    ...(meta.requestSource === undefined ? {} : { requestSource: meta.requestSource }),
     repo: job.repo,
     number: job.number,
     headSha: job.headSha,
@@ -90,5 +107,10 @@ export function watchRun(
     ...(meta.model === undefined ? {} : { model: meta.model }),
     errorKind: outcome.kind,
     error: errorMessage(outcome.error),
+    verdict: 'failed',
   }
+}
+
+export function requestSourceOf(requests: readonly RequestRecord[]): RequestSource | undefined {
+  return (requests.find(({ source }) => source !== 'watch') ?? requests[0])?.source
 }

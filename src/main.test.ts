@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { Readable } from 'node:stream'
 import { GitHubError } from './github/errors.js'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -41,6 +42,8 @@ import {
 } from './publish/markers.js'
 import { RECHECK_JSON_SCHEMA } from './review/recheck-schema.js'
 import { providerRunsSkills } from './cli/provider-choice.js'
+import type { ReviewEvent } from './cli/review-event.js'
+import type { HookSettings } from './config/watch-settings.js'
 import { createProvider, run } from './main.js'
 import type { MainDeps, ProviderOptions } from './main.js'
 import { ClaudeCliProvider } from './providers/claude.js'
@@ -98,6 +101,8 @@ interface Harness {
   signal: () => void
   kills: () => number
   aborts: number[]
+  hooked: { event: ReviewEvent; settings: HookSettings }[]
+  slack: { calls: string[]; tokens: { botToken: string; appToken: string }[] }
 }
 
 const storeDir = mkdtempSync(join(tmpdir(), 'phada-main-index-'))
@@ -165,6 +170,11 @@ function harness(
     pullHead?: MainDeps['fetchPullRequestHead']
     withLock?: MainDeps['withLock']
     lockHolder?: number
+    stdin?: string[][]
+    beforeSleep?: () => Promise<void>
+    hookWarning?: (event: ReviewEvent) => string | undefined
+    slackMessages?: Record<string, unknown>[]
+    comments?: MainDeps['listIssueComments']
   } = {},
 ): Harness {
   const checkouts: (GitMirrorOptions & { sha: string; keepAs: string })[] = []
@@ -175,6 +185,9 @@ function harness(
   storeCount += 1
   const historyFile = join(storeDir, `history-${storeCount}.sqlite`)
   const signalHandlers: (() => void)[] = []
+  const stdinRuns = [...(overrides.stdin ?? [])]
+  const hooked: Harness['hooked'] = []
+  const slack: Harness['slack'] = { calls: [], tokens: [] }
   const aborts: number[] = []
   let kills = 0
   let clock = Date.parse('2026-10-18T12:00:00.000Z')
@@ -200,6 +213,9 @@ function harness(
     cwd: '/w/shop',
     home: '/home/u',
     files,
+    get stdin() {
+      return Readable.from((stdinRuns.shift() ?? []).map((text) => `${text}\n`))
+    },
     stdout: {
       write: (text: string) => {
         events.push('stdout')
@@ -281,6 +297,13 @@ function harness(
     },
     listOpenPullRequests:
       overrides.listPulls ?? (() => Promise.resolve({ status: 'ok' as const, pulls: [] })),
+    listIssueComments:
+      overrides.comments ?? (() => Promise.resolve({ status: 'ok' as const, comments: [] })),
+    addCommentReaction: async (options) => {
+      events.push(`react ${options.commentId}`)
+    },
+    fetchPullRequestMetadata: () =>
+      overrides.pullRequest?.() ?? Promise.resolve(pullRequestFixture()),
     fetchPullRequestHead:
       overrides.pullHead ??
       (() => Promise.resolve({ state: 'open' as const, draft: false, headSha: HEAD_SHA })),
@@ -293,9 +316,34 @@ function harness(
     },
     abort: (code) => aborts.push(code),
     sleep: async (ms) => {
+      await overrides.beforeSleep?.()
       clock += ms
     },
     clock: () => new Date(clock),
+    runHook: async (event, settings) => {
+      hooked.push({ event, settings })
+      return overrides.hookWarning?.(event)
+    },
+    slackApi: (tokens) => {
+      slack.tokens.push(tokens)
+      return {
+        postMessage: async (channel, thread, text) => {
+          slack.calls.push(`post ${channel} ${thread} ${text.split('\n')[0]}`)
+          if (overrides.slackMessages !== undefined) for (const handler of signalHandlers) handler()
+        },
+        addReaction: async (_channel, _ts, name) => {
+          slack.calls.push(`+${name}`)
+        },
+        removeReaction: async (_channel, _ts, name) => {
+          slack.calls.push(`-${name}`)
+        },
+        openConnection: async () => 'wss://slack.test',
+      }
+    },
+    connectSlack: (options) => {
+      for (const message of overrides.slackMessages ?? []) options.onEvent(message)
+      return { close: () => slack.calls.push('closed') }
+    },
     createExtractor: () => extractor,
     runsSkills: () => false,
     pathSize: async () => 2048,
@@ -323,6 +371,8 @@ function harness(
   }
   return {
     deps,
+    hooked,
+    slack,
     files,
     treeFetches,
     fileFetches,
@@ -1819,6 +1869,224 @@ describe('run history', () => {
   })
 })
 
+describe('phada enqueue', () => {
+  const WATCH_CONFIG = 'verify: false\nwatch:\n  repos: [acme/shop]\n'
+  const withConfig = (text = WATCH_CONFIG) => memoryFiles({ '/cfg/config.yml': text })
+
+  it('queues a review of a watched pull request and says no watch is running', async () => {
+    const h = harness({ files: withConfig() })
+
+    expect(await run(['enqueue', 'acme/shop#12'], h.deps)).toBe(0)
+    expect(h.stdout()).toBe('Queued acme/shop#12 at a1b2c3d (job 1).\n')
+    expect(h.stderr()).toContain(
+      'No phada watch is running: the job waits in the queue until one starts.',
+    )
+  })
+
+  it('says nothing about the watch when one is running', async () => {
+    const h = harness({ files: withConfig(), lockHolder: 42 })
+
+    expect(await run(['enqueue', 'acme/shop#12'], h.deps)).toBe(0)
+    expect(h.stderr()).not.toContain('No phada watch is running')
+  })
+
+  it('joins the job already queued for the commit', async () => {
+    const h = harness({ files: withConfig(), lockHolder: 42 })
+
+    await run(['enqueue', 'acme/shop#12'], h.deps)
+    expect(await run(['enqueue', 'acme/shop#12', '--publish', 'none'], h.deps)).toBe(0)
+    expect(h.stdout()).toContain('Joined job 1 for acme/shop#12 at a1b2c3d.\n')
+  })
+
+  it('refuses a repository outside watch: with exit code 1', async () => {
+    const h = harness({ files: withConfig() })
+
+    expect(await run(['enqueue', 'other/repo#3'], h.deps)).toBe(1)
+    expect(h.stderr()).toContain(
+      'Refused other/repo#3: the repository is not listed under watch: in your config.',
+    )
+  })
+
+  it('refuses an outside author on a public repository', async () => {
+    const h = harness({
+      files: withConfig(),
+      pullRequest: () => Promise.resolve(pullRequestFixture({ association: 'CONTRIBUTOR' })),
+    })
+
+    expect(await run(['enqueue', 'acme/shop#12'], h.deps)).toBe(1)
+    expect(h.stderr()).toContain(
+      'Refused acme/shop#12: the author is outside the repository (allowExternal: true in watch: lets them in).',
+    )
+  })
+
+  it('prints the result as JSON', async () => {
+    const h = harness({ files: withConfig(), lockHolder: 42 })
+
+    expect(
+      await run(['enqueue', 'acme/shop#12', '--publish', 'none', '--format', 'json'], h.deps),
+    ).toBe(0)
+    expect(JSON.parse(h.stdout())).toEqual({
+      schemaVersion: 1,
+      status: 'queued',
+      job: {
+        id: 1,
+        repo: 'acme/shop',
+        number: 12,
+        headSha: HEAD_SHA,
+        status: 'queued',
+        publish: 'none',
+      },
+      watchRunning: true,
+    })
+  })
+
+  it('needs watch: in the config', async () => {
+    const h = harness()
+
+    expect(await run(['enqueue', 'acme/shop#12'], h.deps)).toBe(2)
+    expect(h.stderr()).toContain('phada: Nothing to watch: list the repositories under watch:')
+  })
+
+  it('rejects an unknown --publish value', async () => {
+    const h = harness({ files: withConfig() })
+
+    expect(await run(['enqueue', 'acme/shop#12', '--publish', 'slack'], h.deps)).toBe(2)
+    expect(h.stderr()).toContain('Invalid --publish "slack". Use pr or none.')
+  })
+
+  it('refuses what the when command refuses, with what it wrote', async () => {
+    const config = join(storeDir, 'when-config')
+    const text = `${WATCH_CONFIG}  when: { command: 'echo "only the payments team" >&2; exit 1' }\n`
+    const h = harness({
+      env: { GITHUB_TOKEN: TOKEN, PHADA_CONFIG_HOME: config, PATH: process.env.PATH },
+      files: memoryFiles({ [join(config, 'config.yml')]: text }),
+    })
+    mkdirSync(config, { recursive: true })
+
+    expect(await run(['enqueue', 'acme/shop#12'], h.deps)).toBe(1)
+    expect(h.stderr()).toContain(
+      'Refused acme/shop#12: the when command refused it (only the payments team).',
+    )
+    expect(await run(['enqueue', 'acme/shop#12', '--format', 'json'], h.deps)).toBe(1)
+    expect(JSON.parse(h.stdout())).toMatchObject({
+      status: 'refused',
+      reason: 'when-command',
+      message: 'only the payments team',
+    })
+  })
+
+  it('lets the watch review a queued draft at once, without publishing when asked so', async () => {
+    const h = harness({
+      files: withConfig(),
+      pullRequest: () => Promise.resolve(pullRequestFixture({ draft: true })),
+      pullHead: () => Promise.resolve({ state: 'open' as const, draft: true, headSha: HEAD_SHA }),
+      review: () => Promise.resolve(WITH_FINDING),
+    })
+
+    expect(await run(['enqueue', 'acme/shop#12', '--publish', 'none'], h.deps)).toBe(0)
+    expect(await run(['watch', '--once'], h.deps)).toBe(0)
+    expect(h.posts).toHaveLength(0)
+    expect(h.stderr()).toMatch(/Reviewing acme\/shop#12 at a1b2c3d…/)
+    const file = h.historyFiles[0]?.split(' → ')[1] ?? ''
+    const db = new DatabaseSync(file)
+    const runs = db.prepare('select source, request_source from run').all()
+    db.close()
+    expect(runs).toEqual([{ source: 'watch', request_source: 'enqueue' }])
+  })
+})
+
+describe('phada mcp', () => {
+  const WATCH_CONFIG = 'verify: false\nwatch:\n  repos: [acme/shop]\n'
+  const line = (id: number, method: string, params: unknown = {}) =>
+    JSON.stringify({ jsonrpc: '2.0', id, method, params })
+  const answers = (stdout: string) =>
+    stdout
+      .trim()
+      .split('\n')
+      .map((text) => JSON.parse(text) as { id: number; result: Record<string, unknown> })
+  const toolJson = (answer: { result: Record<string, unknown> }) =>
+    JSON.parse((answer.result.content as { text: string }[])[0]?.text ?? '') as unknown
+
+  it('answers MCP over stdio: asks for a review, then waits for it until the deadline', async () => {
+    const h = harness({
+      files: memoryFiles({ '/cfg/config.yml': WATCH_CONFIG }),
+      lockHolder: 7,
+      stdin: [
+        [
+          line(0, 'initialize', { protocolVersion: '2025-06-18', capabilities: {} }),
+          JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }),
+          line(1, 'tools/list'),
+          line(2, 'tools/call', {
+            name: 'review_pull_request',
+            arguments: { pr: 'acme/shop#12', publish: 'none' },
+          }),
+        ],
+        [line(3, 'tools/call', { name: 'wait_for_job', arguments: { job: 1, timeoutSeconds: 4 } })],
+      ],
+    })
+
+    expect(await run(['mcp'], h.deps)).toBe(0)
+    expect(await run(['mcp'], h.deps)).toBe(0)
+
+    const [init, list, review, wait] = answers(h.stdout())
+    expect(init?.result).toMatchObject({ serverInfo: { name: 'phada' } })
+    expect((list?.result.tools as { name: string }[]).map(({ name }) => name)).toEqual([
+      'review_pull_request',
+      'job_status',
+      'wait_for_job',
+      'list_queue',
+    ])
+    expect(review && toolJson(review)).toMatchObject({
+      status: 'queued',
+      job: { id: 1, publish: 'none' },
+      watchRunning: true,
+    })
+    expect(wait && toolJson(wait)).toMatchObject({ timedOut: true, job: { status: 'queued' } })
+  })
+
+  it('answers other calls while a wait_for_job waits', async () => {
+    const listed = async () => {
+      while (!h.stdout().includes('"id":2')) await new Promise((done) => setImmediate(done))
+    }
+    const h: Harness = harness({
+      files: memoryFiles({ '/cfg/config.yml': WATCH_CONFIG }),
+      lockHolder: 7,
+      beforeSleep: listed,
+      stdin: [
+        [
+          line(1, 'tools/call', { name: 'wait_for_job', arguments: { job: 1, timeoutSeconds: 4 } }),
+          line(2, 'tools/call', { name: 'list_queue', arguments: {} }),
+        ],
+      ],
+    })
+    expect(await run(['enqueue', 'acme/shop#12'], h.deps)).toBe(0)
+
+    expect(await run(['mcp'], h.deps)).toBe(0)
+
+    const ids = h
+      .stdout()
+      .trim()
+      .split('\n')
+      .filter((text) => text.startsWith('{'))
+      .map((text) => (JSON.parse(text) as { id: number }).id)
+    expect(ids).toEqual([2, 1])
+  })
+
+  it('answers review_pull_request with an error when there is no token', async () => {
+    const h = harness({
+      env: { PHADA_CONFIG_HOME: '/cfg' },
+      files: memoryFiles({ '/cfg/config.yml': WATCH_CONFIG }),
+      stdin: [
+        [line(1, 'tools/call', { name: 'review_pull_request', arguments: { pr: 'acme/shop#12' } })],
+      ],
+    })
+
+    expect(await run(['mcp'], h.deps)).toBe(0)
+    expect(answers(h.stdout())[0]?.result).toMatchObject({ isError: true })
+    expect(h.stdout()).toContain('GITHUB_TOKEN')
+  })
+})
+
 describe('phada watch', () => {
   const WATCH_CONFIG = 'verify: false\nwatch:\n  repos: [acme/shop]\n'
   const OPEN_PULL = {
@@ -1904,6 +2172,170 @@ describe('phada watch', () => {
     db.close()
     expect(findings).toEqual([{ repo: 'acme/shop', number: 12, thread_id: null }])
     expect(observed).toEqual([{ repo: 'acme/shop', number: 12, pull_state: 'open' }])
+  })
+
+  it('reviews a pull request at once when its owner comments /phada review, with an eyes reaction', async () => {
+    const h = harness({
+      files: withConfig(),
+      listPulls: listed,
+      review: () => Promise.resolve(WITH_FINDING),
+      comments: () =>
+        Promise.resolve({
+          status: 'ok' as const,
+          comments: [
+            {
+              id: 77,
+              body: '/phada review',
+              author: 'octocat',
+              authorIsBot: false,
+              association: 'OWNER',
+              createdAt: '2026-10-18T12:00:00Z',
+              url: 'https://github.com/acme/shop/pull/12#issuecomment-77',
+              number: 12,
+              pullRequest: true,
+            },
+          ],
+        }),
+    })
+
+    expect(await run(['watch', '--once'], h.deps)).toBe(0)
+
+    expect(h.events).toContain('react 77')
+    expect(h.posts).toHaveLength(1)
+  })
+
+  it('needs both Slack tokens when slack: is in the config', async () => {
+    const h = harness({
+      env: { GITHUB_TOKEN: TOKEN, PHADA_CONFIG_HOME: '/cfg', PHADA_SLACK_BOT_TOKEN: 'xoxb-1' },
+      files: withConfig(`${WATCH_CONFIG}slack:\n  channels: [C1]\n`),
+    })
+
+    expect(await run(['watch'], h.deps)).toBe(2)
+    expect(h.stderr()).toContain(
+      'slack: in your config needs PHADA_SLACK_BOT_TOKEN and PHADA_SLACK_APP_TOKEN in the environment; PHADA_SLACK_APP_TOKEN is not set.',
+    )
+  })
+
+  it.each([
+    ['pr', 1],
+    ['none', 0],
+  ] as const)(
+    'reviews a pull request posted in a Slack channel with publish: %s and answers in its thread',
+    async (publish, posts) => {
+      const h = harness({
+        env: {
+          GITHUB_TOKEN: TOKEN,
+          PHADA_CONFIG_HOME: '/cfg',
+          PHADA_SLACK_BOT_TOKEN: 'xoxb-secret-bot',
+          PHADA_SLACK_APP_TOKEN: 'xapp-secret-app',
+        },
+        files: withConfig(
+          `${WATCH_CONFIG}slack:\n  channels: [{ id: C1, publish: ${publish}, reply: full }]\n`,
+        ),
+        review: () => Promise.resolve(WITH_FINDING),
+        slackMessages: [
+          {
+            type: 'message',
+            channel: 'C1',
+            ts: '100.1',
+            text: '<https://github.com/acme/shop/pull/12>',
+          },
+        ],
+      })
+
+      expect(await run(['watch'], h.deps)).toBe(0)
+
+      expect(h.posts).toHaveLength(posts)
+      expect(h.slack.tokens).toEqual([{ botToken: 'xoxb-secret-bot', appToken: 'xapp-secret-app' }])
+      expect(h.slack.calls).toEqual([
+        '+hourglass_flowing_sand',
+        '-hourglass_flowing_sand',
+        '+x',
+        expect.stringMatching(/^post C1 100\.1 :x: \*Blocking findings\* · /),
+        'closed',
+      ])
+      expect(h.stderr()).not.toContain('secret')
+    },
+  )
+
+  it('saves the verdict of each watch review and of a failed one', async () => {
+    const h = harness({
+      files: withConfig(),
+      listPulls: listed,
+      review: () => Promise.resolve(WITH_FINDING),
+    })
+
+    expect(await run(['watch', '--once', '--backfill'], h.deps)).toBe(0)
+
+    const file = h.historyFiles[0]?.split(' → ')[1] ?? ''
+    const db = new DatabaseSync(file)
+    const verdicts = db.prepare('select status, verdict from run').all()
+    db.close()
+    expect(verdicts).toEqual([{ status: 'published', verdict: 'blocking' }])
+  })
+
+  it('sends each review event to the hooks with the full review when it finishes', async () => {
+    const h = harness({
+      files: withConfig(`${WATCH_CONFIG}hooks:\n  review.finished: ./notify.sh\n`),
+      listPulls: listed,
+      review: () => Promise.resolve(WITH_FINDING),
+      hookWarning: (event) =>
+        event.event === 'review.finished' ? 'The review.finished hook exited with 1' : undefined,
+    })
+
+    expect(await run(['watch', '--once', '--backfill'], h.deps)).toBe(0)
+
+    expect(h.hooked.map(({ event }) => event.event)).toEqual(['review.started', 'review.finished'])
+    expect(h.hooked[1]).toMatchObject({
+      settings: { commands: { 'review.finished': './notify.sh' } },
+      event: {
+        job: { repo: 'acme/shop', number: 12, url: 'https://github.com/acme/shop/pull/12' },
+        requests: [{ source: 'watch', publish: 'pr' }],
+        verdict: 'blocking',
+        publication: { status: 'published', url: REVIEW_URL },
+        review: { verdict: 'blocking', review: { findings: [{ file: 'src/shop.ts', line: 3 }] } },
+      },
+    })
+    expect(h.stderr()).toContain('Warning: The review.finished hook exited with 1')
+  })
+
+  it('gives the hook the review of a request that does not publish, and posts nothing', async () => {
+    const h = harness({
+      files: withConfig(`${WATCH_CONFIG}hooks:\n  review.finished: ./notify.sh\n`),
+      review: () => Promise.resolve(WITH_FINDING),
+    })
+
+    expect(await run(['enqueue', 'acme/shop#12', '--publish', 'none'], h.deps)).toBe(0)
+    expect(await run(['watch', '--once'], h.deps)).toBe(0)
+
+    expect(h.posts).toHaveLength(0)
+    expect(h.hooked[1]?.event).toMatchObject({
+      event: 'review.finished',
+      requests: [{ source: 'enqueue', publish: 'none' }],
+      publication: { status: 'not-published' },
+      review: { review: { findings: [{ line: 3 }] } },
+    })
+  })
+
+  it('gives the hook the link of the review Phada already published on the commit', async () => {
+    const reviewed = phadaState([])
+    const h = harness({
+      files: withConfig(`${WATCH_CONFIG}hooks:\n  review.skipped: ./notify.sh\n`),
+      reviewState: () =>
+        Promise.resolve({
+          ...reviewed,
+          reviews: reviewed.reviews.map((review) => ({ ...review, url: REVIEW_URL })),
+        }),
+    })
+
+    expect(await run(['enqueue', 'acme/shop#12', '--publish', 'none'], h.deps)).toBe(0)
+    expect(await run(['watch', '--once'], h.deps)).toBe(0)
+
+    expect(h.hooked.at(-1)?.event).toMatchObject({
+      event: 'review.skipped',
+      reason: 'already-reviewed',
+      publication: { status: 'skipped', url: REVIEW_URL },
+    })
   })
 
   it('records the open pull requests without reviewing them on the first run', async () => {

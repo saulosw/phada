@@ -7,8 +7,33 @@ output can change between minor versions.
 
 ## Unreleased
 
+## 0.8.0 - 2026-10-24
+
 ### Added
 
+- `phada enqueue owner/repo#N` asks the watch for a review (`--publish pr|none`,
+  `--format json`), and exits with 1 when the request is refused.
+- `phada mcp`, an MCP server over stdio, lets your AI ask for a review (`review_pull_request`),
+  follow it (`job_status`, `list_queue`) and wait for its verdict and full review
+  (`wait_for_job`).
+- `/phada review` commented by an owner, member or collaborator of a watched repository queues a
+  review of that pull request; the watch reacts with 👀.
+- Slack: with `slack:` in your own config and `PHADA_SLACK_BOT_TOKEN` and
+  `PHADA_SLACK_APP_TOKEN` in the environment, `phada watch` reviews the pull requests linked in
+  the channels you list, marks the message with ⏳ and then the emoji of the verdict, and answers
+  in its thread with a link, a summary or every finding (`reply`), publishing on the pull request
+  or not (`publish`) per channel.
+- `hooks:` runs a command of yours on `review.started`, `review.finished` (with the full review),
+  `review.failed` and `review.skipped`, with the event as JSON on stdin.
+- `watch.when` (and `when` per repository) runs a command that decides, from the pull request and
+  the request on stdin, whether a request or a push gets a new review; a request that joins a
+  queued job or a commit already reviewed does not ask it.
+- A verdict computed by Phada (`clean`, `comments`, `blocking`, `failed`, `skipped`) in the JSON
+  of every review, in the events and in the history.
+- `phada watch --status` shows who asked for each job, and `phada history` who asked for each
+  review of the watch.
+- A request for a commit Phada already reviewed on the pull request gets the link of that review,
+  in the `review.skipped` event and in the Slack reply.
 - MCP servers declared in your own config, for Claude Code, Codex and Ollama alike: started by
   Phada (`command`, `args`, `env`) or reached over streamable HTTP (`url`, `headers`). Their
   tools are offered to the AI next to the investigation tools, in the same budget of calls and
@@ -25,6 +50,15 @@ output can change between minor versions.
 
 ### Changed
 
+- Every review request, from the polling or from anywhere else, goes through the same checks: a
+  watched repository, an open pull request, no outside author on a public repository, the `when`
+  command, a commit not reviewed yet and `maxReviewsPerHour`. A request for a commit that already
+  has a job joins it.
+- A request is reviewed without the settle time, and also when the pull request is a draft or
+  does not match the filters of `watch:`, which now only decide what the polling picks up.
+- When a command run by Phada with its own process group runs out of time, the whole group is
+  stopped, not only its first process.
+- The history moves to version 3; older Phada versions refuse the updated file.
 - Pull requests of public repositories from outside authors are reviewed without any of your MCP
   servers.
 - A declared server offers only the tools it marks as read-only unless `tools` lists others.

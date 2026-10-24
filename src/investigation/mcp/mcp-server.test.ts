@@ -84,6 +84,24 @@ describe('handleMcpMessage', () => {
     })
   })
 
+  it('keeps the annotations a tool declares', async () => {
+    const toolbox: Toolbox = {
+      ...fakeToolbox,
+      definitions: [
+        {
+          name: 'review_pull_request',
+          description: 'Ask for a review.',
+          inputSchema: { type: 'object' },
+          annotations: { readOnlyHint: false, openWorldHint: true },
+        },
+      ],
+    }
+    const line = await handleMcpMessage(toolbox, JSON.stringify({ id: 1, method: 'tools/list' }))
+    expect(JSON.parse(line ?? '')).toMatchObject({
+      result: { tools: [{ annotations: { readOnlyHint: false, openWorldHint: true } }] },
+    })
+  })
+
   it('calls a tool', async () => {
     expect(
       await answer({

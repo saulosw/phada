@@ -1,5 +1,12 @@
 import { DiffTooLargeError, PullRequestNotFoundError } from './errors.js'
-import { booleanField, field, invalidPayload, numberField, stringField } from './json-fields.js'
+import {
+  arrayField,
+  booleanField,
+  field,
+  invalidPayload,
+  numberField,
+  stringField,
+} from './json-fields.js'
 import { formatPullRequestRef } from './pull-request-ref.js'
 import type { PullRequestRef } from './pull-request-ref.js'
 import {
@@ -36,6 +43,7 @@ export interface PullRequest {
   headSha: string
   fromFork: boolean
   private: boolean
+  labels?: string[]
   stats: { changedFiles: number; additions: number; deletions: number; commits: number }
   /** Unified diff, never truncated. */
   diff: string
@@ -49,7 +57,7 @@ export interface FetchPullRequestOptions extends PullRequestRef {
   timeoutMs?: number
 }
 
-type PullRequestMetadata = Omit<PullRequest, 'diff'>
+export type PullRequestMetadata = Omit<PullRequest, 'diff'>
 
 /** Fetches a pull request's metadata and then its diff (two sequential requests). */
 export async function fetchPullRequest(options: FetchPullRequestOptions): Promise<PullRequest> {
@@ -71,9 +79,9 @@ export async function fetchPullRequest(options: FetchPullRequestOptions): Promis
   return { ...metadata, diff }
 }
 
-export async function fetchPullRequestHead(
+export async function fetchPullRequestMetadata(
   options: FetchPullRequestOptions,
-): Promise<{ state: 'open' | 'closed'; draft: boolean; headSha: string }> {
+): Promise<PullRequestMetadata> {
   const { owner, repo, number } = options
   const ctx: GitHubRequestContext = {
     token: options.token,
@@ -81,11 +89,13 @@ export async function fetchPullRequestHead(
     timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
   }
   const path = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${number}`
-  const { state, draft, headSha } = await fetchMetadata(
-    ctx,
-    path,
-    formatPullRequestRef({ owner, repo, number }),
-  )
+  return fetchMetadata(ctx, path, formatPullRequestRef({ owner, repo, number }))
+}
+
+export async function fetchPullRequestHead(
+  options: FetchPullRequestOptions,
+): Promise<{ state: 'open' | 'closed'; draft: boolean; headSha: string }> {
+  const { state, draft, headSha } = await fetchPullRequestMetadata(options)
   return { state, draft, headSha }
 }
 
@@ -157,6 +167,9 @@ function toPullRequestMetadata(json: unknown): PullRequestMetadata {
     // A deleted fork shows up as head.repo === null; treat it as a fork.
     fromFork: headRepo === null || headRepo !== baseRepo,
     private: booleanField(json, 'base.repo.private'),
+    ...(Array.isArray(field(json, 'labels'))
+      ? { labels: arrayField(json, 'labels').map((label) => stringField(label, 'name')) }
+      : {}),
     stats: {
       changedFiles: numberField(json, 'changed_files'),
       additions: numberField(json, 'additions'),

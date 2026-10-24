@@ -34,6 +34,7 @@ describe('listOpenPullRequests', () => {
         {
           number: 12,
           headSha: 'a'.repeat(40),
+          title: 'Change 12',
           draft: false,
           author: 'alice',
           authorIsBot: false,

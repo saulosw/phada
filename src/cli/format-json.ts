@@ -15,6 +15,7 @@ import type {
   Verification,
 } from '../review/types.js'
 
+import { reviewVerdict } from '../review/verdict.js'
 import type { GitHubReview } from './format-github.js'
 
 const SCHEMA_VERSION = 1
@@ -68,6 +69,7 @@ export function formatReviewJson(
           schemaVersion: SCHEMA_VERSION,
           status: outcome.status,
           reason: outcome.reason,
+          verdict: 'skipped',
           pullRequest,
           publication: publicationBlock,
           context: contextBlock,
@@ -79,6 +81,7 @@ export function formatReviewJson(
       : {
           schemaVersion: SCHEMA_VERSION,
           status: outcome.status,
+          verdict: reviewVerdict(outcome.result),
           pullRequest,
           review: reviewJson(outcome.result, fixFor),
           publication: publicationBlock,
@@ -96,6 +99,7 @@ export function formatAlreadyReviewedJson(pr: PullRequest, reason: SkipReason): 
     schemaVersion: SCHEMA_VERSION,
     status: 'skipped',
     reason: 'already-reviewed',
+    verdict: 'skipped',
     pullRequest: pullRequestJson(pr),
     publication: publicationJson({ status: 'skipped', reason }),
     context: null,

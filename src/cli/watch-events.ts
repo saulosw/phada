@@ -17,5 +17,6 @@ export function printWatchEvents(print: (event: WatchEventView) => void): WatchE
     feedback: (repo, number, threads) => print({ kind: 'feedback', repo, number, threads }),
     warning: (message) => print({ kind: 'warning', message }),
     limited: (count, until) => print({ kind: 'limited', count, until }),
+    refused: (request, result) => print({ kind: 'refused', request, result }),
   }
 }

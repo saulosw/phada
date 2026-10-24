@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { PullRequestReviewState, ReviewThread } from '../github/pull-request-reviews.js'
 import { FINDING_MARKER, resolvedMarker } from './markers.js'
-import { resolvedByPhada } from './phada-state.js'
+import { phadaReviewUrlAt, resolvedByPhada } from './phada-state.js'
 
 const SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
 const STATE: PullRequestReviewState = { viewer: 'me', pullState: 'open', reviews: [], threads: [] }
@@ -41,5 +41,24 @@ describe('resolvedByPhada', () => {
       resolvedByPhada(STATE, thread({ replies: [{ ...thread().replies[0]!, author: 'x' }] })),
     ).toBe(false)
     expect(resolvedByPhada(STATE, thread({ replies: [quoted] }))).toBe(false)
+  })
+})
+
+describe('phadaReviewUrlAt', () => {
+  it('is the link of the last review Phada published on a commit', () => {
+    const review = (id: string, author: string, sha: string) => ({
+      id,
+      author,
+      body: `Review\n\n<!-- phada:review sha=${sha} findings=1 -->`,
+      commitSha: sha,
+      url: `https://x/${id}`,
+    })
+    const state = {
+      ...STATE,
+      reviews: [review('R1', 'me', SHA), review('R2', 'me', SHA), review('R3', 'other', SHA)],
+    }
+
+    expect(phadaReviewUrlAt(state, SHA)).toBe('https://x/R2')
+    expect(phadaReviewUrlAt(state, '0'.repeat(40))).toBeUndefined()
   })
 })

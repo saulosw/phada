@@ -1,5 +1,7 @@
 import type { ReviewRun } from '../app/review-and-publish.js'
-import type { HistoryStatus, RunRecord } from '../store/history-store.js'
+import type { ReviewRequestInput, SubmitResult } from '../app/submit-request.js'
+import { refusalText } from './format-request.js'
+import type { HistoryStatus, RunRecord, StatusJob } from '../store/history-store.js'
 import type { JobRecord, PauseState } from '../watch/types.js'
 import { errorMessage } from '../app/error-message.js'
 import { formatSkipMessage } from './format-publication.js'
@@ -28,6 +30,11 @@ export type WatchEventView =
   | { kind: 'feedback'; repo: string; number: number; threads: number }
   | { kind: 'warning'; message: string }
   | { kind: 'limited'; count: number; until: string }
+  | {
+      kind: 'refused'
+      request: ReviewRequestInput
+      result: SubmitResult & { status: 'refused' }
+    }
 
 export function formatWatchEvent(event: WatchEventView, at: Date): string {
   return `[${clock(at)}] ${toTerminalText(eventText(event))}`
@@ -61,6 +68,8 @@ function eventText(event: WatchEventView): string {
       return `Warning: ${event.message}`
     case 'limited':
       return `${formatCount(event.count, 'review')} in the last hour (maxReviewsPerHour): the next one starts at ${clock(new Date(event.until))}.`
+    case 'refused':
+      return `Refused a ${event.request.source} request for ${event.request.repo}#${event.request.number}: ${refusalText(event.result)}.`
   }
 }
 
@@ -106,10 +115,12 @@ export function formatWatchStatus(
   })
   section(lines, 'Queue', 'empty', status.queued, (job) => {
     const attempt = job.attempts === 0 ? '' : ` · attempt ${job.attempts + 1}`
-    return `${jobLabel(job)}  after ${when(job.notBefore)}${attempt}`
+    return `${jobLabel(job)}  after ${when(job.notBefore)}${attempt}${askedFrom(job)}`
   })
   section(lines, 'In progress', 'none', status.running, (job) =>
-    job.startedAt === undefined ? jobLabel(job) : `${jobLabel(job)}  since ${when(job.startedAt)}`,
+    job.startedAt === undefined
+      ? `${jobLabel(job)}${askedFrom(job)}`
+      : `${jobLabel(job)}  since ${when(job.startedAt)}${askedFrom(job)}`,
   )
   section(lines, 'Failed', 'none', status.failed, (job) =>
     [jobLabel(job), job.finishedAt === undefined ? '' : when(job.finishedAt), job.error ?? '']
@@ -145,6 +156,11 @@ export function formatWatchStatusJson(
     lastRuns: status.lastRuns,
   }
   return `${JSON.stringify(body, null, 2)}\n`
+}
+
+function askedFrom(job: StatusJob): string {
+  const sources = (job.sources ?? []).filter((source) => source !== 'watch')
+  return sources.length === 0 ? '' : ` · asked from ${[...new Set(sources)].join(', ')}`
 }
 
 function section<T>(

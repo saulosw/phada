@@ -8,7 +8,10 @@ import type { OpenPull, PullListing } from '../github/list-pull-requests.js'
 import type { BranchHead } from '../github/repository.js'
 import { openHistoryStore } from '../store/history-store.js'
 import type { DuePull, HistoryStore } from '../store/history-store.js'
-import type { FailureKind, JobRecord } from '../watch/types.js'
+import type { CommentListing, IssueComment } from '../github/issue-comments.js'
+import type { FailureKind, JobRecord, RequestRecord } from '../watch/types.js'
+import type { WhenInput } from './submit-request.js'
+import { submitRequest } from './submit-request.js'
 import type { ReviewRun } from './review-and-publish.js'
 import { watchRepositories } from './watch-repositories.js'
 import type { WatchDeps } from './watch-repositories.js'
@@ -25,7 +28,7 @@ const SETTINGS: WatchSettings = {
   intervalMs: 5 * MIN,
   settleMs: 3 * MIN,
   maxReviewsPerHour: 6,
-  repos: [{ repo: 'acme/shop', publish: true, allowExternal: false }],
+  repos: [{ repo: 'acme/shop', publish: 'pr', allowExternal: false }],
 }
 
 const pull = (number: number, headSha = A, overrides: Partial<OpenPull> = {}): OpenPull => ({
@@ -73,14 +76,26 @@ interface Script {
   refreshFeedback?: (pulls: readonly DuePull[]) => Promise<void>
   stopWhen?: (state: { now: number; ran: JobRecord[]; sleeps: number }) => boolean
   settings?: WatchSettings
+  readPull?: (repo: string, number: number) => { headSha: string; state?: 'open' | 'closed' }
+  whenRefusal?: string
+  comments?: (since: string) => CommentListing
+  baselineAt?: string
 }
 
 async function setup(script: Script, history?: HistoryStore) {
   const store = history ?? (await openHistoryStore(join(dir, `w${++files}.sqlite`)))
+  if (script.baselineAt !== undefined) {
+    store.saveRepo({ repo: 'acme/shop', baselineAt: script.baselineAt })
+  }
   let now = START
   let cycle = 0
   let sleeps = 0
   const ran: JobRecord[] = []
+  const asked: RequestRecord[][] = []
+  const notified: string[] = []
+  const { comments } = script
+  const whenAsked: string[] = []
+  const reacted: number[] = []
   const events: string[] = []
   const recorded: string[] = []
   const indexed: number[] = []
@@ -91,9 +106,40 @@ async function setup(script: Script, history?: HistoryStore) {
       return script.listings?.(cycle, now) ?? { status: 'ok', pulls: [] }
     },
     defaultBranch: async () => 'main',
+    submit: {
+      history: store,
+      settings: script.settings ?? SETTINGS,
+      readPull: async (repo, number) => ({
+        repo,
+        number,
+        headSha: script.readPull?.(repo, number).headSha ?? A,
+        state: script.readPull?.(repo, number).state ?? 'open',
+        private: false,
+        association: 'MEMBER',
+      }),
+      now: () => new Date(now),
+      ...(script.whenRefusal === undefined
+        ? {}
+        : {
+            checkWhen: async (command: string, input: WhenInput) => {
+              const { pullRequest, request } = input
+              whenAsked.push(
+                `${command} ${request.source} #${pullRequest.number} ${pullRequest.author}`,
+              )
+              return script.whenRefusal
+            },
+          }),
+    },
+    ...(comments === undefined
+      ? {}
+      : { listComments: async (_repo: string, since: string) => comments(since) }),
+    react: async (_repo, id) => {
+      reacted.push(id)
+    },
     branchHead: async () => script.branchHead?.(now) ?? { status: 'not-modified' },
-    runJob: async (job) => {
+    runJob: async (job, requests) => {
       ran.push(job)
+      asked.push([...requests])
       return script.runJob?.(job, now) ?? published(job)
     },
     recordRun: (job, outcome) => {
@@ -107,6 +153,12 @@ async function setup(script: Script, history?: HistoryStore) {
     refreshFeedback: async (pulls) => {
       events.push(`feedback ${pulls.map((due) => `${due.repo}#${due.number}`).join(' ')}`)
       await script.refreshFeedback?.(pulls)
+    },
+    notify: async ({ kind, job, reason, requests }) => {
+      const sources = requests.map(({ source }) => source).join(',')
+      notified.push(
+        `${kind} #${job.number}${reason === undefined ? '' : ` ${reason}`} [${sources}]`,
+      )
     },
     classify: script.classify ?? (() => ({ kind: 'transient' })),
     now: () => new Date(now),
@@ -130,12 +182,60 @@ async function setup(script: Script, history?: HistoryStore) {
       indexPartial: (repo) => events.push(`partial ${repo}`),
       feedback: (repo, number, threads) => events.push(`observed ${repo}#${number} ${threads}`),
       warning: (message) => events.push(`warning ${message}`),
+      refused: (request, result) =>
+        events.push(`refused ${request.source} #${request.number} ${result.reason}`),
       limited: (count, until) =>
         events.push(`limited ${count} until ${(Date.parse(until) - START) / MIN}`),
     },
   }
-  return { deps, store, ran, events, recorded, indexed, now: () => now - START }
+  return {
+    deps,
+    store,
+    ran,
+    asked,
+    notified,
+    whenAsked,
+    reacted,
+    events,
+    recorded,
+    indexed,
+    now: () => now - START,
+  }
 }
+
+const BASELINE = new Date(START - MIN).toISOString()
+
+function queuedMcpJob(store: HistoryStore): void {
+  const id = store.addJob({
+    repo: 'acme/shop',
+    number: 3,
+    headSha: A,
+    status: 'queued',
+    attempts: 0,
+    notBefore: new Date(START + 60 * MIN).toISOString(),
+    publish: 'none',
+    createdAt: new Date(START).toISOString(),
+  })
+  store.addRequest({
+    jobId: id,
+    source: 'mcp',
+    publish: 'none',
+    createdAt: new Date(START).toISOString(),
+  })
+}
+
+const command = (id: number, overrides: Partial<IssueComment> = {}): IssueComment => ({
+  id,
+  body: '/phada review',
+  author: 'alice',
+  authorIsBot: false,
+  association: 'MEMBER',
+  createdAt: new Date(START).toISOString(),
+  url: `https://github.com/acme/shop/pull/3#issuecomment-${id}`,
+  number: 3,
+  pullRequest: true,
+  ...overrides,
+})
 
 const input = (overrides: Partial<Parameters<typeof watchRepositories>[0]> = {}) => ({
   settings: SETTINGS,
@@ -177,6 +277,224 @@ describe('watchRepositories', () => {
     ])
     expect(h.recorded).toEqual(['3:reviewed'])
     expect(h.store.jobs({ status: ['done'] })).toHaveLength(1)
+  })
+
+  it('attaches a watch request to the jobs it queues', async () => {
+    const h = await setup({
+      listings: (cycle) => ({ status: 'ok', pulls: cycle === 1 ? [] : [pull(3)] }),
+      stopWhen: ({ ran }) => ran.length === 1,
+    })
+
+    await watchRepositories(input(), h.deps)
+
+    expect(h.asked).toEqual([[expect.objectContaining({ source: 'watch', publish: 'pr' })]])
+    expect(h.ran[0]?.publish).toBe('pr')
+  })
+
+  it('runs a request from another source at once and joins the watch to it: one job', async () => {
+    const h = await setup({
+      listings: () => ({ status: 'ok', pulls: [pull(3)] }),
+      baselineAt: BASELINE,
+      stopWhen: ({ ran }) => ran.length === 1,
+    })
+    await submitRequest(
+      { repo: 'acme/shop', number: 3, source: 'slack', publish: 'none', data: { ts: '1.2' } },
+      h.deps.submit,
+    )
+
+    await watchRepositories(input(), h.deps)
+
+    expect(h.store.jobs({})).toHaveLength(1)
+    expect(h.ran[0]?.publish).toBe('pr')
+    expect(h.asked[0]?.map(({ source }) => source)).toEqual(['slack', 'watch'])
+    expect(h.events).toContain('started #3 @0')
+  })
+
+  const supersededDraft = (cycle: number) => ({
+    status: 'ok' as const,
+    pulls: [pull(3, cycle === 1 ? A : B, { draft: true })],
+  })
+
+  it('moves the requests of a superseded job to the new commit', async () => {
+    const h = await setup({
+      listings: supersededDraft,
+      readPull: () => ({ headSha: B }),
+      baselineAt: BASELINE,
+      stopWhen: ({ ran }) => ran.length === 1,
+    })
+    queuedMcpJob(h.store)
+
+    await watchRepositories(input(), h.deps)
+
+    expect(h.ran.map((job) => job.headSha)).toEqual([B])
+    expect(h.asked[0]?.map(({ source }) => source)).toEqual(['mcp'])
+    expect(h.events.slice(0, 2)).toEqual(['superseded #3', 'queued #3 b'])
+  })
+
+  it('tells a moved request it was refused on the new commit', async () => {
+    const h = await setup({
+      listings: supersededDraft,
+      readPull: () => ({ headSha: B, state: 'closed' }),
+      baselineAt: BASELINE,
+      stopWhen: ({ sleeps }) => sleeps === 2,
+    })
+    queuedMcpJob(h.store)
+
+    await watchRepositories(input(), h.deps)
+
+    expect(h.notified).toEqual(['skipped #3 closed [mcp]'])
+  })
+
+  it('gives a moved request the review the new commit already has', async () => {
+    const h = await setup({
+      listings: supersededDraft,
+      readPull: () => ({ headSha: B }),
+      baselineAt: BASELINE,
+      stopWhen: ({ sleeps }) => sleeps === 2,
+    })
+    queuedMcpJob(h.store)
+    h.store.addJob({
+      repo: 'acme/shop',
+      number: 3,
+      headSha: B,
+      status: 'done',
+      attempts: 0,
+      notBefore: new Date(START).toISOString(),
+      publish: 'pr',
+      createdAt: new Date(START).toISOString(),
+      finishedAt: new Date(START).toISOString(),
+    })
+
+    await watchRepositories(input(), h.deps)
+
+    expect(h.notified).toEqual(['finished #3 [mcp]'])
+  })
+
+  it('asks the when command before queueing a push, and remembers the refusal for the commit', async () => {
+    const settings = { ...SETTINGS, repos: [{ ...SETTINGS.repos[0]!, when: './team.sh' }] }
+    const h = await setup({
+      listings: (cycle) => ({ status: 'ok', pulls: cycle === 1 ? [] : [pull(3)] }),
+      settings,
+      whenRefusal: 'not the payments team',
+      stopWhen: ({ sleeps }) => sleeps === 3,
+    })
+
+    await watchRepositories(input({ settings }), h.deps)
+
+    expect(h.whenAsked).toEqual(['./team.sh watch #3 alice'])
+    expect(h.store.jobs({})).toEqual([
+      expect.objectContaining({ status: 'skipped', reason: 'when-command' }),
+    ])
+    expect(h.events).toContain(
+      'warning acme/shop#3: the when command refused it (not the payments team)',
+    )
+  })
+
+  it('takes a /phada review comment as a request, reacts to it and reviews at once', async () => {
+    const sinces: string[] = []
+    const baselineAt = new Date(START - 60 * MIN).toISOString()
+    const h = await setup({
+      listings: () => ({ status: 'not-modified' }),
+      baselineAt,
+      comments: (since) => {
+        sinces.push(since)
+        return {
+          status: 'ok',
+          etag: 'W/"c"',
+          comments: [
+            command(40, { createdAt: new Date(START - MIN).toISOString() }),
+            command(41, { author: 'mallory', association: 'NONE' }),
+          ],
+        }
+      },
+      stopWhen: ({ ran }) => ran.length === 1,
+    })
+
+    await watchRepositories(input(), h.deps)
+
+    expect(sinces).toEqual([baselineAt])
+    expect(h.reacted).toEqual([40])
+    expect(h.asked[0]).toMatchObject([
+      { source: 'pr-command', publish: 'pr', data: { commentId: 40, author: 'alice' } },
+    ])
+    expect(h.store.repo('acme/shop')).toMatchObject({
+      commentsEtag: 'W/"c"',
+      commentsLastId: 41,
+      commentsSince: new Date(START).toISOString(),
+    })
+  })
+
+  it('says why a /phada review was refused, without reacting', async () => {
+    const h = await setup({
+      listings: () => ({ status: 'not-modified' }),
+      readPull: () => ({ headSha: A, state: 'closed' }),
+      baselineAt: new Date(START - 60 * MIN).toISOString(),
+      comments: () => ({ status: 'ok', comments: [command(40, { association: 'OWNER' })] }),
+      stopWhen: ({ sleeps }) => sleeps === 1,
+    })
+
+    await watchRepositories(input(), h.deps)
+
+    expect(h.events).toContain('refused pr-command #3 closed')
+    expect(h.reacted).toEqual([])
+  })
+
+  it('notifies when a job starts and finishes', async () => {
+    const h = await setup({
+      listings: (cycle) => ({ status: 'ok', pulls: cycle === 1 ? [] : [pull(3)] }),
+      stopWhen: ({ ran }) => ran.length === 1,
+    })
+
+    await watchRepositories(input(), h.deps)
+
+    expect(h.notified).toEqual(['started #3 [watch]', 'finished #3 [watch]'])
+  })
+
+  it('notifies a skipped review with its reason', async () => {
+    const h = await setup({
+      listings: (cycle) => ({ status: 'ok', pulls: cycle === 1 ? [] : [pull(3)] }),
+      runJob: async (job) => ({
+        status: 'skipped',
+        pullRequest: pullRequestFixture({ number: job.number }),
+        reason: { kind: 'already-reviewed' },
+      }),
+      stopWhen: ({ ran }) => ran.length === 1,
+    })
+
+    await watchRepositories(input(), h.deps)
+
+    expect(h.notified).toEqual(['started #3 [watch]', 'skipped #3 already-reviewed [watch]'])
+  })
+
+  it('notifies a failure only once the job fails for good', async () => {
+    const h = await setup({
+      listings: (cycle) => ({ status: 'ok', pulls: cycle === 1 ? [] : [pull(3)] }),
+      runJob: async () => {
+        throw new Error('bad')
+      },
+      classify: () => ({ kind: 'definitive' }),
+      stopWhen: ({ ran }) => ran.length === 1,
+    })
+
+    await watchRepositories(input(), h.deps)
+
+    expect(h.notified).toEqual(['started #3 [watch]', 'failed #3 [watch]'])
+  })
+
+  it('notifies a closed pull request and a superseded commit to the requests that do not move', async () => {
+    const h = await setup({
+      listings: (cycle) => ({
+        status: 'ok',
+        pulls: cycle === 1 ? [pull(3, A), pull(4)] : [pull(3, B)],
+      }),
+      settings: { ...SETTINGS, settleMs: 60 * MIN },
+      baselineAt: BASELINE,
+      stopWhen: ({ sleeps }) => sleeps === 2,
+    })
+
+    await watchRepositories(input({ settings: { ...SETTINGS, settleMs: 60 * MIN } }), h.deps)
+
+    expect(h.notified).toEqual(['skipped #3 superseded [watch]', 'skipped #4 closed [watch]'])
   })
 
   it('reviews only the newest commit when a push lands before the settle time', async () => {
@@ -388,7 +706,7 @@ describe('watchRepositories', () => {
     const h = await setup({
       settings: {
         ...SETTINGS,
-        repos: [...SETTINGS.repos, { repo: 'acme/web', publish: true, allowExternal: false }],
+        repos: [...SETTINGS.repos, { repo: 'acme/web', publish: 'pr', allowExternal: false }],
       },
     })
     let listed = 0
@@ -404,7 +722,7 @@ describe('watchRepositories', () => {
         once: true,
         settings: {
           ...SETTINGS,
-          repos: [...SETTINGS.repos, { repo: 'acme/web', publish: true, allowExternal: false }],
+          repos: [...SETTINGS.repos, { repo: 'acme/web', publish: 'pr', allowExternal: false }],
         },
       }),
       h.deps,
@@ -422,7 +740,7 @@ describe('watchRepositories', () => {
     const h = await setup({
       settings: {
         ...SETTINGS,
-        repos: [...SETTINGS.repos, { repo: 'acme/web', publish: true, allowExternal: false }],
+        repos: [...SETTINGS.repos, { repo: 'acme/web', publish: 'pr', allowExternal: false }],
       },
       stopWhen: () => stop,
     })
@@ -437,7 +755,7 @@ describe('watchRepositories', () => {
       input({
         settings: {
           ...SETTINGS,
-          repos: [...SETTINGS.repos, { repo: 'acme/web', publish: true, allowExternal: false }],
+          repos: [...SETTINGS.repos, { repo: 'acme/web', publish: 'pr', allowExternal: false }],
         },
       }),
       h.deps,

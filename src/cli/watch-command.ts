@@ -11,31 +11,38 @@ import { mergeConfig, resolveProvider } from '../config/merge-config.js'
 import { resolveMcp, userMcp } from '../config/mcp-servers.js'
 import { BUILT_IN_SKILL, builtInSkillError } from '../app/review-passes.js'
 import { loadTopLevelUserLayers, loadUserLayers } from '../config/user-config.js'
-import { historyEnabled, resolveWatchSettings } from '../config/watch-settings.js'
 import type { WatchSettings } from '../config/watch-settings.js'
+import type { SubmitDeps } from '../app/submit-request.js'
+import { sleepUntilNewJob } from './queue-wake.js'
 import { splitRepoName } from '../github/pull-request-ref.js'
 import type { ConfigLayer } from '../config/types.js'
 import type { ComparedFile, CompareOptions } from '../github/compare-commits.js'
 import type { CreatedReview, CreateReviewOptions } from '../github/create-review.js'
 import type { ReplyAndResolveOptions } from '../github/resolve-thread.js'
+import type { CommentListing } from '../github/issue-comments.js'
 import type { PullListing } from '../github/list-pull-requests.js'
 import type {
   FetchReviewStateOptions,
   PullRequestReviewState,
 } from '../github/pull-request-reviews.js'
-import type { FetchPullRequestOptions, PullRequest } from '../github/pull-request.js'
+import type {
+  FetchPullRequestOptions,
+  PullRequest,
+  PullRequestMetadata,
+} from '../github/pull-request.js'
 import type { BranchHead } from '../github/repository.js'
 import type { RepositoryFilesOptions } from '../github/repository-files.js'
 import type { TextOutput } from './progress.js'
 import { MirrorLockTimeoutError } from '../repository/mirror-lock.js'
 import type { HistoryStore } from '../store/history-store.js'
-import type { JobRecord } from '../watch/types.js'
+import { publishOf } from '../watch/request-policy.js'
+import type { JobRecord, RequestRecord } from '../watch/types.js'
 import type { IndexFormat } from './args.js'
 import { classifyFailure } from './classify-failure.js'
 import { MissingGitHubTokenError, UsageError, WatchRunningError } from './errors.js'
 import { formatError } from './format-error.js'
 import { formatWatchEvent } from './format-watch.js'
-import { watchRun } from './history-run.js'
+import { requestSourceOf, watchRun } from './history-run.js'
 import { assertProviderChoice, providerRunsSkills } from './provider-choice.js'
 import { diskSkillCatalog } from './skill-catalog.js'
 import {
@@ -48,6 +55,14 @@ import { mcpNameChecker } from './review-wiring.js'
 import type { Choice, ReviewWiringDeps } from './review-wiring.js'
 import type { CheckedNames, NameCheck } from './mcp-names.js'
 import type { McpNameEntry, ResolvedMcp } from '../config/mcp-servers.js'
+import { requireWatchSettings, submitDeps } from './request-wiring.js'
+import { reviewEvent } from './review-event.js'
+import { openReviewEventSinks, reviewEventSinkSettings } from './review-event-sinks.js'
+import type {
+  ReviewEventSink,
+  ReviewEventSinkDeps,
+  ReviewEventSinkSettings,
+} from './review-event-sinks.js'
 import { printWatchEvents } from './watch-events.js'
 import { watchStatusText } from './watch-status.js'
 import { ABORTED_EXIT_CODE, createStopControl, trackRunningJob } from './watch-stop.js'
@@ -66,6 +81,11 @@ export interface WatchCommandDeps extends ReviewWiringDeps {
   listOpenPullRequests: (
     options: RepositoryFilesOptions & { etag?: string },
   ) => Promise<PullListing>
+  fetchPullRequestMetadata: (options: FetchPullRequestOptions) => Promise<PullRequestMetadata>
+  listIssueComments: (
+    options: RepositoryFilesOptions & { since: string; etag?: string },
+  ) => Promise<CommentListing>
+  addCommentReaction: (options: RepositoryFilesOptions & { commentId: number }) => Promise<void>
   fetchPullRequestHead: (
     options: FetchPullRequestOptions,
   ) => Promise<{ state: 'open' | 'closed'; draft: boolean; headSha: string }>
@@ -79,6 +99,9 @@ export interface WatchCommandDeps extends ReviewWiringDeps {
   abort: (code: number) => void
   sleep: (ms: number, signal: AbortSignal) => Promise<void>
   clock: () => Date
+  runHook?: ReviewEventSinkDeps['runHook']
+  slackApi?: ReviewEventSinkDeps['slackApi']
+  connectSlack?: ReviewEventSinkDeps['connectSlack']
 }
 
 export interface WatchCommand {
@@ -102,19 +125,10 @@ export async function runWatch(command: WatchCommand, deps: WatchCommandDeps): P
     }
     return 0
   }
-  const settings = resolveWatchSettings(layers)
-  if (settings === undefined) {
-    throw new UsageError(
-      'Nothing to watch: list the repositories under watch: in your own config, e.g. watch: { repos: [owner/repo] } in ~/.config/phada/config.yml.',
-    )
-  }
-  if (!historyEnabled(layers)) {
-    throw new UsageError(
-      'phada watch needs the history to know what it already reviewed; remove history: false from your config.',
-    )
-  }
+  const settings = requireWatchSettings(layers)
   const token = deps.env.GITHUB_TOKEN?.trim() || deps.env.GH_TOKEN?.trim()
   if (!token) throw new MissingGitHubTokenError()
+  const sinkSettings = reviewEventSinkSettings(layers, deps.env)
   const check = memoized(mcpNameChecker(deps))
   for (const { repo } of settings.repos) {
     try {
@@ -128,7 +142,7 @@ export async function runWatch(command: WatchCommand, deps: WatchCommandDeps): P
   try {
     return await deps.withLock(files.lock, () => {
       locked = true
-      return watchUnderLock(command, settings, token, deps, check)
+      return watchUnderLock({ command, settings, sinkSettings, token, check }, deps)
     })
   } catch (error) {
     if (locked || !(error instanceof MirrorLockTimeoutError)) throw error
@@ -139,14 +153,31 @@ export async function runWatch(command: WatchCommand, deps: WatchCommandDeps): P
   }
 }
 
+interface WatchRun {
+  command: WatchCommand
+  settings: WatchSettings
+  sinkSettings: ReviewEventSinkSettings
+  token: string
+  check: NameCheck
+}
+
 async function watchUnderLock(
-  command: WatchCommand,
-  settings: WatchSettings,
-  token: string,
+  { command, settings, sinkSettings, token, check }: WatchRun,
   deps: WatchCommandDeps,
-  check: NameCheck,
 ): Promise<number> {
   const history = await deps.openHistoryStore(dataFiles(deps.env, deps.home).history)
+  const submit = submitDeps(history, settings, token, deps)
+  const opened = openReviewEventSinks(
+    sinkSettings,
+    {
+      history,
+      submit,
+      listen: !command.once,
+      warning: (message) =>
+        deps.stderr.write(`${formatWatchEvent({ kind: 'warning', message }, deps.clock())}\n`),
+    },
+    deps,
+  )
   const stop = createStopControl({
     onSignal: deps.onSignal,
     write: (text) => deps.stderr.write(text),
@@ -156,8 +187,9 @@ async function watchUnderLock(
   })
   const watched = watchRepositories(
     { settings, backfill: command.backfill, once: command.once },
-    watchDeps(settings, token, history, stop, deps, check),
+    watchDeps({ settings, sinks: opened.sinks, submit, token, history, stop, check }, deps),
   ).then((exit) => {
+    opened.close()
     if (stop.abortedTwice()) return ABORTED_EXIT_CODE
     history.close()
     if (exit.reason === 'fatal') {
@@ -172,13 +204,19 @@ async function watchUnderLock(
   return code
 }
 
+interface WatchWiring {
+  settings: WatchSettings
+  sinks: readonly ReviewEventSink[]
+  submit: SubmitDeps
+  token: string
+  history: HistoryStore
+  stop: StopControl
+  check: NameCheck
+}
+
 function watchDeps(
-  settings: WatchSettings,
-  token: string,
-  history: HistoryStore,
-  stop: StopControl,
+  { settings, sinks, submit, token, history, stop, check }: WatchWiring,
   deps: WatchCommandDeps,
-  check: NameCheck,
 ): WatchDeps {
   const choices = new Map<number, Choice>()
   const events = trackRunningJob(
@@ -194,14 +232,20 @@ function watchDeps(
       (await deps.fetchRepository({ ...splitRepoName(repo), token })).defaultBranch,
     branchHead: (repo, branch, etag) =>
       deps.fetchBranchHead({ ...splitRepoName(repo), branch, token, ...withEtag(etag) }),
-    runJob: async (job) => {
+    submit,
+    listComments: (repo, since, etag) =>
+      deps.listIssueComments({ ...splitRepoName(repo), token, since, ...withEtag(etag) }),
+    react: (repo, commentId) =>
+      deps.addCommentReaction({ ...splitRepoName(repo), token, commentId }),
+    runJob: async (job, requests) => {
       const setup = await jobSetup(job.repo, deps, check)
       choices.set(job.id, setup.choice)
-      return runJob(job, setup, settings, token, deps)
+      return runJob({ job, requests, setup, settings, token }, deps)
     },
     recordRun: (job, outcome, startedAt) => {
       const choice = choices.get(job.id)
       choices.delete(job.id)
+      const source = requestSourceOf(history.requests([job.id]))
       const meta = {
         source: 'watch' as const,
         jobId: job.id,
@@ -209,6 +253,7 @@ function watchDeps(
         finishedAt: deps.clock().toISOString(),
         provider: choice?.provider ?? 'unknown',
         ...(choice?.model === undefined ? {} : { model: choice.model }),
+        ...(source === undefined ? {} : { requestSource: source }),
       }
       try {
         const runId = history.addRun(watchRun(job, outcome, meta, reviewRunJson))
@@ -242,9 +287,26 @@ function watchDeps(
         ),
       )
     },
+    notify: async (event) => {
+      if (sinks.length === 0) return
+      const run = event.kind === 'started' ? undefined : history.runOfJob(event.job.id)
+      const json = reviewEvent(event, run)
+      for (const sink of sinks) await sink(json)
+    },
     classify: (error) => classifyFailure(error, deps.clock()),
     now: () => deps.clock(),
-    sleep: (ms) => deps.sleep(ms, stop.signal),
+    sleep: (ms) =>
+      sleepUntilNewJob(ms, {
+        sleep: (step) => deps.sleep(step, stop.signal),
+        readyJobs: () => {
+          const now = deps.clock().toISOString()
+          return history
+            .jobs({ status: ['queued'] })
+            .filter(({ notBefore }) => notBefore <= now)
+            .map(({ id }) => id)
+        },
+        stopped: () => stop.stopRequested(),
+      }),
     stopRequested: () => stop.stopRequested(),
     events,
   }
@@ -311,24 +373,32 @@ async function jobSetup(repo: string, deps: WatchCommandDeps, check: NameCheck):
   return { userLayers, choice: mcpNames === undefined ? choice : { ...choice, mcpNames }, mcp }
 }
 
+interface QueuedReview {
+  job: JobRecord
+  requests: readonly RequestRecord[]
+  setup: JobSetup
+  settings: WatchSettings
+  token: string
+}
+
 async function runJob(
-  job: JobRecord,
-  { userLayers, choice, mcp }: JobSetup,
-  settings: WatchSettings,
-  token: string,
+  { job, requests, setup, settings, token }: QueuedReview,
   deps: WatchCommandDeps,
 ): Promise<ReviewRun> {
+  const { userLayers, choice, mcp } = setup
   const target = splitRepoName(job.repo)
   const repo = settings.repos.find((entry) => entry.repo === job.repo)
   const ref = { ...target, number: job.number }
   const publishTarget = { ...ref, token }
+  const asked = requests.some(({ source }) => source !== 'watch')
   return reviewAndPublish(
     {
       ref,
       mode: 'watch',
       force: false,
       dryRun: false,
-      publish: repo?.publish ?? true,
+      publish: repo === undefined ? job.publish !== 'none' : publishOf(job, repo) === 'pr',
+      acceptDraft: asked,
       options: {},
       userLayers,
       mcp,
@@ -351,7 +421,7 @@ async function runJob(
       replyAndResolve: (threadId, body) => deps.replyAndResolve({ token, threadId, body }),
       checkHead: async (pullRequest) => {
         const head = await deps.fetchPullRequestHead({ ...ref, token })
-        if (head.state === 'closed' || head.draft) return 'closed-or-draft'
+        if (head.state === 'closed' || (head.draft && !asked)) return 'closed-or-draft'
         return head.headSha === pullRequest.headSha ? 'current' : { superseded: head.headSha }
       },
       events: {

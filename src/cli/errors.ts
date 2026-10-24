@@ -17,3 +17,6 @@ export class MissingGitHubTokenError extends Error {
 export class WatchRunningError extends Error {
   override readonly name = 'WatchRunningError'
 }
+
+export const NOTHING_TO_WATCH =
+  'Nothing to watch: list the repositories under watch: in your own config, e.g. watch: { repos: [owner/repo] } in ~/.config/phada/config.yml.'

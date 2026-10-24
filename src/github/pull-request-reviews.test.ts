@@ -71,6 +71,7 @@ describe('fetchReviewState', () => {
           author: 'saulosw',
           body: `Captured review.\n\n<!-- phada:review sha=${HEAD_SHA} findings=1 -->`,
           commitSha: HEAD_SHA,
+          url: 'https://github.com/saulosw/phada-dev-web/pull/11#pullrequestreview-5444118781',
         },
       ],
       threads: [

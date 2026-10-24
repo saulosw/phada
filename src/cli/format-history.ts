@@ -95,7 +95,7 @@ function runLine(run: RunRecord): string {
     formatLocalTime(new Date(run.startedAt)),
     `${run.repo}#${run.number}`,
     shortSha(run.headSha),
-    run.source.padEnd(6),
+    (run.requestSource ?? run.source).padEnd(10),
     run.status.padEnd(9),
     details.join(' · '),
   ].join('  ')
@@ -130,6 +130,7 @@ function runJson(run: RunRecord) {
     id: run.id ?? null,
     jobId: run.jobId ?? null,
     source: run.source,
+    requestSource: run.requestSource ?? null,
     repo: run.repo,
     number: run.number,
     headSha: run.headSha,
