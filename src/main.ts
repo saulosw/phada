@@ -52,6 +52,8 @@ import { resolveMcp, userMcp } from './config/mcp-servers.js'
 import { loadUserLayers } from './config/user-config.js'
 import { formatPullRequestRef } from './github/pull-request-ref.js'
 import type { PullRequest } from './github/pull-request.js'
+import { runEnqueue } from './cli/enqueue-command.js'
+import type { EnqueueCommandDeps } from './cli/enqueue-command.js'
 import { runWatch } from './cli/watch-command.js'
 import type { WatchCommandDeps } from './cli/watch-command.js'
 import { ClaudeCliProvider } from './providers/claude.js'
@@ -59,7 +61,7 @@ import { CodexCliProvider } from './providers/codex.js'
 import { OllamaProvider } from './providers/ollama.js'
 import type { ReviewProvider } from './providers/types.js'
 
-export interface MainDeps extends WatchCommandDeps {
+export interface MainDeps extends WatchCommandDeps, EnqueueCommandDeps {
   cwd: string
   pathSize: (path: string) => Promise<number>
 }
@@ -113,6 +115,7 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
       return 0
     }
     if (command.kind === 'watch') return await runWatch(command, deps)
+    if (command.kind === 'enqueue') return await runEnqueue(command, deps)
     if (command.kind === 'history') {
       await runHistory(command, deps)
       return 0

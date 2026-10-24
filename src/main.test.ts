@@ -281,6 +281,8 @@ function harness(
     },
     listOpenPullRequests:
       overrides.listPulls ?? (() => Promise.resolve({ status: 'ok' as const, pulls: [] })),
+    fetchPullRequestMetadata: () =>
+      overrides.pullRequest?.() ?? Promise.resolve(pullRequestFixture()),
     fetchPullRequestHead:
       overrides.pullHead ??
       (() => Promise.resolve({ state: 'open' as const, draft: false, headSha: HEAD_SHA })),
@@ -1816,6 +1818,106 @@ describe('run history', () => {
     expect(h.stderr()).toContain(
       'Warning: /data/history.sqlite was written by a newer Phada (history version 9, this one knows 1); update Phada. This review is not saved in the history.',
     )
+  })
+})
+
+describe('phada enqueue', () => {
+  const WATCH_CONFIG = 'verify: false\nwatch:\n  repos: [acme/shop]\n'
+  const withConfig = (text = WATCH_CONFIG) => memoryFiles({ '/cfg/config.yml': text })
+
+  it('queues a review of a watched pull request and says no watch is running', async () => {
+    const h = harness({ files: withConfig() })
+
+    expect(await run(['enqueue', 'acme/shop#12'], h.deps)).toBe(0)
+    expect(h.stdout()).toBe('Queued acme/shop#12 at a1b2c3d (job 1).\n')
+    expect(h.stderr()).toContain(
+      'No phada watch is running: the job waits in the queue until one starts.',
+    )
+  })
+
+  it('says nothing about the watch when one is running', async () => {
+    const h = harness({ files: withConfig(), lockHolder: 42 })
+
+    expect(await run(['enqueue', 'acme/shop#12'], h.deps)).toBe(0)
+    expect(h.stderr()).not.toContain('No phada watch is running')
+  })
+
+  it('joins the job already queued for the commit', async () => {
+    const h = harness({ files: withConfig(), lockHolder: 42 })
+
+    await run(['enqueue', 'acme/shop#12'], h.deps)
+    expect(await run(['enqueue', 'acme/shop#12', '--publish', 'none'], h.deps)).toBe(0)
+    expect(h.stdout()).toContain('Joined job 1 for acme/shop#12 at a1b2c3d.\n')
+  })
+
+  it('refuses a repository outside watch: with exit code 1', async () => {
+    const h = harness({ files: withConfig() })
+
+    expect(await run(['enqueue', 'other/repo#3'], h.deps)).toBe(1)
+    expect(h.stderr()).toContain(
+      'Refused other/repo#3: the repository is not listed under watch: in your config.',
+    )
+  })
+
+  it('refuses an outside author on a public repository', async () => {
+    const h = harness({
+      files: withConfig(),
+      pullRequest: () => Promise.resolve(pullRequestFixture({ association: 'CONTRIBUTOR' })),
+    })
+
+    expect(await run(['enqueue', 'acme/shop#12'], h.deps)).toBe(1)
+    expect(h.stderr()).toContain(
+      'Refused acme/shop#12: the author is outside the repository (allowExternal: true in watch: lets them in).',
+    )
+  })
+
+  it('prints the result as JSON', async () => {
+    const h = harness({ files: withConfig(), lockHolder: 42 })
+
+    expect(
+      await run(['enqueue', 'acme/shop#12', '--publish', 'none', '--format', 'json'], h.deps),
+    ).toBe(0)
+    expect(JSON.parse(h.stdout())).toEqual({
+      schemaVersion: 1,
+      status: 'queued',
+      job: {
+        id: 1,
+        repo: 'acme/shop',
+        number: 12,
+        headSha: HEAD_SHA,
+        status: 'queued',
+        publish: 'none',
+      },
+      watchRunning: true,
+    })
+  })
+
+  it('needs watch: in the config', async () => {
+    const h = harness()
+
+    expect(await run(['enqueue', 'acme/shop#12'], h.deps)).toBe(2)
+    expect(h.stderr()).toContain('phada: Nothing to watch: list the repositories under watch:')
+  })
+
+  it('rejects an unknown --publish value', async () => {
+    const h = harness({ files: withConfig() })
+
+    expect(await run(['enqueue', 'acme/shop#12', '--publish', 'slack'], h.deps)).toBe(2)
+    expect(h.stderr()).toContain('Invalid --publish "slack". Use pr or none.')
+  })
+
+  it('lets the watch review a queued draft at once, without publishing when asked so', async () => {
+    const h = harness({
+      files: withConfig(),
+      pullRequest: () => Promise.resolve(pullRequestFixture({ draft: true })),
+      pullHead: () => Promise.resolve({ state: 'open' as const, draft: true, headSha: HEAD_SHA }),
+      review: () => Promise.resolve(WITH_FINDING),
+    })
+
+    expect(await run(['enqueue', 'acme/shop#12', '--publish', 'none'], h.deps)).toBe(0)
+    expect(await run(['watch', '--once'], h.deps)).toBe(0)
+    expect(h.posts).toHaveLength(0)
+    expect(h.stderr()).toMatch(/Reviewing acme\/shop#12 at a1b2c3d…/)
   })
 })
 

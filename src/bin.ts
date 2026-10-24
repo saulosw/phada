@@ -16,7 +16,11 @@ import { openObservedStore } from './store/observed-store.js'
 import { openHistoryStore } from './store/history-store.js'
 import { setTimeout as wait } from 'node:timers/promises'
 import { listOpenPullRequests } from './github/list-pull-requests.js'
-import { fetchPullRequest, fetchPullRequestHead } from './github/pull-request.js'
+import {
+  fetchPullRequest,
+  fetchPullRequestHead,
+  fetchPullRequestMetadata,
+} from './github/pull-request.js'
 import { fetchBranchHead, fetchRepository } from './github/repository.js'
 import { killDetachedChildren } from './process/run-command.js'
 import { removeOpenWorkDirs } from './process/work-dirs.js'
@@ -53,6 +57,7 @@ process.exitCode = await run(process.argv.slice(2), {
   openHistoryStore: (path) => openHistoryStore(path),
   listOpenPullRequests,
   fetchPullRequestHead,
+  fetchPullRequestMetadata,
   fetchBranchHead,
   withLock: (path, work) =>
     withMirrorLock(path, { timeoutMs: 0, staleMs: Number.POSITIVE_INFINITY }, work),

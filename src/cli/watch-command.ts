@@ -23,13 +23,17 @@ import type {
   FetchReviewStateOptions,
   PullRequestReviewState,
 } from '../github/pull-request-reviews.js'
-import type { FetchPullRequestOptions, PullRequest } from '../github/pull-request.js'
+import type {
+  FetchPullRequestOptions,
+  PullRequest,
+  PullRequestMetadata,
+} from '../github/pull-request.js'
 import type { BranchHead } from '../github/repository.js'
 import type { RepositoryFilesOptions } from '../github/repository-files.js'
 import type { TextOutput } from './progress.js'
 import { MirrorLockTimeoutError } from '../repository/mirror-lock.js'
 import type { HistoryStore } from '../store/history-store.js'
-import type { JobRecord } from '../watch/types.js'
+import type { JobRecord, RequestRecord } from '../watch/types.js'
 import type { IndexFormat } from './args.js'
 import { classifyFailure } from './classify-failure.js'
 import { MissingGitHubTokenError, UsageError, WatchRunningError } from './errors.js'
@@ -66,6 +70,7 @@ export interface WatchCommandDeps extends ReviewWiringDeps {
   listOpenPullRequests: (
     options: RepositoryFilesOptions & { etag?: string },
   ) => Promise<PullListing>
+  fetchPullRequestMetadata: (options: FetchPullRequestOptions) => Promise<PullRequestMetadata>
   fetchPullRequestHead: (
     options: FetchPullRequestOptions,
   ) => Promise<{ state: 'open' | 'closed'; draft: boolean; headSha: string }>
@@ -102,17 +107,7 @@ export async function runWatch(command: WatchCommand, deps: WatchCommandDeps): P
     }
     return 0
   }
-  const settings = resolveWatchSettings(layers)
-  if (settings === undefined) {
-    throw new UsageError(
-      'Nothing to watch: list the repositories under watch: in your own config, e.g. watch: { repos: [owner/repo] } in ~/.config/phada/config.yml.',
-    )
-  }
-  if (!historyEnabled(layers)) {
-    throw new UsageError(
-      'phada watch needs the history to know what it already reviewed; remove history: false from your config.',
-    )
-  }
+  const settings = requireWatchSettings(layers)
   const token = deps.env.GITHUB_TOKEN?.trim() || deps.env.GH_TOKEN?.trim()
   if (!token) throw new MissingGitHubTokenError()
   const check = memoized(mcpNameChecker(deps))
@@ -137,6 +132,21 @@ export async function runWatch(command: WatchCommand, deps: WatchCommandDeps): P
       `Another phada watch is running${holder === undefined ? '' : ` (PID ${holder})`}.`,
     )
   }
+}
+
+export function requireWatchSettings(layers: readonly ConfigLayer[]): WatchSettings {
+  const settings = resolveWatchSettings(layers)
+  if (settings === undefined) {
+    throw new UsageError(
+      'Nothing to watch: list the repositories under watch: in your own config, e.g. watch: { repos: [owner/repo] } in ~/.config/phada/config.yml.',
+    )
+  }
+  if (!historyEnabled(layers)) {
+    throw new UsageError(
+      'phada watch needs the history to know what it already reviewed; remove history: false from your config.',
+    )
+  }
+  return settings
 }
 
 async function watchUnderLock(
@@ -194,10 +204,12 @@ function watchDeps(
       (await deps.fetchRepository({ ...splitRepoName(repo), token })).defaultBranch,
     branchHead: (repo, branch, etag) =>
       deps.fetchBranchHead({ ...splitRepoName(repo), branch, token, ...withEtag(etag) }),
-    runJob: async (job) => {
+    readPull: (repo, number) =>
+      deps.fetchPullRequestMetadata({ ...splitRepoName(repo), number, token }),
+    runJob: async (job, requests) => {
       const setup = await jobSetup(job.repo, deps, check)
       choices.set(job.id, setup.choice)
-      return runJob(job, setup, settings, token, deps)
+      return runJob(job, requests, setup, settings, token, deps)
     },
     recordRun: (job, outcome, startedAt) => {
       const choice = choices.get(job.id)
@@ -313,6 +325,7 @@ async function jobSetup(repo: string, deps: WatchCommandDeps, check: NameCheck):
 
 async function runJob(
   job: JobRecord,
+  requests: readonly RequestRecord[],
   { userLayers, choice, mcp }: JobSetup,
   settings: WatchSettings,
   token: string,
@@ -322,13 +335,15 @@ async function runJob(
   const repo = settings.repos.find((entry) => entry.repo === job.repo)
   const ref = { ...target, number: job.number }
   const publishTarget = { ...ref, token }
+  const asked = requests.some(({ source }) => source !== 'watch')
   return reviewAndPublish(
     {
       ref,
       mode: 'watch',
       force: false,
       dryRun: false,
-      publish: repo?.publish ?? true,
+      publish: job.publish === undefined ? (repo?.publish ?? true) : job.publish === 'pr',
+      acceptDraft: asked,
       options: {},
       userLayers,
       mcp,
@@ -351,7 +366,7 @@ async function runJob(
       replyAndResolve: (threadId, body) => deps.replyAndResolve({ token, threadId, body }),
       checkHead: async (pullRequest) => {
         const head = await deps.fetchPullRequestHead({ ...ref, token })
-        if (head.state === 'closed' || head.draft) return 'closed-or-draft'
+        if (head.state === 'closed' || (head.draft && !asked)) return 'closed-or-draft'
         return head.headSha === pullRequest.headSha ? 'current' : { superseded: head.headSha }
       },
       events: {
