@@ -7,7 +7,7 @@ import type { SlackSettings, WatchSettings } from '../config/watch-settings.js'
 import type { SlackWebApi } from '../slack/web-api.js'
 import { openHistoryStore } from '../store/history-store.js'
 import type { HistoryStore } from '../store/history-store.js'
-import type { PullFacts } from '../watch/request-policy.js'
+import type { PullFacts } from '../watch/pull-facts.js'
 import { reviewEvent } from './review-event.js'
 import { slackPort } from './slack-port.js'
 

@@ -5,7 +5,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import type { WatchSettings } from '../config/watch-settings.js'
 import { openHistoryStore } from '../store/history-store.js'
 import type { HistoryStore } from '../store/history-store.js'
-import type { PullFacts } from '../watch/request-policy.js'
+import type { PullFacts } from '../watch/pull-facts.js'
 import { submitRequest } from './submit-request.js'
 import type { SubmitDeps } from './submit-request.js'
 
@@ -200,6 +200,23 @@ describe('submitRequest', () => {
 
     expect(result).toEqual({ status: 'refused', reason: 'closed' })
     expect(asked).toBe(0)
+    history.close()
+  })
+
+  it('joins the queued job of the commit without asking the when command', async () => {
+    const history = await fresh()
+    let asked = 0
+    const settings = { ...SETTINGS, repos: [{ ...SETTINGS.repos[0]!, when: './team.sh' }] }
+    const checkWhen = async () => {
+      asked += 1
+      return undefined
+    }
+    await submitRequest(REQUEST, deps(history, { settings, checkWhen }).deps)
+
+    const joined = await submitRequest(REQUEST, deps(history, { settings, checkWhen }).deps)
+
+    expect(joined.status).toBe('joined')
+    expect(asked).toBe(1)
     history.close()
   })
 

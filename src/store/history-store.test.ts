@@ -224,7 +224,9 @@ describe('HistoryStore records', () => {
     const store = await openHistoryStore(fresh())
     store.addJob({ ...JOB, createdAt: '2026-10-18T11:00:00.000Z' })
     store.addJob({ ...JOB, createdAt: '2026-10-18T12:30:00.000Z' })
-    expect(store.jobsCreatedSince('2026-10-18T12:00:00.000Z')).toEqual(['2026-10-18T12:30:00.000Z'])
+    expect(store.jobCreationTimesSince('2026-10-18T12:00:00.000Z')).toEqual([
+      '2026-10-18T12:30:00.000Z',
+    ])
     store.close()
   })
 

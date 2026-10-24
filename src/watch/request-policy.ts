@@ -2,51 +2,35 @@ import type { WatchedRepoSettings } from '../config/watch-settings.js'
 import { TRUSTED_ASSOCIATIONS } from './filters.js'
 import { RATE_WINDOW_MS } from './next-job.js'
 import { later } from './time.js'
+import type { PullFacts } from './pull-facts.js'
 import type { JobRecord, PublishTarget, RequestSource } from './types.js'
 
 export type RefusalReason =
   'not-watched' | 'closed' | 'external' | 'when-command' | 'already-reviewed' | 'hourly-limit'
 
-export interface PullFacts {
-  repo: string
-  number: number
-  headSha: string
-  state: 'open' | 'closed'
-  private: boolean
-  association: string
-  author?: string
-  draft?: boolean
-  baseRef?: string
-  title?: string
-  labels?: string[]
-}
-
 export interface PolicyInput {
   request: { source: RequestSource; publish: PublishTarget }
-  repo?: WatchedRepoSettings
+  repo: WatchedRepoSettings
   pull: PullFacts
   jobs: readonly JobRecord[]
-  createdLastHour: readonly string[]
+  creationTimesLastHour: readonly string[]
   maxPerHour: number
   now: string
-  whenRefusal?: string
+  when?: { refusal?: string }
 }
 
 export type RequestDecision =
   | { action: 'create'; job: Omit<JobRecord, 'id'> }
   | { action: 'join'; jobId: number; readyNow: boolean }
+  | { action: 'ask-when' }
   | { action: 'refuse'; reason: RefusalReason; jobId?: number; until?: string; message?: string }
 
 const REVIEWED_SKIPS: ReadonlySet<string> = new Set(['already-reviewed', 'same-diff'])
 
 export function decideRequest(input: PolicyInput): RequestDecision {
   const { repo, pull, request, now } = input
-  if (repo === undefined) return { action: 'refuse', reason: 'not-watched' }
   const gate = gateRefusal(repo, pull)
   if (gate !== undefined) return { action: 'refuse', reason: gate }
-  if (input.whenRefusal !== undefined) {
-    return { action: 'refuse', reason: 'when-command', message: input.whenRefusal }
-  }
   const sameCommit = input.jobs.filter(
     (job) => job.number === pull.number && job.headSha === pull.headSha,
   )
@@ -59,7 +43,11 @@ export function decideRequest(input: PolicyInput): RequestDecision {
   if (reviewed !== undefined) {
     return { action: 'refuse', reason: 'already-reviewed', jobId: reviewed.id }
   }
-  const recent = [...input.createdLastHour].sort()
+  if (repo.when !== undefined && input.when === undefined) return { action: 'ask-when' }
+  if (input.when?.refusal !== undefined) {
+    return { action: 'refuse', reason: 'when-command', message: input.when.refusal }
+  }
+  const recent = [...input.creationTimesLastHour].sort()
   if (recent.length >= input.maxPerHour) {
     const oldest = recent[recent.length - input.maxPerHour] ?? now
     return { action: 'refuse', reason: 'hourly-limit', until: later(oldest, RATE_WINDOW_MS) }
@@ -79,7 +67,7 @@ export function decideRequest(input: PolicyInput): RequestDecision {
   }
 }
 
-export function gateRefusal(
+function gateRefusal(
   repo: WatchedRepoSettings,
   pull: PullFacts,
 ): 'closed' | 'external' | undefined {

@@ -3,7 +3,8 @@ import type { CommentListing } from '../github/issue-comments.js'
 import type { OpenPull, PullListing } from '../github/list-pull-requests.js'
 import type { BranchHead } from '../github/repository.js'
 import type { DuePull, HistoryStore } from '../store/history-store.js'
-import type { PullFacts } from '../watch/request-policy.js'
+import { listedPullFacts } from '../watch/pull-facts.js'
+import type { PullFacts } from '../watch/pull-facts.js'
 import type { FailureKind, JobRecord, PauseState, RequestRecord } from '../watch/types.js'
 import { afterFailure, MAX_ATTEMPTS, rateLimitPause } from '../watch/failures.js'
 import { later } from '../watch/time.js'
@@ -387,19 +388,7 @@ async function refusedByWhen(
 ): Promise<boolean> {
   const listed = pulls.find(({ number }) => number === job.number)
   if (repo.when === undefined || deps.checkWhen === undefined || listed === undefined) return false
-  const pull: PullFacts = {
-    repo: repo.repo,
-    number: listed.number,
-    headSha: listed.headSha,
-    state: 'open',
-    private: listed.private,
-    association: listed.association,
-    author: listed.author,
-    draft: listed.draft,
-    baseRef: listed.baseRef,
-    labels: listed.labels,
-    ...(listed.title === undefined ? {} : { title: listed.title }),
-  }
+  const pull = listedPullFacts(repo.repo, listed)
   const refusal = await deps.checkWhen(
     repo.when,
     whenInput(pull, { source: 'watch', publish: job.publish ?? 'pr' }),

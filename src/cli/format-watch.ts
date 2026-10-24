@@ -69,7 +69,7 @@ function eventText(event: WatchEventView): string {
     case 'limited':
       return `${formatCount(event.count, 'review')} in the last hour (maxReviewsPerHour): the next one starts at ${clock(new Date(event.until))}.`
     case 'refused':
-      return `Refused a ${event.request.source} request for ${event.request.repo}#${event.request.number}: ${refusalText(event.result.reason, event.result)}.`
+      return `Refused a ${event.request.source} request for ${event.request.repo}#${event.request.number}: ${refusalText(event.result)}.`
   }
 }
 

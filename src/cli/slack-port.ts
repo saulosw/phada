@@ -75,7 +75,7 @@ export function slackPort(deps: SlackPortDeps): SlackPort {
           await api.postMessage(
             place.channel,
             place.thread,
-            `:no_entry_sign: Not reviewed: ${refusalText(result.reason, result)}.`,
+            `:no_entry_sign: Not reviewed: ${refusalText(result)}.`,
           )
         })
       }

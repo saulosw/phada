@@ -1,5 +1,4 @@
 import type { SubmitResult } from '../app/submit-request.js'
-import type { RefusalReason } from '../watch/request-policy.js'
 import type { JobRecord } from '../watch/types.js'
 import { shortSha } from './review-text.js'
 
@@ -8,11 +7,10 @@ const SCHEMA_VERSION = 1
 export const NO_WATCH_WARNING =
   'No phada watch is running: the job waits in the queue until one starts.'
 
-export function refusalText(
-  reason: RefusalReason,
-  result: { job?: JobRecord; until?: string; message?: string },
-): string {
-  switch (reason) {
+export type Refusal = Extract<SubmitResult, { status: 'refused' }>
+
+export function refusalText(result: Refusal): string {
+  switch (result.reason) {
     case 'not-watched':
       return 'the repository is not listed under watch: in your config'
     case 'closed':
@@ -33,7 +31,7 @@ export function refusalText(
 }
 
 export function formatSubmitText(ref: string, result: SubmitResult): string {
-  if (result.status === 'refused') return `Refused ${ref}: ${refusalText(result.reason, result)}.`
+  if (result.status === 'refused') return `Refused ${ref}: ${refusalText(result)}.`
   const sha = shortSha(result.job.headSha)
   return result.status === 'queued'
     ? `Queued ${ref} at ${sha} (job ${result.job.id}).`

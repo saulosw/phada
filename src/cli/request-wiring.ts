@@ -4,7 +4,8 @@ import type { WatchSettings } from '../config/watch-settings.js'
 import { splitRepoName } from '../github/pull-request-ref.js'
 import type { FetchPullRequestOptions, PullRequestMetadata } from '../github/pull-request.js'
 import type { HistoryStore } from '../store/history-store.js'
-import type { PullFacts } from '../watch/request-policy.js'
+import { fetchedPullFacts } from '../watch/pull-facts.js'
+import type { PullFacts } from '../watch/pull-facts.js'
 import { whenChecker } from './run-when.js'
 
 export interface RequestWiringDeps {
@@ -35,18 +36,7 @@ export async function readPullFacts(
   token: string,
   deps: Pick<RequestWiringDeps, 'fetchPullRequestMetadata'>,
 ): Promise<PullFacts> {
-  const pull = await deps.fetchPullRequestMetadata({ ...splitRepoName(repo), number, token })
-  return {
-    repo: pull.repo,
-    number: pull.number,
-    headSha: pull.headSha,
-    state: pull.state,
-    private: pull.private,
-    association: pull.association,
-    author: pull.author,
-    draft: pull.draft,
-    baseRef: pull.baseRef,
-    title: pull.title,
-    labels: pull.labels ?? [],
-  }
+  return fetchedPullFacts(
+    await deps.fetchPullRequestMetadata({ ...splitRepoName(repo), number, token }),
+  )
 }

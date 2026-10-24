@@ -131,7 +131,7 @@ export interface HistoryStore {
   addJob(job: Omit<JobRecord, 'id'>): number
   updateJob(id: number, changes: Partial<Omit<JobRecord, 'id'>>): void
   recoverRunning(maxAttempts: number, now: string): JobRecord[]
-  jobsCreatedSince(iso: string): string[]
+  jobCreationTimesSince(iso: string): string[]
   addRequest(request: Omit<RequestRecord, 'id'>): number
   requests(jobIds: readonly number[]): RequestRecord[]
   transaction<T>(work: () => T): T
@@ -320,7 +320,7 @@ class SqliteHistoryStore implements HistoryStore {
     return running
   }
 
-  jobsCreatedSince(iso: string): string[] {
+  jobCreationTimesSince(iso: string): string[] {
     return this.#db
       .prepare(
         `select created_at from job where created_at > ?

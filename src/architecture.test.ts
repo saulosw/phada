@@ -43,6 +43,7 @@ const WATCH: Boundary = {
     '../config/watch-settings.js',
     '../github/list-pull-requests.js',
     '../github/issue-comments.js',
+    '../github/pull-request.js',
   ]),
   expected: [
     'failures.ts',
@@ -50,6 +51,7 @@ const WATCH: Boundary = {
     'next-job.ts',
     'plan-cycle.ts',
     'pr-commands.ts',
+    'pull-facts.ts',
     'request-policy.ts',
     'time.ts',
     'types.ts',
@@ -247,6 +249,7 @@ const APP: Boundary = {
     '../watch/plan-cycle.js',
     '../watch/request-policy.js',
     '../watch/pr-commands.js',
+    '../watch/pull-facts.js',
     '../watch/time.js',
   ]),
   types: new Set([

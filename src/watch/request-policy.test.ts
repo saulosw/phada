@@ -33,7 +33,7 @@ const input = (overrides: Partial<PolicyInput> = {}): PolicyInput => ({
     association: 'MEMBER',
   },
   jobs: [],
-  createdLastHour: [],
+  creationTimesLastHour: [],
   maxPerHour: 6,
   now: NOW,
   ...overrides,
@@ -58,13 +58,6 @@ describe('decideRequest', () => {
     expect(silent.action === 'create' && silent.job.publish).toBe('none')
   })
 
-  it('refuses a repository that is not under watch:', () => {
-    expect(decideRequest(input({ repo: undefined }))).toEqual({
-      action: 'refuse',
-      reason: 'not-watched',
-    })
-  })
-
   it('refuses a closed pull request', () => {
     const pull = { ...input().pull, state: 'closed' as const }
     expect(decideRequest(input({ pull }))).toEqual({ action: 'refuse', reason: 'closed' })
@@ -79,16 +72,38 @@ describe('decideRequest', () => {
     expect(decideRequest(input({ pull: { ...pull, private: true } })).action).toBe('create')
   })
 
-  it('refuses what the when command refused, before joining or counting the hour', () => {
-    expect(decideRequest(input({ whenRefusal: 'not the payments team', jobs: [job(3)] }))).toEqual({
+  it('asks the when command of the repository before creating a job', () => {
+    const watched = { ...REPO, when: './team.sh' }
+    expect(decideRequest(input({ repo: watched }))).toEqual({ action: 'ask-when' })
+    expect(decideRequest(input({ repo: watched, when: {} })).action).toBe('create')
+  })
+
+  it('refuses what the when command refused, before the hourly limit', () => {
+    expect(
+      decideRequest(
+        input({
+          repo: { ...REPO, when: './team.sh' },
+          when: { refusal: 'not the payments team' },
+          creationTimesLastHour: [at(-10)],
+          maxPerHour: 1,
+        }),
+      ),
+    ).toEqual({ action: 'refuse', reason: 'when-command', message: 'not the payments team' })
+  })
+
+  it('joins a job or answers with its review without asking the when command', () => {
+    const watched = { ...REPO, when: './team.sh' }
+    expect(decideRequest(input({ repo: watched, jobs: [job(3)] })).action).toBe('join')
+    expect(
+      decideRequest(input({ repo: watched, jobs: [job(3, { status: 'done', publish: 'pr' })] })),
+    ).toEqual({ action: 'refuse', reason: 'already-reviewed', jobId: 3 })
+  })
+
+  it('never asks the when command for a pull request refused before it', () => {
+    const pull = { ...input().pull, state: 'closed' as const }
+    expect(decideRequest(input({ pull, repo: { ...REPO, when: './team.sh' } }))).toEqual({
       action: 'refuse',
-      reason: 'when-command',
-      message: 'not the payments team',
-    })
-    const pull = { ...input().pull, association: 'NONE' }
-    expect(decideRequest(input({ pull, whenRefusal: 'x' }))).toEqual({
-      action: 'refuse',
-      reason: 'external',
+      reason: 'closed',
     })
   })
 
@@ -154,19 +169,19 @@ describe('decideRequest', () => {
   })
 
   it('refuses a new job once the hour already has the most jobs allowed, and says when it frees', () => {
-    const createdLastHour = [at(-50), at(-40), at(-30)]
-    expect(decideRequest(input({ createdLastHour, maxPerHour: 3 }))).toEqual({
+    const creationTimesLastHour = [at(-50), at(-40), at(-30)]
+    expect(decideRequest(input({ creationTimesLastHour, maxPerHour: 3 }))).toEqual({
       action: 'refuse',
       reason: 'hourly-limit',
       until: at(10),
     })
-    expect(decideRequest(input({ createdLastHour, maxPerHour: 4 })).action).toBe('create')
+    expect(decideRequest(input({ creationTimesLastHour, maxPerHour: 4 })).action).toBe('create')
   })
 
   it('never counts the hourly limit against joining a job', () => {
-    const createdLastHour = [at(-50), at(-40), at(-30)]
-    expect(decideRequest(input({ createdLastHour, maxPerHour: 3, jobs: [job(3)] })).action).toBe(
-      'join',
-    )
+    const creationTimesLastHour = [at(-50), at(-40), at(-30)]
+    expect(
+      decideRequest(input({ creationTimesLastHour, maxPerHour: 3, jobs: [job(3)] })).action,
+    ).toBe('join')
   })
 })

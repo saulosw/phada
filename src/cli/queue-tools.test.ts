@@ -5,7 +5,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import type { WatchSettings } from '../config/watch-settings.js'
 import { openHistoryStore } from '../store/history-store.js'
 import type { HistoryStore } from '../store/history-store.js'
-import type { PullFacts } from '../watch/request-policy.js'
+import type { PullFacts } from '../watch/pull-facts.js'
 import { queueToolbox } from './queue-tools.js'
 import type { QueueToolsDeps } from './queue-tools.js'
 

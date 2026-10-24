@@ -133,7 +133,7 @@ async function reviewPullRequest(
   return answer({
     status: 'refused',
     reason: result.reason,
-    message: refusalText(result.reason, result),
+    message: refusalText(result),
     ...(result.job === undefined ? {} : { job: jobJson(result.job) }),
     ...(result.until === undefined ? {} : { until: result.until }),
     ...(event === undefined ? {} : { event }),
@@ -142,21 +142,21 @@ async function reviewPullRequest(
 }
 
 function jobStatus(input: Record<string, unknown>, deps: QueueToolsDeps): ToolResult {
-  const job = findJob(input, deps.history)
-  if (typeof job === 'string') return failure(job)
-  return answer(statusOf(job, deps.history))
+  const found = findJob(input, deps.history)
+  if ('error' in found) return failure(found.error)
+  return answer(statusOf(found.job, deps.history))
 }
 
 async function waitForJob(
   input: Record<string, unknown>,
   deps: QueueToolsDeps,
 ): Promise<ToolResult> {
-  const first = findJob(input, deps.history)
-  if (typeof first === 'string') return failure(first)
+  const found = findJob(input, deps.history)
+  if ('error' in found) return failure(found.error)
   const asked =
     typeof input.timeoutSeconds === 'number' ? input.timeoutSeconds : WAIT_DEFAULT_SECONDS
   const deadline = deps.now().getTime() + Math.min(Math.max(asked, 1), WAIT_MAX_SECONDS) * 1000
-  let job = first
+  let { job } = found
   for (;;) {
     const event = eventOfJob(deps.history, job)
     if (event !== undefined) {
@@ -170,11 +170,15 @@ async function waitForJob(
   }
 }
 
-function findJob(input: Record<string, unknown>, history: HistoryStore): JobRecord | string {
+function findJob(
+  input: Record<string, unknown>,
+  history: HistoryStore,
+): { job: JobRecord } | { error: string } {
   if (typeof input.job !== 'number' || !Number.isInteger(input.job)) {
-    return 'job must be the id of a job.'
+    return { error: 'job must be the id of a job.' }
   }
-  return history.job(input.job) ?? `There is no job ${input.job}.`
+  const job = history.job(input.job)
+  return job === undefined ? { error: `There is no job ${input.job}.` } : { job }
 }
 
 function statusOf(job: JobRecord, history: HistoryStore) {

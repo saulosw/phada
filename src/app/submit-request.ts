@@ -1,8 +1,9 @@
 import type { WatchSettings } from '../config/watch-settings.js'
 import type { HistoryStore } from '../store/history-store.js'
 import { RATE_WINDOW_MS } from '../watch/next-job.js'
-import { decideRequest, gateRefusal } from '../watch/request-policy.js'
-import type { PullFacts, RefusalReason } from '../watch/request-policy.js'
+import type { PullFacts } from '../watch/pull-facts.js'
+import { decideRequest } from '../watch/request-policy.js'
+import type { PolicyInput, RefusalReason } from '../watch/request-policy.js'
 import { later } from '../watch/time.js'
 import type { JobRecord, PublishTarget, RequestSource } from '../watch/types.js'
 
@@ -46,24 +47,29 @@ export async function submitRequest(
   const repo = deps.settings.repos.find((entry) => entry.repo === repoName)
   if (repo === undefined) return { status: 'refused', reason: 'not-watched' }
   const pull = { ...(await deps.readPull(repoName, input.number)), repo: repoName }
-  const whenRefusal =
-    repo.when === undefined || deps.checkWhen === undefined || gateRefusal(repo, pull) !== undefined
-      ? undefined
-      : await deps.checkWhen(repo.when, whenInput(pull, input))
   const { history } = deps
-  return history.transaction(() => {
+  const policyInput = (when?: PolicyInput['when']): PolicyInput => {
     const now = deps.now().toISOString()
-    const jobs = history.jobs({ repo: repoName })
-    const decision = decideRequest({
+    return {
       request: { source: input.source, publish: input.publish },
       repo,
       pull,
-      jobs,
-      createdLastHour: history.jobsCreatedSince(later(now, -RATE_WINDOW_MS)),
+      jobs: history.jobs({ repo: repoName }),
+      creationTimesLastHour: history.jobCreationTimesSince(later(now, -RATE_WINDOW_MS)),
       maxPerHour: deps.settings.maxReviewsPerHour,
       now,
-      ...(whenRefusal === undefined ? {} : { whenRefusal }),
-    })
+      ...(when === undefined ? {} : { when }),
+    }
+  }
+  const when =
+    decideRequest(policyInput()).action === 'ask-when' && repo.when !== undefined
+      ? { ...(await askWhen(repo.when, pull, input, deps)) }
+      : undefined
+  return history.transaction(() => {
+    const decided = policyInput(when ?? {})
+    const { now, jobs } = decided
+    const decision = decideRequest(decided)
+    if (decision.action === 'ask-when') throw new Error('the when command was not asked')
     const existing =
       decision.action === 'create' ? undefined : jobs.find(({ id }) => id === decision.jobId)
     if (decision.action === 'refuse') {
@@ -95,6 +101,16 @@ export async function submitRequest(
     const requestId = history.addRequest({ ...request, jobId: existing.id })
     return { status: 'joined', job: { ...existing, ...changes }, requestId }
   })
+}
+
+async function askWhen(
+  command: string,
+  pull: PullFacts,
+  input: ReviewRequestInput,
+  deps: SubmitDeps,
+): Promise<{ refusal?: string }> {
+  const refusal = await deps.checkWhen?.(command, whenInput(pull, input))
+  return refusal === undefined ? {} : { refusal }
 }
 
 export function whenInput(
