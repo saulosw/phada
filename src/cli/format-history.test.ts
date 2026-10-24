@@ -72,10 +72,13 @@ describe('formatHistoryText', () => {
       model: undefined,
     }
 
-    expect(formatHistoryText([RUN, skipped], 2, undefined)).toBe(
+    const asked: RunRecord = { ...RUN, id: 3, requestSource: 'pr-command' }
+
+    expect(formatHistoryText([RUN, skipped, asked], 3, undefined)).toBe(
       [
-        `${local(STARTED)}  acme/shop#3  a1b2c3d  watch   published  claude/opus · score 4 · 2 findings · https://github.com/acme/shop/pull/3#pullrequestreview-1`,
-        `${local(STARTED)}  acme/shop#3  a1b2c3d  manual  skipped    claude · same-diff`,
+        `${local(STARTED)}  acme/shop#3  a1b2c3d  watch       published  claude/opus · score 4 · 2 findings · https://github.com/acme/shop/pull/3#pullrequestreview-1`,
+        `${local(STARTED)}  acme/shop#3  a1b2c3d  manual      skipped    claude · same-diff`,
+        `${local(STARTED)}  acme/shop#3  a1b2c3d  pr-command  published  claude/opus · score 4 · 2 findings · https://github.com/acme/shop/pull/3#pullrequestreview-1`,
         '',
       ].join('\n'),
     )
@@ -145,6 +148,7 @@ describe('formatHistoryJson', () => {
           id: 1,
           jobId: null,
           source: 'watch',
+          requestSource: null,
           repo: 'acme/shop',
           number: 3,
           headSha: RUN.headSha,

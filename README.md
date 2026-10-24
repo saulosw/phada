@@ -264,7 +264,8 @@ it, and is refused with a reason when it fails one:
 - fewer than `maxReviewsPerHour` new reviews were queued in the last hour (`hourly-limit`).
 
 A request for a commit that already has a job waiting or running joins that job: one review, and
-everyone who asked hears back. A request is reviewed at once, without the `settle` time, and the
+everyone who asked hears back. The one exception is a request that publishes while the running
+job does not: it gets a review of its own once that one ends. A request is reviewed at once, without the `settle` time, and the
 filters of `watch:` (`authors`, `labels`, `baseBranches`, drafts) only decide what the polling
 picks up: a draft someone asks for is reviewed. When the pull request gets a new commit before
 its review starts, the request moves to the new commit. Each request says where the review goes:
@@ -444,6 +445,9 @@ phada history --stats                 # what happened to the comments, per repos
 phada history --refresh --stats       # read the comments on GitHub first
 phada history prune --older-than 180d
 ```
+
+Each review of the watch shows who asked for it: `watch` (the polling), `enqueue`, `mcp`,
+`pr-command` or `slack`.
 
 ### What happened to each comment
 

@@ -57,7 +57,7 @@ import {
 } from './errors.js'
 import { formatError } from './format-error.js'
 import { formatWatchEvent } from './format-watch.js'
-import { watchRun } from './history-run.js'
+import { requestSourceOf, watchRun } from './history-run.js'
 import { assertProviderChoice, providerRunsSkills } from './provider-choice.js'
 import { diskSkillCatalog } from './skill-catalog.js'
 import {
@@ -314,6 +314,7 @@ function watchDeps(
     recordRun: (job, outcome, startedAt) => {
       const choice = choices.get(job.id)
       choices.delete(job.id)
+      const source = requestSourceOf(history.requests([job.id]))
       const meta = {
         source: 'watch' as const,
         jobId: job.id,
@@ -321,6 +322,7 @@ function watchDeps(
         finishedAt: deps.clock().toISOString(),
         provider: choice?.provider ?? 'unknown',
         ...(choice?.model === undefined ? {} : { model: choice.model }),
+        ...(source === undefined ? {} : { requestSource: source }),
       }
       try {
         const runId = history.addRun(watchRun(job, outcome, meta, reviewRunJson))

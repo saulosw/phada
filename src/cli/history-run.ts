@@ -6,7 +6,7 @@ import { phadaReviewUrlAt } from '../publish/phada-state.js'
 import { InvalidReviewReportError } from '../review/errors.js'
 import { reviewVerdict } from '../review/verdict.js'
 import type { RunRecord, RunStatus } from '../store/history-store.js'
-import type { FailureKind, JobRecord } from '../watch/types.js'
+import type { FailureKind, JobRecord, RequestRecord, RequestSource } from '../watch/types.js'
 import { errorSummary } from './format-error.js'
 
 export interface RunMeta {
@@ -17,6 +17,7 @@ export interface RunMeta {
   provider: string
   model?: string
   errorKind?: FailureKind
+  requestSource?: RequestSource
 }
 
 export function historyRun(run: ReviewRun, json: string, meta: RunMeta): RunRecord {
@@ -24,6 +25,7 @@ export function historyRun(run: ReviewRun, json: string, meta: RunMeta): RunReco
   const base = {
     ...(meta.jobId === undefined ? {} : { jobId: meta.jobId }),
     source: meta.source,
+    ...(meta.requestSource === undefined ? {} : { requestSource: meta.requestSource }),
     repo: pullRequest.repo,
     number: pullRequest.number,
     headSha: pullRequest.headSha,
@@ -92,6 +94,7 @@ export function watchRun(
   return {
     jobId: job.id,
     source: meta.source,
+    ...(meta.requestSource === undefined ? {} : { requestSource: meta.requestSource }),
     repo: job.repo,
     number: job.number,
     headSha: job.headSha,
@@ -106,4 +109,8 @@ export function watchRun(
     error: errorMessage(outcome.error),
     verdict: 'failed',
   }
+}
+
+export function requestSourceOf(requests: readonly RequestRecord[]): RequestSource | undefined {
+  return (requests.find(({ source }) => source !== 'watch') ?? requests[0])?.source
 }

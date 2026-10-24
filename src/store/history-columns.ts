@@ -89,6 +89,7 @@ export const RUN_TABLE: HistoryTable = {
     error: 'error',
     resultJson: 'result_json',
     verdict: 'verdict',
+    requestSource: 'request_source',
   },
 }
 

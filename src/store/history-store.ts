@@ -91,6 +91,7 @@ export interface RunRecord {
   error?: string
   resultJson?: string
   verdict?: Verdict
+  requestSource?: RequestSource
 }
 
 export interface StatusJob extends JobRecord {

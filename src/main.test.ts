@@ -1949,6 +1949,11 @@ describe('phada enqueue', () => {
     expect(await run(['watch', '--once'], h.deps)).toBe(0)
     expect(h.posts).toHaveLength(0)
     expect(h.stderr()).toMatch(/Reviewing acme\/shop#12 at a1b2c3d…/)
+    const file = h.historyFiles[0]?.split(' → ')[1] ?? ''
+    const db = new DatabaseSync(file)
+    const runs = db.prepare('select source, request_source from run').all()
+    db.close()
+    expect(runs).toEqual([{ source: 'watch', request_source: 'enqueue' }])
   })
 })
 
