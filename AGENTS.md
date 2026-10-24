@@ -101,17 +101,19 @@ src/
     read-dirs.ts         #   readDirResolver(): review.readDirs → existing folders (~ expanded)
     format-passes.ts     #   the "Skills:" line and the skills section of --dry-run
     watch-command.ts     #   runWatch(): settings, providers checked on start, history, lock, the
-                         #   watch deps, one job's review; hooks and Slack fed from the job events;
-                         #   requireWatchSettings()
+                         #   watch deps, one job's review; each job event sent to the sinks
     enqueue-command.ts   #   runEnqueue(): a request from the command line
     mcp-command.ts       #   runMcp(): the queue tools as an MCP server over stdio
     queue-tools.ts       #   queueToolbox(): review_pull_request, job_status, wait_for_job, list_queue
-    request-wiring.ts    #   submitDeps(): the pull request reader and the when command for requests
+    request-wiring.ts    #   submitDeps(): the pull request reader and the when command for requests;
+                         #   requireWatchSettings(), watchSettingsOf(), RequestCommandDeps
+    review-event-sinks.ts #  reviewEventSinkSettings(), openReviewEventSinks(): hooks and Slack as
+                         #   destinations of the review events; the Slack tokens
     format-request.ts    #   refusalText(), formatSubmitText/Json(), jobJson()
-    review-event.ts      #   reviewEvent(), storedEvent(): a job event → the event JSON
+    review-event.ts      #   reviewEvent(), storedEvent(), eventOfJob(): a job event → the event JSON
                          #   (schemaVersion 1) of hooks, Slack and wait_for_job
-    run-shell.ts         #   runShell(): a command of the user through sh, with its own process
-                         #   group and a deadline
+    run-shell.ts         #   runShell(), shellFailure(): a command of the user through sh, with its
+                         #   own process group and a deadline
     run-hook.ts          #   runHook(): the hook of an event, its failure as a warning
     run-when.ts          #   whenChecker(): the when command, its refusal as a message
     queue-wake.ts        #   sleepUntilNewJob(): the watch's sleep, cut short by a new ready job
@@ -341,8 +343,9 @@ src/
     plan-cycle.ts        #   planCycle(): baseline, seen, enqueue, supersede, gone
     next-job.ts          #   pickNext(): the next ready job, or until when to wait (pause, limit)
     failures.ts          #   afterFailure(): retries, pauses, failed, stop; rateLimitPause()
-    request-policy.ts    #   decideRequest(): watched, closed, outside author, when command, join,
-                         #   already reviewed, hourly limit; gateRefusal()
+    request-policy.ts    #   decideRequest(): closed, outside author, join, already reviewed, ask the
+                         #   when command, hourly limit; publishOf()
+    pull-facts.ts        #   PullFacts of a listed or fetched pull request
     pr-commands.ts       #   prCommands(): /phada review comments → requests, and the cursor
     time.ts              #   later(): an ISO time plus a duration
     types.ts             #   JobRecord, RequestRecord, RequestSource, PublishTarget, PullRecord,
@@ -403,7 +406,7 @@ repository and of the local disk as data, and its only value imports from outsid
 `src/publish/` imports only types from outside the folder (`src/review/types.ts`,
 `src/github/pull-request-reviews.ts`, `src/github/compare-commits.ts`). `src/store/` stores the
 feedback records of `src/publish/feedback.ts` as types only. `src/watch/` imports only types from outside the folder
-(the watch settings, the listed pull requests and the issue comments) and never reads the clock: `now` comes in as
+(the watch settings, the listed and fetched pull requests and the issue comments) and never reads the clock: `now` comes in as
 data. Its records (`src/watch/types.ts`) are the watch's own; `src/store/` stores them.
 `src/cli/review-wiring.ts` and `src/cli/watch-command.ts` declare the deps they need
 (`ReviewWiringDeps`, `WatchCommandDeps`); `MainDeps` extends them. `src/repository/` runs `git` through
