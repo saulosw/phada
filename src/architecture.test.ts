@@ -127,6 +127,13 @@ const STORE: Boundary = {
   ]),
   expected: ['index-store.ts', 'schema.ts'],
 }
+const SLACK: Boundary = {
+  dir: 'slack',
+  values: new Set(),
+  types: new Set(),
+  expected: ['pull-links.ts', 'socket-mode.ts', 'web-api.ts'],
+  globals: ['process', 'console'],
+}
 const SKILLS: Boundary = {
   dir: 'skills',
   values: new Set(['node:path', '../context/frontmatter.js']),
@@ -557,6 +564,7 @@ describe.each([
   APP,
   SKILLS,
   GH_FACADE,
+  SLACK,
 ])('$dir boundary', (boundary) => {
   const sources = sourcesOf(boundary)
 
