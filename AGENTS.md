@@ -36,7 +36,7 @@ src/
                          #   createProvider()
   architecture.test.ts   # allowed imports of src/review/, src/publish/, src/watch/, src/context/,
                          #   src/investigation/, src/repository/, src/repo-map/, src/store/,
-                         #   src/graph/, src/app/, src/skills/ and src/gh-facade/
+                         #   src/graph/, src/app/, src/skills/, src/gh-facade/ and src/slack/
   app/                   # use cases any caller can run (CLI today), with injected readers
     review-pull-request.ts # reviewPullRequest(): repository context → mirror → index of the head
                          #   (60 s budget) → related repositories → graph and impact of the diff
@@ -47,9 +47,13 @@ src/
                          #   diff fingerprint → threads to recheck (compare) → reviewPullRequest →
                          #   plan → render (injected) → [checkHead] → reply and resolve the fixed
                          #   threads → createReview; never prints
-    watch-repositories.ts # watchRepositories(): the watch loop — discovery with ETags, planCycle,
-                         #   the next job, failures and pauses, the idle index and feedback
+    watch-repositories.ts # watchRepositories(): the watch loop — discovery with ETags, planCycle
+                         #   (asking the when command before queueing), /phada review comments,
+                         #   the next job with its requests, failures and pauses, requests moved
+                         #   to a new commit, job events (notify), the idle index and feedback
                          #   refresh (30 min per pull request, 10 per cycle); events
+    submit-request.ts    #   submitRequest(): a review request of any source → the policy (and the
+                         #   when command) → a new job, a joined job or a refusal; whenInput()
     feedback.ts          #   recordReviewFeedback(): the threads a run read and the comments it
                          #   published → the history; refreshFeedback(): read due pull requests
     index-repository.ts  #   indexRepository(): mirror → files left out and why → indexCommit();
@@ -79,9 +83,10 @@ src/
                          #   (--ref, --format text|json), `rules` (--format text|json), `prompt`
                          #   (--default, --skill, --format text|json), `watch` (--once,
                          #   --backfill, --status) and `history` (--since, --limit, --stats,
-                         #   --refresh, prune --older-than) commands, --help, --version; USAGE,
-                         #   REVIEW_USAGE, INIT_USAGE, INDEX_USAGE, RULES_USAGE, PROMPT_USAGE,
-                         #   WATCH_USAGE, HISTORY_USAGE
+                         #   --refresh, prune --older-than), `enqueue` (--publish, --format) and
+                         #   `mcp` commands, --help, --version; USAGE, REVIEW_USAGE, INIT_USAGE,
+                         #   INDEX_USAGE, RULES_USAGE, PROMPT_USAGE, WATCH_USAGE, ENQUEUE_USAGE,
+                         #   MCP_USAGE, HISTORY_USAGE
     init.ts              #   runInit(): .phada/ in the repository, or the user's own config
     init-templates.ts    #   the commented files phada init writes
     index-command.ts     #   runIndex(): token, cache folder, mirror, progress, the map's report
@@ -96,7 +101,23 @@ src/
     read-dirs.ts         #   readDirResolver(): review.readDirs → existing folders (~ expanded)
     format-passes.ts     #   the "Skills:" line and the skills section of --dry-run
     watch-command.ts     #   runWatch(): settings, providers checked on start, history, lock, the
-                         #   watch deps, one job's review
+                         #   watch deps, one job's review; hooks and Slack fed from the job events;
+                         #   requireWatchSettings()
+    enqueue-command.ts   #   runEnqueue(): a request from the command line
+    mcp-command.ts       #   runMcp(): the queue tools as an MCP server over stdio
+    queue-tools.ts       #   queueToolbox(): review_pull_request, job_status, wait_for_job, list_queue
+    request-wiring.ts    #   submitDeps(): the pull request reader and the when command for requests
+    format-request.ts    #   refusalText(), formatSubmitText/Json(), jobJson()
+    review-event.ts      #   reviewEvent(), storedEvent(): a job event → the event JSON
+                         #   (schemaVersion 1) of hooks, Slack and wait_for_job
+    run-shell.ts         #   runShell(): a command of the user through sh, with its own process
+                         #   group and a deadline
+    run-hook.ts          #   runHook(): the hook of an event, its failure as a warning
+    run-when.ts          #   whenChecker(): the when command, its refusal as a message
+    queue-wake.ts        #   sleepUntilNewJob(): the watch's sleep, cut short by a new ready job
+    slack-port.ts        #   slackPort(): Slack messages → requests; job events → reactions and
+                         #   replies in the thread
+    format-slack.ts      #   slackReplies(): the event as Slack text (link, summary, full), split
     watch-stop.ts        #   createStopControl(): Ctrl-C once (finish the review) or twice (abort);
                          #   trackRunningJob(): which job a second Ctrl-C puts back
     watch-events.ts      #   printWatchEvents(): the watch events as terminal lines
@@ -186,7 +207,7 @@ src/
     request.ts           #   method, body, headers, timeout, status → error, token redaction
     json-fields.ts       #   typed reads of fields in GitHub answers
     graphql.ts           #   sendGraphQL(): errors in an HTTP 200 become GitHubGraphQLError
-    pull-request.ts      #   fetchPullRequest(), fetchPullRequestHead()
+    pull-request.ts      #   fetchPullRequest(), fetchPullRequestMetadata(), fetchPullRequestHead()
     pull-request-reviews.ts # fetchReviewState(): viewer, pull request state, reviews and threads
                          #   (id, outdated, first comment with its URL and negative reactions,
                          #   last 20 replies), paginated
@@ -197,6 +218,8 @@ src/
     repository-files.ts  #   fetchRepositoryTree(), fetchRepositoryFile(): the repository at a commit
     repository.ts        #   fetchRepository(): visibility, default branch, empty; fetchBranchHead()
     list-pull-requests.ts #  listOpenPullRequests(): open pull requests, ETag of the first page
+    issue-comments.ts    #   listIssueComments(): the comments of a repository since a time, ETag;
+                         #   addCommentReaction()
     read-repository.ts   #   repositoryReader(): GET reads of one repository (and search/issues)
                          #   for the gh facade
   gh-facade/             # the gh a native skill runs: answered by Phada, writes captured
@@ -211,6 +234,10 @@ src/
     git-guard.ts         #   gitRefusal(): git options a native skill may not use
     git-bridge.ts        #   the executable bin/git runs: refuse or exec the real git
     types.ts             #   GhPullData, GhCommand, ReadGitHub, GhFacadeError
+  slack/                 # Slack, and nothing else: no queue, no review
+    pull-links.ts        #   pullRequestLinks(): the pull request links of a message, 5 at most
+    web-api.ts           #   slackWebApi(): replies in a thread, reactions, the Socket Mode URL
+    socket-mode.ts       #   connectSocketMode(): acks, events, reconnection
   graph/                 # the repository graph, resolved on demand from the index of a commit
     types.ts             #   RepositoryGraph, GraphSymbol, Site, Dependency, …
     project-config.ts    #   tsconfig/jsconfig paths, package.json of the repository's own
@@ -303,7 +330,8 @@ src/
     index-reader.ts      #   IndexReader: the files, symbols, calls and uses of one commit
     observed-store.ts    #   openObservedStore(): relations learned from reviews (own schema)
     history-store.ts     #   openHistoryStore(): the review history, never rebuilt; watched
-                         #   repositories and pull requests, jobs, runs, pause, runs(), prune()
+                         #   repositories and pull requests, jobs and their review requests, runs
+                         #   with their verdict, pause, runs(), prune()
     history-feedback.ts  #   published findings, observations and their signals (observed and
                          #   cleared), feedbackDue()
     history-columns.ts   #   the history tables (columns, keys) and their insert/upsert/update
@@ -313,8 +341,12 @@ src/
     plan-cycle.ts        #   planCycle(): baseline, seen, enqueue, supersede, gone
     next-job.ts          #   pickNext(): the next ready job, or until when to wait (pause, limit)
     failures.ts          #   afterFailure(): retries, pauses, failed, stop; rateLimitPause()
+    request-policy.ts    #   decideRequest(): watched, closed, outside author, when command, join,
+                         #   already reviewed, hourly limit; gateRefusal()
+    pr-commands.ts       #   prCommands(): /phada review comments → requests, and the cursor
     time.ts              #   later(): an ISO time plus a duration
-    types.ts             #   JobRecord, PullRecord, PauseState, JobStatus, FailureKind
+    types.ts             #   JobRecord, RequestRecord, RequestSource, PublishTarget, PullRecord,
+                         #   PauseState, JobStatus, FailureKind
   review/                # the engine: data in, result out
     types.ts             #   ReviewRequest, Finding, ReviewResult, ReviewOutcome, …
     prompt-parts.ts      #   text shared by the review and verification prompts: rules section,
@@ -345,6 +377,7 @@ src/
     context-findings.ts  #   known rule and sources on each finding; the severity a rule sets
     select-findings.ts   #   candidate filtering, confidence cut, worth checking, ordering
     score.ts             #   scoreFindings(): the 0–5 score, computed by Phada
+    verdict.ts           #   reviewVerdict(): clean, comments or blocking, from the findings
     errors.ts            #   InvalidReviewReportError
     run-review.ts        #   runReview(): one pass per skill (prompt → provider → parse, or a
                          #   native run → conversion), merged → suggestions → [verify] → select →
@@ -386,7 +419,9 @@ CLI, a concrete provider or the GitHub client, nor prints: it reports through ev
 `main.ts` turns them into terminal output.
 `src/skills/` reads the skills of the AI CLIs only through the `LocalFileSystem` it is given; its
 only value imports from outside the folder are `node:path` and `src/context/frontmatter.ts`.
-`src/gh-facade/` never imports the GitHub client: reads go through the `ReadGitHub` function it
+`src/slack/` only talks to Slack (`fetch` and `WebSocket`, both injectable) and imports nothing
+else; requests and replies are wired in `src/cli/slack-port.ts`, which only uses
+`submitRequest()` and the review events. `src/gh-facade/` never imports the GitHub client: reads go through the `ReadGitHub` function it
 is given, and writes are only captured. `src/app/native-skill.ts` runs a native skill with the
 work tree, the gh facade and the work folders, and never sees the token.
 `src/architecture.test.ts` enforces the allowed imports of these folders and forbids

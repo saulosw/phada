@@ -228,7 +228,8 @@ phada watch --status     # the queue, reviews in progress, failures, last review
   review at a time, at most `maxReviewsPerHour` an hour. When a pull request moves to a newer
   commit while it is being reviewed, the review is kept in the history and not published, and
   the newer commit is reviewed instead. A commit Phada already reviewed is never reviewed again.
-- Drafts and pull requests opened by bots are never reviewed. On a public repository, only
+- Drafts and pull requests opened by bots are never picked up by the polling (someone can still
+  [ask for them](#asking-for-reviews-from-anywhere)). On a public repository, only
   pull requests of owners, members and collaborators are, unless the repository sets
   `allowExternal: true`: the AI runs on that code with nobody watching.
 - A failure that may pass (network, GitHub 5xx, a provider error) is tried again after 1 minute
@@ -244,6 +245,182 @@ phada watch --status     # the queue, reviews in progress, failures, last review
   the queue. To keep it running, start it in tmux or as a service of your own.
 
 `phada watch --status --format json` prints the same as JSON (`schemaVersion: 1`).
+
+## Asking for reviews from anywhere
+
+Besides its own polling, the watch reviews what people and tools ask for. Phada knows nothing
+about chat apps or mail: it takes **review requests** through three doors (`phada enqueue`,
+`phada mcp` and a `/phada review` comment) plus one built-in client, Slack, and it sends
+**review events** to your hooks. Every request goes through the same checks, whatever asked for
+it, and is refused with a reason when it fails one:
+
+- the repository is listed under `watch:` in your own config (`not-watched`);
+- the pull request is open (`closed`);
+- on a public repository, the author is an owner, member or collaborator unless the repository
+  sets `allowExternal: true` (`external`);
+- the [`when` command](#a-condition-of-your-own) of the repository lets it through
+  (`when-command`);
+- the commit was not already reviewed (`already-reviewed`, with that review);
+- fewer than `maxReviewsPerHour` new reviews were queued in the last hour (`hourly-limit`).
+
+A request for a commit that already has a job waiting or running joins that job: one review, and
+everyone who asked hears back. A request is reviewed at once, without the `settle` time, and the
+filters of `watch:` (`authors`, `labels`, `baseBranches`, drafts) only decide what the polling
+picks up: a draft someone asks for is reviewed. When the pull request gets a new commit before
+its review starts, the request moves to the new commit. Each request says where the review goes:
+`pr` (the default) publishes it on the pull request, `none` keeps it in the history and the
+events only. The review is the same either way.
+
+Requests wait in the queue of `phada watch`, which runs them; with no watch running they wait
+until one starts.
+
+### From a script: `phada enqueue`
+
+```bash
+phada enqueue owner/repo#123                 # exit 0 when queued or joined, 1 when refused
+phada enqueue owner/repo#123 --publish none  # review it without posting on the pull request
+phada enqueue owner/repo#123 --format json
+```
+
+For example, from cron every morning:
+`0 9 * * 1-5 phada enqueue acme/shop#42 --publish none`.
+
+### From your AI: `phada mcp`
+
+`phada mcp` is an MCP server over stdio. Add it to your AI CLI, for instance
+`claude mcp add phada -- phada mcp`, and the AI can ask for a review and wait for the answer:
+
+| Tool                  | What it does                                                                                                                               |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `review_pull_request` | `pr` (`owner/repo#N` or a URL) and `publish` (`pr` or `none`): queues the review, joins the one already queued, or says why it was refused |
+| `job_status`          | The state of a job, its place in the queue and, once it ended, its event                                                                   |
+| `wait_for_job`        | Waits until the job ends (`timeoutSeconds`, 300 by default, 1800 at most) and returns its event with the full review                       |
+| `list_queue`          | The jobs waiting and the one running                                                                                                       |
+
+The AI asks; Phada decides. A message that talks the AI into asking for a review of some other
+repository is refused like any other request. `phada mcp` needs `GITHUB_TOKEN` (or `GH_TOKEN`) in
+its environment to read the pull requests asked for.
+
+### From the pull request: `/phada review`
+
+An owner, member or collaborator of a watched repository can comment `/phada review` (as the
+first line) on a pull request. The watch reads the new comments of each repository once per
+`interval`, reacts with 👀 to the ones it takes and reviews the pull request; the review is
+published on it. Comments from anyone else, from bots, or older than when the watch first saw
+the repository are ignored.
+
+### Slack
+
+With `slack:` in your own config, `phada watch` also listens to the Slack channels you list
+(Socket Mode, so no public URL is needed) and reviews the pull requests linked in their messages:
+
+```yaml
+# ~/.config/phada/config.yml
+slack:
+  channels:
+    - C0123ABCD # the channel ID, at the bottom of the channel details
+    - id: C0456EFGH
+      publish: none # pr (default) or none: answer in Slack only
+      reply: full # link (default), summary or full
+  emojis: # optional; these are the defaults
+    queued: hourglass_flowing_sand
+    clean: white_check_mark
+    comments: speech_balloon
+    blocking: x
+    failed: warning
+    skipped: eyes
+```
+
+```bash
+export PHADA_SLACK_BOT_TOKEN=xoxb-…   # the bot token of your Slack app
+export PHADA_SLACK_APP_TOKEN=xapp-…   # an app-level token with connections:write
+phada watch
+```
+
+The Slack app needs Socket Mode on, the bot scopes `channels:history` (and `groups:history` for
+private channels), `chat:write` and `reactions:write`, the `message.channels` (and
+`message.groups`) events, and to be invited to the channels. The tokens are only read from the
+environment. A message with up to five pull request links of watched repositories gets ⏳ and,
+when each review ends, the emoji of its verdict and an answer in its thread: `link` (the
+verdict and the links), `summary` (plus the summary, the score and the counts) or `full` (plus
+every finding with a link to its line in the reviewed commit, split into several messages when
+long). A refused request is answered with the reason; messages in other channels, from bots, or
+with links to repositories outside `watch:` are left alone.
+
+### Review events and hooks
+
+```yaml
+# ~/.config/phada/config.yml
+hooks:
+  review.started: ./notify.sh started
+  review.finished: ./notify.sh
+  review.failed: ./notify.sh
+  review.skipped: ./notify.sh
+  timeout: 30s # how long a hook may run (default 30s, 10m at most)
+```
+
+Each hook is a shell command run from your config folder, with your environment, for the jobs of
+the queue. It gets the event as JSON on stdin (`schemaVersion: 1`):
+
+```json
+{
+  "schemaVersion": 1,
+  "event": "review.finished",
+  "job": {
+    "id": 7,
+    "repo": "acme/shop",
+    "number": 12,
+    "headSha": "a1b2…",
+    "url": "https://github.com/acme/shop/pull/12"
+  },
+  "requests": [
+    {
+      "source": "slack",
+      "publish": "none",
+      "data": { "channel": "C0456EFGH", "ts": "1729688400.1", "thread": "1729688400.1" }
+    }
+  ],
+  "verdict": "blocking",
+  "publication": { "status": "not-published" },
+  "review": { "...": "the same JSON as phada review --format json" }
+}
+```
+
+`source` is `watch`, `enqueue`, `mcp`, `pr-command` or `slack`, and `data` is what that source
+brought. `review` comes with `review.finished`, `reason` with `review.skipped` (`superseded`,
+`closed`, `already-reviewed`, …) and `error` with `review.failed`, which is only sent once the
+job gave up. A hook that fails or runs out of time is reported in the watch and never stops it.
+
+The **verdict** is computed by Phada from the findings, never by the AI: `blocking` when a
+finding is P0 or P1, `comments` when there are only P2 findings or findings worth checking,
+`clean` when there is nothing, `failed` and `skipped`. It is also in the JSON of every review and
+in the history.
+
+### A condition of your own
+
+```yaml
+# ~/.config/phada/config.yml
+watch:
+  when: { command: ./only-payments-team.sh } # for every repository
+  repos:
+    - acme/shop
+    - repo: acme/web
+      when: { command: ./web-rules.sh } # instead, for this one
+```
+
+The command gets the pull request and the request as JSON on stdin and has 10 seconds to exit:
+0 lets the request through; anything else, an error or no answer refuses it, with the first line
+the command wrote to stderr as the reason. It runs for every request and for every push the
+polling finds (a refused push is not asked again until a new commit).
+
+### Recipes
+
+- **Slack through your AI:** with a Slack MCP server and `phada mcp` in your AI CLI, ask it to
+  watch a channel, call `review_pull_request` with `publish: none` for each pull request link,
+  `wait_for_job`, and post the findings it gets back in the thread.
+- **Teams, mail or anything with a webhook:** a `review.finished` hook that posts the event, e.g.
+  `jq '{text: "\(.job.url): \(.verdict)"}' | curl -s -H 'Content-Type: application/json' -d @- "$TEAMS_WEBHOOK_URL"`.
+- **A schedule:** `phada enqueue` from cron, as above.
 
 ## History
 
@@ -767,7 +944,9 @@ context:
 | `review.commands`         | Commands a [native skill](#skills-that-run-natively) may run: `read-only` (default), a list like `["npm test"]`, or `all`                    | your config             |
 | `review.readDirs`         | Folders a native skill may read besides the checkout and its own folder                                                                      | your config             |
 | `review.timeout`          | How long one native skill pass may run (`1m` to `2h`, default `30m`)                                                                         | your config             |
-| `watch`                   | Repositories `phada watch` follows and how (see [Watch mode](#watch-mode))                                                                   | your config (top level) |
+| `watch`                   | Repositories `phada watch` follows and how (see [Watch mode](#watch-mode)), and their `when` command                                         | your config (top level) |
+| `hooks`                   | Commands that get the [review events](#review-events-and-hooks)                                                                              | your config (top level) |
+| `slack`                   | Slack channels the watch listens to (see [Slack](#slack))                                                                                    | your config (top level) |
 | `history`                 | `false` keeps reviews out of the [history](#history)                                                                                         | your config (top level) |
 | `disabledRules`           | Ids of rules from other config files to turn off; from a subfolder's `.phada/`, only inside that folder                                      | both                    |
 
@@ -785,20 +964,20 @@ your own stops Phada with an error that names the file and the key.
 
 ## Options
 
-| Option                 | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--provider <name>`    | AI provider: `claude` (default, unless your config sets one), `codex` or `ollama`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `--model <name>`       | Model to use. Required for Ollama. Default: for Claude, the Claude Code default model, else `opus`; for Codex, the `model` in `~/.codex/config.toml` (or `$CODEX_HOME/config.toml`), else the Codex CLI default                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `--language <tag>`     | Language of the review, e.g. `pt-BR`. The AI writes its text in it, and Phada's own headings and labels follow it in English (`en`) and Portuguese (`pt`, `pt-BR`); other languages keep those labels in English. Default: English                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `--min-confidence <n>` | Confidence cut, a whole number from 50 to 100. Findings at the cut or above are shown and scored; the ones from 50 up to the cut are listed as worth checking. Default: 60                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `--format <name>`      | Output: `markdown` (default) or `json`. The JSON (`schemaVersion: 1`) carries the same review as data: score, summary, every changed file, findings, findings worth checking, dropped counts, the verification (unless `--no-verify`), provider, model, time and tokens, a `publication` block (`published` with the URL, `failed`, `dry-run` with the exact body and comments, or `skipped`; with the number of findings `stillOpen` and `dismissed`), a `context` block (see [Rules and repository context](#rules-and-repository-context)), an `investigation` block (see [Repository investigation](#repository-investigation)) and an `impact` block (see [Repository graph](#repository-graph)) |
-| `--no-investigate`     | Reviews without letting the AI read the rest of the repository (see [Repository investigation](#repository-investigation)); `--investigate` turns it back on when the config turns it off                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| `--verify`             | Checks every finding with a second call to the AI before scoring (see above). On by default; `--no-verify` (or `verify: false`) turns it off, `--verify` turns it back on when the config turns it off                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| `--no-resolve`         | Neither rechecks Phada's comments from earlier commits nor resolves the fixed ones (see [Comments fixed in a new commit](#comments-fixed-in-a-new-commit)); same as `resolveThreads: false`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `--skill <name>`       | Reviews with this skill, one pass each when repeated; replaces `review.skills` (see [Review focus and skills](#review-focus-and-skills))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| `--dry-run`            | Prints exactly what would be published (the review body and every comment) and posts nothing                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `--force`              | Reviews and publishes even when Phada already reviewed this commit (see [Publishing](#publishing))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| `--debug`              | Shows error details                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Option                 | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--provider <name>`    | AI provider: `claude` (default, unless your config sets one), `codex` or `ollama`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `--model <name>`       | Model to use. Required for Ollama. Default: for Claude, the Claude Code default model, else `opus`; for Codex, the `model` in `~/.codex/config.toml` (or `$CODEX_HOME/config.toml`), else the Codex CLI default                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `--language <tag>`     | Language of the review, e.g. `pt-BR`. The AI writes its text in it, and Phada's own headings and labels follow it in English (`en`) and Portuguese (`pt`, `pt-BR`); other languages keep those labels in English. Default: English                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `--min-confidence <n>` | Confidence cut, a whole number from 50 to 100. Findings at the cut or above are shown and scored; the ones from 50 up to the cut are listed as worth checking. Default: 60                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `--format <name>`      | Output: `markdown` (default) or `json`. The JSON (`schemaVersion: 1`) carries the same review as data: the [verdict](#review-events-and-hooks), score, summary, every changed file, findings, findings worth checking, dropped counts, the verification (unless `--no-verify`), provider, model, time and tokens, a `publication` block (`published` with the URL, `failed`, `dry-run` with the exact body and comments, or `skipped`; with the number of findings `stillOpen` and `dismissed`), a `context` block (see [Rules and repository context](#rules-and-repository-context)), an `investigation` block (see [Repository investigation](#repository-investigation)) and an `impact` block (see [Repository graph](#repository-graph)) |
+| `--no-investigate`     | Reviews without letting the AI read the rest of the repository (see [Repository investigation](#repository-investigation)); `--investigate` turns it back on when the config turns it off                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `--verify`             | Checks every finding with a second call to the AI before scoring (see above). On by default; `--no-verify` (or `verify: false`) turns it off, `--verify` turns it back on when the config turns it off                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `--no-resolve`         | Neither rechecks Phada's comments from earlier commits nor resolves the fixed ones (see [Comments fixed in a new commit](#comments-fixed-in-a-new-commit)); same as `resolveThreads: false`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `--skill <name>`       | Reviews with this skill, one pass each when repeated; replaces `review.skills` (see [Review focus and skills](#review-focus-and-skills))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `--dry-run`            | Prints exactly what would be published (the review body and every comment) and posts nothing                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `--force`              | Reviews and publishes even when Phada already reviewed this commit (see [Publishing](#publishing))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `--debug`              | Shows error details                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 ## Exit codes
 
@@ -814,6 +993,9 @@ your own stops Phada with an error that names the file and the key.
 when a skill or the `review.prompt` file is missing.
 `phada history` exits with 0 when it printed the history and 1 when the file or, with `--refresh`,
 GitHub could not be read.
+`phada enqueue` exits with 0 when the request was queued or joined a job, 1 when it was refused
+or GitHub could not be read, and 2 when the command line or your config is wrong.
+`phada mcp` exits with 0 when its input ends.
 `phada watch` exits with 0 when it stopped or `--once` finished, 1 when it stopped on an error
 (another watch running, an AI CLI that is not logged in, a token GitHub rejects), 2 when the
 command line or your config is wrong, and 130 when a second Ctrl-C aborted it.
