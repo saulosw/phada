@@ -63,6 +63,7 @@ describe('formatReviewJson', () => {
     expect(parse(output)).toEqual({
       schemaVersion: 1,
       status: 'reviewed',
+      verdict: 'blocking',
       pullRequest: PULL_REQUEST,
       review: {
         score: { value: 1, reason: '1 P0 finding (shop.ts:3)' },
@@ -322,6 +323,7 @@ describe('formatReviewJson', () => {
       schemaVersion: 1,
       status: 'skipped',
       reason: 'empty-diff',
+      verdict: 'skipped',
       pullRequest: PULL_REQUEST,
       publication: null,
       context: null,
@@ -444,6 +446,7 @@ describe('publication', () => {
       schemaVersion: 1,
       status: 'skipped',
       reason: 'already-reviewed',
+      verdict: 'skipped',
       pullRequest: PULL_REQUEST,
       publication: { status: 'skipped', reason: 'nothing-found', openThreads: 0 },
       context: null,

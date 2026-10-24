@@ -520,6 +520,15 @@ describe('reviewAndPublish', () => {
     expect(calls.reviews).toBe(0)
   })
 
+  it('reviews a draft in watch mode when someone asked for it', async () => {
+    const { deps, calls } = setup({}, pullRequestFixture({ draft: true }))
+
+    expect(
+      await reviewAndPublish({ ...INPUT, mode: 'watch', acceptDraft: true }, deps),
+    ).toMatchObject({ status: 'reviewed' })
+    expect(calls.reviews).toBe(1)
+  })
+
   it('returns a failed publication when checking the head fails after the review', async () => {
     const error = new Error('GitHub 502')
     const { deps, calls } = setup({ checkHead: () => Promise.reject(error) })

@@ -41,7 +41,7 @@ describe('parseCliArgs', () => {
     ],
     [
       ['reveiw', 'acme/shop#12'],
-      'Unknown command "reveiw". Available: review, init, index, rules, prompt, watch, history.',
+      'Unknown command "reveiw". Available: review, init, index, rules, prompt, watch, enqueue, mcp, history.',
     ],
     [['--verify'], "Unknown option '--verify'."],
   ])('rejects the command line %j with a usage error', (argv, message) => {

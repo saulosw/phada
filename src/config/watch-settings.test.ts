@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { ConfigLayer } from './types.js'
 import { durationMs } from './duration.js'
-import { historyEnabled, resolveWatchSettings } from './watch-settings.js'
+import {
+  historyEnabled,
+  resolveHookSettings,
+  resolveSlackSettings,
+  resolveWatchSettings,
+} from './watch-settings.js'
 
 const user = (config: ConfigLayer['config']): ConfigLayer => ({
   kind: 'user',
@@ -84,5 +89,75 @@ describe('historyEnabled', () => {
     expect(historyEnabled([])).toBe(true)
     expect(historyEnabled([user({ history: false })])).toBe(false)
     expect(historyEnabled([{ ...user({ history: false }), kind: 'repo-root' }])).toBe(true)
+  })
+})
+
+describe('resolveHookSettings', () => {
+  it('is undefined without hooks', () => {
+    expect(resolveHookSettings([user({})])).toBeUndefined()
+  })
+
+  it('reads the commands, runs them in the config folder and waits 30 s by default', () => {
+    const layer = { ...user({ hooks: { 'review.finished': './notify.sh' } }), dir: '/cfg' }
+    expect(resolveHookSettings([layer])).toEqual({
+      commands: { 'review.finished': './notify.sh' },
+      timeoutMs: 30_000,
+      cwd: '/cfg',
+    })
+  })
+
+  it('takes the timeout from the config', () => {
+    expect(
+      resolveHookSettings([user({ hooks: { 'review.failed': 'x', timeout: '2m' } })])?.timeoutMs,
+    ).toBe(120_000)
+  })
+})
+
+describe('resolveWatchSettings when', () => {
+  it('gives every repository the when command of the watch, unless it has its own', () => {
+    const settings = resolveWatchSettings([
+      user({
+        watch: {
+          when: { command: './only-team.sh' },
+          repos: ['a/b', { repo: 'a/c', when: { command: './c.sh' } }],
+        },
+      }),
+    ])
+    expect(settings?.repos).toEqual([
+      { repo: 'a/b', publish: true, allowExternal: false, when: './only-team.sh' },
+      { repo: 'a/c', publish: true, allowExternal: false, when: './c.sh' },
+    ])
+  })
+})
+
+describe('resolveSlackSettings', () => {
+  it('is undefined without slack', () => {
+    expect(resolveSlackSettings([user({})])).toBeUndefined()
+  })
+
+  it('fills in the target, the reply and the emojis of each channel', () => {
+    expect(
+      resolveSlackSettings([
+        user({
+          slack: {
+            channels: [{ id: 'C1' }, { id: 'C2', publish: 'none', reply: 'full' }],
+            emojis: { clean: 'tada' },
+          },
+        }),
+      ]),
+    ).toEqual({
+      channels: [
+        { id: 'C1', publish: 'pr', reply: 'link' },
+        { id: 'C2', publish: 'none', reply: 'full' },
+      ],
+      emojis: {
+        queued: 'hourglass_flowing_sand',
+        clean: 'tada',
+        comments: 'speech_balloon',
+        blocking: 'x',
+        failed: 'warning',
+        skipped: 'eyes',
+      },
+    })
   })
 })

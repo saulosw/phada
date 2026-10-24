@@ -75,6 +75,24 @@ try {
     noToken.status === 1 && noToken.stderr.startsWith('phada: No GitHub token found.'),
     `phada review without a token: exit ${noToken.status}, ${noToken.stderr}`,
   )
+  const queue = spawnSync(phada, ['mcp'], {
+    encoding: 'utf8',
+    env: {
+      ...withoutTokens(),
+      PHADA_CONFIG_HOME: join(dir, 'config'),
+      PHADA_DATA_HOME: join(dir, 'data'),
+    },
+    input: [
+      '{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}',
+      '{"jsonrpc":"2.0","id":1,"method":"tools/list"}',
+      '',
+    ].join('\n'),
+    timeout: TIMEOUT_MS,
+  })
+  check(
+    queue.status === 0 && queue.stdout.includes('"review_pull_request"'),
+    `phada mcp over stdio: exit ${queue.status}, ${queue.stdout}${queue.stderr}`,
+  )
   const server = join(dir, 'node_modules', 'phada', 'dist', 'investigation', 'mcp', 'mcp-server.js')
   const mcp = spawnSync(process.execPath, ['--input-type=module', '-e', mcpRoundTrip(server)], {
     encoding: 'utf8',

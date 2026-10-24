@@ -124,6 +124,14 @@ describe('formatWatchEvent', () => {
     ],
     [{ kind: 'warning', message: 'acme/web: no access' }, '[14:03] Warning: acme/web: no access'],
     [
+      {
+        kind: 'refused',
+        request: { repo: 'acme/shop', number: 3, source: 'pr-command', publish: 'pr' },
+        result: { status: 'refused', reason: 'closed' },
+      },
+      '[14:03] Refused a pr-command request for acme/shop#3: the pull request is closed.',
+    ],
+    [
       { kind: 'limited', count: 6, until: local(14, 40).toISOString() },
       '[14:03] 6 reviews in the last hour (maxReviewsPerHour): the next one starts at 14:40.',
     ],
@@ -143,7 +151,7 @@ const STATUS: HistoryStatus = {
     },
     { repo: 'acme/web' },
   ],
-  queued: [{ ...JOB, attempts: 1 }],
+  queued: [{ ...JOB, attempts: 1, sources: ['slack', 'watch'] }],
   running: [{ ...JOB, number: 5, status: 'running', startedAt: local(14, 1).toISOString() }],
   failed: [
     {
@@ -184,7 +192,7 @@ describe('formatWatchStatus', () => {
         '  acme/web   not checked yet',
         '',
         'Queue:',
-        '  acme/shop#3  a1b2c3d  after 2026-10-18 14:06 · attempt 2',
+        '  acme/shop#3  a1b2c3d  after 2026-10-18 14:06 · attempt 2 · asked from slack',
         '',
         'In progress:',
         '  acme/shop#5  a1b2c3d  since 2026-10-18 14:01',

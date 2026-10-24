@@ -12,6 +12,7 @@ const NEXT_LINK = /<([^>]+)>;\s*rel="next"/
 export interface OpenPull {
   number: number
   headSha: string
+  title?: string
   draft: boolean
   author: string
   authorIsBot: boolean
@@ -68,6 +69,7 @@ function toOpenPull(json: unknown): OpenPull {
   return {
     number: numberField(json, 'number'),
     headSha: stringField(json, 'head.sha'),
+    ...(typeof field(json, 'title') === 'string' ? { title: stringField(json, 'title') } : {}),
     draft: field(json, 'draft') === true,
     author,
     authorIsBot: field(json, 'user.type') === 'Bot' || author.endsWith('[bot]'),

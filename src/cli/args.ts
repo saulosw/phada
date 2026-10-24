@@ -7,6 +7,7 @@ import { DEFAULT_MIN_CONFIDENCE } from '../review/run-review.js'
 import { CONFIDENCE_FLOOR, isConfidenceCut, MAX_CONFIDENCE } from '../review/select-findings.js'
 import { LANGUAGE_TAG, SKILL_NAME } from '../config/schema.js'
 import { DURATION, durationMs } from '../config/duration.js'
+import type { PublishTarget } from '../watch/types.js'
 import { UsageError } from './errors.js'
 
 export type OutputFormat = 'markdown' | 'json'
@@ -45,6 +46,14 @@ export type CliCommand =
       debug: boolean
     }
   | { kind: 'history-prune'; olderThanMs: number; debug: boolean }
+  | { kind: 'mcp'; debug: boolean }
+  | {
+      kind: 'enqueue'
+      ref: PullRequestRef
+      publish: PublishTarget
+      format: IndexFormat
+      debug: boolean
+    }
   | {
       kind: 'prompt'
       target: { kind: 'pull'; ref: PullRequestRef } | { kind: 'default' }
@@ -84,6 +93,8 @@ Commands:
   rules <owner/repo[#N]> Show the rules and docs a review would read
   prompt <pull request>  Show the prompt a review would send, without the AI
   watch                  Review new pull requests and pushes on its own
+  enqueue <pull request> Ask the watch to review a pull request
+  mcp                    Let your AI ask for reviews: an MCP server over stdio
   history                Show past reviews and what happened to Phada's comments
 
 Options:
@@ -92,6 +103,42 @@ Options:
 
 Run "phada review --help", "phada rules --help" and so on for the options of each
 command.`
+
+export const ENQUEUE_USAGE = `Usage: phada enqueue <owner/repo#N | pull request URL> [options]
+
+Asks the watch to review a pull request now. The request goes through the same
+checks as every other: the repository must be listed under watch: in your config,
+an outside author is refused unless allowExternal is set, a commit already
+reviewed is not reviewed again, and no more than maxReviewsPerHour new reviews
+are queued in an hour. A running phada watch picks the job up; without one it
+waits in the queue. Exits with 1 when the request is refused.
+
+Options:
+  --publish <target>   Where the review goes: pr (on the pull request) or none
+                       (only the history and the events) (default: pr)
+  --format <name>      Output: text or json (default: text)
+  --debug              Show error details
+  -h, --help           Show this help
+
+Environment:
+  GITHUB_TOKEN         GitHub token used to read the pull request
+  GH_TOKEN             Used when GITHUB_TOKEN is not set`
+
+export const MCP_USAGE = `Usage: phada mcp
+
+An MCP server over stdio for the AI you already use: it can ask for a review
+(review_pull_request), follow it (job_status, list_queue) and wait for its
+verdict and findings (wait_for_job). Requests go through the same checks as
+phada enqueue and wait in the queue of phada watch, which runs them. Add it to
+your AI CLI, e.g. claude mcp add phada -- phada mcp
+
+Options:
+  --debug              Show error details
+  -h, --help           Show this help
+
+Environment:
+  GITHUB_TOKEN         GitHub token used to read the pull requests asked for
+  GH_TOKEN             Used when GITHUB_TOKEN is not set`
 
 export const REVIEW_USAGE = `Usage: phada review <owner/repo#N | pull request URL> [options]
 
@@ -288,6 +335,8 @@ export function parseCliArgs(argv: readonly string[]): CliCommand {
   if (command === 'prompt') return parsePromptArgs(rest)
   if (command === 'watch') return parseWatchArgs(rest)
   if (command === 'history') return parseHistoryArgs(rest)
+  if (command === 'enqueue') return parseEnqueueArgs(rest)
+  if (command === 'mcp') return parseMcpArgs(rest)
   if (command !== undefined && !command.startsWith('-')) throw unknownCommand(command)
 
   const { values } = parseOptions(argv, {
@@ -304,7 +353,7 @@ function unknownCommand(command: string): UsageError {
     return new UsageError(`Unknown command "${command}". Did you mean "phada review ${command}"?`)
   }
   return new UsageError(
-    `Unknown command "${command}". Available: review, init, index, rules, prompt, watch, history.`,
+    `Unknown command "${command}". Available: review, init, index, rules, prompt, watch, enqueue, mcp, history.`,
   )
 }
 
@@ -525,6 +574,38 @@ function parseWatchArgs(argv: readonly string[]): CliCommand {
     format,
     debug: values.debug,
   }
+}
+
+function parseMcpArgs(argv: readonly string[]): CliCommand {
+  const { values, positionals } = parseOptions(argv, {
+    debug: { type: 'boolean', default: false },
+    help: { type: 'boolean', short: 'h', default: false },
+  })
+  if (values.help) return { kind: 'help', text: MCP_USAGE }
+  if (positionals.length > 0) throw new UsageError('phada mcp takes no argument.')
+  return { kind: 'mcp', debug: values.debug }
+}
+
+function parseEnqueueArgs(argv: readonly string[]): CliCommand {
+  const { values, positionals } = parseOptions(argv, {
+    publish: { type: 'string', default: 'pr' },
+    format: { type: 'string', default: 'text' },
+    debug: { type: 'boolean', default: false },
+    help: { type: 'boolean', short: 'h', default: false },
+  })
+  if (values.help) return { kind: 'help', text: ENQUEUE_USAGE }
+  const [input, ...extra] = positionals
+  if (input === undefined)
+    throw new UsageError('Missing the pull request, e.g. phada enqueue owner/repo#123.')
+  if (extra.length > 0) throw new UsageError('Enqueue one pull request at a time.')
+  const { publish, format } = values
+  if (publish !== 'pr' && publish !== 'none') {
+    throw new UsageError(`Invalid --publish "${publish}". Use pr or none.`)
+  }
+  if (format !== 'text' && format !== 'json') {
+    throw new UsageError(`Invalid --format "${format}". Use text or json.`)
+  }
+  return { kind: 'enqueue', ref: parsePullRequestRef(input), publish, format, debug: values.debug }
 }
 
 function parseHistoryArgs(argv: readonly string[]): CliCommand {
