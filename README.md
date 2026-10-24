@@ -412,10 +412,11 @@ watch:
 ```
 
 The command runs like a hook and gets the pull request and the request as JSON on stdin; it has
-10 seconds to exit:
-0 lets the request through; anything else, an error or no answer refuses it, with the first line
-the command wrote to stderr as the reason. It runs for every request and for every push the
-polling finds (a refused push is not asked again until a new commit).
+10 seconds to exit: 0 lets the request through; anything else, an error or no answer refuses it,
+with the first line the command wrote to stderr as the reason. It runs before a new review is
+queued, for a request or for a push the polling finds; a request that joins a job or finds the
+commit already reviewed does not ask it, and a refused push is not asked again until a new
+commit.
 
 ### Recipes
 

@@ -26,10 +26,12 @@ output can change between minor versions.
 - `hooks:` runs a command of yours on `review.started`, `review.finished` (with the full review),
   `review.failed` and `review.skipped`, with the event as JSON on stdin.
 - `watch.when` (and `when` per repository) runs a command that decides, from the pull request and
-  the request on stdin, whether a request or a push is reviewed.
+  the request on stdin, whether a request or a push gets a new review; a request that joins a
+  queued job or a commit already reviewed does not ask it.
 - A verdict computed by Phada (`clean`, `comments`, `blocking`, `failed`, `skipped`) in the JSON
   of every review, in the events and in the history.
-- `phada watch --status` shows who asked for each job.
+- `phada watch --status` shows who asked for each job, and `phada history` who asked for each
+  review of the watch.
 - A request for a commit Phada already reviewed on the pull request gets the link of that review,
   in the `review.skipped` event and in the Slack reply.
 - MCP servers declared in your own config, for Claude Code, Codex and Ollama alike: started by
