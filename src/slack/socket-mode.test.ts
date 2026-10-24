@@ -5,7 +5,6 @@ import type { SocketLike } from './socket-mode.js'
 type Listener = (event: { data?: unknown }) => void
 
 class FakeSocket implements SocketLike {
-  static opened: FakeSocket[] = []
   readonly url: string
   readonly sent: string[] = []
   closed = false
@@ -13,7 +12,6 @@ class FakeSocket implements SocketLike {
 
   constructor(url: string) {
     this.url = url
-    FakeSocket.opened.push(this)
   }
 
   addEventListener(type: string, listener: Listener): void {
@@ -41,110 +39,114 @@ class FakeSocket implements SocketLike {
 
 const flush = () => new Promise((done) => setTimeout(done, 0))
 
-function setup() {
-  FakeSocket.opened = []
+function setup(openUrl?: () => Promise<string>) {
+  const opened: FakeSocket[] = []
   const events: unknown[] = []
   const errors: string[] = []
+  const sleeps: number[] = []
   let urls = 0
   const connection = connectSocketMode({
-    openUrl: async () => `wss://slack.test/${++urls}`,
-    WebSocket: FakeSocket,
+    openUrl: openUrl ?? (async () => `wss://slack.test/${++urls}`),
+    WebSocket: class extends FakeSocket {
+      constructor(url: string) {
+        super(url)
+        opened.push(this)
+      }
+    },
     onEvent: (event) => events.push(event),
     onError: (message) => errors.push(message),
-    sleep: async () => undefined,
+    sleep: async (ms) => {
+      sleeps.push(ms)
+    },
   })
-  return { connection, events, errors, urls: () => urls }
+  const latest = (): FakeSocket => {
+    const socket = opened.at(-1)
+    if (socket === undefined) throw new Error('no socket was opened')
+    return socket
+  }
+  return { connection, opened, latest, events, errors, sleeps, urls: () => urls }
 }
 
 describe('connectSocketMode', () => {
   it('acknowledges each envelope and hands over the events', async () => {
-    const { events, connection } = setup()
+    const h = setup()
     await flush()
-    const socket = FakeSocket.opened[0]!
 
-    socket.receive({ type: 'hello' })
-    socket.receive({
+    h.latest().receive({ type: 'hello' })
+    h.latest().receive({
       type: 'events_api',
       envelope_id: 'e1',
       payload: { event: { type: 'message', channel: 'C1', ts: '1.2', text: 'hi' } },
     })
 
-    expect(socket.url).toBe('wss://slack.test/1')
-    expect(socket.sent).toEqual(['{"envelope_id":"e1"}'])
-    expect(events).toEqual([{ type: 'message', channel: 'C1', ts: '1.2', text: 'hi' }])
-    connection.close()
+    expect(h.latest().url).toBe('wss://slack.test/1')
+    expect(h.latest().sent).toEqual(['{"envelope_id":"e1"}'])
+    expect(h.events).toEqual([{ type: 'message', channel: 'C1', ts: '1.2', text: 'hi' }])
+    h.connection.close()
   })
 
-  it('opens a new connection when Slack asks to disconnect or the socket closes', async () => {
-    const { connection, urls } = setup()
+  it('opens a new connection at once when Slack asks to', async () => {
+    const h = setup()
     await flush()
 
-    FakeSocket.opened[0]!.receive({ type: 'disconnect', reason: 'refresh_requested' })
-    await flush()
-    FakeSocket.opened[1]!.close()
+    h.latest().receive({ type: 'hello' })
+    h.latest().receive({ type: 'disconnect', reason: 'refresh_requested' })
     await flush()
 
-    expect(urls()).toBe(3)
-    expect(FakeSocket.opened[0]!.closed).toBe(true)
-    connection.close()
+    expect(h.urls()).toBe(2)
+    expect(h.opened[0]?.closed).toBe(true)
+    expect(h.sleeps).toEqual([])
+    h.connection.close()
+  })
+
+  it('opens a new connection a second after the socket drops', async () => {
+    const h = setup()
+    await flush()
+
+    h.latest().receive({ type: 'hello' })
+    h.latest().close()
+    await flush()
+
+    expect(h.urls()).toBe(2)
+    expect(h.sleeps).toEqual([1_000])
+    h.connection.close()
   })
 
   it('waits longer before each new try when sockets keep closing before Slack says hello', async () => {
-    FakeSocket.opened = []
-    const sleeps: number[] = []
-    const connection = connectSocketMode({
-      openUrl: async () => 'wss://slack.test',
-      WebSocket: FakeSocket,
-      onEvent: () => undefined,
-      onError: () => undefined,
-      sleep: async (ms) => {
-        sleeps.push(ms)
-      },
-    })
+    const h = setup()
     for (let attempt = 0; attempt < 4; attempt++) {
       await flush()
-      FakeSocket.opened.at(-1)!.close()
+      h.latest().close()
     }
     await flush()
-    FakeSocket.opened.at(-1)!.receive({ type: 'hello' })
-    FakeSocket.opened.at(-1)!.close()
-    await flush()
 
-    expect(sleeps).toEqual([1_000, 5_000, 30_000, 30_000, 1_000])
-    connection.close()
+    expect(h.sleeps).toEqual([1_000, 5_000, 30_000, 30_000])
+    h.connection.close()
   })
 
   it('stops for good once closed', async () => {
-    const { connection, urls } = setup()
+    const h = setup()
     await flush()
 
-    connection.close()
+    h.connection.close()
     await flush()
 
-    expect(FakeSocket.opened[0]!.closed).toBe(true)
-    expect(urls()).toBe(1)
+    expect(h.latest().closed).toBe(true)
+    expect(h.urls()).toBe(1)
   })
 
   it('reports a connection that cannot open and tries again', async () => {
-    FakeSocket.opened = []
-    const errors: string[] = []
     let calls = 0
-    const connection = connectSocketMode({
-      openUrl: async () => {
-        calls += 1
-        if (calls === 1) throw new Error('invalid_auth')
-        return 'wss://slack.test/2'
-      },
-      WebSocket: FakeSocket,
-      onEvent: () => undefined,
-      onError: (message) => errors.push(message),
-      sleep: async () => undefined,
+    const h = setup(async () => {
+      calls += 1
+      if (calls === 1) throw new Error('invalid_auth')
+      return 'wss://slack.test/2'
     })
     await flush()
     await flush()
 
-    expect(errors).toEqual(['Slack connection failed: invalid_auth'])
-    expect(FakeSocket.opened).toHaveLength(1)
-    connection.close()
+    expect(h.errors).toEqual(['Slack connection failed: invalid_auth'])
+    expect(h.opened).toHaveLength(1)
+    h.connection.close()
   })
 })

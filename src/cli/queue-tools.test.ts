@@ -147,15 +147,21 @@ describe('queueToolbox', () => {
     history.close()
   })
 
-  it('answers an error for a reference it cannot read, or without a watch config', async () => {
+  it('answers an error for a pull request reference it cannot read', async () => {
     const history = await fresh()
     expect(
       await call(setup(history).toolbox, 'review_pull_request', { pr: 'not a pr' }),
     ).toMatchObject({ isError: true })
+    history.close()
+  })
+
+  it('answers an error without a watch config', async () => {
+    const history = await fresh()
     const { toolbox } = setup(history, { submit: undefined })
-    expect((await toolbox.call('review_pull_request', { pr: 'acme/shop#7' })).text).toContain(
-      'Nothing to watch',
-    )
+    expect(await toolbox.call('review_pull_request', { pr: 'acme/shop#7' })).toMatchObject({
+      isError: true,
+      text: expect.stringContaining('Nothing to watch'),
+    })
     history.close()
   })
 

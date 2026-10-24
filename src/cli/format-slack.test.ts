@@ -121,7 +121,7 @@ describe('slackReplies', () => {
     ])
   })
 
-  it('says why a review failed or was skipped', () => {
+  it('says why a review failed', () => {
     expect(
       slackReplies(
         event({
@@ -136,12 +136,17 @@ describe('slackReplies', () => {
     ).toEqual([
       ':warning: *Review failed* · <https://github.com/acme/shop/pull/12|acme/shop#12> at `a1b2c3d`\nGitHub 502',
     ])
+  })
+
+  it('says why a review was skipped', () => {
     expect(
       slackReplies(
         event({ event: 'review.skipped', verdict: 'skipped', reason: 'closed', publication: null }),
         'summary',
         DEFAULT_SLACK_EMOJIS,
-      )[0],
-    ).toContain(':eyes: *Skipped* · ')
+      ),
+    ).toEqual([
+      ':eyes: *Skipped* · <https://github.com/acme/shop/pull/12|acme/shop#12> at `a1b2c3d`\nThe pull request was closed.',
+    ])
   })
 })

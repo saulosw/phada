@@ -6,8 +6,9 @@ import { DEFAULT_SLACK_EMOJIS } from '../config/watch-settings.js'
 import type { SlackSettings, WatchSettings } from '../config/watch-settings.js'
 import type { SlackWebApi } from '../slack/web-api.js'
 import { openHistoryStore } from '../store/history-store.js'
-import type { HistoryStore } from '../store/history-store.js'
+import type { HistoryStore, RunRecord } from '../store/history-store.js'
 import type { PullFacts } from '../watch/pull-facts.js'
+import type { JobRecord } from '../watch/types.js'
 import { reviewEvent } from './review-event.js'
 import { slackPort } from './slack-port.js'
 
@@ -47,7 +48,12 @@ const message = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 })
 
-function setup(history: HistoryStore, pull: PullFacts = PULL) {
+interface Setup {
+  pull?: PullFacts
+  failing?: string
+}
+
+function setup(history: HistoryStore, { pull = PULL, failing }: Setup = {}) {
   const calls: string[] = []
   const warnings: string[] = []
   const api: SlackWebApi = {
@@ -55,6 +61,7 @@ function setup(history: HistoryStore, pull: PullFacts = PULL) {
       calls.push(`post ${channel} ${thread} ${text}`)
     },
     addReaction: async (channel, ts, name) => {
+      if (failing !== undefined) throw new Error(failing)
       calls.push(`+${name} ${channel} ${ts}`)
     },
     removeReaction: async (channel, ts, name) => {
@@ -75,6 +82,47 @@ function setup(history: HistoryStore, pull: PullFacts = PULL) {
     warning: (text) => warnings.push(text),
   })
   return { port, calls, warnings }
+}
+
+const STARTED = '2026-10-23T12:01:00.000Z'
+const FINISHED = '2026-10-23T12:05:00.000Z'
+
+function slackJob(history: HistoryStore, job: Partial<JobRecord> = {}, channel = 'C1'): JobRecord {
+  const record: Omit<JobRecord, 'id'> = {
+    repo: 'acme/shop',
+    number: 7,
+    headSha: A,
+    status: 'queued',
+    attempts: 0,
+    notBefore: STARTED,
+    publish: 'pr',
+    createdAt: STARTED,
+    ...job,
+  }
+  const id = history.addJob(record)
+  history.addRequest({
+    jobId: id,
+    source: 'slack',
+    publish: record.publish ?? 'pr',
+    data: { channel, ts: '100.1', thread: '100.1' },
+    createdAt: STARTED,
+  })
+  return { ...record, id }
+}
+
+function run(overrides: Partial<RunRecord>): RunRecord {
+  return {
+    jobId: 1,
+    source: 'watch',
+    repo: 'acme/shop',
+    number: 7,
+    headSha: A,
+    startedAt: STARTED,
+    finishedAt: FINISHED,
+    status: 'published',
+    aiCalled: true,
+    ...overrides,
+  }
 }
 
 describe('slackPort', () => {
@@ -121,7 +169,7 @@ describe('slackPort', () => {
 
   it('says in the thread why a request was refused', async () => {
     const history = await fresh()
-    const { port, calls } = setup(history, { ...PULL, state: 'closed' })
+    const { port, calls } = setup(history, { pull: { ...PULL, state: 'closed' } })
 
     await port.onMessage(message())
 
@@ -134,23 +182,14 @@ describe('slackPort', () => {
   it('answers a commit already reviewed with its verdict and review at once', async () => {
     const history = await fresh()
     const { port, calls } = setup(history)
-    await port.onMessage(message())
-    history.updateJob(1, { status: 'done', finishedAt: '2026-10-23T12:05:00.000Z' })
-    history.addRun({
-      jobId: 1,
-      source: 'watch',
-      repo: 'acme/shop',
-      number: 7,
-      headSha: A,
-      startedAt: '2026-10-23T12:01:00.000Z',
-      finishedAt: '2026-10-23T12:05:00.000Z',
-      status: 'published',
-      url: 'https://github.com/acme/shop/pull/7#r1',
-      aiCalled: true,
-      verdict: 'clean',
-      resultJson: '{"review":{"findings":[],"worthChecking":[]}}',
-    })
-    calls.length = 0
+    slackJob(history, { status: 'done', finishedAt: FINISHED })
+    history.addRun(
+      run({
+        url: 'https://github.com/acme/shop/pull/7#r1',
+        verdict: 'clean',
+        resultJson: '{"review":{"findings":[],"worthChecking":[]}}',
+      }),
+    )
 
     await port.onMessage(message({ ts: '200.1' }))
 
@@ -164,20 +203,10 @@ describe('slackPort', () => {
   it('swaps the queued mark for the verdict and replies in the format of the channel when the job ends', async () => {
     const history = await fresh()
     const { port, calls } = setup(history)
-    await port.onMessage(message({ channel: 'C2' }))
-    calls.length = 0
-    const job = { ...history.job(1)!, status: 'done' as const }
-    const run = {
-      jobId: 1,
-      source: 'watch' as const,
-      repo: 'acme/shop',
-      number: 7,
-      headSha: A,
-      startedAt: '2026-10-23T12:01:00.000Z',
-      finishedAt: '2026-10-23T12:05:00.000Z',
-      status: 'not-published' as const,
-      aiCalled: true,
-      verdict: 'comments' as const,
+    const job = slackJob(history, { status: 'done', publish: 'none' }, 'C2')
+    const finished = run({
+      status: 'not-published',
+      verdict: 'comments',
       resultJson: JSON.stringify({
         review: {
           summary: 'Adds a spend endpoint.',
@@ -185,29 +214,39 @@ describe('slackPort', () => {
           worthChecking: [],
         },
       }),
-    }
-    const requests = history.requests([1])
+    })
 
-    await port.onJobEvent(reviewEvent({ kind: 'finished', job, requests }, run))
+    await port.onJobEvent(
+      reviewEvent({ kind: 'finished', job, requests: history.requests([job.id]) }, finished),
+    )
 
-    expect(calls[0]).toBe('-hourglass_flowing_sand C2 100.1')
-    expect(calls[1]).toBe('+speech_balloon C2 100.1')
-    expect(calls[2]).toContain(`post C2 100.1 :speech_balloon: *Comments*`)
-    expect(calls[2]).toContain(`<https://github.com/acme/shop/blob/${A}/a.ts#L2|a.ts:2> Name`)
-    expect(calls).toHaveLength(3)
+    expect(calls).toEqual([
+      '-hourglass_flowing_sand C2 100.1',
+      '+speech_balloon C2 100.1',
+      expect.stringContaining(`<https://github.com/acme/shop/blob/${A}/a.ts#L2|a.ts:2> Name`),
+    ])
+    expect(calls[2]).toMatch(/^post C2 100\.1 :speech_balloon: \*Comments\*/)
     history.close()
   })
 
-  it('does nothing for a job event no Slack message asked for, nor when it starts', async () => {
+  it('does nothing when a job of a Slack message starts', async () => {
     const history = await fresh()
     const { port, calls } = setup(history)
-    await port.onMessage(message())
-    calls.length = 0
-    const job = history.job(1)!
+    const job = slackJob(history, { status: 'running' })
 
     await port.onJobEvent(
-      reviewEvent({ kind: 'started', job, requests: history.requests([1]) }, undefined),
+      reviewEvent({ kind: 'started', job, requests: history.requests([job.id]) }, undefined),
     )
+
+    expect(calls).toEqual([])
+    history.close()
+  })
+
+  it('does nothing for a job no Slack message asked for', async () => {
+    const history = await fresh()
+    const { port, calls } = setup(history)
+    const job = slackJob(history, { status: 'done' })
+
     await port.onJobEvent(reviewEvent({ kind: 'finished', job, requests: [] }, undefined))
 
     expect(calls).toEqual([])
@@ -216,29 +255,11 @@ describe('slackPort', () => {
 
   it('warns and goes on when Slack refuses a call', async () => {
     const history = await fresh()
-    const { port, warnings } = setup(history)
-    const failing = slackPort({
-      settings: SLACK,
-      history,
-      submit: {
-        history,
-        settings: WATCH,
-        readPull: async () => PULL,
-        now: () => new Date('2026-10-23T12:00:00.000Z'),
-      },
-      api: {
-        postMessage: async () => undefined,
-        addReaction: async () => {
-          throw new Error('Slack reactions.add failed: not_in_channel')
-        },
-        removeReaction: async () => undefined,
-        openConnection: async () => 'wss://x',
-      },
-      warning: (text) => warnings.push(text),
+    const { port, warnings } = setup(history, {
+      failing: 'Slack reactions.add failed: not_in_channel',
     })
-    void port
 
-    await failing.onMessage(message())
+    await port.onMessage(message())
 
     expect(warnings).toEqual(['Slack: Slack reactions.add failed: not_in_channel'])
     history.close()
