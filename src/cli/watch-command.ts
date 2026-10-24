@@ -11,13 +11,7 @@ import { mergeConfig, resolveProvider } from '../config/merge-config.js'
 import { resolveMcp, userMcp } from '../config/mcp-servers.js'
 import { BUILT_IN_SKILL, builtInSkillError } from '../app/review-passes.js'
 import { loadTopLevelUserLayers, loadUserLayers } from '../config/user-config.js'
-import {
-  historyEnabled,
-  resolveHookSettings,
-  resolveSlackSettings,
-  resolveWatchSettings,
-} from '../config/watch-settings.js'
-import type { HookSettings, SlackSettings, WatchSettings } from '../config/watch-settings.js'
+import type { WatchSettings } from '../config/watch-settings.js'
 import type { SubmitDeps } from '../app/submit-request.js'
 import { sleepUntilNewJob } from './queue-wake.js'
 import { splitRepoName } from '../github/pull-request-ref.js'
@@ -45,12 +39,7 @@ import { publishOf } from '../watch/request-policy.js'
 import type { JobRecord, RequestRecord } from '../watch/types.js'
 import type { IndexFormat } from './args.js'
 import { classifyFailure } from './classify-failure.js'
-import {
-  MissingGitHubTokenError,
-  NOTHING_TO_WATCH,
-  UsageError,
-  WatchRunningError,
-} from './errors.js'
+import { MissingGitHubTokenError, UsageError, WatchRunningError } from './errors.js'
 import { formatError } from './format-error.js'
 import { formatWatchEvent } from './format-watch.js'
 import { requestSourceOf, watchRun } from './history-run.js'

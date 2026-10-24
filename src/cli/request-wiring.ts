@@ -9,6 +9,8 @@ import type { FetchPullRequestOptions, PullRequestMetadata } from '../github/pul
 import type { HistoryStore } from '../store/history-store.js'
 import { fetchedPullFacts } from '../watch/pull-facts.js'
 import type { PullFacts } from '../watch/pull-facts.js'
+import type { LocalFileSystem } from '../config/local-files.js'
+import type { TextOutput } from './progress.js'
 import { whenChecker } from './run-when.js'
 
 export interface RequestWiringDeps {
@@ -16,6 +18,14 @@ export interface RequestWiringDeps {
   home: string
   clock: () => Date
   fetchPullRequestMetadata: (options: FetchPullRequestOptions) => Promise<PullRequestMetadata>
+}
+
+export interface RequestCommandDeps extends RequestWiringDeps {
+  files: LocalFileSystem
+  stdout: TextOutput
+  stderr: TextOutput
+  openHistoryStore: (path: string) => Promise<HistoryStore>
+  lockHolder: (path: string) => Promise<number | undefined>
 }
 
 export function submitDeps(

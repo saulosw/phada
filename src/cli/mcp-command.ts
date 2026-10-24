@@ -2,12 +2,12 @@ import { createInterface } from 'node:readline'
 import { dataFiles } from '../config/data-paths.js'
 import { loadTopLevelUserLayers } from '../config/user-config.js'
 import { handleMcpMessage } from '../investigation/mcp/mcp-server.js'
-import type { EnqueueCommandDeps } from './enqueue-command.js'
 import { MissingGitHubTokenError } from './errors.js'
 import { queueToolbox } from './queue-tools.js'
 import { submitDeps, watchSettingsOf } from './request-wiring.js'
+import type { RequestCommandDeps } from './request-wiring.js'
 
-export interface McpCommandDeps extends EnqueueCommandDeps {
+export interface McpCommandDeps extends RequestCommandDeps {
   stdin: NodeJS.ReadableStream
   sleep: (ms: number, signal: AbortSignal) => Promise<void>
 }

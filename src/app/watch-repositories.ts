@@ -4,7 +4,6 @@ import type { OpenPull, PullListing } from '../github/list-pull-requests.js'
 import type { BranchHead } from '../github/repository.js'
 import type { DuePull, HistoryStore } from '../store/history-store.js'
 import { listedPullFacts } from '../watch/pull-facts.js'
-import type { PullFacts } from '../watch/pull-facts.js'
 import type { FailureKind, JobRecord, PauseState, RequestRecord } from '../watch/types.js'
 import { afterFailure, MAX_ATTEMPTS, rateLimitPause } from '../watch/failures.js'
 import { later } from '../watch/time.js'
@@ -15,7 +14,7 @@ import type { CycleAction } from '../watch/plan-cycle.js'
 import { errorMessage } from './error-message.js'
 import type { ReviewRun } from './review-and-publish.js'
 import { submitRequest, whenInput } from './submit-request.js'
-import type { ReviewRequestInput, SubmitDeps, SubmitResult, WhenInput } from './submit-request.js'
+import type { ReviewRequestInput, SubmitDeps, SubmitResult } from './submit-request.js'
 
 export const IDLE_INDEX_BUDGET_MS = 60_000
 export const FEEDBACK_INTERVAL_MS = 1_800_000
