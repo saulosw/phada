@@ -5,6 +5,9 @@ import { shortSha } from './review-text.js'
 
 const SCHEMA_VERSION = 1
 
+export const NO_WATCH_WARNING =
+  'No phada watch is running: the job waits in the queue until one starts.'
+
 export function refusalText(
   reason: RefusalReason,
   result: { job?: JobRecord; until?: string; message?: string },

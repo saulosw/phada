@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { RunRecord } from '../store/history-store.js'
 import type { JobRecord, RequestRecord } from '../watch/types.js'
-import { reviewEvent } from './review-event.js'
+import { reviewEvent, storedEvent } from './review-event.js'
 
 const SHA = 'a'.repeat(40)
 const JOB: JobRecord = {
@@ -91,5 +91,29 @@ describe('reviewEvent', () => {
       verdict: 'failed',
       error: 'GitHub 502',
     })
+  })
+})
+
+describe('storedEvent', () => {
+  it('is the event a job ended with, from what the history keeps', () => {
+    expect(storedEvent(JOB, [SLACK], RUN)).toEqual(
+      reviewEvent({ kind: 'finished', job: JOB, requests: [SLACK] }, RUN),
+    )
+    const closed = { ...JOB, status: 'skipped' as const, reason: 'closed' }
+    expect(storedEvent(closed, [], undefined)).toMatchObject({
+      event: 'review.skipped',
+      reason: 'closed',
+    })
+    const superseded = { ...JOB, status: 'superseded' as const }
+    expect(storedEvent(superseded, [], undefined)).toMatchObject({
+      event: 'review.skipped',
+      reason: 'superseded',
+    })
+    expect(storedEvent({ ...JOB, status: 'failed' }, [], undefined)?.event).toBe('review.failed')
+  })
+
+  it('is undefined while the job waits or runs', () => {
+    expect(storedEvent({ ...JOB, status: 'queued' }, [], undefined)).toBeUndefined()
+    expect(storedEvent({ ...JOB, status: 'running' }, [], undefined)).toBeUndefined()
   })
 })

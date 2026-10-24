@@ -2,7 +2,7 @@ import type { JobEvent } from '../app/watch-repositories.js'
 import type { ReviewEventName } from '../config/schema.js'
 import type { Verdict } from '../review/verdict.js'
 import type { RunRecord, RunStatus } from '../store/history-store.js'
-import type { PublishTarget, RequestSource } from '../watch/types.js'
+import type { JobRecord, PublishTarget, RequestRecord, RequestSource } from '../watch/types.js'
 
 const SCHEMA_VERSION = 1
 
@@ -60,5 +60,33 @@ function verdictOf(kind: JobEvent['kind'], run: RunRecord | undefined): Verdict 
       return 'skipped'
     case 'finished':
       return run?.verdict ?? null
+  }
+}
+
+export function storedEvent(
+  job: JobRecord,
+  requests: readonly RequestRecord[],
+  run: RunRecord | undefined,
+): ReviewEvent | undefined {
+  switch (job.status) {
+    case 'queued':
+    case 'running':
+      return undefined
+    case 'done':
+      return reviewEvent({ kind: 'finished', job, requests }, run)
+    case 'failed':
+      return reviewEvent({ kind: 'failed', job, requests }, run)
+    case 'superseded':
+      return reviewEvent({ kind: 'skipped', job, requests, reason: 'superseded' }, run)
+    case 'skipped':
+      return reviewEvent(
+        {
+          kind: 'skipped',
+          job,
+          requests,
+          ...(job.reason === undefined ? {} : { reason: job.reason }),
+        },
+        run,
+      )
   }
 }

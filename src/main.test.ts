@@ -1,4 +1,5 @@
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { Readable } from 'node:stream'
 import { GitHubError } from './github/errors.js'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -166,6 +167,7 @@ function harness(
     pullHead?: MainDeps['fetchPullRequestHead']
     withLock?: MainDeps['withLock']
     lockHolder?: number
+    stdin?: string[]
   } = {},
 ): Harness {
   const checkouts: (GitMirrorOptions & { sha: string; keepAs: string })[] = []
@@ -201,6 +203,7 @@ function harness(
     cwd: '/w/shop',
     home: '/home/u',
     files,
+    stdin: Readable.from((overrides.stdin ?? []).map((text) => `${text}\n`)),
     stdout: {
       write: (text: string) => {
         events.push('stdout')
@@ -1934,6 +1937,68 @@ describe('phada enqueue', () => {
     expect(await run(['watch', '--once'], h.deps)).toBe(0)
     expect(h.posts).toHaveLength(0)
     expect(h.stderr()).toMatch(/Reviewing acme\/shop#12 at a1b2c3d…/)
+  })
+})
+
+describe('phada mcp', () => {
+  const WATCH_CONFIG = 'verify: false\nwatch:\n  repos: [acme/shop]\n'
+  const line = (id: number, method: string, params: unknown = {}) =>
+    JSON.stringify({ jsonrpc: '2.0', id, method, params })
+  const answers = (stdout: string) =>
+    stdout
+      .trim()
+      .split('\n')
+      .map((text) => JSON.parse(text) as { id: number; result: Record<string, unknown> })
+  const toolJson = (answer: { result: Record<string, unknown> }) =>
+    JSON.parse((answer.result.content as { text: string }[])[0]?.text ?? '') as unknown
+
+  it('answers MCP over stdio: asks for a review, then waits for it until the deadline', async () => {
+    const h = harness({
+      files: memoryFiles({ '/cfg/config.yml': WATCH_CONFIG }),
+      lockHolder: 7,
+      stdin: [
+        line(0, 'initialize', { protocolVersion: '2025-06-18', capabilities: {} }),
+        JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }),
+        line(1, 'tools/list'),
+        line(2, 'tools/call', {
+          name: 'review_pull_request',
+          arguments: { pr: 'acme/shop#12', publish: 'none' },
+        }),
+        line(3, 'tools/call', { name: 'wait_for_job', arguments: { job: 1, timeoutSeconds: 4 } }),
+      ],
+    })
+
+    expect(await run(['mcp'], h.deps)).toBe(0)
+
+    const [init, list, review, wait] = answers(h.stdout())
+    expect(init?.result).toMatchObject({ serverInfo: { name: 'phada' } })
+    expect((list?.result.tools as { name: string }[]).map(({ name }) => name)).toEqual([
+      'review_pull_request',
+      'job_status',
+      'wait_for_job',
+      'list_queue',
+    ])
+    expect(toolJson(review!)).toMatchObject({
+      status: 'queued',
+      job: { id: 1, publish: 'none' },
+      watchRunning: true,
+    })
+    expect(toolJson(wait!)).toMatchObject({ timedOut: true, job: { status: 'queued' } })
+    expect(h.posts).toHaveLength(0)
+  })
+
+  it('answers review_pull_request with an error when there is no token', async () => {
+    const h = harness({
+      env: { PHADA_CONFIG_HOME: '/cfg' },
+      files: memoryFiles({ '/cfg/config.yml': WATCH_CONFIG }),
+      stdin: [
+        line(1, 'tools/call', { name: 'review_pull_request', arguments: { pr: 'acme/shop#12' } }),
+      ],
+    })
+
+    expect(await run(['mcp'], h.deps)).toBe(0)
+    expect(answers(h.stdout())[0]?.result).toMatchObject({ isError: true })
+    expect(h.stdout()).toContain('GITHUB_TOKEN')
   })
 })
 

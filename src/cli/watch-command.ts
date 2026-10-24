@@ -40,7 +40,12 @@ import type { HistoryStore } from '../store/history-store.js'
 import type { JobRecord, RequestRecord } from '../watch/types.js'
 import type { IndexFormat } from './args.js'
 import { classifyFailure } from './classify-failure.js'
-import { MissingGitHubTokenError, UsageError, WatchRunningError } from './errors.js'
+import {
+  MissingGitHubTokenError,
+  NOTHING_TO_WATCH,
+  UsageError,
+  WatchRunningError,
+} from './errors.js'
 import { formatError } from './format-error.js'
 import { formatWatchEvent } from './format-watch.js'
 import { watchRun } from './history-run.js'
@@ -145,9 +150,7 @@ export async function runWatch(command: WatchCommand, deps: WatchCommandDeps): P
 export function requireWatchSettings(layers: readonly ConfigLayer[]): WatchSettings {
   const settings = resolveWatchSettings(layers)
   if (settings === undefined) {
-    throw new UsageError(
-      'Nothing to watch: list the repositories under watch: in your own config, e.g. watch: { repos: [owner/repo] } in ~/.config/phada/config.yml.',
-    )
+    throw new UsageError(NOTHING_TO_WATCH)
   }
   if (!historyEnabled(layers)) {
     throw new UsageError(

@@ -124,6 +124,7 @@ export interface HistoryStore {
   pulls(repo: string): PullRecord[]
   savePull(record: PullRecord): void
   jobs(filter: { repo?: string; status?: readonly JobStatus[] }): JobRecord[]
+  job(id: number): JobRecord | undefined
   addJob(job: Omit<JobRecord, 'id'>): number
   updateJob(id: number, changes: Partial<Omit<JobRecord, 'id'>>): void
   recoverRunning(maxAttempts: number, now: string): JobRecord[]
@@ -280,6 +281,11 @@ class SqliteHistoryStore implements HistoryStore {
       .prepare(`select * from job${clause} order by not_before, id`)
       .all(...values)
       .map((row) => fromRow<JobRecord>(row, JOB_TABLE))
+  }
+
+  job(id: number): JobRecord | undefined {
+    const row = this.#db.prepare('select * from job where id = ?').get(id)
+    return row === undefined ? undefined : fromRow<JobRecord>(row, JOB_TABLE)
   }
 
   addJob(job: Omit<JobRecord, 'id'>): number {

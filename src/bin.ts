@@ -38,6 +38,7 @@ process.exitCode = await run(process.argv.slice(2), {
   cwd: process.cwd(),
   home: homedir(),
   files: nodeFileSystem,
+  stdin: process.stdin,
   stdout: process.stdout,
   stderr: process.stderr,
   fetchPullRequest,

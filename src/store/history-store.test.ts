@@ -212,6 +212,14 @@ describe('HistoryStore records', () => {
     store.close()
   })
 
+  it('finds a job by its id', async () => {
+    const store = await openHistoryStore(fresh())
+    const id = store.addJob(JOB)
+    expect(store.job(id)).toEqual({ ...JOB, id })
+    expect(store.job(id + 1)).toBeUndefined()
+    store.close()
+  })
+
   it('lists when the jobs created since a time were created', async () => {
     const store = await openHistoryStore(fresh())
     store.addJob({ ...JOB, createdAt: '2026-10-18T11:00:00.000Z' })

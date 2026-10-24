@@ -5,6 +5,7 @@ export interface ToolDefinition {
   description: string
   inputSchema: JsonSchema
   server?: string
+  annotations?: Readonly<Record<string, boolean>>
 }
 
 export interface ToolResult {

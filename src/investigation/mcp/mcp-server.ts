@@ -70,7 +70,7 @@ export async function handleMcpMessage(
         result: {
           tools: toolbox.definitions.map((definition) => ({
             ...definition,
-            annotations: { readOnlyHint: true, openWorldHint: false },
+            annotations: definition.annotations ?? { readOnlyHint: true, openWorldHint: false },
           })),
         },
       })

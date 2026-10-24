@@ -9,7 +9,7 @@ import type { HistoryStore } from '../store/history-store.js'
 import type { PublishTarget } from '../watch/types.js'
 import type { IndexFormat } from './args.js'
 import { MissingGitHubTokenError } from './errors.js'
-import { formatSubmitJson, formatSubmitText } from './format-request.js'
+import { formatSubmitJson, formatSubmitText, NO_WATCH_WARNING } from './format-request.js'
 import type { TextOutput } from './progress.js'
 import { submitDeps } from './request-wiring.js'
 import { requireWatchSettings } from './watch-command.js'
@@ -31,9 +31,6 @@ export interface EnqueueCommandDeps {
   fetchPullRequestMetadata: (options: FetchPullRequestOptions) => Promise<PullRequestMetadata>
   lockHolder: (path: string) => Promise<number | undefined>
 }
-
-export const NO_WATCH_WARNING =
-  'No phada watch is running: the job waits in the queue until one starts.'
 
 export async function runEnqueue(
   command: EnqueueCommand,
