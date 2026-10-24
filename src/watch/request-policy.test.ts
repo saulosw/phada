@@ -79,6 +79,19 @@ describe('decideRequest', () => {
     expect(decideRequest(input({ pull: { ...pull, private: true } })).action).toBe('create')
   })
 
+  it('refuses what the when command refused, before joining or counting the hour', () => {
+    expect(decideRequest(input({ whenRefusal: 'not the payments team', jobs: [job(3)] }))).toEqual({
+      action: 'refuse',
+      reason: 'when-command',
+      message: 'not the payments team',
+    })
+    const pull = { ...input().pull, association: 'NONE' }
+    expect(decideRequest(input({ pull, whenRefusal: 'x' }))).toEqual({
+      action: 'refuse',
+      reason: 'external',
+    })
+  })
+
   it('joins a queued job of the same commit and makes it ready now', () => {
     const queued = job(3, { publish: 'none' })
     expect(decideRequest(input({ jobs: [queued] }))).toEqual({

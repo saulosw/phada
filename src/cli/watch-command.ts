@@ -56,6 +56,7 @@ import { mcpNameChecker } from './review-wiring.js'
 import type { Choice, ReviewWiringDeps } from './review-wiring.js'
 import type { CheckedNames, NameCheck } from './mcp-names.js'
 import type { McpNameEntry, ResolvedMcp } from '../config/mcp-servers.js'
+import { submitDeps } from './request-wiring.js'
 import { reviewEvent } from './review-event.js'
 import { runHook } from './run-hook.js'
 import { printWatchEvents } from './watch-events.js'
@@ -205,6 +206,7 @@ function watchDeps(
     stop,
   )
   const withEtag = (etag: string | undefined) => (etag === undefined ? {} : { etag })
+  const requests = submitDeps(history, settings, token, deps)
   return {
     history,
     listPulls: (repo, etag) =>
@@ -213,8 +215,8 @@ function watchDeps(
       (await deps.fetchRepository({ ...splitRepoName(repo), token })).defaultBranch,
     branchHead: (repo, branch, etag) =>
       deps.fetchBranchHead({ ...splitRepoName(repo), branch, token, ...withEtag(etag) }),
-    readPull: (repo, number) =>
-      deps.fetchPullRequestMetadata({ ...splitRepoName(repo), number, token }),
+    readPull: requests.readPull,
+    checkWhen: requests.checkWhen,
     runJob: async (job, requests) => {
       const setup = await jobSetup(job.repo, deps, check)
       choices.set(job.id, setup.choice)

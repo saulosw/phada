@@ -107,3 +107,20 @@ describe('resolveHookSettings', () => {
     ).toBe(120_000)
   })
 })
+
+describe('resolveWatchSettings when', () => {
+  it('gives every repository the when command of the watch, unless it has its own', () => {
+    const settings = resolveWatchSettings([
+      user({
+        watch: {
+          when: { command: './only-team.sh' },
+          repos: ['a/b', { repo: 'a/c', when: { command: './c.sh' } }],
+        },
+      }),
+    ])
+    expect(settings?.repos).toEqual([
+      { repo: 'a/b', publish: true, allowExternal: false, when: './only-team.sh' },
+      { repo: 'a/c', publish: true, allowExternal: false, when: './c.sh' },
+    ])
+  })
+})

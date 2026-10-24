@@ -294,6 +294,26 @@ describe('parseConfigText', () => {
     expect(parsed.ok).toBe(true)
   })
 
+  it('reads the when command of the watch and of a repository', () => {
+    const text = [
+      'watch:',
+      '  when: { command: ./filter.sh }',
+      '  repos:',
+      '    - repo: acme/web',
+      '      when: { command: "./web.sh --strict" }',
+    ].join('\n')
+
+    expect(parseConfigText(text)).toEqual({
+      ok: true,
+      config: {
+        watch: {
+          when: { command: './filter.sh' },
+          repos: [{ repo: 'acme/web', when: { command: './web.sh --strict' } }],
+        },
+      },
+    })
+  })
+
   it('reads the hooks of each review event', () => {
     const text = [
       'hooks:',

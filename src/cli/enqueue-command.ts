@@ -2,7 +2,7 @@ import { submitRequest } from '../app/submit-request.js'
 import { dataFiles } from '../config/data-paths.js'
 import type { LocalFileSystem } from '../config/local-files.js'
 import { loadTopLevelUserLayers } from '../config/user-config.js'
-import { formatPullRequestRef, splitRepoName } from '../github/pull-request-ref.js'
+import { formatPullRequestRef } from '../github/pull-request-ref.js'
 import type { PullRequestRef } from '../github/pull-request-ref.js'
 import type { FetchPullRequestOptions, PullRequestMetadata } from '../github/pull-request.js'
 import type { HistoryStore } from '../store/history-store.js'
@@ -11,6 +11,7 @@ import type { IndexFormat } from './args.js'
 import { MissingGitHubTokenError } from './errors.js'
 import { formatSubmitJson, formatSubmitText } from './format-request.js'
 import type { TextOutput } from './progress.js'
+import { submitDeps } from './request-wiring.js'
 import { requireWatchSettings } from './watch-command.js'
 
 export interface EnqueueCommand {
@@ -47,13 +48,7 @@ export async function runEnqueue(
   try {
     const result = await submitRequest(
       { repo: `${owner}/${repo}`, number, source: 'enqueue', publish: command.publish },
-      {
-        history,
-        settings,
-        readPull: (name, pull) =>
-          deps.fetchPullRequestMetadata({ ...splitRepoName(name), number: pull, token }),
-        now: deps.clock,
-      },
+      submitDeps(history, settings, token, deps),
     )
     const watchRunning = (await deps.lockHolder(files.lock)) !== undefined
     if (command.format === 'json') {

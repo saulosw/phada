@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { GitHubError } from './github/errors.js'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -1905,6 +1905,21 @@ describe('phada enqueue', () => {
 
     expect(await run(['enqueue', 'acme/shop#12', '--publish', 'slack'], h.deps)).toBe(2)
     expect(h.stderr()).toContain('Invalid --publish "slack". Use pr or none.')
+  })
+
+  it('refuses what the when command refuses, with what it wrote', async () => {
+    const config = join(storeDir, 'when-config')
+    const text = `${WATCH_CONFIG}  when: { command: 'echo "only the payments team" >&2; exit 1' }\n`
+    const h = harness({
+      env: { GITHUB_TOKEN: TOKEN, PHADA_CONFIG_HOME: config, PATH: process.env.PATH },
+      files: memoryFiles({ [join(config, 'config.yml')]: text }),
+    })
+    mkdirSync(config, { recursive: true })
+
+    expect(await run(['enqueue', 'acme/shop#12'], h.deps)).toBe(1)
+    expect(h.stderr()).toContain(
+      'Refused acme/shop#12: the when command refused it (only the payments team).',
+    )
   })
 
   it('lets the watch review a queued draft at once, without publishing when asked so', async () => {

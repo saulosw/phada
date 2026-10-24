@@ -5,7 +5,7 @@ import { later } from './time.js'
 import type { JobRecord, PublishTarget, RequestSource } from './types.js'
 
 export type RefusalReason =
-  'not-watched' | 'closed' | 'external' | 'already-reviewed' | 'hourly-limit'
+  'not-watched' | 'closed' | 'external' | 'when-command' | 'already-reviewed' | 'hourly-limit'
 
 export interface PullFacts {
   repo: string
@@ -14,6 +14,11 @@ export interface PullFacts {
   state: 'open' | 'closed'
   private: boolean
   association: string
+  author?: string
+  draft?: boolean
+  baseRef?: string
+  title?: string
+  labels?: string[]
 }
 
 export interface PolicyInput {
@@ -24,21 +29,23 @@ export interface PolicyInput {
   createdLastHour: readonly string[]
   maxPerHour: number
   now: string
+  whenRefusal?: string
 }
 
 export type RequestDecision =
   | { action: 'create'; job: Omit<JobRecord, 'id'> }
   | { action: 'join'; jobId: number; readyNow: boolean }
-  | { action: 'refuse'; reason: RefusalReason; jobId?: number; until?: string }
+  | { action: 'refuse'; reason: RefusalReason; jobId?: number; until?: string; message?: string }
 
 const REVIEWED_SKIPS: ReadonlySet<string> = new Set(['already-reviewed', 'same-diff'])
 
 export function decideRequest(input: PolicyInput): RequestDecision {
   const { repo, pull, request, now } = input
   if (repo === undefined) return { action: 'refuse', reason: 'not-watched' }
-  if (pull.state === 'closed') return { action: 'refuse', reason: 'closed' }
-  if (!pull.private && !repo.allowExternal && !TRUSTED_ASSOCIATIONS.has(pull.association)) {
-    return { action: 'refuse', reason: 'external' }
+  const gate = gateRefusal(repo, pull)
+  if (gate !== undefined) return { action: 'refuse', reason: gate }
+  if (input.whenRefusal !== undefined) {
+    return { action: 'refuse', reason: 'when-command', message: input.whenRefusal }
   }
   const sameCommit = input.jobs.filter(
     (job) => job.number === pull.number && job.headSha === pull.headSha,
@@ -70,6 +77,17 @@ export function decideRequest(input: PolicyInput): RequestDecision {
       createdAt: now,
     },
   }
+}
+
+export function gateRefusal(
+  repo: WatchedRepoSettings,
+  pull: PullFacts,
+): 'closed' | 'external' | undefined {
+  if (pull.state === 'closed') return 'closed'
+  if (!pull.private && !repo.allowExternal && !TRUSTED_ASSOCIATIONS.has(pull.association)) {
+    return 'external'
+  }
+  return undefined
 }
 
 export function publishOf(job: JobRecord): PublishTarget {

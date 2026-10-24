@@ -1,5 +1,5 @@
 import type { WatchedRepoSettings, WatchSettings } from '../config/watch-settings.js'
-import type { PullListing } from '../github/list-pull-requests.js'
+import type { OpenPull, PullListing } from '../github/list-pull-requests.js'
 import type { BranchHead } from '../github/repository.js'
 import type { DuePull, HistoryStore } from '../store/history-store.js'
 import type { PullFacts } from '../watch/request-policy.js'
@@ -11,7 +11,8 @@ import { planCycle } from '../watch/plan-cycle.js'
 import type { CycleAction } from '../watch/plan-cycle.js'
 import { errorMessage } from './error-message.js'
 import type { ReviewRun } from './review-and-publish.js'
-import { submitRequest } from './submit-request.js'
+import { submitRequest, whenInput } from './submit-request.js'
+import type { WhenInput } from './submit-request.js'
 
 export const IDLE_INDEX_BUDGET_MS = 60_000
 export const FEEDBACK_INTERVAL_MS = 1_800_000
@@ -63,6 +64,7 @@ export interface WatchDeps {
   defaultBranch(repo: string): Promise<string | undefined>
   branchHead(repo: string, branch: string, etag?: string): Promise<BranchHead>
   readPull(repo: string, number: number): Promise<PullFacts>
+  checkWhen?(command: string, input: WhenInput): Promise<string | undefined>
   runJob(job: JobRecord, requests: readonly RequestRecord[]): Promise<ReviewRun>
   recordRun(job: JobRecord, outcome: RunOutcome, startedAt: string): void
   refreshIndex(repo: string, budgetMs: number): Promise<'complete' | 'partial'>
@@ -177,7 +179,13 @@ async function discover(
     settleMs: input.settings.settleMs,
   })
   const ended: JobEvent[] = []
-  for (const action of actions) ended.push(...apply(action, repo, now, deps))
+  for (const action of actions) {
+    if (action.kind === 'enqueue' && (await refusedByWhen(action.job, repo, listing.pulls, deps))) {
+      history.addJob({ ...action.job, status: 'skipped', reason: 'when-command', finishedAt: now })
+      continue
+    }
+    ended.push(...apply(action, repo, now, deps))
+  }
   const { pullsEtag: _old, ...rest } = record
   history.saveRepo({
     ...rest,
@@ -295,6 +303,35 @@ async function runJob(
   return undefined
 }
 
+async function refusedByWhen(
+  job: Omit<JobRecord, 'id'>,
+  repo: WatchedRepoSettings,
+  pulls: readonly OpenPull[],
+  deps: WatchDeps,
+): Promise<boolean> {
+  const listed = pulls.find(({ number }) => number === job.number)
+  if (repo.when === undefined || deps.checkWhen === undefined || listed === undefined) return false
+  const pull: PullFacts = {
+    repo: repo.repo,
+    number: listed.number,
+    headSha: listed.headSha,
+    state: 'open',
+    private: listed.private,
+    association: listed.association,
+    author: listed.author,
+    draft: listed.draft,
+    baseRef: listed.baseRef,
+    labels: listed.labels,
+  }
+  const refusal = await deps.checkWhen(
+    repo.when,
+    whenInput(pull, { source: 'watch', publish: job.publish ?? 'pr' }),
+  )
+  if (refusal === undefined) return false
+  deps.events.warning(`${repo.repo}#${job.number}: the when command refused it (${refusal})`)
+  return true
+}
+
 async function notifyStaying(event: JobEvent, deps: WatchDeps): Promise<void> {
   const requests =
     event.reason === 'superseded'
@@ -316,7 +353,13 @@ async function follow(job: JobRecord, settings: WatchSettings, deps: WatchDeps):
           publish,
           ...(data === undefined ? {} : { data }),
         },
-        { history: deps.history, settings, readPull: deps.readPull, now: deps.now },
+        {
+          history: deps.history,
+          settings,
+          readPull: deps.readPull,
+          now: deps.now,
+          ...(deps.checkWhen === undefined ? {} : { checkWhen: deps.checkWhen }),
+        },
       )
       if (result.status === 'queued') deps.events.queued(result.job)
       if (result.status === 'refused') {

@@ -7,7 +7,7 @@ const SCHEMA_VERSION = 1
 
 export function refusalText(
   reason: RefusalReason,
-  result: { job?: JobRecord; until?: string },
+  result: { job?: JobRecord; until?: string; message?: string },
 ): string {
   switch (reason) {
     case 'not-watched':
@@ -16,6 +16,8 @@ export function refusalText(
       return 'the pull request is closed'
     case 'external':
       return 'the author is outside the repository (allowExternal: true in watch: lets them in)'
+    case 'when-command':
+      return `the when command refused it (${result.message ?? 'no reason given'})`
     case 'already-reviewed':
       return result.job === undefined
         ? 'this commit was already reviewed'

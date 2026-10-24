@@ -296,6 +296,33 @@ describe('watchRepositories', () => {
     expect(h.notified).toEqual(['skipped #3 closed [mcp]'])
   })
 
+  it('asks the when command before queueing a push, and remembers the refusal for the commit', async () => {
+    const asked: string[] = []
+    const settings = { ...SETTINGS, repos: [{ ...SETTINGS.repos[0]!, when: './team.sh' }] }
+    const h = await setup({
+      listings: (cycle) => ({ status: 'ok', pulls: cycle === 1 ? [] : [pull(3)] }),
+      settings,
+      stopWhen: ({ sleeps }) => sleeps === 3,
+    })
+    h.deps.checkWhen = async (command, input) => {
+      asked.push(
+        `${command} ${input.request.source} #${input.pullRequest.number} ${input.pullRequest.author}`,
+      )
+      return 'not the payments team'
+    }
+
+    await watchRepositories(input({ settings }), h.deps)
+
+    expect(asked).toEqual(['./team.sh watch #3 alice'])
+    expect(h.ran).toEqual([])
+    expect(h.store.jobs({})).toEqual([
+      expect.objectContaining({ status: 'skipped', reason: 'when-command' }),
+    ])
+    expect(h.events).toContain(
+      'warning acme/shop#3: the when command refused it (not the payments team)',
+    )
+  })
+
   it('notifies when a job starts and finishes', async () => {
     const h = await setup({
       listings: (cycle) => ({ status: 'ok', pulls: cycle === 1 ? [] : [pull(3)] }),

@@ -42,6 +42,8 @@ export const MIN_WATCH_INTERVAL_MS = 60_000
 
 const Duration = z.string().trim().regex(DURATION, 'use a duration like 90s, 5m or 1h')
 
+const WhenSchema = z.strictObject({ command: z.string().trim().min(1, 'give the command to run') })
+
 const WatchedRepoSchema = z.union([
   RepoName,
   z.strictObject({
@@ -51,6 +53,7 @@ const WatchedRepoSchema = z.union([
     authors: z.array(z.string().trim().min(1)).optional(),
     labels: z.array(z.string().trim().min(1)).optional(),
     baseBranches: z.array(z.string().trim().min(1)).optional(),
+    when: WhenSchema.optional(),
   }),
 ])
 
@@ -61,6 +64,7 @@ const WatchSchema = z.strictObject({
   ).optional(),
   settle: Duration.optional(),
   maxReviewsPerHour: z.number().int().min(1).max(60).optional(),
+  when: WhenSchema.optional(),
   repos: z
     .array(WatchedRepoSchema)
     .min(1, 'list at least one owner/repo')

@@ -1,7 +1,7 @@
 import type { WatchSettings } from '../config/watch-settings.js'
 import type { HistoryStore } from '../store/history-store.js'
 import { RATE_WINDOW_MS } from '../watch/next-job.js'
-import { decideRequest } from '../watch/request-policy.js'
+import { decideRequest, gateRefusal } from '../watch/request-policy.js'
 import type { PullFacts, RefusalReason } from '../watch/request-policy.js'
 import { later } from '../watch/time.js'
 import type { JobRecord, PublishTarget, RequestSource } from '../watch/types.js'
@@ -18,12 +18,25 @@ export interface SubmitDeps {
   history: HistoryStore
   settings: WatchSettings
   readPull(repo: string, number: number): Promise<PullFacts>
+  checkWhen?(command: string, input: WhenInput): Promise<string | undefined>
   now(): Date
+}
+
+export interface WhenInput {
+  schemaVersion: 1
+  pullRequest: PullFacts & { url: string }
+  request: { source: RequestSource; publish: PublishTarget; data?: Record<string, unknown> }
 }
 
 export type SubmitResult =
   | { status: 'queued' | 'joined'; job: JobRecord; requestId: number }
-  | { status: 'refused'; reason: RefusalReason; job?: JobRecord; until?: string }
+  | {
+      status: 'refused'
+      reason: RefusalReason
+      job?: JobRecord
+      until?: string
+      message?: string
+    }
 
 export async function submitRequest(
   input: ReviewRequestInput,
@@ -32,7 +45,11 @@ export async function submitRequest(
   const repoName = input.repo.toLowerCase()
   const repo = deps.settings.repos.find((entry) => entry.repo === repoName)
   if (repo === undefined) return { status: 'refused', reason: 'not-watched' }
-  const pull = await deps.readPull(repoName, input.number)
+  const pull = { ...(await deps.readPull(repoName, input.number)), repo: repoName }
+  const whenRefusal =
+    repo.when === undefined || deps.checkWhen === undefined || gateRefusal(repo, pull) !== undefined
+      ? undefined
+      : await deps.checkWhen(repo.when, whenInput(pull, input))
   const { history } = deps
   return history.transaction(() => {
     const now = deps.now().toISOString()
@@ -40,11 +57,12 @@ export async function submitRequest(
     const decision = decideRequest({
       request: { source: input.source, publish: input.publish },
       repo,
-      pull: { ...pull, repo: repoName },
+      pull,
       jobs,
       createdLastHour: history.jobsCreatedSince(later(now, -RATE_WINDOW_MS)),
       maxPerHour: deps.settings.maxReviewsPerHour,
       now,
+      ...(whenRefusal === undefined ? {} : { whenRefusal }),
     })
     if (decision.action === 'refuse') {
       const job = jobs.find(({ id }) => id === decision.jobId)
@@ -53,6 +71,7 @@ export async function submitRequest(
         reason: decision.reason,
         ...(job === undefined ? {} : { job }),
         ...(decision.until === undefined ? {} : { until: decision.until }),
+        ...(decision.message === undefined ? {} : { message: decision.message }),
       }
     }
     const request = {
@@ -75,4 +94,19 @@ export async function submitRequest(
     const requestId = history.addRequest({ ...request, jobId: existing.id })
     return { status: 'joined', job: { ...existing, ...changes }, requestId }
   })
+}
+
+export function whenInput(
+  pull: PullFacts,
+  request: Pick<ReviewRequestInput, 'source' | 'publish' | 'data'>,
+): WhenInput {
+  return {
+    schemaVersion: 1,
+    pullRequest: { ...pull, url: `https://github.com/${pull.repo}/pull/${pull.number}` },
+    request: {
+      source: request.source,
+      publish: request.publish,
+      ...(request.data === undefined ? {} : { data: request.data }),
+    },
+  }
 }

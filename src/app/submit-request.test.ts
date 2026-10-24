@@ -145,6 +145,64 @@ describe('submitRequest', () => {
     history.close()
   })
 
+  it('asks the when command with the pull request and the request, and refuses with its message', async () => {
+    const history = await fresh()
+    const asked: unknown[] = []
+    const settings = {
+      ...SETTINGS,
+      repos: [{ ...SETTINGS.repos[0]!, when: './team.sh' }],
+    }
+    const result = await submitRequest(
+      { ...REQUEST, source: 'slack', data: { channel: 'C1' } },
+      deps(history, {
+        settings,
+        checkWhen: async (command, input) => {
+          asked.push([command, input])
+          return 'not the payments team'
+        },
+      }).deps,
+    )
+
+    expect(result).toEqual({
+      status: 'refused',
+      reason: 'when-command',
+      message: 'not the payments team',
+    })
+    expect(asked).toEqual([
+      [
+        './team.sh',
+        {
+          schemaVersion: 1,
+          pullRequest: { ...PULL, url: 'https://github.com/acme/shop/pull/7' },
+          request: { source: 'slack', publish: 'pr', data: { channel: 'C1' } },
+        },
+      ],
+    ])
+    expect(history.jobs({})).toEqual([])
+    history.close()
+  })
+
+  it('does not ask the when command for a request refused before it', async () => {
+    const history = await fresh()
+    let asked = 0
+    const settings = { ...SETTINGS, repos: [{ ...SETTINGS.repos[0]!, when: './team.sh' }] }
+    const result = await submitRequest(
+      REQUEST,
+      deps(history, {
+        settings,
+        readPull: async () => ({ ...PULL, state: 'closed' }),
+        checkWhen: async () => {
+          asked += 1
+          return undefined
+        },
+      }).deps,
+    )
+
+    expect(result).toEqual({ status: 'refused', reason: 'closed' })
+    expect(asked).toBe(0)
+    history.close()
+  })
+
   it('matches the repository without caring about case', async () => {
     const history = await fresh()
     const result = await submitRequest({ ...REQUEST, repo: 'Acme/Shop' }, deps(history).deps)

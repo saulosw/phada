@@ -14,6 +14,7 @@ export interface WatchedRepoSettings {
   authors?: string[]
   labels?: string[]
   baseBranches?: string[]
+  when?: string
 }
 
 export interface WatchSettings {
@@ -32,15 +33,17 @@ export function resolveWatchSettings(layers: readonly ConfigLayer[]): WatchSetti
     settleMs: watch.settle === undefined ? DEFAULT_SETTLE_MS : durationMs(watch.settle),
     maxReviewsPerHour: watch.maxReviewsPerHour ?? DEFAULT_MAX_REVIEWS_PER_HOUR,
     repos: watch.repos.map((entry) => {
+      const fallback = watch.when === undefined ? {} : { when: watch.when.command }
       if (typeof entry === 'string') {
-        return { repo: entry.toLowerCase(), publish: true, allowExternal: false }
+        return { repo: entry.toLowerCase(), publish: true, allowExternal: false, ...fallback }
       }
-      const { repo, publish, allowExternal, ...filters } = entry
+      const { repo, publish, allowExternal, when, ...filters } = entry
       return {
         repo: repo.toLowerCase(),
         publish: publish ?? true,
         allowExternal: allowExternal ?? false,
         ...filters,
+        ...(when === undefined ? fallback : { when: when.command }),
       }
     }),
   }
