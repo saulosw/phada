@@ -149,6 +149,8 @@ async function setup(script: Script, history?: HistoryStore) {
       indexPartial: (repo) => events.push(`partial ${repo}`),
       feedback: (repo, number, threads) => events.push(`observed ${repo}#${number} ${threads}`),
       warning: (message) => events.push(`warning ${message}`),
+      refused: (request, result) =>
+        events.push(`refused ${request.source} #${request.number} ${result.reason}`),
       limited: (count, until) =>
         events.push(`limited ${count} until ${(Date.parse(until) - START) / MIN}`),
     },
@@ -321,6 +323,98 @@ describe('watchRepositories', () => {
     expect(h.events).toContain(
       'warning acme/shop#3: the when command refused it (not the payments team)',
     )
+  })
+
+  it('takes a /phada review comment as a request, reacts to it and reviews at once', async () => {
+    const reacted: number[] = []
+    const sinces: string[] = []
+    const h = await setup({
+      listings: () => ({ status: 'not-modified' }),
+      stopWhen: ({ ran }) => ran.length === 1,
+    })
+    const baselineAt = new Date(START - 60 * MIN).toISOString()
+    h.store.saveRepo({ repo: 'acme/shop', baselineAt })
+    h.deps.listComments = async (_repo, since) => {
+      sinces.push(since)
+      return {
+        status: 'ok',
+        etag: 'W/"c"',
+        comments: [
+          {
+            id: 40,
+            body: '/phada review',
+            author: 'alice',
+            authorIsBot: false,
+            association: 'MEMBER',
+            createdAt: new Date(START - MIN).toISOString(),
+            url: 'https://github.com/acme/shop/pull/3#issuecomment-40',
+            number: 3,
+            pullRequest: true,
+          },
+          {
+            id: 41,
+            body: '/phada review',
+            author: 'mallory',
+            authorIsBot: false,
+            association: 'NONE',
+            createdAt: new Date(START).toISOString(),
+            url: 'https://github.com/acme/shop/pull/3#issuecomment-41',
+            number: 3,
+            pullRequest: true,
+          },
+        ],
+      }
+    }
+    h.deps.react = async (_repo, id) => {
+      reacted.push(id)
+    }
+
+    await watchRepositories(input(), h.deps)
+
+    expect(sinces).toEqual([baselineAt])
+    expect(reacted).toEqual([40])
+    expect(h.asked[0]).toMatchObject([
+      { source: 'pr-command', publish: 'pr', data: { commentId: 40, author: 'alice' } },
+    ])
+    expect(h.store.repo('acme/shop')).toMatchObject({
+      commentsEtag: 'W/"c"',
+      commentsLastId: 41,
+      commentsSince: new Date(START).toISOString(),
+    })
+  })
+
+  it('says why a /phada review was refused, without reacting', async () => {
+    const reacted: number[] = []
+    const h = await setup({
+      listings: () => ({ status: 'not-modified' }),
+      readPull: () => ({ headSha: A, state: 'closed' }),
+      stopWhen: ({ sleeps }) => sleeps === 1,
+    })
+    h.store.saveRepo({ repo: 'acme/shop', baselineAt: new Date(START - 60 * MIN).toISOString() })
+    h.deps.listComments = async () => ({
+      status: 'ok',
+      comments: [
+        {
+          id: 40,
+          body: '/phada review',
+          author: 'alice',
+          authorIsBot: false,
+          association: 'OWNER',
+          createdAt: new Date(START).toISOString(),
+          url: 'u',
+          number: 3,
+          pullRequest: true,
+        },
+      ],
+    })
+    h.deps.react = async (_repo, id) => {
+      reacted.push(id)
+    }
+
+    await watchRepositories(input(), h.deps)
+
+    expect(h.events).toContain('refused pr-command #3 closed')
+    expect(reacted).toEqual([])
   })
 
   it('notifies when a job starts and finishes', async () => {

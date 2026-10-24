@@ -128,6 +128,9 @@ create index job_by_created on job (created_at);
 alter table run add column verdict text
   check (verdict in ('clean', 'comments', 'blocking', 'failed', 'skipped'));
 create index run_by_job on run (job_id);
+alter table watched_repo add column comments_since text;
+alter table watched_repo add column comments_etag text;
+alter table watched_repo add column comments_last_id integer;
 `,
   },
 ]

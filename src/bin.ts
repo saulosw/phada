@@ -15,6 +15,7 @@ import { openIndexStore } from './store/index-store.js'
 import { openObservedStore } from './store/observed-store.js'
 import { openHistoryStore } from './store/history-store.js'
 import { setTimeout as wait } from 'node:timers/promises'
+import { addCommentReaction, listIssueComments } from './github/issue-comments.js'
 import { listOpenPullRequests } from './github/list-pull-requests.js'
 import {
   fetchPullRequest,
@@ -57,6 +58,8 @@ process.exitCode = await run(process.argv.slice(2), {
   createProvider,
   openHistoryStore: (path) => openHistoryStore(path),
   listOpenPullRequests,
+  listIssueComments,
+  addCommentReaction,
   fetchPullRequestHead,
   fetchPullRequestMetadata,
   fetchBranchHead,

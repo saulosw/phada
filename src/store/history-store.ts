@@ -65,6 +65,9 @@ export interface RepoRecord {
   branchEtag?: string
   branchCheckedAt?: string
   indexedSha?: string
+  commentsSince?: string
+  commentsEtag?: string
+  commentsLastId?: number
 }
 
 export interface RunRecord {

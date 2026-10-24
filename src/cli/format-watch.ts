@@ -1,4 +1,6 @@
 import type { ReviewRun } from '../app/review-and-publish.js'
+import type { ReviewRequestInput, SubmitResult } from '../app/submit-request.js'
+import { refusalText } from './format-request.js'
 import type { HistoryStatus, RunRecord, StatusJob } from '../store/history-store.js'
 import type { JobRecord, PauseState } from '../watch/types.js'
 import { errorMessage } from '../app/error-message.js'
@@ -28,6 +30,11 @@ export type WatchEventView =
   | { kind: 'feedback'; repo: string; number: number; threads: number }
   | { kind: 'warning'; message: string }
   | { kind: 'limited'; count: number; until: string }
+  | {
+      kind: 'refused'
+      request: ReviewRequestInput
+      result: SubmitResult & { status: 'refused' }
+    }
 
 export function formatWatchEvent(event: WatchEventView, at: Date): string {
   return `[${clock(at)}] ${toTerminalText(eventText(event))}`
@@ -61,6 +68,8 @@ function eventText(event: WatchEventView): string {
       return `Warning: ${event.message}`
     case 'limited':
       return `${formatCount(event.count, 'review')} in the last hour (maxReviewsPerHour): the next one starts at ${clock(new Date(event.until))}.`
+    case 'refused':
+      return `Refused a ${event.request.source} request for ${event.request.repo}#${event.request.number}: ${refusalText(event.result.reason, event.result)}.`
   }
 }
 

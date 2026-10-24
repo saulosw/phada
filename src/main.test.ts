@@ -168,6 +168,7 @@ function harness(
     withLock?: MainDeps['withLock']
     lockHolder?: number
     stdin?: string[]
+    comments?: MainDeps['listIssueComments']
   } = {},
 ): Harness {
   const checkouts: (GitMirrorOptions & { sha: string; keepAs: string })[] = []
@@ -285,6 +286,11 @@ function harness(
     },
     listOpenPullRequests:
       overrides.listPulls ?? (() => Promise.resolve({ status: 'ok' as const, pulls: [] })),
+    listIssueComments:
+      overrides.comments ?? (() => Promise.resolve({ status: 'ok' as const, comments: [] })),
+    addCommentReaction: async (options) => {
+      events.push(`react ${options.commentId}`)
+    },
     fetchPullRequestMetadata: () =>
       overrides.pullRequest?.() ?? Promise.resolve(pullRequestFixture()),
     fetchPullRequestHead:
@@ -2087,6 +2093,36 @@ describe('phada watch', () => {
     db.close()
     expect(findings).toEqual([{ repo: 'acme/shop', number: 12, thread_id: null }])
     expect(observed).toEqual([{ repo: 'acme/shop', number: 12, pull_state: 'open' }])
+  })
+
+  it('reviews a pull request at once when its owner comments /phada review, with an eyes reaction', async () => {
+    const h = harness({
+      files: withConfig(),
+      listPulls: listed,
+      review: () => Promise.resolve(WITH_FINDING),
+      comments: () =>
+        Promise.resolve({
+          status: 'ok' as const,
+          comments: [
+            {
+              id: 77,
+              body: '/phada review',
+              author: 'octocat',
+              authorIsBot: false,
+              association: 'OWNER',
+              createdAt: '2026-10-18T12:00:00Z',
+              url: 'https://github.com/acme/shop/pull/12#issuecomment-77',
+              number: 12,
+              pullRequest: true,
+            },
+          ],
+        }),
+    })
+
+    expect(await run(['watch', '--once'], h.deps)).toBe(0)
+
+    expect(h.events).toContain('react 77')
+    expect(h.posts).toHaveLength(1)
   })
 
   it('saves the verdict of each watch review and of a failed one', async () => {

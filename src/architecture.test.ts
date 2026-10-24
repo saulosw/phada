@@ -39,7 +39,11 @@ const PUBLISH: Boundary = {
 const WATCH: Boundary = {
   dir: 'watch',
   values: new Set(),
-  types: new Set(['../config/watch-settings.js', '../github/list-pull-requests.js']),
+  types: new Set([
+    '../config/watch-settings.js',
+    '../github/list-pull-requests.js',
+    '../github/issue-comments.js',
+  ]),
   expected: ['failures.ts', 'filters.ts', 'next-job.ts', 'plan-cycle.ts', 'time.ts', 'types.ts'],
   globals: ['process', 'console', 'Date.now', 'setTimeout'],
 }
@@ -226,6 +230,7 @@ const APP: Boundary = {
     '../watch/next-job.js',
     '../watch/plan-cycle.js',
     '../watch/request-policy.js',
+    '../watch/pr-commands.js',
     '../watch/time.js',
   ]),
   types: new Set([
@@ -241,6 +246,7 @@ const APP: Boundary = {
     '../github/pull-request-ref.js',
     '../github/pull-request-reviews.js',
     '../github/list-pull-requests.js',
+    '../github/issue-comments.js',
     '../github/pull-request.js',
     '../github/repository.js',
     '../graph/packages.js',

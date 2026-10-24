@@ -124,6 +124,14 @@ describe('formatWatchEvent', () => {
     ],
     [{ kind: 'warning', message: 'acme/web: no access' }, '[14:03] Warning: acme/web: no access'],
     [
+      {
+        kind: 'refused',
+        request: { repo: 'acme/shop', number: 3, source: 'pr-command', publish: 'pr' },
+        result: { status: 'refused', reason: 'closed' },
+      },
+      '[14:03] Refused a pr-command request for acme/shop#3: the pull request is closed.',
+    ],
+    [
       { kind: 'limited', count: 6, until: local(14, 40).toISOString() },
       '[14:03] 6 reviews in the last hour (maxReviewsPerHour): the next one starts at 14:40.',
     ],

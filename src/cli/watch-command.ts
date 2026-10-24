@@ -22,6 +22,7 @@ import type { ConfigLayer } from '../config/types.js'
 import type { ComparedFile, CompareOptions } from '../github/compare-commits.js'
 import type { CreatedReview, CreateReviewOptions } from '../github/create-review.js'
 import type { ReplyAndResolveOptions } from '../github/resolve-thread.js'
+import type { CommentListing } from '../github/issue-comments.js'
 import type { PullListing } from '../github/list-pull-requests.js'
 import type {
   FetchReviewStateOptions,
@@ -83,6 +84,10 @@ export interface WatchCommandDeps extends ReviewWiringDeps {
     options: RepositoryFilesOptions & { etag?: string },
   ) => Promise<PullListing>
   fetchPullRequestMetadata: (options: FetchPullRequestOptions) => Promise<PullRequestMetadata>
+  listIssueComments: (
+    options: RepositoryFilesOptions & { since: string; etag?: string },
+  ) => Promise<CommentListing>
+  addCommentReaction: (options: RepositoryFilesOptions & { commentId: number }) => Promise<void>
   fetchPullRequestHead: (
     options: FetchPullRequestOptions,
   ) => Promise<{ state: 'open' | 'closed'; draft: boolean; headSha: string }>
@@ -219,6 +224,10 @@ function watchDeps(
     branchHead: (repo, branch, etag) =>
       deps.fetchBranchHead({ ...splitRepoName(repo), branch, token, ...withEtag(etag) }),
     readPull: requests.readPull,
+    listComments: (repo, since, etag) =>
+      deps.listIssueComments({ ...splitRepoName(repo), token, since, ...withEtag(etag) }),
+    react: (repo, commentId) =>
+      deps.addCommentReaction({ ...splitRepoName(repo), token, commentId }),
     checkWhen: requests.checkWhen,
     runJob: async (job, requests) => {
       const setup = await jobSetup(job.repo, deps, check)

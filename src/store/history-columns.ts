@@ -24,6 +24,9 @@ export const REPO_TABLE: HistoryTable = {
     branchEtag: 'branch_etag',
     branchCheckedAt: 'branch_checked_at',
     indexedSha: 'indexed_sha',
+    commentsSince: 'comments_since',
+    commentsEtag: 'comments_etag',
+    commentsLastId: 'comments_last_id',
   },
 }
 
@@ -160,6 +163,7 @@ const NUMBERS = new Set([
   'confidence',
   'runId',
   'findingId',
+  'commentsLastId',
 ])
 const BOOLEANS = new Set(['eligible', 'aiCalled', 'outdated'])
 const JSON_FIELDS = new Set(['data'])

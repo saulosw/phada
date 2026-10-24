@@ -1,4 +1,5 @@
 import type { WatchedRepoSettings, WatchSettings } from '../config/watch-settings.js'
+import type { CommentListing } from '../github/issue-comments.js'
 import type { OpenPull, PullListing } from '../github/list-pull-requests.js'
 import type { BranchHead } from '../github/repository.js'
 import type { DuePull, HistoryStore } from '../store/history-store.js'
@@ -8,11 +9,12 @@ import { afterFailure, MAX_ATTEMPTS, rateLimitPause } from '../watch/failures.js
 import { later } from '../watch/time.js'
 import { pickNext, RATE_WINDOW_MS } from '../watch/next-job.js'
 import { planCycle } from '../watch/plan-cycle.js'
+import { prCommands } from '../watch/pr-commands.js'
 import type { CycleAction } from '../watch/plan-cycle.js'
 import { errorMessage } from './error-message.js'
 import type { ReviewRun } from './review-and-publish.js'
 import { submitRequest, whenInput } from './submit-request.js'
-import type { WhenInput } from './submit-request.js'
+import type { ReviewRequestInput, SubmitDeps, SubmitResult, WhenInput } from './submit-request.js'
 
 export const IDLE_INDEX_BUDGET_MS = 60_000
 export const FEEDBACK_INTERVAL_MS = 1_800_000
@@ -49,6 +51,7 @@ export interface WatchEvents {
   feedback(repo: string, number: number, threads: number): void
   warning(message: string): void
   limited(count: number, until: string): void
+  refused(request: ReviewRequestInput, result: SubmitResult & { status: 'refused' }): void
 }
 
 export interface JobEvent {
@@ -65,6 +68,8 @@ export interface WatchDeps {
   branchHead(repo: string, branch: string, etag?: string): Promise<BranchHead>
   readPull(repo: string, number: number): Promise<PullFacts>
   checkWhen?(command: string, input: WhenInput): Promise<string | undefined>
+  listComments?(repo: string, since: string, etag?: string): Promise<CommentListing>
+  react?(repo: string, commentId: number): Promise<void>
   runJob(job: JobRecord, requests: readonly RequestRecord[]): Promise<ReviewRun>
   recordRun(job: JobRecord, outcome: RunOutcome, startedAt: string): void
   refreshIndex(repo: string, budgetMs: number): Promise<'complete' | 'partial'>
@@ -138,16 +143,23 @@ async function discover(
   deps: WatchDeps,
   always: boolean,
 ): Promise<WatchExit | undefined> {
+  const checkedAt = deps.history.repo(repo.repo)?.checkedAt
+  const due =
+    always || checkedAt === undefined || later(checkedAt, input.settings.intervalMs) <= iso(deps)
+  if (!due) return undefined
+  const exit = await discoverPulls(repo, input, deps)
+  if (exit === undefined) await scanCommands(repo, input.settings, deps)
+  return exit
+}
+
+async function discoverPulls(
+  repo: WatchedRepoSettings,
+  input: WatchInput,
+  deps: WatchDeps,
+): Promise<WatchExit | undefined> {
   const { history } = deps
   const record = history.repo(repo.repo) ?? { repo: repo.repo }
   const now = iso(deps)
-  const due =
-    always ||
-    record.checkedAt === undefined ||
-    later(record.checkedAt, input.settings.intervalMs) <= now
-  if (!due) {
-    return undefined
-  }
   let listing: PullListing
   try {
     listing = await deps.listPulls(repo.repo, record.pullsEtag)
@@ -303,6 +315,70 @@ async function runJob(
   return undefined
 }
 
+async function scanCommands(
+  repo: WatchedRepoSettings,
+  settings: WatchSettings,
+  deps: WatchDeps,
+): Promise<void> {
+  const { history } = deps
+  const record = history.repo(repo.repo)
+  if (record?.baselineAt === undefined || deps.listComments === undefined) return
+  let listing: CommentListing
+  try {
+    listing = await deps.listComments(
+      repo.repo,
+      record.commentsSince ?? record.baselineAt,
+      record.commentsEtag,
+    )
+  } catch (error) {
+    deps.events.warning(`${repo.repo}: could not read the comments (${errorMessage(error)})`)
+    return
+  }
+  if (listing.status === 'not-modified') return
+  const scan = prCommands(listing.comments, {
+    baselineAt: record.baselineAt,
+    ...(record.commentsLastId === undefined ? {} : { lastId: record.commentsLastId }),
+  })
+  history.saveRepo({
+    ...record,
+    ...(listing.etag === undefined ? {} : { commentsEtag: listing.etag }),
+    ...(scan.lastId === undefined ? {} : { commentsLastId: scan.lastId }),
+    ...(scan.since === undefined ? {} : { commentsSince: scan.since }),
+  })
+  for (const command of scan.commands) {
+    const request = {
+      repo: repo.repo,
+      number: command.number,
+      source: 'pr-command' as const,
+      publish: 'pr' as const,
+      data: { commentId: command.commentId, url: command.url, author: command.author },
+    }
+    try {
+      const result = await submitRequest(request, submitDepsOf(settings, deps))
+      if (result.status === 'refused') {
+        deps.events.refused(request, result)
+        continue
+      }
+      if (result.status === 'queued') deps.events.queued(result.job)
+      await deps.react?.(repo.repo, command.commentId)
+    } catch (error) {
+      deps.events.warning(
+        `${repo.repo}#${command.number}: could not take /phada review (${errorMessage(error)})`,
+      )
+    }
+  }
+}
+
+function submitDepsOf(settings: WatchSettings, deps: WatchDeps): SubmitDeps {
+  return {
+    history: deps.history,
+    settings,
+    readPull: deps.readPull,
+    now: deps.now,
+    ...(deps.checkWhen === undefined ? {} : { checkWhen: deps.checkWhen }),
+  }
+}
+
 async function refusedByWhen(
   job: Omit<JobRecord, 'id'>,
   repo: WatchedRepoSettings,
@@ -353,13 +429,7 @@ async function follow(job: JobRecord, settings: WatchSettings, deps: WatchDeps):
           publish,
           ...(data === undefined ? {} : { data }),
         },
-        {
-          history: deps.history,
-          settings,
-          readPull: deps.readPull,
-          now: deps.now,
-          ...(deps.checkWhen === undefined ? {} : { checkWhen: deps.checkWhen }),
-        },
+        submitDepsOf(settings, deps),
       )
       if (result.status === 'queued') deps.events.queued(result.job)
       if (result.status === 'refused') {
