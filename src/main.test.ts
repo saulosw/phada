@@ -41,6 +41,7 @@ import {
 } from './publish/markers.js'
 import { RECHECK_JSON_SCHEMA } from './review/recheck-schema.js'
 import { providerRunsSkills } from './cli/provider-choice.js'
+import type { ReviewEvent } from './cli/review-event.js'
 import { createProvider, run } from './main.js'
 import type { MainDeps, ProviderOptions } from './main.js'
 import { ClaudeCliProvider } from './providers/claude.js'
@@ -2022,6 +2023,57 @@ describe('phada watch', () => {
     const verdicts = db.prepare('select status, verdict from run').all()
     db.close()
     expect(verdicts).toEqual([{ status: 'published', verdict: 'blocking' }])
+  })
+
+  it('sends each review event to the hooks with the full review when it finishes', async () => {
+    const hooked: ReviewEvent[] = []
+    const h = harness({
+      files: withConfig(`${WATCH_CONFIG}hooks:\n  review.finished: ./notify.sh\n`),
+      listPulls: listed,
+      review: () => Promise.resolve(WITH_FINDING),
+    })
+    h.deps.runHook = async (event, settings) => {
+      hooked.push(event)
+      expect(settings).toMatchObject({ commands: { 'review.finished': './notify.sh' } })
+      return event.event === 'review.finished'
+        ? 'The review.finished hook exited with 1'
+        : undefined
+    }
+
+    expect(await run(['watch', '--once', '--backfill'], h.deps)).toBe(0)
+
+    expect(hooked.map(({ event }) => event)).toEqual(['review.started', 'review.finished'])
+    expect(hooked[1]).toMatchObject({
+      job: { repo: 'acme/shop', number: 12, url: 'https://github.com/acme/shop/pull/12' },
+      requests: [{ source: 'watch', publish: 'pr' }],
+      verdict: 'blocking',
+      publication: { status: 'published', url: REVIEW_URL },
+      review: { verdict: 'blocking', review: { findings: [{ file: 'src/shop.ts', line: 3 }] } },
+    })
+    expect(h.stderr()).toContain('Warning: The review.finished hook exited with 1')
+  })
+
+  it('gives the hook the review of a request that does not publish, and posts nothing', async () => {
+    const hooked: ReviewEvent[] = []
+    const h = harness({
+      files: withConfig(`${WATCH_CONFIG}hooks:\n  review.finished: ./notify.sh\n`),
+      review: () => Promise.resolve(WITH_FINDING),
+    })
+    h.deps.runHook = async (event) => {
+      hooked.push(event)
+      return undefined
+    }
+
+    expect(await run(['enqueue', 'acme/shop#12', '--publish', 'none'], h.deps)).toBe(0)
+    expect(await run(['watch', '--once'], h.deps)).toBe(0)
+
+    expect(h.posts).toHaveLength(0)
+    expect(hooked[1]).toMatchObject({
+      event: 'review.finished',
+      requests: [{ source: 'enqueue', publish: 'none' }],
+      publication: { status: 'not-published' },
+      review: { review: { findings: [{ line: 3 }] } },
+    })
   })
 
   it('records the open pull requests without reviewing them on the first run', async () => {

@@ -132,6 +132,7 @@ export interface HistoryStore {
   requests(jobIds: readonly number[]): RequestRecord[]
   transaction<T>(work: () => T): T
   addRun(run: RunRecord): number
+  runOfJob(jobId: number): RunRecord | undefined
   watchRunsSince(iso: string): string[]
   pause(): PauseState | undefined
   setPause(state: PauseState | undefined): void
@@ -337,6 +338,13 @@ class SqliteHistoryStore implements HistoryStore {
 
   addRun(run: RunRecord): number {
     return Number(this.#run(insertStatement(RUN_TABLE, run)).lastInsertRowid)
+  }
+
+  runOfJob(jobId: number): RunRecord | undefined {
+    const row = this.#db
+      .prepare('select * from run where job_id = ? order by id desc limit 1')
+      .get(jobId)
+    return row === undefined ? undefined : fromRow<RunRecord>(row, RUN_TABLE)
   }
 
   watchRunsSince(iso: string): string[] {

@@ -74,6 +74,28 @@ const WatchSchema = z.strictObject({
     }),
 })
 
+export const REVIEW_EVENTS = [
+  'review.started',
+  'review.finished',
+  'review.failed',
+  'review.skipped',
+] as const
+export type ReviewEventName = (typeof REVIEW_EVENTS)[number]
+
+const MAX_HOOK_TIMEOUT_MS = 600_000
+const HookCommand = z.string().trim().min(1, 'give the command to run')
+
+const HooksSchema = z.strictObject({
+  'review.started': HookCommand.optional(),
+  'review.finished': HookCommand.optional(),
+  'review.failed': HookCommand.optional(),
+  'review.skipped': HookCommand.optional(),
+  timeout: Duration.refine(
+    (text) => !DURATION.test(text) || durationMs(text) <= MAX_HOOK_TIMEOUT_MS,
+    'must be 10m at most',
+  ).optional(),
+})
+
 export const SKILL_NAME = /^[\w.-]+(:[\w.-]+)?$/
 
 const SkillName = z
@@ -248,6 +270,7 @@ export const ConfigFileSchema = z.strictObject({
   history: z.boolean().optional(),
   review: ReviewSchema.optional(),
   watch: WatchSchema.optional(),
+  hooks: HooksSchema.optional(),
 })
 
 export type ConfigFile = z.infer<typeof ConfigFileSchema>

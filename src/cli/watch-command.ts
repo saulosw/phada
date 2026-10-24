@@ -11,8 +11,12 @@ import { mergeConfig, resolveProvider } from '../config/merge-config.js'
 import { resolveMcp, userMcp } from '../config/mcp-servers.js'
 import { BUILT_IN_SKILL, builtInSkillError } from '../app/review-passes.js'
 import { loadTopLevelUserLayers, loadUserLayers } from '../config/user-config.js'
-import { historyEnabled, resolveWatchSettings } from '../config/watch-settings.js'
-import type { WatchSettings } from '../config/watch-settings.js'
+import {
+  historyEnabled,
+  resolveHookSettings,
+  resolveWatchSettings,
+} from '../config/watch-settings.js'
+import type { HookSettings, WatchSettings } from '../config/watch-settings.js'
 import { splitRepoName } from '../github/pull-request-ref.js'
 import type { ConfigLayer } from '../config/types.js'
 import type { ComparedFile, CompareOptions } from '../github/compare-commits.js'
@@ -52,6 +56,8 @@ import { mcpNameChecker } from './review-wiring.js'
 import type { Choice, ReviewWiringDeps } from './review-wiring.js'
 import type { CheckedNames, NameCheck } from './mcp-names.js'
 import type { McpNameEntry, ResolvedMcp } from '../config/mcp-servers.js'
+import { reviewEvent } from './review-event.js'
+import { runHook } from './run-hook.js'
 import { printWatchEvents } from './watch-events.js'
 import { watchStatusText } from './watch-status.js'
 import { ABORTED_EXIT_CODE, createStopControl, trackRunningJob } from './watch-stop.js'
@@ -84,6 +90,7 @@ export interface WatchCommandDeps extends ReviewWiringDeps {
   abort: (code: number) => void
   sleep: (ms: number, signal: AbortSignal) => Promise<void>
   clock: () => Date
+  runHook?: typeof runHook
 }
 
 export interface WatchCommand {
@@ -123,7 +130,7 @@ export async function runWatch(command: WatchCommand, deps: WatchCommandDeps): P
   try {
     return await deps.withLock(files.lock, () => {
       locked = true
-      return watchUnderLock(command, settings, token, deps, check)
+      return watchUnderLock(command, settings, resolveHookSettings(layers), token, deps, check)
     })
   } catch (error) {
     if (locked || !(error instanceof MirrorLockTimeoutError)) throw error
@@ -152,6 +159,7 @@ export function requireWatchSettings(layers: readonly ConfigLayer[]): WatchSetti
 async function watchUnderLock(
   command: WatchCommand,
   settings: WatchSettings,
+  hooks: HookSettings | undefined,
   token: string,
   deps: WatchCommandDeps,
   check: NameCheck,
@@ -166,7 +174,7 @@ async function watchUnderLock(
   })
   const watched = watchRepositories(
     { settings, backfill: command.backfill, once: command.once },
-    watchDeps(settings, token, history, stop, deps, check),
+    watchDeps(settings, hooks, token, history, stop, deps, check),
   ).then((exit) => {
     if (stop.abortedTwice()) return ABORTED_EXIT_CODE
     history.close()
@@ -184,6 +192,7 @@ async function watchUnderLock(
 
 function watchDeps(
   settings: WatchSettings,
+  hooks: HookSettings | undefined,
   token: string,
   history: HistoryStore,
   stop: StopControl,
@@ -253,6 +262,12 @@ function watchDeps(
           () => stop.stopRequested(),
         ),
       )
+    },
+    notify: async (event) => {
+      if (hooks === undefined) return
+      const run = event.kind === 'started' ? undefined : history.runOfJob(event.job.id)
+      const warning = await (deps.runHook ?? runHook)(reviewEvent(event, run), hooks, deps.env)
+      if (warning !== undefined) events.warning(warning)
     },
     classify: (error) => classifyFailure(error, deps.clock()),
     now: () => deps.clock(),

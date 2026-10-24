@@ -74,7 +74,7 @@ interface Script {
   refreshFeedback?: (pulls: readonly DuePull[]) => Promise<void>
   stopWhen?: (state: { now: number; ran: JobRecord[]; sleeps: number }) => boolean
   settings?: WatchSettings
-  readPull?: (repo: string, number: number) => { headSha: string }
+  readPull?: (repo: string, number: number) => { headSha: string; state?: 'open' | 'closed' }
 }
 
 async function setup(script: Script, history?: HistoryStore) {
@@ -84,6 +84,7 @@ async function setup(script: Script, history?: HistoryStore) {
   let sleeps = 0
   const ran: JobRecord[] = []
   const asked: RequestRecord[][] = []
+  const notified: string[] = []
   const events: string[] = []
   const recorded: string[] = []
   const indexed: number[] = []
@@ -98,7 +99,7 @@ async function setup(script: Script, history?: HistoryStore) {
       repo,
       number,
       headSha: script.readPull?.(repo, number).headSha ?? A,
-      state: 'open',
+      state: script.readPull?.(repo, number).state ?? 'open',
       private: false,
       association: 'MEMBER',
     }),
@@ -119,6 +120,12 @@ async function setup(script: Script, history?: HistoryStore) {
     refreshFeedback: async (pulls) => {
       events.push(`feedback ${pulls.map((due) => `${due.repo}#${due.number}`).join(' ')}`)
       await script.refreshFeedback?.(pulls)
+    },
+    notify: async ({ kind, job, reason, requests }) => {
+      const sources = requests.map(({ source }) => source).join(',')
+      notified.push(
+        `${kind} #${job.number}${reason === undefined ? '' : ` ${reason}`} [${sources}]`,
+      )
     },
     classify: script.classify ?? (() => ({ kind: 'transient' })),
     now: () => new Date(now),
@@ -146,7 +153,7 @@ async function setup(script: Script, history?: HistoryStore) {
         events.push(`limited ${count} until ${(Date.parse(until) - START) / MIN}`),
     },
   }
-  return { deps, store, ran, asked, events, recorded, indexed, now: () => now - START }
+  return { deps, store, ran, asked, notified, events, recorded, indexed, now: () => now - START }
 }
 
 const input = (overrides: Partial<Parameters<typeof watchRepositories>[0]> = {}) => ({
@@ -254,6 +261,97 @@ describe('watchRepositories', () => {
     expect(h.ran.map((job) => job.headSha)).toEqual([B])
     expect(h.asked[0]?.map(({ source }) => source)).toEqual(['mcp'])
     expect(h.events.slice(0, 2)).toEqual(['superseded #3', 'queued #3 b'])
+  })
+
+  it('tells a moved request it was refused on the new commit', async () => {
+    const h = await setup({
+      listings: (cycle) => ({
+        status: 'ok',
+        pulls: [pull(3, cycle === 1 ? A : B, { draft: true })],
+      }),
+      readPull: () => ({ headSha: B, state: 'closed' }),
+      stopWhen: ({ sleeps }) => sleeps === 2,
+    })
+    h.store.saveRepo({ repo: 'acme/shop', baselineAt: new Date(START - MIN).toISOString() })
+    h.store.addJob({
+      repo: 'acme/shop',
+      number: 3,
+      headSha: A,
+      status: 'queued',
+      attempts: 0,
+      notBefore: new Date(START + 60 * MIN).toISOString(),
+      publish: 'none',
+      createdAt: new Date(START).toISOString(),
+    })
+    h.store.addRequest({
+      jobId: 1,
+      source: 'mcp',
+      publish: 'none',
+      createdAt: new Date(START).toISOString(),
+    })
+
+    await watchRepositories(input(), h.deps)
+
+    expect(h.ran).toEqual([])
+    expect(h.notified).toEqual(['skipped #3 closed [mcp]'])
+  })
+
+  it('notifies when a job starts and finishes', async () => {
+    const h = await setup({
+      listings: (cycle) => ({ status: 'ok', pulls: cycle === 1 ? [] : [pull(3)] }),
+      stopWhen: ({ ran }) => ran.length === 1,
+    })
+
+    await watchRepositories(input(), h.deps)
+
+    expect(h.notified).toEqual(['started #3 [watch]', 'finished #3 [watch]'])
+  })
+
+  it('notifies a skipped review with its reason', async () => {
+    const h = await setup({
+      listings: (cycle) => ({ status: 'ok', pulls: cycle === 1 ? [] : [pull(3)] }),
+      runJob: async (job) => ({
+        status: 'skipped',
+        pullRequest: pullRequestFixture({ number: job.number }),
+        reason: { kind: 'already-reviewed' },
+      }),
+      stopWhen: ({ ran }) => ran.length === 1,
+    })
+
+    await watchRepositories(input(), h.deps)
+
+    expect(h.notified).toEqual(['started #3 [watch]', 'skipped #3 already-reviewed [watch]'])
+  })
+
+  it('notifies a failure only once the job fails for good', async () => {
+    const h = await setup({
+      listings: (cycle) => ({ status: 'ok', pulls: cycle === 1 ? [] : [pull(3)] }),
+      runJob: async () => {
+        throw new Error('bad')
+      },
+      classify: () => ({ kind: 'definitive' }),
+      stopWhen: ({ ran }) => ran.length === 1,
+    })
+
+    await watchRepositories(input(), h.deps)
+
+    expect(h.notified).toEqual(['started #3 [watch]', 'failed #3 [watch]'])
+  })
+
+  it('notifies a closed pull request and a superseded commit to the requests that do not move', async () => {
+    const h = await setup({
+      listings: (cycle) => ({
+        status: 'ok',
+        pulls: cycle === 1 ? [pull(3, A), pull(4)] : [pull(3, B)],
+      }),
+      settings: { ...SETTINGS, settleMs: 60 * MIN },
+      stopWhen: ({ sleeps }) => sleeps === 2,
+    })
+    h.store.saveRepo({ repo: 'acme/shop', baselineAt: new Date(START - MIN).toISOString() })
+
+    await watchRepositories(input({ settings: { ...SETTINGS, settleMs: 60 * MIN } }), h.deps)
+
+    expect(h.notified).toEqual(['skipped #3 superseded [watch]', 'skipped #4 closed [watch]'])
   })
 
   it('reviews only the newest commit when a push lands before the settle time', async () => {

@@ -201,6 +201,17 @@ describe('HistoryStore records', () => {
     store.close()
   })
 
+  it('returns the last run of a job with its review JSON', async () => {
+    const store = await openHistoryStore(fresh())
+    const id = store.addJob(JOB)
+    store.addRun({ ...RUN, jobId: id, status: 'failed', resultJson: undefined })
+    const last = store.addRun({ ...RUN, jobId: id, verdict: 'comments' })
+
+    expect(store.runOfJob(id)).toEqual({ ...RUN, id: last, jobId: id, verdict: 'comments' })
+    expect(store.runOfJob(id + 1)).toBeUndefined()
+    store.close()
+  })
+
   it('lists when the jobs created since a time were created', async () => {
     const store = await openHistoryStore(fresh())
     store.addJob({ ...JOB, createdAt: '2026-10-18T11:00:00.000Z' })

@@ -294,6 +294,36 @@ describe('parseConfigText', () => {
     expect(parsed.ok).toBe(true)
   })
 
+  it('reads the hooks of each review event', () => {
+    const text = [
+      'hooks:',
+      '  review.finished: ./notify.sh',
+      '  review.failed: "curl -s https://example.test"',
+      '  timeout: 45s',
+    ].join('\n')
+
+    expect(parseConfigText(text)).toEqual({
+      ok: true,
+      config: {
+        hooks: {
+          'review.finished': './notify.sh',
+          'review.failed': 'curl -s https://example.test',
+          timeout: '45s',
+        },
+      },
+    })
+  })
+
+  it.each([
+    ['an unknown event', 'hooks:\n  review.done: ./x.sh', 'hooks'],
+    ['an empty command', 'hooks:\n  review.started: ""', 'hooks.review.started'],
+    ['a timeout over 10 minutes', 'hooks:\n  timeout: 11m', 'hooks.timeout: must be 10m at most'],
+  ])('rejects hooks with %s', (_case, text, message) => {
+    const parsed = parseConfigText(text)
+    expect(parsed.ok).toBe(false)
+    if (!parsed.ok) expect(parsed.message).toContain(message)
+  })
+
   it('reads the watch block and history', () => {
     const text = [
       'history: false',

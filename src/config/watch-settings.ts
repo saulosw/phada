@@ -1,9 +1,11 @@
 import { durationMs } from './duration.js'
+import type { ReviewEventName } from './schema.js'
 import type { ConfigLayer } from './types.js'
 
 export const DEFAULT_WATCH_INTERVAL_MS = 300_000
 export const DEFAULT_SETTLE_MS = 180_000
 export const DEFAULT_MAX_REVIEWS_PER_HOUR = 6
+export const DEFAULT_HOOK_TIMEOUT_MS = 30_000
 
 export interface WatchedRepoSettings {
   repo: string
@@ -41,6 +43,24 @@ export function resolveWatchSettings(layers: readonly ConfigLayer[]): WatchSetti
         ...filters,
       }
     }),
+  }
+}
+
+export interface HookSettings {
+  commands: Partial<Record<ReviewEventName, string>>
+  timeoutMs: number
+  cwd: string
+}
+
+export function resolveHookSettings(layers: readonly ConfigLayer[]): HookSettings | undefined {
+  const layer = topLevel(layers)
+  const hooks = layer?.config.hooks
+  if (layer === undefined || hooks === undefined) return undefined
+  const { timeout, ...commands } = hooks
+  return {
+    commands,
+    timeoutMs: timeout === undefined ? DEFAULT_HOOK_TIMEOUT_MS : durationMs(timeout),
+    cwd: layer.dir,
   }
 }
 

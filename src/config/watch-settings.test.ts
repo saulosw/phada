@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ConfigLayer } from './types.js'
 import { durationMs } from './duration.js'
-import { historyEnabled, resolveWatchSettings } from './watch-settings.js'
+import { historyEnabled, resolveHookSettings, resolveWatchSettings } from './watch-settings.js'
 
 const user = (config: ConfigLayer['config']): ConfigLayer => ({
   kind: 'user',
@@ -84,5 +84,26 @@ describe('historyEnabled', () => {
     expect(historyEnabled([])).toBe(true)
     expect(historyEnabled([user({ history: false })])).toBe(false)
     expect(historyEnabled([{ ...user({ history: false }), kind: 'repo-root' }])).toBe(true)
+  })
+})
+
+describe('resolveHookSettings', () => {
+  it('is undefined without hooks', () => {
+    expect(resolveHookSettings([user({})])).toBeUndefined()
+  })
+
+  it('reads the commands, runs them in the config folder and waits 30 s by default', () => {
+    const layer = { ...user({ hooks: { 'review.finished': './notify.sh' } }), dir: '/cfg' }
+    expect(resolveHookSettings([layer])).toEqual({
+      commands: { 'review.finished': './notify.sh' },
+      timeoutMs: 30_000,
+      cwd: '/cfg',
+    })
+  })
+
+  it('takes the timeout from the config', () => {
+    expect(
+      resolveHookSettings([user({ hooks: { 'review.failed': 'x', timeout: '2m' } })])?.timeoutMs,
+    ).toBe(120_000)
   })
 })

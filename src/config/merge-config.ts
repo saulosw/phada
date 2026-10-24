@@ -85,8 +85,8 @@ export interface ProviderChoice {
 const DEFAULT_PROVIDER = 'claude'
 const OPTION_PRECEDENCE: readonly LayerKind[] = ['user-repo', 'repo-root', 'user']
 const OPTIONS = ['language', 'minConfidence', 'verify', 'investigate', 'resolveThreads'] as const
-const USER_ONLY = ['provider', 'model', 'localFiles', 'mcp', 'watch', 'history'] as const
-const TOP_LEVEL_ONLY = ['watch', 'history'] as const
+const USER_ONLY = ['provider', 'model', 'localFiles', 'mcp', 'watch', 'history', 'hooks'] as const
+const TOP_LEVEL_ONLY = ['watch', 'history', 'hooks'] as const
 const REVIEW_USER_ONLY = ['commands', 'readDirs', 'timeout'] as const
 const HTML_COMMENT = /<!--[\s\S]*?-->/g
 const GLOB_SYNTAX = /[()[\]{}*?!+@\\]/g
