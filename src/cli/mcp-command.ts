@@ -1,12 +1,11 @@
 import { createInterface } from 'node:readline'
 import { dataFiles } from '../config/data-paths.js'
 import { loadTopLevelUserLayers } from '../config/user-config.js'
-import { historyEnabled, resolveWatchSettings } from '../config/watch-settings.js'
 import { handleMcpMessage } from '../investigation/mcp/mcp-server.js'
 import type { EnqueueCommandDeps } from './enqueue-command.js'
 import { MissingGitHubTokenError } from './errors.js'
 import { queueToolbox } from './queue-tools.js'
-import { submitDeps } from './request-wiring.js'
+import { submitDeps, watchSettingsOf } from './request-wiring.js'
 
 export interface McpCommandDeps extends EnqueueCommandDeps {
   stdin: NodeJS.ReadableStream
@@ -15,7 +14,7 @@ export interface McpCommandDeps extends EnqueueCommandDeps {
 
 export async function runMcp(deps: McpCommandDeps): Promise<number> {
   const layers = await loadTopLevelUserLayers(deps)
-  const settings = historyEnabled(layers) ? resolveWatchSettings(layers) : undefined
+  const settings = watchSettingsOf(layers)
   const token = deps.env.GITHUB_TOKEN?.trim() || deps.env.GH_TOKEN?.trim()
   const files = dataFiles(deps.env, deps.home)
   const history = await deps.openHistoryStore(files.history)

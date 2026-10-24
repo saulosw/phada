@@ -67,8 +67,7 @@ export interface WatchDeps {
   listPulls(repo: string, etag?: string): Promise<PullListing>
   defaultBranch(repo: string): Promise<string | undefined>
   branchHead(repo: string, branch: string, etag?: string): Promise<BranchHead>
-  readPull(repo: string, number: number): Promise<PullFacts>
-  checkWhen?(command: string, input: WhenInput): Promise<string | undefined>
+  submit: SubmitDeps
   listComments?(repo: string, since: string, etag?: string): Promise<CommentListing>
   react?(repo: string, commentId: number): Promise<void>
   runJob(job: JobRecord, requests: readonly RequestRecord[]): Promise<ReviewRun>
@@ -355,7 +354,7 @@ async function scanCommands(
       data: { commentId: command.commentId, url: command.url, author: command.author },
     }
     try {
-      const result = await submitRequest(request, submitDepsOf(settings, deps))
+      const result = await submitRequest(request, deps.submit)
       if (result.status === 'refused') {
         deps.events.refused(request, result)
         continue
@@ -370,16 +369,6 @@ async function scanCommands(
   }
 }
 
-function submitDepsOf(settings: WatchSettings, deps: WatchDeps): SubmitDeps {
-  return {
-    history: deps.history,
-    settings,
-    readPull: deps.readPull,
-    now: deps.now,
-    ...(deps.checkWhen === undefined ? {} : { checkWhen: deps.checkWhen }),
-  }
-}
-
 async function refusedByWhen(
   job: Omit<JobRecord, 'id'>,
   repo: WatchedRepoSettings,
@@ -387,9 +376,10 @@ async function refusedByWhen(
   deps: WatchDeps,
 ): Promise<boolean> {
   const listed = pulls.find(({ number }) => number === job.number)
-  if (repo.when === undefined || deps.checkWhen === undefined || listed === undefined) return false
+  const { checkWhen } = deps.submit
+  if (repo.when === undefined || checkWhen === undefined || listed === undefined) return false
   const pull = listedPullFacts(repo.repo, listed)
-  const refusal = await deps.checkWhen(
+  const refusal = await checkWhen(
     repo.when,
     whenInput(pull, { source: 'watch', publish: job.publish ?? repo.publish }),
   )
@@ -419,7 +409,7 @@ async function follow(job: JobRecord, settings: WatchSettings, deps: WatchDeps):
           publish,
           ...(data === undefined ? {} : { data }),
         },
-        submitDepsOf(settings, deps),
+        deps.submit,
       )
       if (result.status === 'queued') deps.events.queued(result.job)
       if (result.status === 'refused') {

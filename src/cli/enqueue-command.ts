@@ -11,8 +11,7 @@ import type { IndexFormat } from './args.js'
 import { MissingGitHubTokenError } from './errors.js'
 import { formatSubmitJson, formatSubmitText, NO_WATCH_WARNING } from './format-request.js'
 import type { TextOutput } from './progress.js'
-import { submitDeps } from './request-wiring.js'
-import { requireWatchSettings } from './watch-command.js'
+import { requireWatchSettings, submitDeps } from './request-wiring.js'
 
 export interface EnqueueCommand {
   ref: PullRequestRef
