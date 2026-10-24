@@ -14,9 +14,16 @@ import { loadTopLevelUserLayers, loadUserLayers } from '../config/user-config.js
 import {
   historyEnabled,
   resolveHookSettings,
+  resolveSlackSettings,
   resolveWatchSettings,
 } from '../config/watch-settings.js'
-import type { HookSettings, WatchSettings } from '../config/watch-settings.js'
+import type { HookSettings, SlackSettings, WatchSettings } from '../config/watch-settings.js'
+import type { SubmitDeps } from '../app/submit-request.js'
+import { connectSocketMode } from '../slack/socket-mode.js'
+import { slackWebApi } from '../slack/web-api.js'
+import { sleepUntilNewJob } from './queue-wake.js'
+import { slackPort } from './slack-port.js'
+import type { SlackPort } from './slack-port.js'
 import { splitRepoName } from '../github/pull-request-ref.js'
 import type { ConfigLayer } from '../config/types.js'
 import type { ComparedFile, CompareOptions } from '../github/compare-commits.js'
@@ -72,6 +79,9 @@ import type { StopControl } from './watch-stop.js'
 
 export { ABORTED_EXIT_CODE }
 
+export const SLACK_BOT_TOKEN = 'PHADA_SLACK_BOT_TOKEN'
+export const SLACK_APP_TOKEN = 'PHADA_SLACK_APP_TOKEN'
+
 export interface WatchCommandDeps extends ReviewWiringDeps {
   stdout: TextOutput
   fetchPullRequest: (options: FetchPullRequestOptions) => Promise<PullRequest>
@@ -102,6 +112,8 @@ export interface WatchCommandDeps extends ReviewWiringDeps {
   sleep: (ms: number, signal: AbortSignal) => Promise<void>
   clock: () => Date
   runHook?: typeof runHook
+  slackApi?: typeof slackWebApi
+  connectSlack?: typeof connectSocketMode
 }
 
 export interface WatchCommand {
@@ -128,6 +140,7 @@ export async function runWatch(command: WatchCommand, deps: WatchCommandDeps): P
   const settings = requireWatchSettings(layers)
   const token = deps.env.GITHUB_TOKEN?.trim() || deps.env.GH_TOKEN?.trim()
   if (!token) throw new MissingGitHubTokenError()
+  const outputs = watchOutputs(layers, deps.env)
   const check = memoized(mcpNameChecker(deps))
   for (const { repo } of settings.repos) {
     try {
@@ -141,7 +154,7 @@ export async function runWatch(command: WatchCommand, deps: WatchCommandDeps): P
   try {
     return await deps.withLock(files.lock, () => {
       locked = true
-      return watchUnderLock(command, settings, resolveHookSettings(layers), token, deps, check)
+      return watchUnderLock(command, settings, outputs, token, deps, check)
     })
   } catch (error) {
     if (locked || !(error instanceof MirrorLockTimeoutError)) throw error
@@ -165,15 +178,66 @@ export function requireWatchSettings(layers: readonly ConfigLayer[]): WatchSetti
   return settings
 }
 
+interface WatchOutputs {
+  hooks?: HookSettings
+  slack?: { settings: SlackSettings; botToken: string; appToken: string }
+}
+
+function watchOutputs(layers: readonly ConfigLayer[], env: NodeJS.ProcessEnv): WatchOutputs {
+  const hooks = resolveHookSettings(layers)
+  const slack = resolveSlackSettings(layers)
+  if (slack === undefined) return hooks === undefined ? {} : { hooks }
+  const botToken = env[SLACK_BOT_TOKEN]?.trim()
+  const appToken = env[SLACK_APP_TOKEN]?.trim()
+  const missing = [botToken ? [] : [SLACK_BOT_TOKEN], appToken ? [] : [SLACK_APP_TOKEN]].flat()
+  if (!botToken || !appToken) {
+    throw new UsageError(
+      `slack: in your config needs ${SLACK_BOT_TOKEN} and ${SLACK_APP_TOKEN} in the environment; ${missing.join(' and ')} ${missing.length === 1 ? 'is' : 'are'} not set.`,
+    )
+  }
+  return {
+    ...(hooks === undefined ? {} : { hooks }),
+    slack: { settings: slack, botToken, appToken },
+  }
+}
+
 async function watchUnderLock(
   command: WatchCommand,
   settings: WatchSettings,
-  hooks: HookSettings | undefined,
+  outputs: WatchOutputs,
   token: string,
   deps: WatchCommandDeps,
   check: NameCheck,
 ): Promise<number> {
   const history = await deps.openHistoryStore(dataFiles(deps.env, deps.home).history)
+  const requests = submitDeps(history, settings, token, deps)
+  const warn = (message: string) =>
+    deps.stderr.write(`${formatWatchEvent({ kind: 'warning', message }, deps.clock())}\n`)
+  const api =
+    outputs.slack === undefined
+      ? undefined
+      : (deps.slackApi ?? slackWebApi)({
+          botToken: outputs.slack.botToken,
+          appToken: outputs.slack.appToken,
+        })
+  const slack =
+    outputs.slack === undefined || api === undefined
+      ? undefined
+      : slackPort({
+          settings: outputs.slack.settings,
+          history,
+          submit: requests,
+          api,
+          warning: warn,
+        })
+  const connection =
+    slack === undefined || api === undefined || command.once
+      ? undefined
+      : (deps.connectSlack ?? connectSocketMode)({
+          openUrl: () => api.openConnection(),
+          onEvent: (event) => void slack.onMessage(event),
+          onError: warn,
+        })
   const stop = createStopControl({
     onSignal: deps.onSignal,
     write: (text) => deps.stderr.write(text),
@@ -183,8 +247,17 @@ async function watchUnderLock(
   })
   const watched = watchRepositories(
     { settings, backfill: command.backfill, once: command.once },
-    watchDeps(settings, hooks, token, history, stop, deps, check),
+    watchDeps(
+      settings,
+      { hooks: outputs.hooks, slack, requests },
+      token,
+      history,
+      stop,
+      deps,
+      check,
+    ),
   ).then((exit) => {
+    connection?.close()
     if (stop.abortedTwice()) return ABORTED_EXIT_CODE
     history.close()
     if (exit.reason === 'fatal') {
@@ -201,7 +274,11 @@ async function watchUnderLock(
 
 function watchDeps(
   settings: WatchSettings,
-  hooks: HookSettings | undefined,
+  {
+    hooks,
+    slack,
+    requests,
+  }: { hooks: HookSettings | undefined; slack: SlackPort | undefined; requests: SubmitDeps },
   token: string,
   history: HistoryStore,
   stop: StopControl,
@@ -214,7 +291,6 @@ function watchDeps(
     stop,
   )
   const withEtag = (etag: string | undefined) => (etag === undefined ? {} : { etag })
-  const requests = submitDeps(history, settings, token, deps)
   return {
     history,
     listPulls: (repo, etag) =>
@@ -278,14 +354,29 @@ function watchDeps(
       )
     },
     notify: async (event) => {
-      if (hooks === undefined) return
+      if (hooks === undefined && slack === undefined) return
       const run = event.kind === 'started' ? undefined : history.runOfJob(event.job.id)
-      const warning = await (deps.runHook ?? runHook)(reviewEvent(event, run), hooks, deps.env)
-      if (warning !== undefined) events.warning(warning)
+      const json = reviewEvent(event, run)
+      if (hooks !== undefined) {
+        const warning = await (deps.runHook ?? runHook)(json, hooks, deps.env)
+        if (warning !== undefined) events.warning(warning)
+      }
+      await slack?.onJobEvent(json)
     },
     classify: (error) => classifyFailure(error, deps.clock()),
     now: () => deps.clock(),
-    sleep: (ms) => deps.sleep(ms, stop.signal),
+    sleep: (ms) =>
+      sleepUntilNewJob(ms, {
+        sleep: (step) => deps.sleep(step, stop.signal),
+        readyJobs: () => {
+          const now = deps.clock().toISOString()
+          return history
+            .jobs({ status: ['queued'] })
+            .filter(({ notBefore }) => notBefore <= now)
+            .map(({ id }) => id)
+        },
+        stopped: () => stop.stopRequested(),
+      }),
     stopRequested: () => stop.stopRequested(),
     events,
   }

@@ -67,6 +67,45 @@ export function resolveHookSettings(layers: readonly ConfigLayer[]): HookSetting
   }
 }
 
+export type SlackReply = 'link' | 'summary' | 'full'
+export type SlackEmojis = Record<
+  'queued' | 'clean' | 'comments' | 'blocking' | 'failed' | 'skipped',
+  string
+>
+
+export interface SlackChannelSettings {
+  id: string
+  publish: 'pr' | 'none'
+  reply: SlackReply
+}
+
+export interface SlackSettings {
+  channels: SlackChannelSettings[]
+  emojis: SlackEmojis
+}
+
+export const DEFAULT_SLACK_EMOJIS: SlackEmojis = {
+  queued: 'hourglass_flowing_sand',
+  clean: 'white_check_mark',
+  comments: 'speech_balloon',
+  blocking: 'x',
+  failed: 'warning',
+  skipped: 'eyes',
+}
+
+export function resolveSlackSettings(layers: readonly ConfigLayer[]): SlackSettings | undefined {
+  const slack = topLevel(layers)?.config.slack
+  if (slack === undefined) return undefined
+  return {
+    channels: slack.channels.map(({ id, publish, reply }) => ({
+      id,
+      publish: publish ?? 'pr',
+      reply: reply ?? 'link',
+    })),
+    emojis: { ...DEFAULT_SLACK_EMOJIS, ...slack.emojis },
+  }
+}
+
 export function historyEnabled(layers: readonly ConfigLayer[]): boolean {
   return topLevel(layers)?.config.history !== false
 }

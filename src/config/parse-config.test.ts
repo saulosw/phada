@@ -314,6 +314,42 @@ describe('parseConfigText', () => {
     })
   })
 
+  it('reads the Slack channels and emojis', () => {
+    const text = [
+      'slack:',
+      '  channels:',
+      '    - C0123ABCD',
+      '    - { id: C0456EFGH, publish: none, reply: full }',
+      '  emojis: { clean: tada, blocking: rotating_light }',
+    ].join('\n')
+
+    expect(parseConfigText(text)).toEqual({
+      ok: true,
+      config: {
+        slack: {
+          channels: [{ id: 'C0123ABCD' }, { id: 'C0456EFGH', publish: 'none', reply: 'full' }],
+          emojis: { clean: 'tada', blocking: 'rotating_light' },
+        },
+      },
+    })
+  })
+
+  it.each([
+    ['a channel name', 'slack:\n  channels: ["#reviews"]', 'use the channel ID'],
+    ['no channels', 'slack:\n  channels: []', 'slack.channels'],
+    ['an unknown reply', 'slack:\n  channels: [{ id: C1, reply: all }]', 'slack.channels.0.reply'],
+    ['a token', 'slack:\n  token: xoxb-1\n  channels: [C1]', 'slack'],
+    [
+      'an emoji with colons',
+      'slack:\n  channels: [C1]\n  emojis: { clean: ":tada:" }',
+      'without the colons',
+    ],
+  ])('rejects Slack with %s', (_case, text, message) => {
+    const parsed = parseConfigText(text)
+    expect(parsed.ok).toBe(false)
+    if (!parsed.ok) expect(parsed.message).toContain(message)
+  })
+
   it('reads the hooks of each review event', () => {
     const text = [
       'hooks:',

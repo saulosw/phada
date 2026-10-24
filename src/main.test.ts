@@ -2125,6 +2125,77 @@ describe('phada watch', () => {
     expect(h.posts).toHaveLength(1)
   })
 
+  it('needs both Slack tokens when slack: is in the config', async () => {
+    const h = harness({
+      env: { GITHUB_TOKEN: TOKEN, PHADA_CONFIG_HOME: '/cfg', PHADA_SLACK_BOT_TOKEN: 'xoxb-1' },
+      files: withConfig(`${WATCH_CONFIG}slack:\n  channels: [C1]\n`),
+    })
+
+    expect(await run(['watch'], h.deps)).toBe(2)
+    expect(h.stderr()).toContain(
+      'slack: in your config needs PHADA_SLACK_BOT_TOKEN and PHADA_SLACK_APP_TOKEN in the environment; PHADA_SLACK_APP_TOKEN is not set.',
+    )
+  })
+
+  it.each([
+    ['pr', 1],
+    ['none', 0],
+  ] as const)(
+    'reviews a pull request posted in a Slack channel with publish: %s and answers in its thread',
+    async (publish, posts) => {
+      const slackCalls: string[] = []
+      const h = harness({
+        env: {
+          GITHUB_TOKEN: TOKEN,
+          PHADA_CONFIG_HOME: '/cfg',
+          PHADA_SLACK_BOT_TOKEN: 'xoxb-secret-bot',
+          PHADA_SLACK_APP_TOKEN: 'xapp-secret-app',
+        },
+        files: withConfig(
+          `${WATCH_CONFIG}slack:\n  channels: [{ id: C1, publish: ${publish}, reply: full }]\n`,
+        ),
+        review: () => Promise.resolve(WITH_FINDING),
+      })
+      h.deps.slackApi = (tokens) => {
+        expect(tokens).toEqual({ botToken: 'xoxb-secret-bot', appToken: 'xapp-secret-app' })
+        return {
+          postMessage: async (channel, thread, text) => {
+            slackCalls.push(`post ${channel} ${thread} ${text.split('\n')[0]}`)
+            h.signal()
+          },
+          addReaction: async (channel, ts, name) => {
+            slackCalls.push(`+${name}`)
+          },
+          removeReaction: async (channel, ts, name) => {
+            slackCalls.push(`-${name}`)
+          },
+          openConnection: async () => 'wss://slack.test',
+        }
+      }
+      h.deps.connectSlack = (options) => {
+        options.onEvent({
+          type: 'message',
+          channel: 'C1',
+          ts: '100.1',
+          text: '<https://github.com/acme/shop/pull/12>',
+        })
+        return { close: () => slackCalls.push('closed') }
+      }
+
+      expect(await run(['watch'], h.deps)).toBe(0)
+
+      expect(h.posts).toHaveLength(posts)
+      expect(slackCalls.slice(0, 4)).toEqual([
+        '+hourglass_flowing_sand',
+        '-hourglass_flowing_sand',
+        '+x',
+        expect.stringMatching(/^post C1 100\.1 :x: \*Blocking findings\* · /),
+      ])
+      expect(slackCalls).toContain('closed')
+      expect(h.stderr()).not.toContain('secret')
+    },
+  )
+
   it('saves the verdict of each watch review and of a failed one', async () => {
     const h = harness({
       files: withConfig(),

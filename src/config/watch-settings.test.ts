@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { ConfigLayer } from './types.js'
 import { durationMs } from './duration.js'
-import { historyEnabled, resolveHookSettings, resolveWatchSettings } from './watch-settings.js'
+import {
+  historyEnabled,
+  resolveHookSettings,
+  resolveSlackSettings,
+  resolveWatchSettings,
+} from './watch-settings.js'
 
 const user = (config: ConfigLayer['config']): ConfigLayer => ({
   kind: 'user',
@@ -122,5 +127,37 @@ describe('resolveWatchSettings when', () => {
       { repo: 'a/b', publish: true, allowExternal: false, when: './only-team.sh' },
       { repo: 'a/c', publish: true, allowExternal: false, when: './c.sh' },
     ])
+  })
+})
+
+describe('resolveSlackSettings', () => {
+  it('is undefined without slack', () => {
+    expect(resolveSlackSettings([user({})])).toBeUndefined()
+  })
+
+  it('fills in the target, the reply and the emojis of each channel', () => {
+    expect(
+      resolveSlackSettings([
+        user({
+          slack: {
+            channels: [{ id: 'C1' }, { id: 'C2', publish: 'none', reply: 'full' }],
+            emojis: { clean: 'tada' },
+          },
+        }),
+      ]),
+    ).toEqual({
+      channels: [
+        { id: 'C1', publish: 'pr', reply: 'link' },
+        { id: 'C2', publish: 'none', reply: 'full' },
+      ],
+      emojis: {
+        queued: 'hourglass_flowing_sand',
+        clean: 'tada',
+        comments: 'speech_balloon',
+        blocking: 'x',
+        failed: 'warning',
+        skipped: 'eyes',
+      },
+    })
   })
 })

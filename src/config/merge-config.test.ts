@@ -90,13 +90,19 @@ describe('mergeConfig options', () => {
 describe('mergeConfig watch and history', () => {
   it('ignores watch and history in the repository with a warning', () => {
     const merged = mergeConfig([
-      root({ watch: { repos: ['a/b'] }, history: false, hooks: { 'review.started': 'x' } }),
+      root({
+        watch: { repos: ['a/b'] },
+        history: false,
+        hooks: { 'review.started': 'x' },
+        slack: { channels: [{ id: 'C1' }] },
+      }),
     ])
 
     expect(merged.warnings).toEqual([
       '.phada/config.yml: watch is only read from your own config; ignored.',
       '.phada/config.yml: history is only read from your own config; ignored.',
       '.phada/config.yml: hooks is only read from your own config; ignored.',
+      '.phada/config.yml: slack is only read from your own config; ignored.',
     ])
   })
 

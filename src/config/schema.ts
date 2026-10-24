@@ -100,6 +100,41 @@ const HooksSchema = z.strictObject({
   ).optional(),
 })
 
+export const SLACK_CHANNEL = /^[CGD][A-Z0-9]+$/
+const SlackChannel = z
+  .string()
+  .trim()
+  .regex(SLACK_CHANNEL, 'use the channel ID, like C0123ABCD (channel details, at the bottom)')
+const SlackEmoji = z
+  .string()
+  .trim()
+  .regex(/^[\w+-]+$/, 'use the emoji name without the colons, like white_check_mark')
+
+const SlackSchema = z.strictObject({
+  channels: z
+    .array(
+      z.preprocess(
+        (entry) => (typeof entry === 'string' ? { id: entry } : entry),
+        z.strictObject({
+          id: SlackChannel,
+          publish: z.enum(['pr', 'none']).optional(),
+          reply: z.enum(['link', 'summary', 'full']).optional(),
+        }),
+      ),
+    )
+    .min(1, 'list at least one channel ID'),
+  emojis: z
+    .strictObject({
+      queued: SlackEmoji.optional(),
+      clean: SlackEmoji.optional(),
+      comments: SlackEmoji.optional(),
+      blocking: SlackEmoji.optional(),
+      failed: SlackEmoji.optional(),
+      skipped: SlackEmoji.optional(),
+    })
+    .optional(),
+})
+
 export const SKILL_NAME = /^[\w.-]+(:[\w.-]+)?$/
 
 const SkillName = z
@@ -275,6 +310,7 @@ export const ConfigFileSchema = z.strictObject({
   review: ReviewSchema.optional(),
   watch: WatchSchema.optional(),
   hooks: HooksSchema.optional(),
+  slack: SlackSchema.optional(),
 })
 
 export type ConfigFile = z.infer<typeof ConfigFileSchema>
