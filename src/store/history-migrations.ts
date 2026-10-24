@@ -125,6 +125,9 @@ create table review_request (
 );
 create index request_by_job on review_request (job_id);
 create index job_by_created on job (created_at);
+alter table run add column verdict text
+  check (verdict in ('clean', 'comments', 'blocking', 'failed', 'skipped'));
+create index run_by_job on run (job_id);
 `,
   },
 ]

@@ -3,6 +3,7 @@ import type { PublicationResult, ReviewRun } from '../app/review-and-publish.js'
 import type { RunOutcome } from '../app/watch-repositories.js'
 import { ProviderError } from '../providers/types.js'
 import { InvalidReviewReportError } from '../review/errors.js'
+import { reviewVerdict } from '../review/verdict.js'
 import type { RunRecord, RunStatus } from '../store/history-store.js'
 import type { FailureKind, JobRecord } from '../watch/types.js'
 import { errorSummary } from './format-error.js'
@@ -32,7 +33,13 @@ export function historyRun(run: ReviewRun, json: string, meta: RunMeta): RunReco
     resultJson: json,
   }
   if (run.status === 'skipped') {
-    return { ...base, status: 'skipped', aiCalled: false, reason: run.reason.kind }
+    return {
+      ...base,
+      status: 'skipped',
+      aiCalled: false,
+      reason: run.reason.kind,
+      verdict: 'skipped',
+    }
   }
   const outcome = run.reviewed.outcome
   const result = outcome.status === 'reviewed' ? outcome.result : undefined
@@ -40,6 +47,7 @@ export function historyRun(run: ReviewRun, json: string, meta: RunMeta): RunReco
     ...base,
     ...publicationFields(run.publication, run.status === 'nothing' ? 'nothing' : 'published'),
     aiCalled: result !== undefined,
+    verdict: result === undefined ? 'skipped' : reviewVerdict(result),
     ...(result === undefined
       ? {}
       : {
@@ -90,5 +98,6 @@ export function watchRun(
     ...(meta.model === undefined ? {} : { model: meta.model }),
     errorKind: outcome.kind,
     error: errorMessage(outcome.error),
+    verdict: 'failed',
   }
 }

@@ -1,6 +1,7 @@
 import { mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { DatabaseSync, SQLInputValue } from 'node:sqlite'
+import type { Verdict } from '../review/verdict.js'
 import { HISTORY_MIGRATIONS } from './history-migrations.js'
 import type { HistoryMigration } from './history-migrations.js'
 import {
@@ -86,6 +87,7 @@ export interface RunRecord {
   errorKind?: FailureKind
   error?: string
   resultJson?: string
+  verdict?: Verdict
 }
 
 export interface StatusJob extends JobRecord {

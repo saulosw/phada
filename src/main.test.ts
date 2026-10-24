@@ -2008,6 +2008,22 @@ describe('phada watch', () => {
     expect(observed).toEqual([{ repo: 'acme/shop', number: 12, pull_state: 'open' }])
   })
 
+  it('saves the verdict of each watch review and of a failed one', async () => {
+    const h = harness({
+      files: withConfig(),
+      listPulls: listed,
+      review: () => Promise.resolve(WITH_FINDING),
+    })
+
+    expect(await run(['watch', '--once', '--backfill'], h.deps)).toBe(0)
+
+    const file = h.historyFiles[0]?.split(' → ')[1] ?? ''
+    const db = new DatabaseSync(file)
+    const verdicts = db.prepare('select status, verdict from run').all()
+    db.close()
+    expect(verdicts).toEqual([{ status: 'published', verdict: 'blocking' }])
+  })
+
   it('records the open pull requests without reviewing them on the first run', async () => {
     const h = harness({ files: withConfig(), listPulls: listed })
 

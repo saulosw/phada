@@ -119,6 +119,7 @@ const STORE: Boundary = {
     '../watch/types.js',
     '../publish/feedback.js',
     '../review/types.js',
+    '../review/verdict.js',
   ]),
   expected: ['index-store.ts', 'schema.ts'],
 }

@@ -85,6 +85,7 @@ export const RUN_TABLE: HistoryTable = {
     errorKind: 'error_kind',
     error: 'error',
     resultJson: 'result_json',
+    verdict: 'verdict',
   },
 }
 
