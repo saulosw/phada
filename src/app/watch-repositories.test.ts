@@ -8,7 +8,8 @@ import type { OpenPull, PullListing } from '../github/list-pull-requests.js'
 import type { BranchHead } from '../github/repository.js'
 import { openHistoryStore } from '../store/history-store.js'
 import type { DuePull, HistoryStore } from '../store/history-store.js'
-import type { FailureKind, JobRecord } from '../watch/types.js'
+import type { FailureKind, JobRecord, RequestRecord } from '../watch/types.js'
+import { submitRequest } from './submit-request.js'
 import type { ReviewRun } from './review-and-publish.js'
 import { watchRepositories } from './watch-repositories.js'
 import type { WatchDeps } from './watch-repositories.js'
@@ -73,6 +74,7 @@ interface Script {
   refreshFeedback?: (pulls: readonly DuePull[]) => Promise<void>
   stopWhen?: (state: { now: number; ran: JobRecord[]; sleeps: number }) => boolean
   settings?: WatchSettings
+  readPull?: (repo: string, number: number) => { headSha: string }
 }
 
 async function setup(script: Script, history?: HistoryStore) {
@@ -81,6 +83,7 @@ async function setup(script: Script, history?: HistoryStore) {
   let cycle = 0
   let sleeps = 0
   const ran: JobRecord[] = []
+  const asked: RequestRecord[][] = []
   const events: string[] = []
   const recorded: string[] = []
   const indexed: number[] = []
@@ -91,9 +94,18 @@ async function setup(script: Script, history?: HistoryStore) {
       return script.listings?.(cycle, now) ?? { status: 'ok', pulls: [] }
     },
     defaultBranch: async () => 'main',
+    readPull: async (repo, number) => ({
+      repo,
+      number,
+      headSha: script.readPull?.(repo, number).headSha ?? A,
+      state: 'open',
+      private: false,
+      association: 'MEMBER',
+    }),
     branchHead: async () => script.branchHead?.(now) ?? { status: 'not-modified' },
-    runJob: async (job) => {
+    runJob: async (job, requests) => {
       ran.push(job)
+      asked.push([...requests])
       return script.runJob?.(job, now) ?? published(job)
     },
     recordRun: (job, outcome) => {
@@ -134,7 +146,7 @@ async function setup(script: Script, history?: HistoryStore) {
         events.push(`limited ${count} until ${(Date.parse(until) - START) / MIN}`),
     },
   }
-  return { deps, store, ran, events, recorded, indexed, now: () => now - START }
+  return { deps, store, ran, asked, events, recorded, indexed, now: () => now - START }
 }
 
 const input = (overrides: Partial<Parameters<typeof watchRepositories>[0]> = {}) => ({
@@ -177,6 +189,71 @@ describe('watchRepositories', () => {
     ])
     expect(h.recorded).toEqual(['3:reviewed'])
     expect(h.store.jobs({ status: ['done'] })).toHaveLength(1)
+  })
+
+  it('attaches a watch request to the jobs it queues', async () => {
+    const h = await setup({
+      listings: (cycle) => ({ status: 'ok', pulls: cycle === 1 ? [] : [pull(3)] }),
+      stopWhen: ({ ran }) => ran.length === 1,
+    })
+
+    await watchRepositories(input(), h.deps)
+
+    expect(h.asked).toEqual([[expect.objectContaining({ source: 'watch', publish: 'pr' })]])
+    expect(h.ran[0]?.publish).toBe('pr')
+  })
+
+  it('runs a request from another source at once and joins the watch to it: one job', async () => {
+    const h = await setup({
+      listings: () => ({ status: 'ok', pulls: [pull(3)] }),
+      stopWhen: ({ ran }) => ran.length === 1,
+    })
+    h.store.saveRepo({ repo: 'acme/shop', baselineAt: new Date(START - MIN).toISOString() })
+    await submitRequest(
+      { repo: 'acme/shop', number: 3, source: 'slack', publish: 'none', data: { ts: '1.2' } },
+      { ...h.deps, settings: SETTINGS },
+    )
+
+    await watchRepositories(input(), h.deps)
+
+    expect(h.store.jobs({})).toHaveLength(1)
+    expect(h.ran[0]?.publish).toBe('pr')
+    expect(h.asked[0]?.map(({ source }) => source)).toEqual(['slack', 'watch'])
+    expect(h.events).toContain('started #3 @0')
+  })
+
+  it('moves the requests of a superseded job to the new commit', async () => {
+    const h = await setup({
+      listings: (cycle) => ({
+        status: 'ok',
+        pulls: [pull(3, cycle === 1 ? A : B, { draft: true })],
+      }),
+      readPull: () => ({ headSha: B }),
+      stopWhen: ({ ran }) => ran.length === 1,
+    })
+    h.store.saveRepo({ repo: 'acme/shop', baselineAt: new Date(START - MIN).toISOString() })
+    h.store.addJob({
+      repo: 'acme/shop',
+      number: 3,
+      headSha: A,
+      status: 'queued',
+      attempts: 0,
+      notBefore: new Date(START + 60 * MIN).toISOString(),
+      publish: 'none',
+      createdAt: new Date(START).toISOString(),
+    })
+    h.store.addRequest({
+      jobId: 1,
+      source: 'mcp',
+      publish: 'none',
+      createdAt: new Date(START).toISOString(),
+    })
+
+    await watchRepositories(input(), h.deps)
+
+    expect(h.ran.map((job) => job.headSha)).toEqual([B])
+    expect(h.asked[0]?.map(({ source }) => source)).toEqual(['mcp'])
+    expect(h.events.slice(0, 2)).toEqual(['superseded #3', 'queued #3 b'])
   })
 
   it('reviews only the newest commit when a push lands before the settle time', async () => {

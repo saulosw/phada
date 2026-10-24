@@ -64,6 +64,7 @@ describe('openHistoryStore migrations', () => {
       'feedback_pull',
       'finding',
       'job',
+      'review_request',
       'run',
       'signal',
       'watch_state',
@@ -81,6 +82,19 @@ describe('openHistoryStore migrations', () => {
     const reopened = await openHistoryStore(path)
     expect(reopened.repo('acme/shop')).toEqual({ repo: 'acme/shop', pullsEtag: 'W/"1"' })
     reopened.close()
+  })
+
+  it('migrates a version 2 file: its jobs keep their rows and have no publish target', async () => {
+    const path = fresh()
+    const v2 = await openHistoryStore(path, { migrations: HISTORY_MIGRATIONS.slice(0, 2) })
+    const id = v2.addJob(JOB)
+    v2.close()
+
+    const store = await openHistoryStore(path)
+    expect(store.jobs({})).toEqual([{ ...JOB, id }])
+    expect(store.requests([id])).toEqual([])
+    store.close()
+    expect(userVersion(path)).toBe(3)
   })
 
   it('refuses a file written by a newer version and leaves it as it is', async () => {
@@ -136,6 +150,75 @@ describe('HistoryStore records', () => {
       { ...JOB, id, status: 'running', startedAt: '2026-10-18T12:03:00.000Z' },
     ])
     expect(store.jobs({ repo: 'acme/shop' })).toHaveLength(2)
+    store.close()
+  })
+
+  it('stores the review requests of each job with their source, target and data', async () => {
+    const store = await openHistoryStore(fresh())
+    const first = store.addJob({ ...JOB, publish: 'none' })
+    const second = store.addJob({ ...JOB, number: 4 })
+    const slack = store.addRequest({
+      jobId: first,
+      source: 'slack',
+      publish: 'none',
+      data: { channel: 'C1', ts: '1.2' },
+      createdAt: '2026-10-18T12:00:00.000Z',
+    })
+    store.addRequest({
+      jobId: second,
+      source: 'watch',
+      publish: 'pr',
+      createdAt: '2026-10-18T12:01:00.000Z',
+    })
+
+    expect(store.jobs({ status: ['queued'] })[0]?.publish).toBe('none')
+    expect(store.requests([first])).toEqual([
+      {
+        id: slack,
+        jobId: first,
+        source: 'slack',
+        publish: 'none',
+        data: { channel: 'C1', ts: '1.2' },
+        createdAt: '2026-10-18T12:00:00.000Z',
+      },
+    ])
+    expect(store.requests([first, second]).map(({ source }) => source)).toEqual(['slack', 'watch'])
+    expect(store.requests([])).toEqual([])
+    store.close()
+  })
+
+  it('reports the sources that asked for each queued and running job', async () => {
+    const store = await openHistoryStore(fresh())
+    const id = store.addJob(JOB)
+    store.addRequest({ jobId: id, source: 'mcp', publish: 'pr', createdAt: JOB.createdAt })
+    store.addRequest({ jobId: id, source: 'watch', publish: 'pr', createdAt: JOB.createdAt })
+    const legacy = store.addJob({ ...JOB, number: 4 })
+
+    expect(store.status().queued).toEqual([
+      { ...JOB, id, sources: ['mcp', 'watch'] },
+      { ...JOB, id: legacy, number: 4 },
+    ])
+    store.close()
+  })
+
+  it('lists when the jobs created since a time were created', async () => {
+    const store = await openHistoryStore(fresh())
+    store.addJob({ ...JOB, createdAt: '2026-10-18T11:00:00.000Z' })
+    store.addJob({ ...JOB, createdAt: '2026-10-18T12:30:00.000Z' })
+    expect(store.jobsCreatedSince('2026-10-18T12:00:00.000Z')).toEqual(['2026-10-18T12:30:00.000Z'])
+    store.close()
+  })
+
+  it('runs work in one transaction and rolls it back on an error', async () => {
+    const store = await openHistoryStore(fresh())
+    expect(() =>
+      store.transaction(() => {
+        store.addJob(JOB)
+        throw new Error('boom')
+      }),
+    ).toThrow('boom')
+    expect(store.transaction(() => store.addJob(JOB))).toBe(1)
+    expect(store.jobs({})).toHaveLength(1)
     store.close()
   })
 

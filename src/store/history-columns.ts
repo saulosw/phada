@@ -52,6 +52,7 @@ export const JOB_TABLE: HistoryTable = {
     status: 'status',
     attempts: 'attempts',
     notBefore: 'not_before',
+    publish: 'publish',
     reason: 'reason',
     errorKind: 'error_kind',
     error: 'error',
@@ -84,6 +85,19 @@ export const RUN_TABLE: HistoryTable = {
     errorKind: 'error_kind',
     error: 'error',
     resultJson: 'result_json',
+  },
+}
+
+export const REQUEST_TABLE: HistoryTable = {
+  name: 'review_request',
+  keys: ['id'],
+  columns: {
+    id: 'id',
+    jobId: 'job_id',
+    source: 'source',
+    publish: 'publish',
+    data: 'data',
+    createdAt: 'created_at',
   },
 }
 
@@ -147,6 +161,7 @@ const NUMBERS = new Set([
   'findingId',
 ])
 const BOOLEANS = new Set(['eligible', 'aiCalled', 'outdated'])
+const JSON_FIELDS = new Set(['data'])
 const LOWERCASE = new Set(['repo'])
 
 export class UnknownHistoryFieldError extends Error {
@@ -200,6 +215,7 @@ export function fromRow<T>(row: Row, table: HistoryTable): T {
     const value = row[column]
     if (value === null || value === undefined) continue
     if (BOOLEANS.has(key)) record[key] = Number(value) === 1
+    else if (JSON_FIELDS.has(key)) record[key] = JSON.parse(String(value))
     else if (NUMBERS.has(key)) record[key] = Number(value)
     else record[key] = String(value)
   }
@@ -209,6 +225,7 @@ export function fromRow<T>(row: Row, table: HistoryTable): T {
 function toColumn(key: string, value: unknown): SQLInputValue {
   if (value === undefined || value === null) return null
   if (BOOLEANS.has(key)) return value === true ? 1 : 0
+  if (JSON_FIELDS.has(key)) return JSON.stringify(value)
   if (LOWERCASE.has(key)) return String(value).toLowerCase()
   if (typeof value === 'number' || typeof value === 'string') return value
   return String(value)

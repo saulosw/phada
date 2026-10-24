@@ -143,7 +143,7 @@ const STATUS: HistoryStatus = {
     },
     { repo: 'acme/web' },
   ],
-  queued: [{ ...JOB, attempts: 1 }],
+  queued: [{ ...JOB, attempts: 1, sources: ['slack', 'watch'] }],
   running: [{ ...JOB, number: 5, status: 'running', startedAt: local(14, 1).toISOString() }],
   failed: [
     {
@@ -184,7 +184,7 @@ describe('formatWatchStatus', () => {
         '  acme/web   not checked yet',
         '',
         'Queue:',
-        '  acme/shop#3  a1b2c3d  after 2026-10-18 14:06 · attempt 2',
+        '  acme/shop#3  a1b2c3d  after 2026-10-18 14:06 · attempt 2 · asked from slack',
         '',
         'In progress:',
         '  acme/shop#5  a1b2c3d  since 2026-10-18 14:01',

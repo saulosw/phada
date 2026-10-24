@@ -49,7 +49,7 @@ export interface FetchPullRequestOptions extends PullRequestRef {
   timeoutMs?: number
 }
 
-type PullRequestMetadata = Omit<PullRequest, 'diff'>
+export type PullRequestMetadata = Omit<PullRequest, 'diff'>
 
 /** Fetches a pull request's metadata and then its diff (two sequential requests). */
 export async function fetchPullRequest(options: FetchPullRequestOptions): Promise<PullRequest> {
@@ -71,9 +71,9 @@ export async function fetchPullRequest(options: FetchPullRequestOptions): Promis
   return { ...metadata, diff }
 }
 
-export async function fetchPullRequestHead(
+export async function fetchPullRequestMetadata(
   options: FetchPullRequestOptions,
-): Promise<{ state: 'open' | 'closed'; draft: boolean; headSha: string }> {
+): Promise<PullRequestMetadata> {
   const { owner, repo, number } = options
   const ctx: GitHubRequestContext = {
     token: options.token,
@@ -81,11 +81,13 @@ export async function fetchPullRequestHead(
     timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
   }
   const path = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/pulls/${number}`
-  const { state, draft, headSha } = await fetchMetadata(
-    ctx,
-    path,
-    formatPullRequestRef({ owner, repo, number }),
-  )
+  return fetchMetadata(ctx, path, formatPullRequestRef({ owner, repo, number }))
+}
+
+export async function fetchPullRequestHead(
+  options: FetchPullRequestOptions,
+): Promise<{ state: 'open' | 'closed'; draft: boolean; headSha: string }> {
+  const { state, draft, headSha } = await fetchPullRequestMetadata(options)
   return { state, draft, headSha }
 }
 

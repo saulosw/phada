@@ -136,7 +136,7 @@ describe('history migration 2', () => {
       .all()
       .map((row) => row.name)
     db.close()
-    expect(version).toBe(2)
+    expect(version).toBe(HISTORY_MIGRATIONS.length)
     expect(tables).toEqual(expect.arrayContaining(['feedback_pull', 'finding', 'signal']))
     expect(after).toEqual(before)
   })

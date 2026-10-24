@@ -111,4 +111,20 @@ create table signal (
 create index signal_by_finding on signal (finding_id, kind);
 `,
   },
+  {
+    version: 3,
+    sql: `
+alter table job add column publish text check (publish in ('pr', 'none'));
+create table review_request (
+  id integer primary key,
+  job_id integer not null references job (id) on delete cascade,
+  source text not null check (source in ('watch', 'enqueue', 'mcp', 'pr-command', 'slack')),
+  publish text not null check (publish in ('pr', 'none')),
+  data text,
+  created_at text not null
+);
+create index request_by_job on review_request (job_id);
+create index job_by_created on job (created_at);
+`,
+  },
 ]

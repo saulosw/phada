@@ -10,7 +10,7 @@ import {
   GitHubRequestError,
   PullRequestNotFoundError,
 } from './errors.js'
-import { fetchPullRequest, fetchPullRequestHead } from './pull-request.js'
+import { fetchPullRequest, fetchPullRequestHead, fetchPullRequestMetadata } from './pull-request.js'
 import type { FetchPullRequestOptions } from './pull-request.js'
 import { ACCEPT_DIFF, ACCEPT_JSON } from './request.js'
 
@@ -356,6 +356,31 @@ describe('fetchPullRequestHead', () => {
       draft: meta.draft,
       headSha: (meta.head as Json).sha,
     })
+    expect(calls).toHaveLength(1)
+  })
+})
+
+describe('fetchPullRequestMetadata', () => {
+  it('reads the pull request without the diff', async () => {
+    const { fetch, calls } = fakeGitHub([ok(METADATA_JSON)])
+    const meta = metadata()
+
+    const pull = await fetchPullRequestMetadata({
+      owner: 'saulosw',
+      repo: 'phada-dev-web',
+      number: 3,
+      token: TOKEN,
+      fetch,
+    })
+
+    expect(pull).toMatchObject({
+      repo: 'saulosw/phada-dev-web',
+      number: 3,
+      state: meta.state,
+      headSha: (meta.head as Json).sha,
+      association: meta.author_association,
+    })
+    expect(pull).not.toHaveProperty('diff')
     expect(calls).toHaveLength(1)
   })
 })

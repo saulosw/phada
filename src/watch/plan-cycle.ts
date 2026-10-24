@@ -1,6 +1,6 @@
 import type { WatchedRepoSettings } from '../config/watch-settings.js'
 import type { OpenPull } from '../github/list-pull-requests.js'
-import type { JobRecord, PullRecord } from './types.js'
+import type { JobRecord, PullRecord, RequestRecord } from './types.js'
 import { later } from './time.js'
 import { eligibility } from './filters.js'
 
@@ -13,12 +13,14 @@ export interface CycleInput {
   backfill: boolean
   now: string
   settleMs: number
+  requests: readonly RequestRecord[]
 }
 
 export type CycleAction =
   | { kind: 'baseline'; pulls: PullRecord[] }
   | { kind: 'seen'; pull: PullRecord }
   | { kind: 'enqueue'; job: Omit<JobRecord, 'id'> }
+  | { kind: 'join'; jobId: number }
   | { kind: 'supersede'; jobId: number }
   | { kind: 'gone'; pull: PullRecord; jobIds: number[] }
 
@@ -58,7 +60,17 @@ export function planCycle(input: CycleInput): CycleAction[] {
       }
     }
     const known = jobs.some((job) => job.headSha === pull.headSha && blocks(job))
-    if (!eligible || known || current.baselineSha === pull.headSha) continue
+    if (!eligible || current.baselineSha === pull.headSha) continue
+    if (known) {
+      const asked = jobs.find(
+        (job) =>
+          job.headSha === pull.headSha &&
+          job.status === 'queued' &&
+          askedElsewhere(job, input.requests),
+      )
+      if (asked !== undefined) actions.push({ kind: 'join', jobId: asked.id })
+      continue
+    }
     const becameEligible = !newCommit && before?.eligible === false
     const notBefore = backfilling
       ? now
@@ -72,6 +84,7 @@ export function planCycle(input: CycleInput): CycleAction[] {
         status: 'queued',
         attempts: 0,
         notBefore,
+        publish: repo.publish ? 'pr' : 'none',
         createdAt: now,
       },
     })
@@ -100,4 +113,9 @@ function blocks(job: JobRecord): boolean {
     job.status === 'skipped' &&
     (job.reason === 'closed' || job.reason === 'closed-or-draft')
   )
+}
+
+function askedElsewhere(job: JobRecord, requests: readonly RequestRecord[]): boolean {
+  const sources = requests.filter(({ jobId }) => jobId === job.id)
+  return sources.length > 0 && sources.every(({ source }) => source !== 'watch')
 }

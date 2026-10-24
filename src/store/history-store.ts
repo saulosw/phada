@@ -9,6 +9,7 @@ import {
   JOB_TABLE,
   PULL_TABLE,
   REPO_TABLE,
+  REQUEST_TABLE,
   RUN_TABLE,
   upsertStatement,
   updateStatement,
@@ -30,7 +31,15 @@ import type {
   FindingRecord,
   PublishedFinding,
 } from './history-feedback.js'
-import type { FailureKind, JobRecord, JobStatus, PauseState, PullRecord } from '../watch/types.js'
+import type {
+  FailureKind,
+  JobRecord,
+  JobStatus,
+  PauseState,
+  PullRecord,
+  RequestRecord,
+  RequestSource,
+} from '../watch/types.js'
 
 export type {
   DueFilter,
@@ -79,10 +88,14 @@ export interface RunRecord {
   resultJson?: string
 }
 
+export interface StatusJob extends JobRecord {
+  sources?: RequestSource[]
+}
+
 export interface HistoryStatus {
   repos: RepoRecord[]
-  queued: JobRecord[]
-  running: JobRecord[]
+  queued: StatusJob[]
+  running: StatusJob[]
   failed: JobRecord[]
   lastRuns: RunRecord[]
   pause?: PauseState
@@ -112,6 +125,10 @@ export interface HistoryStore {
   addJob(job: Omit<JobRecord, 'id'>): number
   updateJob(id: number, changes: Partial<Omit<JobRecord, 'id'>>): void
   recoverRunning(maxAttempts: number, now: string): JobRecord[]
+  jobsCreatedSince(iso: string): string[]
+  addRequest(request: Omit<RequestRecord, 'id'>): number
+  requests(jobIds: readonly number[]): RequestRecord[]
+  transaction<T>(work: () => T): T
   addRun(run: RunRecord): number
   watchRunsSince(iso: string): string[]
   pause(): PauseState | undefined
@@ -291,6 +308,31 @@ class SqliteHistoryStore implements HistoryStore {
     return running
   }
 
+  jobsCreatedSince(iso: string): string[] {
+    return this.#db
+      .prepare('select created_at from job where created_at > ? order by created_at')
+      .all(iso)
+      .map((row) => String(row.created_at))
+  }
+
+  addRequest(request: Omit<RequestRecord, 'id'>): number {
+    return Number(this.#run(insertStatement(REQUEST_TABLE, request)).lastInsertRowid)
+  }
+
+  requests(jobIds: readonly number[]): RequestRecord[] {
+    if (jobIds.length === 0) return []
+    return this.#db
+      .prepare(
+        `select * from review_request where job_id in (${jobIds.map(() => '?').join(', ')}) order by id`,
+      )
+      .all(...jobIds)
+      .map((row) => fromRow<RequestRecord>(row, REQUEST_TABLE))
+  }
+
+  transaction<T>(work: () => T): T {
+    return transaction(this.#db, work)
+  }
+
   addRun(run: RunRecord): number {
     return Number(this.#run(insertStatement(RUN_TABLE, run)).lastInsertRowid)
   }
@@ -343,8 +385,8 @@ class SqliteHistoryStore implements HistoryStore {
         .prepare('select * from watched_repo order by repo')
         .all()
         .map((row) => fromRow<RepoRecord>(row, REPO_TABLE)),
-      queued: this.jobs({ status: ['queued'] }),
-      running: this.jobs({ status: ['running'] }),
+      queued: this.#withSources(this.jobs({ status: ['queued'] })),
+      running: this.#withSources(this.jobs({ status: ['running'] })),
       failed,
       lastRuns,
       ...(pause === undefined ? {} : { pause }),
@@ -431,6 +473,14 @@ class SqliteHistoryStore implements HistoryStore {
 
   close(): void {
     this.#db.close()
+  }
+
+  #withSources(jobs: readonly JobRecord[]): StatusJob[] {
+    const requests = this.requests(jobs.map(({ id }) => id))
+    return jobs.map((job) => {
+      const sources = requests.filter(({ jobId }) => jobId === job.id).map(({ source }) => source)
+      return sources.length === 0 ? job : { ...job, sources }
+    })
   }
 
   #changes(sql: string, ...values: SQLInputValue[]): number {

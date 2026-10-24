@@ -224,6 +224,7 @@ const APP: Boundary = {
     '../watch/failures.js',
     '../watch/next-job.js',
     '../watch/plan-cycle.js',
+    '../watch/request-policy.js',
     '../watch/time.js',
   ]),
   types: new Set([

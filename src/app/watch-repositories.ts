@@ -2,7 +2,8 @@ import type { WatchedRepoSettings, WatchSettings } from '../config/watch-setting
 import type { PullListing } from '../github/list-pull-requests.js'
 import type { BranchHead } from '../github/repository.js'
 import type { DuePull, HistoryStore } from '../store/history-store.js'
-import type { FailureKind, JobRecord, PauseState } from '../watch/types.js'
+import type { PullFacts } from '../watch/request-policy.js'
+import type { FailureKind, JobRecord, PauseState, RequestRecord } from '../watch/types.js'
 import { afterFailure, MAX_ATTEMPTS, rateLimitPause } from '../watch/failures.js'
 import { later } from '../watch/time.js'
 import { pickNext, RATE_WINDOW_MS } from '../watch/next-job.js'
@@ -10,6 +11,7 @@ import { planCycle } from '../watch/plan-cycle.js'
 import type { CycleAction } from '../watch/plan-cycle.js'
 import { errorMessage } from './error-message.js'
 import type { ReviewRun } from './review-and-publish.js'
+import { submitRequest } from './submit-request.js'
 
 export const IDLE_INDEX_BUDGET_MS = 60_000
 export const FEEDBACK_INTERVAL_MS = 1_800_000
@@ -53,7 +55,8 @@ export interface WatchDeps {
   listPulls(repo: string, etag?: string): Promise<PullListing>
   defaultBranch(repo: string): Promise<string | undefined>
   branchHead(repo: string, branch: string, etag?: string): Promise<BranchHead>
-  runJob(job: JobRecord): Promise<ReviewRun>
+  readPull(repo: string, number: number): Promise<PullFacts>
+  runJob(job: JobRecord, requests: readonly RequestRecord[]): Promise<ReviewRun>
   recordRun(job: JobRecord, outcome: RunOutcome, startedAt: string): void
   refreshIndex(repo: string, budgetMs: number): Promise<'complete' | 'partial'>
   refreshFeedback(pulls: readonly DuePull[]): Promise<void>
@@ -103,7 +106,7 @@ export async function watchRepositories(input: WatchInput, deps: WatchDeps): Pro
         deps.events.limited(watchRunsLastHour.length, next.waitUntil)
     }
     if ('job' in next) {
-      const exit = await runJob(next.job, deps)
+      const exit = await runJob(next.job, settings, deps)
       if (exit !== undefined) return exit
       continue
     }
@@ -151,17 +154,25 @@ async function discover(
     return undefined
   }
   deps.events.cycle(repo.repo, listing.pulls.length)
+  const jobs = history.jobs({ repo: repo.repo })
   const actions = planCycle({
     repo,
     pulls: listing.pulls,
     stored: history.pulls(repo.repo),
-    jobs: history.jobs({ repo: repo.repo }),
+    jobs,
+    requests: history.requests(
+      jobs.filter(({ status }) => status === 'queued').map(({ id }) => id),
+    ),
     baselineDone: record.baselineAt !== undefined,
     backfill: input.backfill,
     now,
     settleMs: input.settings.settleMs,
   })
-  for (const action of actions) apply(action, repo.repo, now, deps)
+  const followed: JobRecord[] = []
+  for (const action of actions) {
+    const superseded = apply(action, repo, now, deps)
+    if (superseded !== undefined) followed.push(superseded)
+  }
   const { pullsEtag: _old, ...rest } = record
   history.saveRepo({
     ...rest,
@@ -169,29 +180,43 @@ async function discover(
     checkedAt: now,
     baselineAt: record.baselineAt ?? now,
   })
+  for (const job of followed) await follow(job, input.settings, deps)
   return undefined
 }
 
-function apply(action: CycleAction, repo: string, now: string, deps: WatchDeps): void {
+function apply(
+  action: CycleAction,
+  repo: WatchedRepoSettings,
+  now: string,
+  deps: WatchDeps,
+): JobRecord | undefined {
   const { history, events } = deps
+  const publish = repo.publish ? ('pr' as const) : ('none' as const)
   switch (action.kind) {
     case 'baseline':
       for (const pull of action.pulls) history.savePull(pull)
-      events.baseline(repo, action.pulls.length)
+      events.baseline(repo.repo, action.pulls.length)
       return
     case 'seen':
       history.savePull(action.pull)
       return
     case 'enqueue': {
       const id = history.addJob(action.job)
+      history.addRequest({ jobId: id, source: 'watch', publish, createdAt: now })
       events.queued({ ...action.job, id })
       return
     }
+    case 'join':
+      history.addRequest({ jobId: action.jobId, source: 'watch', publish, createdAt: now })
+      if (publish === 'pr') history.updateJob(action.jobId, { publish })
+      return
     case 'supersede': {
       history.updateJob(action.jobId, { status: 'superseded', finishedAt: now })
-      const job = history.jobs({ repo, status: ['superseded'] }).find((j) => j.id === action.jobId)
+      const job = history
+        .jobs({ repo: repo.repo, status: ['superseded'] })
+        .find((j) => j.id === action.jobId)
       if (job !== undefined) events.superseded(job)
-      return
+      return job
     }
     case 'gone':
       history.savePull(action.pull)
@@ -201,7 +226,11 @@ function apply(action: CycleAction, repo: string, now: string, deps: WatchDeps):
   }
 }
 
-async function runJob(job: JobRecord, deps: WatchDeps): Promise<WatchExit | undefined> {
+async function runJob(
+  job: JobRecord,
+  settings: WatchSettings,
+  deps: WatchDeps,
+): Promise<WatchExit | undefined> {
   const { history, events } = deps
   const startedAt = iso(deps)
   history.updateJob(job.id, { status: 'running', startedAt })
@@ -209,7 +238,7 @@ async function runJob(job: JobRecord, deps: WatchDeps): Promise<WatchExit | unde
   events.started(running)
   let run: ReviewRun
   try {
-    run = await deps.runJob(running)
+    run = await deps.runJob(running, history.requests([job.id]))
   } catch (error) {
     const failure = deps.classify(error)
     deps.recordRun(running, { error, kind: failure.kind }, startedAt)
@@ -228,6 +257,7 @@ async function runJob(job: JobRecord, deps: WatchDeps): Promise<WatchExit | unde
     if (pull !== undefined) {
       history.savePull({ ...pull, headSha: run.publication.headSha, headSeenAt: finishedAt })
     }
+    await follow(running, settings, deps)
   } else if (run.publication?.status === 'closed-or-draft') {
     history.updateJob(job.id, { status: 'skipped', reason: 'closed-or-draft', finishedAt })
   } else {
@@ -235,6 +265,29 @@ async function runJob(job: JobRecord, deps: WatchDeps): Promise<WatchExit | unde
   }
   events.finished(running, run)
   return undefined
+}
+
+async function follow(job: JobRecord, settings: WatchSettings, deps: WatchDeps): Promise<void> {
+  const requests = deps.history.requests([job.id]).filter(({ source }) => source !== 'watch')
+  for (const { source, publish, data } of requests) {
+    try {
+      const result = await submitRequest(
+        {
+          repo: job.repo,
+          number: job.number,
+          source,
+          publish,
+          ...(data === undefined ? {} : { data }),
+        },
+        { history: deps.history, settings, readPull: deps.readPull, now: deps.now },
+      )
+      if (result.status === 'queued') deps.events.queued(result.job)
+    } catch (error) {
+      deps.events.warning(
+        `${job.repo}#${job.number}: could not move a ${source} request to the new commit (${errorMessage(error)})`,
+      )
+    }
+  }
 }
 
 function fail(
