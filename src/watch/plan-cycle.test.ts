@@ -9,7 +9,7 @@ const NOW = '2026-10-18T12:00:00.000Z'
 const at = (minutes: number) => new Date(Date.parse(NOW) + minutes * 60_000).toISOString()
 const A = 'a'.repeat(40)
 const B = 'b'.repeat(40)
-const REPO: WatchedRepoSettings = { repo: 'acme/shop', publish: true, allowExternal: false }
+const REPO: WatchedRepoSettings = { repo: 'acme/shop', publish: 'pr', allowExternal: false }
 
 const open = (number: number, headSha = A, overrides: Partial<OpenPull> = {}): OpenPull => ({
   number,
@@ -106,7 +106,7 @@ describe('planCycle', () => {
   })
 
   it('queues a job that does not publish for a repository with publish: false', () => {
-    const actions = planCycle(input({ repo: { ...REPO, publish: false }, pulls: [open(3)] }))
+    const actions = planCycle(input({ repo: { ...REPO, publish: 'none' }, pulls: [open(3)] }))
     expect(actions[1]).toMatchObject({ kind: 'enqueue', job: { publish: 'none' } })
   })
 
@@ -147,7 +147,7 @@ describe('planCycle', () => {
         queued(3, A, at(3)),
       ])
       expect(
-        planCycle(input({ repo: { ...REPO, publish: false }, pulls: [open(3)], jobs: [silent] })),
+        planCycle(input({ repo: { ...REPO, publish: 'none' }, pulls: [open(3)], jobs: [silent] })),
       ).toEqual([{ kind: 'seen', pull: { ...stored(3), headSeenAt: NOW, eligible: true } }])
     }
   })

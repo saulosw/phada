@@ -7,7 +7,7 @@ import type { PolicyInput } from './request-policy.js'
 const NOW = '2026-10-23T12:00:00.000Z'
 const at = (minutes: number) => new Date(Date.parse(NOW) + minutes * 60_000).toISOString()
 const A = 'a'.repeat(40)
-const REPO: WatchedRepoSettings = { repo: 'acme/shop', publish: true, allowExternal: false }
+const REPO: WatchedRepoSettings = { repo: 'acme/shop', publish: 'pr', allowExternal: false }
 
 const job = (id: number, overrides: Partial<JobRecord> = {}): JobRecord => ({
   id,
@@ -154,9 +154,9 @@ describe('decideRequest', () => {
   it('treats an older job without a target as the target of its repository', () => {
     const legacy = job(3, { status: 'done' })
     expect(decideRequest(input({ jobs: [legacy] })).action).toBe('refuse')
-    expect(decideRequest(input({ jobs: [legacy], repo: { ...REPO, publish: false } })).action).toBe(
-      'create',
-    )
+    expect(
+      decideRequest(input({ jobs: [legacy], repo: { ...REPO, publish: 'none' } })).action,
+    ).toBe('create')
   })
 
   it('ignores failed, superseded and closed jobs of the commit', () => {

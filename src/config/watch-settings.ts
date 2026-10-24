@@ -1,4 +1,5 @@
 import { durationMs } from './duration.js'
+import type { PublishTarget } from '../watch/types.js'
 import type { ReviewEventName } from './schema.js'
 import type { ConfigLayer } from './types.js'
 
@@ -9,7 +10,7 @@ export const DEFAULT_HOOK_TIMEOUT_MS = 30_000
 
 export interface WatchedRepoSettings {
   repo: string
-  publish: boolean
+  publish: PublishTarget
   allowExternal: boolean
   authors?: string[]
   labels?: string[]
@@ -35,12 +36,12 @@ export function resolveWatchSettings(layers: readonly ConfigLayer[]): WatchSetti
     repos: watch.repos.map((entry) => {
       const fallback = watch.when === undefined ? {} : { when: watch.when.command }
       if (typeof entry === 'string') {
-        return { repo: entry.toLowerCase(), publish: true, allowExternal: false, ...fallback }
+        return { repo: entry.toLowerCase(), publish: 'pr', allowExternal: false, ...fallback }
       }
       const { repo, publish, allowExternal, when, ...filters } = entry
       return {
         repo: repo.toLowerCase(),
-        publish: publish ?? true,
+        publish: publish === false ? 'none' : 'pr',
         allowExternal: allowExternal ?? false,
         ...filters,
         ...(when === undefined ? fallback : { when: when.command }),

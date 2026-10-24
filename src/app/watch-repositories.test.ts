@@ -26,7 +26,7 @@ const SETTINGS: WatchSettings = {
   intervalMs: 5 * MIN,
   settleMs: 3 * MIN,
   maxReviewsPerHour: 6,
-  repos: [{ repo: 'acme/shop', publish: true, allowExternal: false }],
+  repos: [{ repo: 'acme/shop', publish: 'pr', allowExternal: false }],
 }
 
 const pull = (number: number, headSha = A, overrides: Partial<OpenPull> = {}): OpenPull => ({
@@ -728,7 +728,7 @@ describe('watchRepositories', () => {
     const h = await setup({
       settings: {
         ...SETTINGS,
-        repos: [...SETTINGS.repos, { repo: 'acme/web', publish: true, allowExternal: false }],
+        repos: [...SETTINGS.repos, { repo: 'acme/web', publish: 'pr', allowExternal: false }],
       },
     })
     let listed = 0
@@ -744,7 +744,7 @@ describe('watchRepositories', () => {
         once: true,
         settings: {
           ...SETTINGS,
-          repos: [...SETTINGS.repos, { repo: 'acme/web', publish: true, allowExternal: false }],
+          repos: [...SETTINGS.repos, { repo: 'acme/web', publish: 'pr', allowExternal: false }],
         },
       }),
       h.deps,
@@ -762,7 +762,7 @@ describe('watchRepositories', () => {
     const h = await setup({
       settings: {
         ...SETTINGS,
-        repos: [...SETTINGS.repos, { repo: 'acme/web', publish: true, allowExternal: false }],
+        repos: [...SETTINGS.repos, { repo: 'acme/web', publish: 'pr', allowExternal: false }],
       },
       stopWhen: () => stop,
     })
@@ -777,7 +777,7 @@ describe('watchRepositories', () => {
       input({
         settings: {
           ...SETTINGS,
-          repos: [...SETTINGS.repos, { repo: 'acme/web', publish: true, allowExternal: false }],
+          repos: [...SETTINGS.repos, { repo: 'acme/web', publish: 'pr', allowExternal: false }],
         },
       }),
       h.deps,

@@ -63,7 +63,7 @@ export function planCycle(input: CycleInput): CycleAction[] {
       (job) =>
         job.headSha === pull.headSha &&
         blocks(job) &&
-        !(repo.publish && job.status !== 'queued' && job.publish === 'none'),
+        !(repo.publish === 'pr' && job.status !== 'queued' && job.publish === 'none'),
     )
     if (!eligible || current.baselineSha === pull.headSha) continue
     if (known) {
@@ -89,7 +89,7 @@ export function planCycle(input: CycleInput): CycleAction[] {
         status: 'queued',
         attempts: 0,
         notBefore,
-        publish: repo.publish ? 'pr' : 'none',
+        publish: repo.publish,
         createdAt: now,
       },
     })

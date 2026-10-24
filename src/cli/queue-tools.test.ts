@@ -20,7 +20,7 @@ const SETTINGS: WatchSettings = {
   intervalMs: 300_000,
   settleMs: 180_000,
   maxReviewsPerHour: 6,
-  repos: [{ repo: 'acme/shop', publish: true, allowExternal: false }],
+  repos: [{ repo: 'acme/shop', publish: 'pr', allowExternal: false }],
 }
 const PULL: PullFacts = {
   repo: 'acme/shop',

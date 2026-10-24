@@ -14,7 +14,7 @@ const PULL: OpenPull = {
   baseRef: 'main',
   private: false,
 }
-const REPO: WatchedRepoSettings = { repo: 'acme/shop', publish: true, allowExternal: false }
+const REPO: WatchedRepoSettings = { repo: 'acme/shop', publish: 'pr', allowExternal: false }
 
 describe('eligibility', () => {
   it('accepts a ready pull request of a member', () => {

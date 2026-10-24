@@ -220,7 +220,7 @@ function apply(
   deps: WatchDeps,
 ): JobEvent[] {
   const { history, events } = deps
-  const publish = repo.publish ? ('pr' as const) : ('none' as const)
+  const { publish } = repo
   switch (action.kind) {
     case 'baseline':
       for (const pull of action.pulls) history.savePull(pull)
@@ -391,7 +391,7 @@ async function refusedByWhen(
   const pull = listedPullFacts(repo.repo, listed)
   const refusal = await deps.checkWhen(
     repo.when,
-    whenInput(pull, { source: 'watch', publish: job.publish ?? 'pr' }),
+    whenInput(pull, { source: 'watch', publish: job.publish ?? repo.publish }),
   )
   if (refusal === undefined) return false
   deps.events.warning(`${repo.repo}#${job.number}: the when command refused it (${refusal})`)

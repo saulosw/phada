@@ -36,7 +36,7 @@ describe('resolveWatchSettings', () => {
       intervalMs: 300_000,
       settleMs: 180_000,
       maxReviewsPerHour: 6,
-      repos: [{ repo: 'acme/shop', publish: true, allowExternal: false }],
+      repos: [{ repo: 'acme/shop', publish: 'pr', allowExternal: false }],
     })
   })
 
@@ -67,7 +67,7 @@ describe('resolveWatchSettings', () => {
       repos: [
         {
           repo: 'a/b',
-          publish: false,
+          publish: 'none',
           allowExternal: false,
           authors: ['Alice'],
           labels: ['x'],
@@ -124,8 +124,8 @@ describe('resolveWatchSettings when', () => {
       }),
     ])
     expect(settings?.repos).toEqual([
-      { repo: 'a/b', publish: true, allowExternal: false, when: './only-team.sh' },
-      { repo: 'a/c', publish: true, allowExternal: false, when: './c.sh' },
+      { repo: 'a/b', publish: 'pr', allowExternal: false, when: './only-team.sh' },
+      { repo: 'a/c', publish: 'pr', allowExternal: false, when: './c.sh' },
     ])
   })
 })

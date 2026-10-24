@@ -79,7 +79,7 @@ function gateRefusal(
 }
 
 export function publishOf(job: JobRecord, repo: WatchedRepoSettings): PublishTarget {
-  return job.publish ?? (repo.publish ? 'pr' : 'none')
+  return job.publish ?? repo.publish
 }
 
 function reviewedCommit(job: JobRecord): boolean {
