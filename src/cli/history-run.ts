@@ -2,6 +2,7 @@ import { errorMessage } from '../app/error-message.js'
 import type { PublicationResult, ReviewRun } from '../app/review-and-publish.js'
 import type { RunOutcome } from '../app/watch-repositories.js'
 import { ProviderError } from '../providers/types.js'
+import { phadaReviewUrlAt } from '../publish/phada-state.js'
 import { InvalidReviewReportError } from '../review/errors.js'
 import { reviewVerdict } from '../review/verdict.js'
 import type { RunRecord, RunStatus } from '../store/history-store.js'
@@ -33,12 +34,17 @@ export function historyRun(run: ReviewRun, json: string, meta: RunMeta): RunReco
     resultJson: json,
   }
   if (run.status === 'skipped') {
+    const url =
+      run.reason.kind === 'already-reviewed' && run.reviewState !== undefined
+        ? phadaReviewUrlAt(run.reviewState, pullRequest.headSha)
+        : undefined
     return {
       ...base,
       status: 'skipped',
       aiCalled: false,
       reason: run.reason.kind,
       verdict: 'skipped',
+      ...(url === undefined ? {} : { url }),
     }
   }
   const outcome = run.reviewed.outcome

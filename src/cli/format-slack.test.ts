@@ -104,6 +104,23 @@ describe('slackReplies', () => {
     expect(text).toContain('&lt;!channel&gt; &amp; &lt;https://x|y&gt;')
   })
 
+  it('links the review Phada already published when it skips a commit', () => {
+    expect(
+      slackReplies(
+        event({
+          event: 'review.skipped',
+          verdict: 'skipped',
+          reason: 'already-reviewed',
+          publication: { status: 'skipped', url: 'https://github.com/acme/shop/pull/12#r0' },
+        }),
+        'full',
+        DEFAULT_SLACK_EMOJIS,
+      ),
+    ).toEqual([
+      ':eyes: *Skipped* · <https://github.com/acme/shop/pull/12|acme/shop#12> at `a1b2c3d` · <https://github.com/acme/shop/pull/12#r0|review on GitHub>\nThis commit was already reviewed.',
+    ])
+  })
+
   it('says why a review failed or was skipped', () => {
     expect(
       slackReplies(

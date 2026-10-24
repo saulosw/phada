@@ -29,7 +29,7 @@ const REVIEWS_QUERY = `query($owner: String!, $repo: String!, $number: Int!, $af
       state
       reviews(first: 100, after: $after) {
         pageInfo { hasNextPage endCursor }
-        nodes { id body author { login } commit { oid } }
+        nodes { id body author { login } url commit { oid } }
       }
     }
   }
@@ -67,6 +67,7 @@ export interface PublishedReview {
   author: string
   body: string
   commitSha: string | null
+  url?: string
 }
 
 export interface ThreadComment {
@@ -180,6 +181,7 @@ function toReview(node: unknown): PublishedReview {
     author: login(node, 'author'),
     body: stringField(node, 'body'),
     commitSha: field(node, 'commit') === null ? null : stringField(node, 'commit.oid'),
+    ...(typeof field(node, 'url') === 'string' ? { url: stringField(node, 'url') } : {}),
   }
 }
 

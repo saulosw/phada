@@ -30,6 +30,8 @@ output can change between minor versions.
 - A verdict computed by Phada (`clean`, `comments`, `blocking`, `failed`, `skipped`) in the JSON
   of every review, in the events and in the history.
 - `phada watch --status` shows who asked for each job.
+- A request for a commit Phada already reviewed on the pull request gets the link of that review,
+  in the `review.skipped` event and in the Slack reply.
 - MCP servers declared in your own config, for Claude Code, Codex and Ollama alike: started by
   Phada (`command`, `args`, `env`) or reached over streamable HTTP (`url`, `headers`). Their
   tools are offered to the AI next to the investigation tools, in the same budget of calls and

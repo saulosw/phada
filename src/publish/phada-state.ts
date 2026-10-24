@@ -20,6 +20,17 @@ export function phadaReviewsAt(state: PullRequestReviewState, sha: string): Revi
   })
 }
 
+export function phadaReviewUrlAt(state: PullRequestReviewState, sha: string): string | undefined {
+  return state.reviews
+    .filter(
+      (review) =>
+        isViewer(state, review.author) &&
+        parseReviewMarker(review.body)?.sha === sha &&
+        review.url !== undefined,
+    )
+    .at(-1)?.url
+}
+
 export function phadaThreads(state: PullRequestReviewState): ReviewThread[] {
   return state.threads.filter(
     (thread) => isViewer(state, thread.author) && hasFindingMarker(thread.body),

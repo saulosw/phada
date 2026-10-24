@@ -344,8 +344,9 @@ environment. A message with up to five pull request links of watched repositorie
 when each review ends, the emoji of its verdict and an answer in its thread: `link` (the
 verdict and the links), `summary` (plus the summary, the score and the counts) or `full` (plus
 every finding with a link to its line in the reviewed commit, split into several messages when
-long). A refused request is answered with the reason; messages in other channels, from bots, or
-with links to repositories outside `watch:` are left alone.
+long). A commit Phada already reviewed is answered with the link of that review. A refused
+request is answered with the reason; messages in other channels, from bots, or with links to
+repositories outside `watch:` are left alone.
 
 ### Review events and hooks
 

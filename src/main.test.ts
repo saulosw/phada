@@ -2301,6 +2301,32 @@ describe('phada watch', () => {
     })
   })
 
+  it('gives the hook the link of the review Phada already published on the commit', async () => {
+    const hooked: ReviewEvent[] = []
+    const reviewed = phadaState([])
+    const h = harness({
+      files: withConfig(`${WATCH_CONFIG}hooks:\n  review.skipped: ./notify.sh\n`),
+      reviewState: () =>
+        Promise.resolve({
+          ...reviewed,
+          reviews: reviewed.reviews.map((review) => ({ ...review, url: REVIEW_URL })),
+        }),
+    })
+    h.deps.runHook = async (event) => {
+      hooked.push(event)
+      return undefined
+    }
+
+    expect(await run(['enqueue', 'acme/shop#12', '--publish', 'none'], h.deps)).toBe(0)
+    expect(await run(['watch', '--once'], h.deps)).toBe(0)
+
+    expect(hooked.at(-1)).toMatchObject({
+      event: 'review.skipped',
+      reason: 'already-reviewed',
+      publication: { status: 'skipped', url: REVIEW_URL },
+    })
+  })
+
   it('records the open pull requests without reviewing them on the first run', async () => {
     const h = harness({ files: withConfig(), listPulls: listed })
 
