@@ -43,6 +43,7 @@ import {
 import { RECHECK_JSON_SCHEMA } from './review/recheck-schema.js'
 import { providerRunsSkills } from './cli/provider-choice.js'
 import type { ReviewEvent } from './cli/review-event.js'
+import type { HookSettings } from './config/watch-settings.js'
 import { createProvider, run } from './main.js'
 import type { MainDeps, ProviderOptions } from './main.js'
 import { ClaudeCliProvider } from './providers/claude.js'
@@ -100,6 +101,8 @@ interface Harness {
   signal: () => void
   kills: () => number
   aborts: number[]
+  hooked: { event: ReviewEvent; settings: HookSettings }[]
+  slack: { calls: string[]; tokens: { botToken: string; appToken: string }[] }
 }
 
 const storeDir = mkdtempSync(join(tmpdir(), 'phada-main-index-'))
@@ -167,7 +170,10 @@ function harness(
     pullHead?: MainDeps['fetchPullRequestHead']
     withLock?: MainDeps['withLock']
     lockHolder?: number
-    stdin?: string[]
+    stdin?: string[][]
+    beforeSleep?: () => Promise<void>
+    hookWarning?: (event: ReviewEvent) => string | undefined
+    slackMessages?: Record<string, unknown>[]
     comments?: MainDeps['listIssueComments']
   } = {},
 ): Harness {
@@ -179,6 +185,9 @@ function harness(
   storeCount += 1
   const historyFile = join(storeDir, `history-${storeCount}.sqlite`)
   const signalHandlers: (() => void)[] = []
+  const stdinRuns = [...(overrides.stdin ?? [])]
+  const hooked: Harness['hooked'] = []
+  const slack: Harness['slack'] = { calls: [], tokens: [] }
   const aborts: number[] = []
   let kills = 0
   let clock = Date.parse('2026-10-18T12:00:00.000Z')
@@ -204,7 +213,9 @@ function harness(
     cwd: '/w/shop',
     home: '/home/u',
     files,
-    stdin: Readable.from((overrides.stdin ?? []).map((text) => `${text}\n`)),
+    get stdin() {
+      return Readable.from((stdinRuns.shift() ?? []).map((text) => `${text}\n`))
+    },
     stdout: {
       write: (text: string) => {
         events.push('stdout')
@@ -305,9 +316,34 @@ function harness(
     },
     abort: (code) => aborts.push(code),
     sleep: async (ms) => {
+      await overrides.beforeSleep?.()
       clock += ms
     },
     clock: () => new Date(clock),
+    runHook: async (event, settings) => {
+      hooked.push({ event, settings })
+      return overrides.hookWarning?.(event)
+    },
+    slackApi: (tokens) => {
+      slack.tokens.push(tokens)
+      return {
+        postMessage: async (channel, thread, text) => {
+          slack.calls.push(`post ${channel} ${thread} ${text.split('\n')[0]}`)
+          if (overrides.slackMessages !== undefined) for (const handler of signalHandlers) handler()
+        },
+        addReaction: async (_channel, _ts, name) => {
+          slack.calls.push(`+${name}`)
+        },
+        removeReaction: async (_channel, _ts, name) => {
+          slack.calls.push(`-${name}`)
+        },
+        openConnection: async () => 'wss://slack.test',
+      }
+    },
+    connectSlack: (options) => {
+      for (const message of overrides.slackMessages ?? []) options.onEvent(message)
+      return { close: () => slack.calls.push('closed') }
+    },
     createExtractor: () => extractor,
     runsSkills: () => false,
     pathSize: async () => 2048,
@@ -335,6 +371,8 @@ function harness(
   }
   return {
     deps,
+    hooked,
+    slack,
     files,
     treeFetches,
     fileFetches,
@@ -1974,20 +2012,20 @@ describe('phada mcp', () => {
       files: memoryFiles({ '/cfg/config.yml': WATCH_CONFIG }),
       lockHolder: 7,
       stdin: [
-        line(0, 'initialize', { protocolVersion: '2025-06-18', capabilities: {} }),
-        JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }),
-        line(1, 'tools/list'),
-        line(2, 'tools/call', {
-          name: 'review_pull_request',
-          arguments: { pr: 'acme/shop#12', publish: 'none' },
-        }),
+        [
+          line(0, 'initialize', { protocolVersion: '2025-06-18', capabilities: {} }),
+          JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }),
+          line(1, 'tools/list'),
+          line(2, 'tools/call', {
+            name: 'review_pull_request',
+            arguments: { pr: 'acme/shop#12', publish: 'none' },
+          }),
+        ],
+        [line(3, 'tools/call', { name: 'wait_for_job', arguments: { job: 1, timeoutSeconds: 4 } })],
       ],
     })
 
     expect(await run(['mcp'], h.deps)).toBe(0)
-    h.deps.stdin = Readable.from([
-      `${line(3, 'tools/call', { name: 'wait_for_job', arguments: { job: 1, timeoutSeconds: 4 } })}\n`,
-    ])
     expect(await run(['mcp'], h.deps)).toBe(0)
 
     const [init, list, review, wait] = answers(h.stdout())
@@ -1998,42 +2036,40 @@ describe('phada mcp', () => {
       'wait_for_job',
       'list_queue',
     ])
-    expect(toolJson(review!)).toMatchObject({
+    expect(review && toolJson(review)).toMatchObject({
       status: 'queued',
       job: { id: 1, publish: 'none' },
       watchRunning: true,
     })
-    expect(toolJson(wait!)).toMatchObject({ timedOut: true, job: { status: 'queued' } })
-    expect(h.posts).toHaveLength(0)
+    expect(wait && toolJson(wait)).toMatchObject({ timedOut: true, job: { status: 'queued' } })
   })
 
   it('answers other calls while a wait_for_job waits', async () => {
-    const h = harness({ files: memoryFiles({ '/cfg/config.yml': WATCH_CONFIG }), lockHolder: 7 })
-    expect(await run(['enqueue', 'acme/shop#12'], h.deps)).toBe(0)
-    const waiting: (() => void)[] = []
-    const out: string[] = []
-    const advance = h.deps.sleep
-    let released = false
-    h.deps.sleep = (ms, signal) =>
-      released ? advance(ms, signal) : new Promise<void>((resolve) => waiting.push(resolve))
-    h.deps.stdin = Readable.from([
-      `${line(1, 'tools/call', { name: 'wait_for_job', arguments: { job: 1, timeoutSeconds: 4 } })}\n`,
-      `${line(2, 'tools/call', { name: 'list_queue', arguments: {} })}\n`,
-    ])
-    h.deps.stdout = {
-      write: (text: string) => {
-        out.push(text)
-        if (text.includes('"id":2')) {
-          released = true
-          for (const resolve of waiting) resolve()
-        }
-        return true
-      },
+    const listed = async () => {
+      while (!h.stdout().includes('"id":2')) await new Promise((done) => setImmediate(done))
     }
+    const h: Harness = harness({
+      files: memoryFiles({ '/cfg/config.yml': WATCH_CONFIG }),
+      lockHolder: 7,
+      beforeSleep: listed,
+      stdin: [
+        [
+          line(1, 'tools/call', { name: 'wait_for_job', arguments: { job: 1, timeoutSeconds: 4 } }),
+          line(2, 'tools/call', { name: 'list_queue', arguments: {} }),
+        ],
+      ],
+    })
+    expect(await run(['enqueue', 'acme/shop#12'], h.deps)).toBe(0)
 
     expect(await run(['mcp'], h.deps)).toBe(0)
 
-    expect(out.map((text) => (JSON.parse(text) as { id: number }).id)).toEqual([2, 1])
+    const ids = h
+      .stdout()
+      .trim()
+      .split('\n')
+      .filter((text) => text.startsWith('{'))
+      .map((text) => (JSON.parse(text) as { id: number }).id)
+    expect(ids).toEqual([2, 1])
   })
 
   it('answers review_pull_request with an error when there is no token', async () => {
@@ -2041,7 +2077,7 @@ describe('phada mcp', () => {
       env: { PHADA_CONFIG_HOME: '/cfg' },
       files: memoryFiles({ '/cfg/config.yml': WATCH_CONFIG }),
       stdin: [
-        line(1, 'tools/call', { name: 'review_pull_request', arguments: { pr: 'acme/shop#12' } }),
+        [line(1, 'tools/call', { name: 'review_pull_request', arguments: { pr: 'acme/shop#12' } })],
       ],
     })
 
@@ -2186,7 +2222,6 @@ describe('phada watch', () => {
   ] as const)(
     'reviews a pull request posted in a Slack channel with publish: %s and answers in its thread',
     async (publish, posts) => {
-      const slackCalls: string[] = []
       const h = harness({
         env: {
           GITHUB_TOKEN: TOKEN,
@@ -2198,43 +2233,27 @@ describe('phada watch', () => {
           `${WATCH_CONFIG}slack:\n  channels: [{ id: C1, publish: ${publish}, reply: full }]\n`,
         ),
         review: () => Promise.resolve(WITH_FINDING),
+        slackMessages: [
+          {
+            type: 'message',
+            channel: 'C1',
+            ts: '100.1',
+            text: '<https://github.com/acme/shop/pull/12>',
+          },
+        ],
       })
-      h.deps.slackApi = (tokens) => {
-        expect(tokens).toEqual({ botToken: 'xoxb-secret-bot', appToken: 'xapp-secret-app' })
-        return {
-          postMessage: async (channel, thread, text) => {
-            slackCalls.push(`post ${channel} ${thread} ${text.split('\n')[0]}`)
-            h.signal()
-          },
-          addReaction: async (channel, ts, name) => {
-            slackCalls.push(`+${name}`)
-          },
-          removeReaction: async (channel, ts, name) => {
-            slackCalls.push(`-${name}`)
-          },
-          openConnection: async () => 'wss://slack.test',
-        }
-      }
-      h.deps.connectSlack = (options) => {
-        options.onEvent({
-          type: 'message',
-          channel: 'C1',
-          ts: '100.1',
-          text: '<https://github.com/acme/shop/pull/12>',
-        })
-        return { close: () => slackCalls.push('closed') }
-      }
 
       expect(await run(['watch'], h.deps)).toBe(0)
 
       expect(h.posts).toHaveLength(posts)
-      expect(slackCalls.slice(0, 4)).toEqual([
+      expect(h.slack.tokens).toEqual([{ botToken: 'xoxb-secret-bot', appToken: 'xapp-secret-app' }])
+      expect(h.slack.calls).toEqual([
         '+hourglass_flowing_sand',
         '-hourglass_flowing_sand',
         '+x',
         expect.stringMatching(/^post C1 100\.1 :x: \*Blocking findings\* · /),
+        'closed',
       ])
-      expect(slackCalls).toContain('closed')
       expect(h.stderr()).not.toContain('secret')
     },
   )
@@ -2256,49 +2275,41 @@ describe('phada watch', () => {
   })
 
   it('sends each review event to the hooks with the full review when it finishes', async () => {
-    const hooked: ReviewEvent[] = []
     const h = harness({
       files: withConfig(`${WATCH_CONFIG}hooks:\n  review.finished: ./notify.sh\n`),
       listPulls: listed,
       review: () => Promise.resolve(WITH_FINDING),
+      hookWarning: (event) =>
+        event.event === 'review.finished' ? 'The review.finished hook exited with 1' : undefined,
     })
-    h.deps.runHook = async (event, settings) => {
-      hooked.push(event)
-      expect(settings).toMatchObject({ commands: { 'review.finished': './notify.sh' } })
-      return event.event === 'review.finished'
-        ? 'The review.finished hook exited with 1'
-        : undefined
-    }
 
     expect(await run(['watch', '--once', '--backfill'], h.deps)).toBe(0)
 
-    expect(hooked.map(({ event }) => event)).toEqual(['review.started', 'review.finished'])
-    expect(hooked[1]).toMatchObject({
-      job: { repo: 'acme/shop', number: 12, url: 'https://github.com/acme/shop/pull/12' },
-      requests: [{ source: 'watch', publish: 'pr' }],
-      verdict: 'blocking',
-      publication: { status: 'published', url: REVIEW_URL },
-      review: { verdict: 'blocking', review: { findings: [{ file: 'src/shop.ts', line: 3 }] } },
+    expect(h.hooked.map(({ event }) => event.event)).toEqual(['review.started', 'review.finished'])
+    expect(h.hooked[1]).toMatchObject({
+      settings: { commands: { 'review.finished': './notify.sh' } },
+      event: {
+        job: { repo: 'acme/shop', number: 12, url: 'https://github.com/acme/shop/pull/12' },
+        requests: [{ source: 'watch', publish: 'pr' }],
+        verdict: 'blocking',
+        publication: { status: 'published', url: REVIEW_URL },
+        review: { verdict: 'blocking', review: { findings: [{ file: 'src/shop.ts', line: 3 }] } },
+      },
     })
     expect(h.stderr()).toContain('Warning: The review.finished hook exited with 1')
   })
 
   it('gives the hook the review of a request that does not publish, and posts nothing', async () => {
-    const hooked: ReviewEvent[] = []
     const h = harness({
       files: withConfig(`${WATCH_CONFIG}hooks:\n  review.finished: ./notify.sh\n`),
       review: () => Promise.resolve(WITH_FINDING),
     })
-    h.deps.runHook = async (event) => {
-      hooked.push(event)
-      return undefined
-    }
 
     expect(await run(['enqueue', 'acme/shop#12', '--publish', 'none'], h.deps)).toBe(0)
     expect(await run(['watch', '--once'], h.deps)).toBe(0)
 
     expect(h.posts).toHaveLength(0)
-    expect(hooked[1]).toMatchObject({
+    expect(h.hooked[1]?.event).toMatchObject({
       event: 'review.finished',
       requests: [{ source: 'enqueue', publish: 'none' }],
       publication: { status: 'not-published' },
@@ -2307,7 +2318,6 @@ describe('phada watch', () => {
   })
 
   it('gives the hook the link of the review Phada already published on the commit', async () => {
-    const hooked: ReviewEvent[] = []
     const reviewed = phadaState([])
     const h = harness({
       files: withConfig(`${WATCH_CONFIG}hooks:\n  review.skipped: ./notify.sh\n`),
@@ -2317,15 +2327,11 @@ describe('phada watch', () => {
           reviews: reviewed.reviews.map((review) => ({ ...review, url: REVIEW_URL })),
         }),
     })
-    h.deps.runHook = async (event) => {
-      hooked.push(event)
-      return undefined
-    }
 
     expect(await run(['enqueue', 'acme/shop#12', '--publish', 'none'], h.deps)).toBe(0)
     expect(await run(['watch', '--once'], h.deps)).toBe(0)
 
-    expect(hooked.at(-1)).toMatchObject({
+    expect(h.hooked.at(-1)?.event).toMatchObject({
       event: 'review.skipped',
       reason: 'already-reviewed',
       publication: { status: 'skipped', url: REVIEW_URL },
