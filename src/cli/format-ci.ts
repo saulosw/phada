@@ -1,3 +1,4 @@
+import { byteLength } from '../context/byte-cut.js'
 import { CI_LOG_TOTAL_BYTES, CI_MAX_ANNOTATIONS } from '../context/ci.js'
 import type { Ci } from '../context/types.js'
 import type { CiCheck } from '../review/types.js'
@@ -7,8 +8,6 @@ import { formatBytes, formatCount } from './units.js'
 
 const HEADING = '## CI sent to the AI\n\n'
 const LOG_BUDGET = `${CI_LOG_TOTAL_BYTES / 1024} KB`
-
-const encoder = new TextEncoder()
 
 export function formatCiLine({ summary }: Ci): string | undefined {
   if (summary.state === 'none') return undefined
@@ -53,7 +52,7 @@ function checkLine(check: CiCheck): string {
     ...(check.annotations === undefined
       ? []
       : [formatCount(check.annotations.length, 'annotation')]),
-    ...(check.log === undefined ? [] : [`log ${formatBytes(encoder.encode(check.log).length)}`]),
+    ...(check.log === undefined ? [] : [`log ${formatBytes(byteLength(check.log))}`]),
   ]
   const conclusion =
     check.state === 'failing' && check.conclusion !== undefined

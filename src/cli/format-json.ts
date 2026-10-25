@@ -5,6 +5,7 @@ import type { ImpactReport } from '../graph/report.js'
 import type { InvestigationReport } from '../investigation/tools/report.js'
 import type { PullRequest } from '../github/pull-request.js'
 import type { TokenUsage } from '../providers/types.js'
+import { byteLength } from '../context/byte-cut.js'
 import { CI_LOG_TOTAL_BYTES, CI_MAX_ANNOTATIONS } from '../context/ci.js'
 import { CONVERSATION_BUDGET_BYTES, conversationItemBytes } from '../publish/conversation.js'
 import type { Conversation, SkipReason } from '../publish/types.js'
@@ -23,8 +24,6 @@ import { reviewVerdict } from '../review/verdict.js'
 import type { GitHubReview } from './format-github.js'
 
 const SCHEMA_VERSION = 1
-
-const encoder = new TextEncoder()
 
 export interface ReviewJsonBlocks {
   conversation?: Conversation
@@ -194,7 +193,7 @@ function checkJson({ name, state, conclusion, annotations, log }: CiCheck) {
     state,
     conclusion: conclusion ?? null,
     annotations: annotations?.length ?? 0,
-    logBytes: log === undefined ? null : encoder.encode(log).length,
+    logBytes: log === undefined ? null : byteLength(log),
   }
 }
 
