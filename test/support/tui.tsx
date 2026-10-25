@@ -15,6 +15,8 @@ export const KEYS = {
   down: `${ESC}[B`,
   pageUp: `${ESC}[5~`,
   pageDown: `${ESC}[6~`,
+  home: `${ESC}[H`,
+  end: `${ESC}[F`,
   tab: '\t',
   shiftTab: `${ESC}[Z`,
   enter: '\r',
