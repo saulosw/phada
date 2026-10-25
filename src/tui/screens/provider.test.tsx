@@ -181,7 +181,7 @@ describe('the Provider screen', () => {
     expect(text).toContain('→ pull a model with ollama pull <model>')
   })
 
-  it('says it is checking, then checks again with r', async () => {
+  it('says it is checking, then checks again with r keeping the last result meanwhile', async () => {
     let checks = 0
     let finish: (value: ProviderReport) => void = () => {}
     const { frame, press } = openProvider({
@@ -201,7 +201,8 @@ describe('the Provider screen', () => {
     expect(frame()).toContain('logged in (claude.ai)')
     await press('r')
     expect(checks).toBe(2)
-    expect(frame()).toContain('Checking…')
+    expect(frame()).toContain('logged in (claude.ai)')
+    expect(frame()).not.toContain('Checking…')
     finish(
       report([
         claude({

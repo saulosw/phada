@@ -199,7 +199,7 @@ function BranchView({
   active: boolean
 }) {
   const { readRepositoryRules } = useAppDeps()
-  const { state } = useLoaded(() => readRepositoryRules(repo))
+  const { state } = useLoaded(`rules:${repo}`, () => readRepositoryRules(repo))
   const draw = useDraw()
   const m = draw.messages.rules
   const read = state.status === 'ready' && state.value.status === 'read' ? state.value : undefined
@@ -227,7 +227,7 @@ function PullView({
   active: boolean
 }) {
   const { readPullRequestRules } = useAppDeps()
-  const { state } = useLoaded(() => readPullRequestRules(repo, pull))
+  const { state } = useLoaded(`rules:${repo}#${pull}`, () => readPullRequestRules(repo, pull))
   const draw = useDraw()
   const { messages } = draw
   const { colors } = draw.theme

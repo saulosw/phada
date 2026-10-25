@@ -16,6 +16,7 @@ import { usePolled } from './data-hooks.js'
 import { ErrorBoundary } from './error-boundary.js'
 import { Footer } from './footer.js'
 import { Help } from './help.js'
+import { createLoadCache, LoadCacheContext } from './load-cache.js'
 import type { UiMessages } from './i18n/messages.js'
 import { uiMessagesFor } from './i18n/messages.js'
 import { Palette } from './palette.js'
@@ -58,14 +59,17 @@ export function App({ deps, size, onExit, screens = SCREENS }: AppProps) {
   }, [])
   const working = useMemo<WorkingSignal>(() => ({ working: workers > 0, start }), [workers, start])
   const fail = useCallback((error: unknown) => onExit({ kind: 'failed', error }), [onExit])
+  const loads = useMemo(() => createLoadCache(() => deps.now().getTime()), [deps])
   return (
     <ErrorBoundary onError={fail}>
       <AppDepsContext.Provider value={deps}>
         <ThemeContext.Provider value={theme}>
           <WorkingContext.Provider value={working}>
-            <Localized>
-              <Shell size={size} screens={screens} onExit={onExit} />
-            </Localized>
+            <LoadCacheContext.Provider value={loads}>
+              <Localized>
+                <Shell size={size} screens={screens} onExit={onExit} />
+              </Localized>
+            </LoadCacheContext.Provider>
           </WorkingContext.Provider>
         </ThemeContext.Provider>
       </AppDepsContext.Provider>

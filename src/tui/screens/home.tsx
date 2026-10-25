@@ -56,8 +56,8 @@ export function HomeScreen() {
   const theme = useTheme()
   const size = useScreenSize()
   const local = usePolled(() => readHomeLocal(deps))
-  const github = useLoaded(deps.readGitHub)
-  const providers = useLoaded(deps.readProviders)
+  const github = useLoaded('github', deps.readGitHub)
+  const providers = useLoaded('providers', deps.readProviders)
   useScreenKeys([{ keys: 'r', label: messages.keys.refresh }])
   const now = deps.now()
   const draw: Draw = { messages, theme, home: deps.home, now, width: size.columns }

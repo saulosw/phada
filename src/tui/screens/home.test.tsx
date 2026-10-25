@@ -276,6 +276,23 @@ describe('the Home screen', () => {
     expect(calls).toMatchObject({ github: 2, providers: 2 })
   })
 
+  it('shares the AI check with the Provider screen and shows the last facts at once on return', async () => {
+    const { frame, press, resize, calls } = openHome()
+    await waitFor(() => frame().includes('All set'))
+    await press('7')
+    await waitFor(() => frame().includes('Claude Code'))
+    expect(frame()).not.toContain('checking')
+    await press('1')
+    expect(frame()).toContain('All set')
+    expect(frame()).not.toContain('checking')
+    resize({ columns: 70, rows: 20 })
+    await settle()
+    resize(NARROW)
+    await settle()
+    expect(frame()).toContain('All set')
+    expect(calls).toMatchObject({ github: 1, providers: 1 })
+  })
+
   it('names a token GitHub refused and the next step of the chosen AI', async () => {
     const { frame } = openHome({
       github: async () => ({ source: 'GH_TOKEN', account: { state: 'refused' } }),

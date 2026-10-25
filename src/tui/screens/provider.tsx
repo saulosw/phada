@@ -34,7 +34,7 @@ export function ProviderScreen() {
   const theme = useTheme()
   const size = useScreenSize()
   const setup = usePolled(readProviderSetup)
-  const { state: checked } = useLoaded(readProviders)
+  const { state: checked } = useLoaded('providers', readProviders)
   const draw: Draw = { messages, theme, home, width: size.columns }
   const lines = [
     ...choiceLines(setup, draw),

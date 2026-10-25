@@ -308,7 +308,7 @@ src/
                          #   host.onSignal → unmount → AppResult (quit, interrupted, terminated,
                          #   failed with the error)
     app.tsx              #   App: theme, catalog of the language read every 2 s (the last good
-                         #   one kept), working signal and error boundary around the
+                         #   one kept), working signal, load cache and error boundary around the
                          #   shell — tabs, the active screen, footer, ? help, / palette, Esc
                          #   (a screen's back first), q, 1–9, ←/→, Tab, Ctrl-C; the size warning
                          #   below 80×24
@@ -345,7 +345,12 @@ src/
                          #   origin rows; indented()
     units.ts             #   durationText(), bytesText()
     data-hooks.ts        #   usePolled() (local data, at once, every 2 s on the scheduler and when
-                         #   its key changes), useLoaded() (slow data, on open and on r); DataState
+                         #   its key changes), useLoaded(key) (slow data through the load cache:
+                         #   the last value at once, loaded again on open after 30 s and on r);
+                         #   DataState
+    load-cache.ts        #   createLoadCache(): the app's last slow loads by name (GitHub, the AI
+                         #   checks, rules per repository and pull request), a running load
+                         #   joined, fresh for FRESH_MS on the app's clock; LoadCacheContext
     data-view.tsx        #   DataView: loading, the error in one line, or the value; failedText():
                          #   any error as one line without control characters
     scroll-list.tsx      #   useSelection() (↑/↓, PgUp/PgDn, Home/End, Enter; follows the selected

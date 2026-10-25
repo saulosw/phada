@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useAppDeps, useScreenInput, useWorking } from './app-context.js'
+import { LoadCacheContext, settle } from './load-cache.js'
+
+export { FRESH_MS } from './load-cache.js'
 
 export const POLL_MS = 2000
 
@@ -45,33 +48,25 @@ export interface Loaded<T> {
   reload(): void
 }
 
-export function useLoaded<T>(load: () => Promise<T>): Loaded<T> {
-  const [state, setState] = useState<DataState<T>>({ status: 'loading' })
-  const [round, setRound] = useState(0)
+export function useLoaded<T>(key: string, load: () => Promise<T>): Loaded<T> {
+  const cache = useContext(LoadCacheContext)
+  if (cache === undefined) throw new Error('useLoaded() outside the app')
   const latest = useRef(load)
   latest.current = load
-  useWorking(state.status === 'loading')
+  const subscribe = useCallback(
+    (listener: () => void) => cache.subscribe(key, listener),
+    [cache, key],
+  )
+  const entry = useSyncExternalStore(subscribe, () => cache.entry(key))
+  useWorking(entry.loading || entry.state.status === 'loading')
   useEffect(() => {
-    let current = true
-    setState({ status: 'loading' })
-    void settle(latest.current).then((next) => {
-      if (current) setState(next)
-    })
-    return () => {
-      current = false
-    }
-  }, [round])
-  const reload = useCallback(() => setRound((value) => value + 1), [])
+    cache.load(key, () => latest.current(), { force: false })
+  }, [cache, key])
+  const reload = useCallback(() => {
+    cache.load(key, () => latest.current(), { force: true })
+  }, [cache, key])
   useScreenInput((input) => {
     if (input === 'r') reload()
   })
-  return { state, reload }
-}
-
-async function settle<T>(read: () => T | Promise<T>): Promise<DataState<T>> {
-  try {
-    return { status: 'ready', value: await read() }
-  } catch (error) {
-    return { status: 'failed', error }
-  }
+  return { state: entry.state as DataState<T>, reload }
 }
