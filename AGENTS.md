@@ -131,6 +131,13 @@ src/
     check-providers.ts   #   checkProviders(): the checkers of Claude Code, Codex and Ollama run
                          #   at once (injected), the chosen provider marked; one that throws is a
                          #   failed state
+    read-provider.ts     #   providerSetup(): the provider and model of the user config (or the
+                         #   default) and its MCP servers by name and kind, never their command,
+                         #   env, URL or headers; readProviders(): the choice and every provider
+                         #   checked with its nextStep() (install, login, ollama serve, ollama pull)
+    read-learnings.ts    #   readLearnings(): per repository, the observed relations (newest
+                         #   first; none, read or unreadable) and the feedback of Phada's comments
+                         #   per repository and per rule; readers injected
   cli/                   # terminal edge
     args.ts              #   parseCliArgs(): `review` (--dry-run, --force, --verify/--no-verify,
                          #   --investigate/--no-investigate, --no-resolve, --no-conversation,
@@ -151,8 +158,10 @@ src/
                          #   the screens (readQueue with the lock holder and the watch settings,
                          #   readReviews, readReviewDetail) over appHistory(), closed on exit;
                          #   readRepositories, readRepository (the user config folder, the index
-                         #   file in the cache) and readAutomation (the Slack tokens only as set
-                         #   or missing)
+                         #   file in the cache), readAutomation (the Slack tokens only as set or
+                         #   missing), readProviderSetup (the user config read each time),
+                         #   readProviders (the status checkers of src/providers/, injectable),
+                         #   readLearnings (the observed files of the cache, read only)
     app-history.ts       #   appHistory(): the history for the app, opened once when its file
                          #   exists (looked for again while missing, never created), a newer or
                          #   unreadable file thrown on each read
@@ -272,7 +281,8 @@ src/
                          #   below 80×24
     app-context.ts       #   AppDeps (version, cwd, home, env, scheduler, language, configError,
                          #   now, readQueue, readReviews, readReviewDetail, readRepositories,
-                         #   readRepository, readAutomation), Scheduler, KeyHint;
+                         #   readRepository, readAutomation, readProviderSetup, readProviders,
+                         #   readLearnings), Scheduler, KeyHint;
                          #   useAppDeps(), useTheme(), useMessages(), useWorking(),
                          #   useIsWorking(), useScreenKeys(), useBack(), useScreenInput() (quiet
                          #   while a text field is focused), useScreenSize()
@@ -286,7 +296,11 @@ src/
                          #   repositories.tsx (each repository with its origins, index and last
                          #   review → its watch filters, index, user config with origins, rules,
                          #   related repositories and last reviews), automation.tsx (one page:
-                         #   watch, CI wait, request sources, hooks, when), placeholder.tsx
+                         #   watch, CI wait, request sources, hooks, when), provider.tsx (the
+                         #   choice and its origin, each AI checked on open and on r with its next
+                         #   step, the MCP servers; PROVIDER_NAMES), learnings.tsx (each
+                         #   repository's relations and feedback → its feedback per rule and its
+                         #   relations), placeholder.tsx
     setting-lines.tsx    #   settingLines(), settingValue(): config settings as key, value and
                          #   origin rows
     units.ts             #   durationText(), bytesText()
@@ -333,7 +347,8 @@ src/
                          #   the repos/<owner>/<repo>/ folders with a config.yml or rules.md
     local-files.ts       #   LocalFileSystem and its node:fs implementation
     cache-paths.ts       #   the cache folder (PHADA_CACHE_HOME › XDG › ~/.cache/phada),
-                         #   repositoryCache(): mirror, index and observed paths; pathSize()
+                         #   repositoryCache(): mirror, index and observed paths; pathSize();
+                         #   observedRepositories(): owner/repo of each observed file
     data-paths.ts        #   the data folder (PHADA_DATA_HOME › XDG › ~/.local/share/phada):
                          #   history.sqlite and watch.lock
     watch-settings.ts    #   resolveWatchSettings() with the defaults, historyEnabled()
@@ -529,7 +544,9 @@ src/
     schema.ts            #   tables and SCHEMA_VERSION (another version is rebuilt)
     index-store.ts       #   openIndexStore(): blobs, commits, summary, prune, reader()
     index-reader.ts      #   IndexReader: the files, symbols, calls and uses of one commit
-    observed-store.ts    #   openObservedStore(): relations learned from reviews (own schema)
+    observed-store.ts    #   openObservedStore(): relations learned from reviews (own schema);
+                         #   readObservedEdges(): read only, missing or unreadable as data,
+                         #   never creating or rebuilding the file
     history-store.ts     #   openHistoryStore(): the review history, never rebuilt; watched
                          #   repositories and pull requests, jobs and their review requests, runs
                          #   with their verdict, pause, runs() (with the title, by text), run(),
