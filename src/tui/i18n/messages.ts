@@ -264,7 +264,7 @@ export interface LearningsMessages {
   unreadable: string
   comments(count: number): string
   noComments: string
-  outcomes(counts: { fixed: number; dismissed: number; ignored: number; open: number }): string
+  outcome: Readonly<Record<FeedbackFinding['destination'], (count: number) => string>>
   marks(negative: number, replies: number): string
   detail: {
     published: string

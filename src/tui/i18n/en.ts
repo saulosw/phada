@@ -311,8 +311,12 @@ export const english: UiMessages = {
     unreadable: 'relations unreadable',
     comments: (count) => `${count} ${count === 1 ? 'comment' : 'comments'}`,
     noComments: 'no comments',
-    outcomes: ({ fixed, dismissed, ignored, open }) =>
-      `${fixed} fixed · ${dismissed} dismissed · ${ignored} ignored · ${open} open`,
+    outcome: {
+      fixed: (count) => `${count} fixed`,
+      dismissed: (count) => `${count} dismissed`,
+      ignored: (count) => `${count} ignored`,
+      open: (count) => `${count} open`,
+    },
     marks: (negative, replies) =>
       `${negative} with a negative reaction · ${replies} with a reply from a person`,
     detail: {

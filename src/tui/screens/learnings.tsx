@@ -117,7 +117,7 @@ function LearningsList({ learnings, index }: { learnings: Learnings; index: numb
             {repo.feedback === null ? (
               <Text color={colors.dim}>{m.noComments}</Text>
             ) : (
-              commentsText(repo.feedback, messages)
+              commentsText(repo.feedback, messages, 'present')
             )}
           </>
         )}
@@ -153,7 +153,7 @@ function RepoDetail({ repo }: { repo: RepoLearnings | undefined }) {
         {'  '}
         <Text bold>{feedback.published}</Text>
       </Text>,
-      ...wrapped(m.outcomes(feedback), 2),
+      ...wrapped(outcomesText(feedback, messages, 'all'), 2),
       ...wrapped(m.marks(feedback.negativeReaction, feedback.humanReply), 2, colors.dim),
       <Text> </Text>,
       <Text bold>{d.byRule(repo.rules.length)}</Text>,
@@ -165,7 +165,7 @@ function RepoDetail({ repo }: { repo: RepoLearnings | undefined }) {
           {'  '}
           {oneLine(rule.rule)}
         </Text>,
-        ...wrapped(commentsText(rule, messages), 4),
+        ...wrapped(commentsText(rule, messages, 'all'), 4),
         ...wrapped(m.marks(rule.negativeReaction, rule.humanReply), 4, colors.dim),
       )
     }
@@ -208,9 +208,24 @@ function relationsText({ observed }: RepoLearnings, messages: UiMessages): strin
   return m.relations(observed.edges.length)
 }
 
-function commentsText(counts: FeedbackCounts, messages: UiMessages): string {
-  const m = messages.learnings
-  return `${m.comments(counts.published)}: ${m.outcomes(counts)}`
+const OUTCOMES = ['fixed', 'dismissed', 'ignored', 'open'] as const
+
+function commentsText(
+  counts: FeedbackCounts,
+  messages: UiMessages,
+  shown: 'all' | 'present',
+): string {
+  return `${messages.learnings.comments(counts.published)}: ${outcomesText(counts, messages, shown)}`
+}
+
+function outcomesText(
+  counts: FeedbackCounts,
+  messages: UiMessages,
+  shown: 'all' | 'present',
+): string {
+  return OUTCOMES.filter((outcome) => shown === 'all' || counts[outcome] > 0)
+    .map((outcome) => messages.learnings.outcome[outcome](counts[outcome]))
+    .join(' · ')
 }
 
 function endpointText(point: Endpoint): string {

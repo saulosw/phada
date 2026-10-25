@@ -161,6 +161,23 @@ describe('the Learnings screen', () => {
     )
   })
 
+  it('leaves out of a row the outcomes no comment had', async () => {
+    const { frame } = openLearnings(async () => ({
+      recorded: true,
+      repos: [
+        shop({
+          observed: { state: 'none' },
+          feedback: {
+            repo: 'acme/shop',
+            ...counts({ published: 3, fixed: 0, dismissed: 0, ignored: 1, open: 2 }),
+          },
+        }),
+      ],
+    }))
+    await settle()
+    expect(row(frame(), 'acme/shop')).toMatch(/no relations · 3 comments: 1 ignored · 2 open\s*$/)
+  })
+
   it('opens a repository with its feedback, each rule and the relations, and goes back with Esc', async () => {
     const { frame, press, exits } = openLearnings(async () => full())
     await settle()

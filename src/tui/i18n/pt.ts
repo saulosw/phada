@@ -311,8 +311,12 @@ export const portuguese: UiMessages = {
     unreadable: 'relações ilegíveis',
     comments: (count) => `${count} ${count === 1 ? 'comentário' : 'comentários'}`,
     noComments: 'sem comentários',
-    outcomes: ({ fixed, dismissed, ignored, open }) =>
-      `${fixed} ${fixed === 1 ? 'corrigido' : 'corrigidos'} · ${dismissed} ${dismissed === 1 ? 'dispensado' : 'dispensados'} · ${ignored} ${ignored === 1 ? 'ignorado' : 'ignorados'} · ${open} ${open === 1 ? 'aberto' : 'abertos'}`,
+    outcome: {
+      fixed: (count) => `${count} ${count === 1 ? 'corrigido' : 'corrigidos'}`,
+      dismissed: (count) => `${count} ${count === 1 ? 'dispensado' : 'dispensados'}`,
+      ignored: (count) => `${count} ${count === 1 ? 'ignorado' : 'ignorados'}`,
+      open: (count) => `${count} ${count === 1 ? 'aberto' : 'abertos'}`,
+    },
     marks: (negative, replies) =>
       `${negative} com reação negativa · ${replies} com resposta de uma pessoa`,
     detail: {

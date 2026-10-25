@@ -313,8 +313,12 @@ export const spanish: UiMessages = {
     unreadable: 'relaciones ilegibles',
     comments: (count) => `${count} ${count === 1 ? 'comentario' : 'comentarios'}`,
     noComments: 'sin comentarios',
-    outcomes: ({ fixed, dismissed, ignored, open }) =>
-      `${fixed} ${fixed === 1 ? 'corregido' : 'corregidos'} · ${dismissed} ${dismissed === 1 ? 'descartado' : 'descartados'} · ${ignored} ${ignored === 1 ? 'ignorado' : 'ignorados'} · ${open} ${open === 1 ? 'abierto' : 'abiertos'}`,
+    outcome: {
+      fixed: (count) => `${count} ${count === 1 ? 'corregido' : 'corregidos'}`,
+      dismissed: (count) => `${count} ${count === 1 ? 'descartado' : 'descartados'}`,
+      ignored: (count) => `${count} ${count === 1 ? 'ignorado' : 'ignorados'}`,
+      open: (count) => `${count} ${count === 1 ? 'abierto' : 'abiertos'}`,
+    },
     marks: (negative, replies) =>
       `${negative} con reacción negativa · ${replies} con respuesta de una persona`,
     detail: {
