@@ -2,6 +2,7 @@ import type { ComponentType } from 'react'
 import type { ScreenTitle, UiMessages } from './i18n/messages.js'
 import { AutomationScreen } from './screens/automation.js'
 import { HomeScreen } from './screens/home.js'
+import { LearningsScreen } from './screens/learnings.js'
 import { PlaceholderScreen } from './screens/placeholder.js'
 import { ProviderScreen } from './screens/provider.js'
 import { QueueScreen } from './screens/queue.js'
@@ -26,5 +27,5 @@ export const SCREENS: readonly ScreenDefinition[] = [
   { id: 'queue', title: (messages) => messages.screens.queue, Screen: QueueScreen },
   { id: 'automation', title: (messages) => messages.screens.automation, Screen: AutomationScreen },
   { id: 'provider', title: (messages) => messages.screens.provider, Screen: ProviderScreen },
-  { id: 'learnings', title: (messages) => messages.screens.learnings, Screen: PlaceholderScreen },
+  { id: 'learnings', title: (messages) => messages.screens.learnings, Screen: LearningsScreen },
 ]
