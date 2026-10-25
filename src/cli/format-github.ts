@@ -10,6 +10,7 @@ import { findingReferences, leftOutLine } from './finding-references.js'
 import { english } from './i18n/en.js'
 import type { Messages } from './i18n/messages.js'
 import { codeFence, githubBlock, githubCell, githubLine } from './markdown-text.js'
+import { firstNames } from './name-list.js'
 import { modelLabel, shortSha } from './review-text.js'
 
 export const GITHUB_BODY_LIMIT = 65_536
@@ -183,13 +184,11 @@ function renderBody(
     .join('\n\n')
 }
 
-const MAX_CI_NAMES = 5
-
 function ciLine({ state, total, failing, pending }: CiSummary, messages: Messages): string {
   if (state === 'none') return ''
   const names = (list: readonly string[]) => ({
     count: list.length,
-    shown: list.slice(0, MAX_CI_NAMES).map(githubLine),
+    shown: firstNames(list, githubLine),
   })
   return messages.github.ci(state, total, names(failing), names(pending))
 }

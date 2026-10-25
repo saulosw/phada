@@ -1,6 +1,7 @@
 import type { SlackEmojis, SlackReply } from '../config/watch-settings.js'
 import { CI_FAILING } from '../watch/ci-revisit.js'
 import type { ReviewedFinding, ReviewEvent } from './review-event.js'
+import { nameList } from './name-list.js'
 import { shortSha } from './review-text.js'
 import { toTerminalText } from './terminal-text.js'
 import { formatCount } from './units.js'
@@ -8,7 +9,6 @@ import { formatCount } from './units.js'
 export const MAX_SLACK_MESSAGE = 3_500
 export const MAX_SLACK_MESSAGES = 10
 const MAX_WHY = 1_500
-const FAILING_NAMES = 5
 
 const LABELS = {
   clean: 'No findings',
@@ -78,12 +78,9 @@ function headerText(event: ReviewEvent, emojis: SlackEmojis): string {
 function ciFailingText(event: ReviewEvent): string {
   const failing = (event.ci?.checks ?? [])
     .filter(({ state }) => state === 'failing')
-    .map(({ name }) => escape(name))
+    .map(({ name }) => name)
   if (failing.length === 0) return 'CI failing. It is reviewed once the checks pass.'
-  const shown = failing.slice(0, FAILING_NAMES)
-  const more = failing.length - shown.length
-  const names = [...shown, ...(more > 0 ? [`${more} more`] : [])].join(', ')
-  return `CI failing: ${names}. It is reviewed once these checks pass.`
+  return `CI failing: ${nameList(failing, escape)}. It is reviewed once these checks pass.`
 }
 
 function countsLine(review: ReviewView): string {

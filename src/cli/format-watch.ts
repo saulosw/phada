@@ -5,6 +5,7 @@ import type { HistoryStatus, RunRecord, StatusJob } from '../store/history-store
 import type { JobRecord, PauseState } from '../watch/types.js'
 import { errorMessage } from '../app/error-message.js'
 import { formatSkipMessage } from './format-publication.js'
+import { nameList } from './name-list.js'
 import { shortSha } from './review-text.js'
 import { toTerminalText } from './terminal-text.js'
 import { formatCount, formatLocalTime } from './units.js'
@@ -56,7 +57,7 @@ function eventText(event: WatchEventView): string {
     case 'waiting':
       return `${ref(event.job)} at ${shortSha(event.job.headSha)} waits for CI until ${clock(new Date(event.job.ciDeadline ?? event.job.notBefore))} (${pendingText(event.job)}).`
     case 'ciFailing':
-      return `${ref(event.job)} at ${shortSha(event.job.headSha)} skipped: CI failing (${namesText(event.job.ciFailing ?? [])}); checked again each cycle for 24 hours.`
+      return `${ref(event.job)} at ${shortSha(event.job.headSha)} skipped: CI failing (${nameList(event.job.ciFailing ?? [])}); checked again each cycle for 24 hours.`
     case 'ciCleared':
       return `${ref(event.job)} at ${shortSha(event.job.headSha)}: CI no longer failing; back in the queue.`
     case 'finished':
@@ -170,18 +171,10 @@ export function formatWatchStatusJson(
   return `${JSON.stringify(body, null, 2)}\n`
 }
 
-const PENDING_NAMES = 5
-
 function pendingText(job: JobRecord): string {
   const pending = job.ciPending ?? []
   if (pending.length === 0) return 'no checks yet'
-  return `${pending.length} pending: ${namesText(pending)}`
-}
-
-function namesText(names: readonly string[]): string {
-  const shown = names.slice(0, PENDING_NAMES)
-  const more = names.length - shown.length
-  return [...shown, ...(more > 0 ? [`${more} more`] : [])].join(', ')
+  return `${pending.length} pending: ${nameList(pending)}`
 }
 
 function askedFrom(job: StatusJob): string {

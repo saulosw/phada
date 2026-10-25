@@ -213,6 +213,7 @@ src/
                          #   TTY, one line at the start and one at the end otherwise
     terminal-text.ts     #   toTerminalText(): strips control and bidi characters from external text
     units.ts             #   duration, tokens, bytes, counts
+    name-list.ts         #   nameList(), firstNames(), joinNames(): the first 5 names and "N more"
   config/                # the config files: .phada/ in the repository and the user's own
     schema.ts            #   Zod schema of config.yml (ci: read, wait, onFailure, checks);
                          #   LANGUAGE_TAG

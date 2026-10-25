@@ -1,10 +1,10 @@
 import { CI_LOG_TOTAL_BYTES, CI_MAX_ANNOTATIONS } from '../context/ci.js'
 import type { Ci } from '../context/types.js'
 import type { CiCheck } from '../review/types.js'
+import { nameList } from './name-list.js'
 import { toTerminalText } from './terminal-text.js'
 import { formatBytes, formatCount } from './units.js'
 
-const MAX_NAMES = 5
 const HEADING = '## CI sent to the AI\n\n'
 const LOG_BUDGET = `${CI_LOG_TOTAL_BYTES / 1024} KB`
 
@@ -21,9 +21,7 @@ export function formatCiLine({ summary }: Ci): string | undefined {
 }
 
 export function checkNames(list: readonly string[]): string {
-  const shown = list.slice(0, MAX_NAMES).map(toTerminalText)
-  const more = list.length - shown.length
-  return [...shown, ...(more > 0 ? [`${more} more`] : [])].join(', ')
+  return nameList(list, toTerminalText)
 }
 
 export function formatCiSection(ci: Ci | undefined): string {

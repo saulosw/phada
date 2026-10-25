@@ -1,4 +1,5 @@
 import { CONFIDENCE_FLOOR } from '../../review/select-findings.js'
+import { joinNames } from '../name-list.js'
 import type { CiNames, Messages } from './messages.js'
 
 function count(value: number, singular: string, plural: string): string {
@@ -6,8 +7,7 @@ function count(value: number, singular: string, plural: string): string {
 }
 
 function ciNames({ count, shown }: CiNames): string {
-  const more = count - shown.length
-  return `(${[...shown, ...(more > 0 ? [`${more} a mais`] : [])].join(', ')})`
+  return `(${joinNames(shown, count, (more) => `${more} a mais`)})`
 }
 
 export const portuguese: Messages = {
