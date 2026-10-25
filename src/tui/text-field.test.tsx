@@ -71,6 +71,19 @@ describe('a text field', () => {
     expect(exits).toEqual([{ kind: 'interrupted' }])
   })
 
+  it('takes a write of several keys with Enter in it, typing the text before applying it', async () => {
+    const submitted: string[] = []
+    const { frame, press } = renderApp({ screens: [fieldScreen(submitted)] })
+    await settle()
+    await press('f', '15\r')
+    expect(frame()).toContain('applied: [15]')
+    expect(submitted).toEqual(['15'])
+    await press('f', `1\u007F2\t3${KEYS.escape}`)
+    expect(frame()).toContain('applied: [15]')
+    expect(frame()).toContain('Filter: 15')
+    expect(submitted).toEqual(['15'])
+  })
+
   it('does not pass the typed keys to the other inputs of the screen', async () => {
     const seen: string[] = []
     const screen: ScreenDefinition = {

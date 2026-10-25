@@ -352,7 +352,8 @@ src/
                          #   key when the list changes), ScrollList (the rows that fit and
                          #   "n–m of N"), ScrollText (lines that scroll); listWindow()
     text-field.tsx       #   useTextField() (every key while focused, Enter applies, Esc leaves;
-                         #   switched after the key that asked), TextFieldLine
+                         #   a write of several keys taken in order; switched after the key that
+                         #   asked), TextFieldLine
     text-fit.ts          #   oneLine() (toTerminalText on one line), fit() (pad or cut with …, at
                          #   the end or the start), wrapText()
     labeled-lines.tsx    #   labeledLines(): label and value rows of a detail, values wrapped

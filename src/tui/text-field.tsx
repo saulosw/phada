@@ -51,8 +51,16 @@ export function useTextField(
       if (key.return) return leave(true)
       if (key.backspace || key.delete) return edit([...draftNow.current].slice(0, -1).join(''))
       if (key.ctrl && input === 'u') return edit('')
-      if (key.ctrl || key.meta || key.tab || input === '' || /\p{Cc}/u.test(input)) return
-      edit(draftNow.current + input)
+      if (key.ctrl || key.meta || key.tab || input === '') return
+      for (const character of input) {
+        if (character === '\r' || character === '\n') return leave(true)
+        if (character === '\u001B') return leave(false)
+        if (character === '\u007F' || character === '\b') {
+          edit([...draftNow.current].slice(0, -1).join(''))
+        } else if (!/\p{Cc}/u.test(character)) {
+          edit(draftNow.current + character)
+        }
+      }
     },
     { isActive: inputActive },
   )
