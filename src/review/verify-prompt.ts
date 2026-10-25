@@ -5,9 +5,13 @@ import {
   block,
   CONFIDENCE_SCALE,
   CONTEXT_DOCS,
+  CONVERSATION,
+  CONVERSATION_CHECKS,
+  conversationBlocks,
   DIFF_LINE_NUMBERS,
   diffScope,
   docsBlock,
+  hasConversation,
   hasImpact,
   hasRelated,
   IMPACT,
@@ -84,6 +88,7 @@ export function buildVerifyPrompt(
     data: [
       block('PHADA_PR', nonce, pullRequestDetails(pullRequest, context?.ignored)),
       ...(docs.length === 0 ? [] : [block('PHADA_DOCS', nonce, docsBlock(docs))]),
+      ...conversationBlocks(request.conversation, nonce),
       ...relatedBlocks(request.related, nonce),
       ...impactBlocks(request.impact, nonce),
       block('PHADA_DIFF', nonce, annotateDiff(pullRequest.diff)),
@@ -107,7 +112,7 @@ function userFocus(passes: readonly SkillPass[] | undefined): string {
 }
 
 function instructionsFor(
-  { language, context, impact, related, passes }: ReviewRequest,
+  { language, context, impact, related, conversation, passes }: ReviewRequest,
   tools?: Toolbox,
 ): string {
   const sections = [
@@ -116,6 +121,7 @@ function instructionsFor(
     userFocus(passes),
     rulesSection(context?.rules ?? []),
     (context?.docs.length ?? 0) > 0 ? CONTEXT_DOCS : '',
+    hasConversation(conversation) ? `${CONVERSATION}\n${CONVERSATION_CHECKS}` : '',
     hasRelated(related) ? RELATED : '',
     hasImpact(impact) ? IMPACT : '',
     CONFIDENCE_SCALE,

@@ -93,6 +93,42 @@ export interface SkillPass {
   skip?: string
 }
 
+export type ConversationRole =
+  'author' | 'owner' | 'member' | 'collaborator' | 'contributor' | 'external' | 'bot' | 'phada'
+
+export interface ConversationReply {
+  at: string
+  author: string
+  role: ConversationRole
+  body: string
+}
+
+export type ConversationReviewState = 'approved' | 'changes-requested' | 'commented' | 'dismissed'
+
+export type ConversationItem =
+  | { kind: 'comment'; at: string; author: string; role: ConversationRole; body: string }
+  | {
+      kind: 'review'
+      at: string
+      author: string
+      role: ConversationRole
+      state: ConversationReviewState
+      body?: string
+    }
+  | {
+      kind: 'thread'
+      at: string
+      author: string
+      role: ConversationRole
+      file: string
+      line: number | null
+      resolved: boolean
+      outdated: boolean
+      body: string
+      replies?: ConversationReply[]
+      omittedReplies?: number
+    }
+
 export interface ReviewRequest {
   pullRequest: PullRequest
   language?: string
@@ -101,6 +137,7 @@ export interface ReviewRequest {
   context?: ReviewContext
   impact?: DiffImpact
   related?: RelatedSummary[]
+  conversation?: ConversationItem[]
   passes?: SkillPass[]
 }
 
