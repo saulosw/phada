@@ -173,6 +173,7 @@ function setup(
     },
     ci: {
       permissionDenied: () => false,
+      logUnavailable: () => false,
       checkRuns: async (sha) => {
         calls.ciReads.push(`runs ${sha}`)
         return []
@@ -888,6 +889,7 @@ describe('reviewAndPublish with the checks of the head', () => {
       return { text: JOB_LOG, partial: false }
     },
     permissionDenied: (error) => error instanceof GitHubPermissionError,
+    logUnavailable: (error) => error instanceof JobLogUnavailableError,
     ...overrides,
   })
   const ciOf = (prompt: ReviewPrompt | undefined): unknown[] => {
@@ -1078,6 +1080,32 @@ describe('reviewAndPublish with the checks of the head', () => {
     ])
   })
 
+  it('warns once for the logs that are gone, naming their checks, and goes on past them', async () => {
+    const failing = (id: number) =>
+      checkRun(`job ${id}`, { id, conclusion: 'failure', title: 'Failed' })
+    const gone = setup()
+    gone.deps.ci = readers(gone.calls, {
+      checkRuns: async () => [failing(1), failing(2), failing(3)],
+      jobLog: async (id) => {
+        gone.calls.ciReads.push(`log ${id}`)
+        if (id !== 3) throw new JobLogUnavailableError(id)
+        return { text: '##[group]Run make\n##[error]boom', partial: false }
+      },
+    })
+
+    await reviewAndPublish(INPUT, gone.deps)
+
+    expect(gone.calls.events.filter((event) => event.includes('log'))).toEqual([
+      'warning: The logs of job 1 and job 2 were not read: they are not available (expired, deleted or never written)',
+    ])
+    expect(ciOf(gone.calls.prompts[0])).toMatchObject([
+      { name: 'job 1', state: 'failing' },
+      { name: 'job 2', state: 'failing' },
+      { name: 'job 3', state: 'failing', log: '##[group]Run make\n##[error]boom' },
+      { name: 'ci/lint', state: 'passing' },
+    ])
+  })
+
   it('warns once and stops reading logs without actions:read, and goes on past a log that is gone', async () => {
     const failing = (id: number) =>
       checkRun(`job ${id}`, { id, conclusion: 'failure', title: 'Failed' })
@@ -1108,7 +1136,7 @@ describe('reviewAndPublish with the checks of the head', () => {
     ])
     expect(ciOf(denied.calls.prompts[0])).toHaveLength(3)
     expect(gone.calls.events).toContain(
-      'warning: The log of job 1 was not read: The log of job 1 is not available (expired or deleted)',
+      'warning: The log of job 1 was not read: it is not available (expired, deleted or never written)',
     )
     expect(ciOf(gone.calls.prompts[0])).toMatchObject([
       { name: 'job 1', state: 'failing' },
@@ -1190,6 +1218,7 @@ describe('reviewAndPublish with a native skill', () => {
       ],
       ci: {
         permissionDenied: () => false,
+        logUnavailable: () => false,
         checkRuns: async () => [
           {
             id: 7,

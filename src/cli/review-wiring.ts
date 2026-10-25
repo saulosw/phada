@@ -9,6 +9,7 @@ import type { PullRequestReviewDeps } from '../app/review-pull-request.js'
 import type { CiReaders } from '../app/read-ci.js'
 import type { CheckAnnotation, CheckRun } from '../github/check-runs.js'
 import type { CommitStatus } from '../github/commit-statuses.js'
+import { JobLogUnavailableError } from '../github/job-log.js'
 import type { JobLog } from '../github/job-log.js'
 import type { PublicationResult, RenderedReview, ReviewRun } from '../app/review-and-publish.js'
 import { repositoryCache } from '../config/cache-paths.js'
@@ -103,6 +104,7 @@ export function ciReaders(deps: CiReaderDeps, { owner, repo, token }: PublishTar
     annotations: (checkRunId) => deps.fetchCheckAnnotations({ ...repository, checkRunId }),
     jobLog: (jobId) => deps.fetchJobLog({ ...repository, jobId }),
     permissionDenied: (error) => error instanceof GitHubPermissionError,
+    logUnavailable: (error) => error instanceof JobLogUnavailableError,
   }
 }
 export type Choice = { provider: string; model?: string; mcpNames?: CheckedNames }

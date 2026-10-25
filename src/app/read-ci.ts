@@ -13,6 +13,7 @@ export interface CiReaders {
   annotations(checkRunId: number): Promise<CheckAnnotation[]>
   jobLog(jobId: number): Promise<JobLog>
   permissionDenied(error: unknown): boolean
+  logUnavailable(error: unknown): boolean
 }
 
 export type Warn = (message: string) => void
@@ -97,6 +98,7 @@ async function readLogs(
   warn: Warn,
 ): Promise<Map<number, JobLog>> {
   const logs = new Map<number, JobLog>()
+  const unavailable: string[] = []
   for (const { id, name } of failing.filter(({ actions }) => actions)) {
     if (ciLogsLeft(entries, logs) === 0) break
     try {
@@ -106,8 +108,18 @@ async function readLogs(
         warn(`Job logs were not read: ${errorMessage(error)}`)
         break
       }
-      warn(`The log of ${name} was not read: ${errorMessage(error)}`)
+      if (readers.logUnavailable(error)) unavailable.push(name)
+      else warn(`The log of ${name} was not read: ${errorMessage(error)}`)
     }
   }
+  if (unavailable.length > 0) warn(unavailableLogs(unavailable))
   return logs
+}
+
+function unavailableLogs(names: readonly string[]): string {
+  const last = names[names.length - 1]
+  if (names.length === 1) {
+    return `The log of ${last} was not read: it is not available (expired, deleted or never written)`
+  }
+  return `The logs of ${names.slice(0, -1).join(', ')} and ${last} were not read: they are not available (expired, deleted or never written)`
 }
