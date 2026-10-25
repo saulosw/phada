@@ -34,4 +34,10 @@ export const english: UiMessages = {
   home: { tagline: 'Review pull requests with the AI you already use.' },
   loading: 'Loading…',
   failed: (message) => `Could not load: ${message}`,
+  time: {
+    now: 'just now',
+    soon: 'any moment',
+    ago: (span) => `${span} ago`,
+    in: (span, estimated) => `in ${estimated ? '~' : ''}${span}`,
+  },
 }

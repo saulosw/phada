@@ -34,4 +34,10 @@ export const portuguese: UiMessages = {
   home: { tagline: 'Revise pull requests com a IA que você já usa.' },
   loading: 'Carregando…',
   failed: (message) => `Não foi possível carregar: ${message}`,
+  time: {
+    now: 'agora',
+    soon: 'a qualquer momento',
+    ago: (span) => `há ${span}`,
+    in: (span, estimated) => `em ${estimated ? '~' : ''}${span}`,
+  },
 }

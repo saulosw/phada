@@ -1,3 +1,4 @@
+import type { TimeMessages } from '../relative-time.js'
 import { english } from './en.js'
 import { spanish } from './es.js'
 import { portuguese } from './pt.js'
@@ -34,6 +35,7 @@ export interface UiMessages {
   home: { tagline: string }
   loading: string
   failed(message: string): string
+  time: TimeMessages
 }
 
 const CATALOGS: Readonly<Record<string, UiMessages>> = {
