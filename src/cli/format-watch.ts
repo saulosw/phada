@@ -22,6 +22,8 @@ export type WatchEventView =
   | { kind: 'superseded'; job: JobRecord }
   | { kind: 'started'; job: JobRecord }
   | { kind: 'waiting'; job: JobRecord }
+  | { kind: 'ciFailing'; job: JobRecord }
+  | { kind: 'ciCleared'; job: JobRecord }
   | { kind: 'finished'; job: JobRecord; run: ReviewRun }
   | { kind: 'retry'; job: JobRecord; at: string; error: unknown }
   | { kind: 'paused'; pause: PauseState }
@@ -53,6 +55,10 @@ function eventText(event: WatchEventView): string {
       return `Reviewing ${ref(event.job)} at ${shortSha(event.job.headSha)}…`
     case 'waiting':
       return `${ref(event.job)} at ${shortSha(event.job.headSha)} waits for CI until ${clock(new Date(event.job.ciDeadline ?? event.job.notBefore))} (${pendingText(event.job)}).`
+    case 'ciFailing':
+      return `${ref(event.job)} at ${shortSha(event.job.headSha)} skipped: CI failing (${namesText(event.job.ciFailing ?? [])}); checked again each cycle for 24 hours.`
+    case 'ciCleared':
+      return `${ref(event.job)} at ${shortSha(event.job.headSha)}: CI no longer failing; back in the queue.`
     case 'finished':
       return finishedText(event.job, event.run)
     case 'retry':
@@ -169,9 +175,13 @@ const PENDING_NAMES = 5
 function pendingText(job: JobRecord): string {
   const pending = job.ciPending ?? []
   if (pending.length === 0) return 'no checks yet'
-  const shown = pending.slice(0, PENDING_NAMES)
-  const more = pending.length - shown.length
-  return `${pending.length} pending: ${[...shown, ...(more > 0 ? [`${more} more`] : [])].join(', ')}`
+  return `${pending.length} pending: ${namesText(pending)}`
+}
+
+function namesText(names: readonly string[]): string {
+  const shown = names.slice(0, PENDING_NAMES)
+  const more = names.length - shown.length
+  return [...shown, ...(more > 0 ? [`${more} more`] : [])].join(', ')
 }
 
 function askedFrom(job: StatusJob): string {

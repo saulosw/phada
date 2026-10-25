@@ -38,7 +38,8 @@ export function ciGateReader(
     const oldest = remembered.keys().next().value
     if (remembered.size > REMEMBERED_JOBS && oldest !== undefined) remembered.delete(oldest)
     const waitMs = settings.waitMs ?? DEFAULT_CI_WAIT_MS
-    if (settings.read === false || waitMs === 0) return undefined
+    const onFailure = settings.onFailure ?? 'review'
+    if (settings.read === false || (waitMs === 0 && onFailure === 'review')) return undefined
     const target = splitRepoName(job.repo)
     const warnings: string[] = []
     const entries = await readCheckEntries(
@@ -48,7 +49,12 @@ export function ciGateReader(
       (message) => warnings.push(message),
     )
     if (warnings.length > 0) throw new Error(warnings.join('; '))
-    return { waitMs, summary: ciSummary(entries) }
+    return {
+      waitMs,
+      onFailure,
+      summary: ciSummary(entries),
+      checks: entries.map(({ name, state }) => ({ name, state })),
+    }
   }
 }
 

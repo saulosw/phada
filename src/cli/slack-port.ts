@@ -88,6 +88,9 @@ export function slackPort(deps: SlackPortDeps): SlackPort {
         if (place === undefined) continue
         await safely(async () => {
           await api.removeReaction(place.channel, place.ts, settings.emojis.queued)
+          if (event.verdict !== 'skipped') {
+            await api.removeReaction(place.channel, place.ts, settings.emojis.skipped)
+          }
           await answer(place, event, channelOf(place.channel))
         })
       }

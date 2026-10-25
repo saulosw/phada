@@ -38,6 +38,7 @@ const published: ReviewRun = {
   },
 }
 
+const CI_FAILING: JobRecord = { ...JOB, ciFailing: ['test', 'lint'] }
 const WAITING: Pick<JobRecord, 'status' | 'reason' | 'ciDeadline' | 'ciPending'> = {
   status: 'waiting',
   reason: 'ci-pending',
@@ -68,6 +69,14 @@ describe('formatWatchEvent', () => {
     [
       { kind: 'waiting', job: NO_CHECKS_YET },
       '[14:03] acme/shop#3 at a1b2c3d waits for CI until 14:05 (no checks yet).',
+    ],
+    [
+      { kind: 'ciFailing', job: CI_FAILING },
+      '[14:03] acme/shop#3 at a1b2c3d skipped: CI failing (test, lint); checked again each cycle for 24 hours.',
+    ],
+    [
+      { kind: 'ciCleared', job: JOB },
+      '[14:03] acme/shop#3 at a1b2c3d: CI no longer failing; back in the queue.',
     ],
     [
       { kind: 'finished', job: JOB, run: published },

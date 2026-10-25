@@ -153,6 +153,31 @@ describe('storedEvent', () => {
     expect(storedEvent({ ...JOB, status: 'failed' }, [], undefined)?.event).toBe('review.failed')
   })
 
+  it('has the reason and the checks that count of a commit skipped for failing CI', () => {
+    const skipped = { ...JOB, status: 'skipped' as const, reason: 'ci-failing' }
+    const checks = [
+      { name: 'build', state: 'passing' },
+      { name: 'test', state: 'failing' },
+    ]
+    const run = {
+      ...RUN,
+      status: 'skipped' as const,
+      aiCalled: false,
+      verdict: 'skipped' as const,
+      reason: 'ci-failing',
+      resultJson: JSON.stringify({
+        ci: { state: 'failing', failing: ['test'], pending: [], checks },
+      }),
+    }
+    expect(storedEvent(skipped, [SLACK], run)).toMatchObject({
+      event: 'review.skipped',
+      verdict: 'skipped',
+      reason: 'ci-failing',
+      ci: { state: 'failing', checks },
+      publication: { status: 'skipped' },
+    })
+  })
+
   it('is undefined while the job waits or runs', () => {
     expect(storedEvent({ ...JOB, status: 'queued' }, [], undefined)).toBeUndefined()
     expect(storedEvent({ ...JOB, status: 'running' }, [], undefined)).toBeUndefined()

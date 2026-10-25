@@ -53,12 +53,15 @@ src/
     watch-repositories.ts # watchRepositories(): the watch loop — discovery with ETags, planCycle
                          #   (asking the when command before queueing), /phada review comments,
                          #   the next job through the CI gate (readCi: waiting jobs read again
-                         #   each minute, a failed read reviews at once) with its requests,
+                         #   each minute, a failed read reviews at once; ci-failing skips
+                         #   recorded as a run and read again each discovery cycle, the same job
+                         #   queued again once they pass) with its requests,
                          #   failures and pauses, requests moved
                          #   to a new commit, job events (notify), the idle index and feedback
                          #   refresh (30 min per pull request, 10 per cycle); events
     submit-request.ts    #   submitRequest(): a review request of any source → the policy (and the
-                         #   when command) → a new job, a joined job or a refusal; whenInput()
+                         #   when command) → a new job, a joined job (a ci-failing one queued
+                         #   again) or a refusal; whenInput()
     feedback.ts          #   recordReviewFeedback(): the threads a run read and the comments it
                          #   published → the history; refreshFeedback(): read due pull requests
     index-repository.ts  #   indexRepository(): mirror → files left out and why → indexCommit();
@@ -119,8 +122,8 @@ src/
                          #   watch deps, one job's review; each job event sent to the sinks
     ci-gate-reader.ts    #   ciGateReader(): the ci settings of a job (user config and the root
                          #   .phada/config.yml at the base, read once per job) and the checks
-                         #   that count of its head, for the CI gate; none with ci.read: false
-                         #   or ci.wait: 0s
+                         #   that count of its head and onFailure, for the CI gate; none with
+                         #   ci.read: false, or ci.wait: 0s with onFailure: review
     enqueue-command.ts   #   runEnqueue(): a request from the command line
     mcp-command.ts       #   runMcp(): the queue tools as an MCP server over stdio
     queue-tools.ts       #   queueToolbox(): review_pull_request, job_status, wait_for_job, list_queue
@@ -137,9 +140,11 @@ src/
     run-hook.ts          #   runHook(): the hook of an event, its failure as a warning
     run-when.ts          #   whenChecker(): the when command, its refusal as a message
     queue-wake.ts        #   sleepUntilNewJob(): the watch's sleep, cut short by a new ready job
-    slack-port.ts        #   slackPort(): Slack messages → requests; job events → reactions and
-                         #   replies in the thread
-    format-slack.ts      #   slackReplies(): the event as Slack text (link, summary, full), split
+    slack-port.ts        #   slackPort(): Slack messages → requests; job events → reactions (the
+                         #   queued and skipped marks swapped for the verdict) and replies in
+                         #   the thread
+    format-slack.ts      #   slackReplies(): the event as Slack text (link, summary, full, the
+                         #   failing checks of a ci-failing skip), split
     watch-stop.ts        #   createStopControl(): Ctrl-C once (finish the review) or twice (abort);
                          #   trackRunningJob(): which job a second Ctrl-C puts back
     watch-events.ts      #   printWatchEvents(): the watch events as terminal lines
@@ -148,7 +153,8 @@ src/
     format-history.ts    #   formatHistoryText/Json(), feedbackStats(), formatStatsText/Json()
                          #   (schemaVersion 1)
     format-watch.ts      #   formatWatchEvent(), formatWatchStatus(), formatWatchStatusJson(); a
-                         #   job waiting for CI with its deadline and pending checks
+                         #   job waiting for CI with its deadline and pending checks, skipped
+                         #   for failing CI or back in the queue
     provider-choice.ts   #   assertProviderChoice(): known provider, model for ollama, no MCP
                          #   server names with ollama; providerRunsSkills()
     mcp-names.ts         #   checkMcpNames(): MCP server names checked with `claude mcp get` or
@@ -157,7 +163,8 @@ src/
                          #   definitive or fatal
     review-wiring.ts     #   pullRequestReviewDeps(), ciReaders(), renderReview, reviewRunJson():
                          #   shared by review, watch and prompt
-    history-run.ts       #   historyRun(), watchRun(): a run or a failure → the history record
+    history-run.ts       #   historyRun(), watchRun(): a run, a failure or a ci-failing skip →
+                         #   the history record
     format-rules.ts      #   formatRulesText(), formatRulesJson() (schemaVersion 1)
     context-sources.ts   #   contextSourcesAt(): the repository at a commit and the local files
     format-index.ts      #   formatIndexText(), formatIndexJson() (schemaVersion 1)
@@ -399,13 +406,18 @@ src/
     ci-gate.ts           #   ciGate(): CI state, ci.wait, onFailure, when Phada saw the commit and
                          #   now → review (with the checks still pending), wait (until, deadline)
                          #   or skip; 2 min for checks to appear, read again each minute
+    ci-revisit.ts        #   ciRevisits(): the ci-failing jobs to read again (24 h, head still
+                         #   the pull request's, 10 per cycle, read longest ago first);
+                         #   requeueForCi()
     failures.ts          #   afterFailure(): retries, pauses, failed, stop; rateLimitPause()
     request-policy.ts    #   decideRequest(): closed, outside author, join, already reviewed, ask the
-                         #   when command, hourly limit; publishOf()
+                         #   when command, hourly limit; a ci-failing job joined and queued
+                         #   again; publishOf()
     pull-facts.ts        #   PullFacts of a listed or fetched pull request
     pr-commands.ts       #   prCommands(): /phada review comments → requests, and the cursor
     time.ts              #   later(): an ISO time plus a duration
-    types.ts             #   JobRecord (ciDeadline, ciPending), RequestRecord, RequestSource,
+    types.ts             #   JobRecord (ciDeadline, ciPending, ciFailing, ciCheckedAt, ciSince),
+                         #   RequestRecord, RequestSource,
                          #   PublishTarget, PullRecord, PauseState, JobStatus (waiting for CI),
                          #   FailureKind
   review/                # the engine: data in, result out

@@ -2407,6 +2407,7 @@ describe('phada watch', () => {
       expect(h.slack.calls).toEqual([
         '+hourglass_flowing_sand',
         '-hourglass_flowing_sand',
+        '-eyes',
         '+x',
         expect.stringMatching(/^post C1 100\.1 :x: \*Blocking findings\* · /),
         'closed',

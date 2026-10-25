@@ -1,6 +1,6 @@
 import { errorMessage } from '../app/error-message.js'
 import type { PublicationResult, ReviewRun } from '../app/review-and-publish.js'
-import type { RunOutcome } from '../app/watch-repositories.js'
+import type { PullCi, RunOutcome } from '../app/watch-repositories.js'
 import { ProviderError } from '../providers/types.js'
 import { phadaReviewUrlAt } from '../publish/phada-state.js'
 import { InvalidReviewReportError } from '../review/errors.js'
@@ -91,6 +91,7 @@ export function watchRun(
   runJson: (run: ReviewRun) => string,
 ): RunRecord {
   if ('run' in outcome) return historyRun(outcome.run, runJson(outcome.run), meta)
+  if ('ci' in outcome) return ciFailingRun(job, outcome.ci, meta)
   return {
     jobId: job.id,
     source: meta.source,
@@ -108,6 +109,25 @@ export function watchRun(
     errorKind: outcome.kind,
     error: errorMessage(outcome.error),
     verdict: 'failed',
+  }
+}
+
+function ciFailingRun(job: JobRecord, ci: PullCi, meta: RunMeta): RunRecord {
+  const { state, failing, pending } = ci.summary
+  return {
+    jobId: job.id,
+    source: meta.source,
+    ...(meta.requestSource === undefined ? {} : { requestSource: meta.requestSource }),
+    repo: job.repo,
+    number: job.number,
+    headSha: job.headSha,
+    startedAt: meta.startedAt,
+    finishedAt: meta.finishedAt,
+    status: 'skipped',
+    aiCalled: false,
+    reason: job.reason ?? 'ci-failing',
+    verdict: 'skipped',
+    resultJson: JSON.stringify({ ci: { state, failing, pending, checks: ci.checks } }),
   }
 }
 

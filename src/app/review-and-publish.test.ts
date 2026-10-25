@@ -995,6 +995,19 @@ describe('reviewAndPublish with the checks of the head', () => {
     expect(run.status === 'reviewed' && run.reviewed.ci?.summary.state).toBe('none')
   })
 
+  it('reviews and publishes a commit whose checks fail even with ci.onFailure: skip, which only the watch follows', async () => {
+    const { deps, calls } = setup({}, PR, undefined, ANSWER)
+    deps.ci = readers(calls)
+    withConfig(deps, 'ci:\n  onFailure: skip\n  wait: 0s\n')
+
+    const run = await reviewAndPublish(INPUT, deps)
+
+    expect(run.status).toBe('reviewed')
+    expect(run.status === 'reviewed' && run.reviewed.ci?.summary.failing).toEqual(['test'])
+    expect(run.status === 'reviewed' && run.publication?.status).toBe('published')
+    expect(calls.prompts).toHaveLength(1)
+  })
+
   it('counts only the checks ci.checks names, by name or glob', async () => {
     const { deps, calls } = setup()
     deps.ci = readers(calls)

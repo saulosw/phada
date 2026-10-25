@@ -3,12 +3,15 @@ import type { CommentListing } from '../github/issue-comments.js'
 import type { OpenPull, PullListing } from '../github/list-pull-requests.js'
 import type { BranchHead } from '../github/repository.js'
 import type { CiSummary } from '../publish/types.js'
+import type { CiCheckState } from '../review/types.js'
 import type { DuePull, HistoryStore } from '../store/history-store.js'
 import { listedPullFacts } from '../watch/pull-facts.js'
 import type { FailureKind, JobRecord, PauseState, RequestRecord } from '../watch/types.js'
 import { afterFailure, MAX_ATTEMPTS, rateLimitPause } from '../watch/failures.js'
 import { later } from '../watch/time.js'
 import { ciGate } from '../watch/ci-gate.js'
+import type { CiFailurePolicy } from '../watch/ci-gate.js'
+import { CI_FAILING, ciRevisits, requeueForCi } from '../watch/ci-revisit.js'
 import { NOT_STARTED, notStarted, pickNext, RATE_WINDOW_MS } from '../watch/next-job.js'
 import { planCycle } from '../watch/plan-cycle.js'
 import { prCommands } from '../watch/pr-commands.js'
@@ -38,10 +41,12 @@ export type WatchExit = { reason: 'once' | 'stopped' } | { reason: 'fatal'; erro
 
 export interface PullCi {
   waitMs: number
+  onFailure: CiFailurePolicy
   summary: Pick<CiSummary, 'state' | 'pending' | 'failing'>
+  checks: readonly { name: string; state: CiCheckState }[]
 }
 
-export type RunOutcome = { run: ReviewRun } | { error: unknown; kind: FailureKind }
+export type RunOutcome = { run: ReviewRun } | { error: unknown; kind: FailureKind } | { ci: PullCi }
 
 export interface WatchEvents {
   cycle(repo: string, pulls: number): void
@@ -50,6 +55,8 @@ export interface WatchEvents {
   superseded(job: JobRecord): void
   started(job: JobRecord): void
   waiting(job: JobRecord): void
+  ciFailing(job: JobRecord): void
+  ciCleared(job: JobRecord): void
   finished(job: JobRecord, run: ReviewRun): void
   retry(job: JobRecord, at: string, error: unknown): void
   paused(pause: PauseState): void
@@ -158,8 +165,41 @@ async function discover(
     always || checkedAt === undefined || later(checkedAt, input.settings.intervalMs) <= iso(deps)
   if (!due) return undefined
   const exit = await discoverPulls(repo, input, deps)
-  if (exit === undefined) await scanCommands(repo, input.settings, deps)
-  return exit
+  if (exit !== undefined) return exit
+  await scanCommands(repo, input.settings, deps)
+  await revisitCi(repo.repo, deps)
+  return undefined
+}
+
+async function revisitCi(repo: string, deps: WatchDeps): Promise<void> {
+  const { history, readCi } = deps
+  if (readCi === undefined) return
+  const now = iso(deps)
+  const jobs = ciRevisits({
+    jobs: history.jobs({ repo, status: ['skipped'] }),
+    pulls: history.pulls(repo),
+    now,
+  })
+  for (const job of jobs) {
+    if (deps.stopRequested()) return
+    let ci: PullCi | undefined
+    try {
+      ci = await readCi(job)
+    } catch (error) {
+      deps.events.warning(
+        `${repo}#${job.number}: the checks were not read again (${errorMessage(error)})`,
+      )
+      history.updateJob(job.id, { ciCheckedAt: now })
+      continue
+    }
+    if (ci !== undefined && gateOf(job, ci, now).action === 'skip') {
+      history.updateJob(job.id, { ciCheckedAt: now, ciFailing: [...ci.summary.failing] })
+      continue
+    }
+    const queued = requeueForCi(now)
+    history.updateJob(job.id, queued)
+    deps.events.ciCleared({ ...job, ...queued })
+  }
 }
 
 async function discoverPulls(
@@ -289,13 +329,12 @@ async function passCiGate(job: JobRecord, deps: WatchDeps): Promise<JobStart | u
     return start
   }
   if (ci === undefined) return start
-  const gate = ciGate({
-    ci: ci.summary,
-    waitMs: ci.waitMs,
-    onFailure: 'review',
-    seenAt: job.createdAt,
-    now: iso(deps),
-  })
+  const now = iso(deps)
+  const gate = gateOf(job, ci, now)
+  if (gate.action === 'skip') {
+    await skipForCi(job, ci, gate.failing, now, deps)
+    return undefined
+  }
   if (gate.action !== 'wait') {
     return gate.action === 'review' && gate.pending !== undefined
       ? { ...start, ciPending: gate.pending }
@@ -311,6 +350,45 @@ async function passCiGate(job: JobRecord, deps: WatchDeps): Promise<JobStart | u
   deps.history.updateJob(job.id, waiting)
   if (job.status !== 'waiting') deps.events.waiting({ ...job, ...waiting })
   return undefined
+}
+
+function gateOf(job: JobRecord, ci: PullCi, now: string) {
+  return ciGate({
+    ci: ci.summary,
+    waitMs: ci.waitMs,
+    onFailure: ci.onFailure,
+    seenAt: job.ciSince ?? job.createdAt,
+    now,
+  })
+}
+
+async function skipForCi(
+  job: JobRecord,
+  ci: PullCi,
+  failing: string[],
+  now: string,
+  deps: WatchDeps,
+): Promise<void> {
+  const { history } = deps
+  const skipped = {
+    status: 'skipped' as const,
+    reason: CI_FAILING,
+    finishedAt: now,
+    ciFailing: failing,
+    ciPending: undefined,
+    ciCheckedAt: now,
+  }
+  history.updateJob(job.id, skipped)
+  const ended: JobRecord = { ...job, ...skipped }
+  deps.recordRun(ended, { ci }, now)
+  deps.events.ciFailing(ended)
+  const since = job.ciSince
+  const requests = history
+    .requests([job.id])
+    .filter(({ createdAt }) => since === undefined || createdAt >= since)
+  if (requests.length > 0) {
+    await deps.notify({ kind: 'skipped', job: ended, requests, reason: CI_FAILING })
+  }
 }
 
 async function runJob(

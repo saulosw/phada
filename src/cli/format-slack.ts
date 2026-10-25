@@ -7,6 +7,7 @@ import { formatCount } from './units.js'
 export const MAX_SLACK_MESSAGE = 3_500
 export const MAX_SLACK_MESSAGES = 10
 const MAX_WHY = 1_500
+const FAILING_NAMES = 5
 
 const LABELS = {
   clean: 'No findings',
@@ -38,7 +39,12 @@ export function slackReplies(event: ReviewEvent, reply: SlackReply, emojis: Slac
     return [event.error === undefined ? header : `${header}\n${escape(event.error)}`]
   }
   if (event.event === 'review.skipped') {
-    const why = event.reason === undefined ? undefined : SKIP_REASONS[event.reason]
+    const why =
+      event.reason === 'ci-failing'
+        ? ciFailingText(event)
+        : event.reason === undefined
+          ? undefined
+          : SKIP_REASONS[event.reason]
     return [`${header}\n${why ?? `Not reviewed (${escape(event.reason ?? 'no reason')}).`}`]
   }
   if (reply === 'link' || review === undefined) return [header]
@@ -66,6 +72,17 @@ function headerText(event: ReviewEvent, emojis: SlackEmojis): string {
   const url = event.publication?.url
   if (url !== undefined) parts.push(`<${url}|review on GitHub>`)
   return parts.join(' · ')
+}
+
+function ciFailingText(event: ReviewEvent): string {
+  const failing = (event.ci?.checks ?? [])
+    .filter(({ state }) => state === 'failing')
+    .map(({ name }) => escape(name))
+  if (failing.length === 0) return 'CI failing. It is reviewed once the checks pass.'
+  const shown = failing.slice(0, FAILING_NAMES)
+  const more = failing.length - shown.length
+  const names = [...shown, ...(more > 0 ? [`${more} more`] : [])].join(', ')
+  return `CI failing: ${names}. It is reviewed once these checks pass.`
 }
 
 function countsLine(review: ReviewView): string {

@@ -78,7 +78,9 @@ describe('ciGateReader', () => {
 
     expect(await read(JOB)).toEqual({
       waitMs: 1_200_000,
+      onFailure: 'review',
       summary: { state: 'pending', total: 1, failing: [], pending: ['test'] },
+      checks: [{ name: 'test', state: 'pending' }],
     })
     expect(reads).toEqual(['pull 3', 'file .phada/config.yml b', 'runs a'])
   })
@@ -88,7 +90,9 @@ describe('ciGateReader', () => {
 
     expect(await read(JOB)).toEqual({
       waitMs: 900_000,
+      onFailure: 'review',
       summary: { state: 'none', total: 0, failing: [], pending: [] },
+      checks: [],
     })
     await read(JOB)
     expect(reads).toEqual(['pull 3', 'file .phada/config.yml b', 'runs a', 'runs a'])
@@ -97,6 +101,27 @@ describe('ciGateReader', () => {
   it('has no gate with ci.read: false or ci.wait: 0s', async () => {
     expect(await reader({ user: 'ci:\n  read: false\n' }).read(JOB)).toBeUndefined()
     expect(await reader({ repo: 'ci:\n  wait: 0s\n' }).read(JOB)).toBeUndefined()
+    expect(
+      await reader({ user: 'ci:\n  read: false\n  onFailure: skip\n' }).read(JOB),
+    ).toBeUndefined()
+  })
+
+  it('keeps the gate for failing checks with onFailure skip and no wait', async () => {
+    const { read } = reader({
+      user: 'ci:\n  onFailure: review\n',
+      repo: 'ci:\n  wait: 0s\n  onFailure: skip\n',
+      runs: [run('test', 'completed', 'success'), run('lint', 'completed', 'failure')],
+    })
+
+    expect(await read(JOB)).toEqual({
+      waitMs: 0,
+      onFailure: 'skip',
+      summary: { state: 'failing', total: 2, failing: ['lint'], pending: [] },
+      checks: [
+        { name: 'test', state: 'passing' },
+        { name: 'lint', state: 'failing' },
+      ],
+    })
   })
 
   it('ignores an invalid repository config, as the review warns about it', async () => {
