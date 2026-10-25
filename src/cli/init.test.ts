@@ -112,14 +112,34 @@ describe('config templates with native skills', () => {
   })
 
   it('parses once the review block is uncommented', () => {
-    const block = USER_CONFIG_TEMPLATE.split('\n')
-      .filter((line) => line.startsWith('# review:') || line.startsWith('#   '))
-      .filter(
-        (line, index, lines) =>
-          index < lines.findIndex((other) => other.startsWith('#   timeout:')) + 1,
+    const lines = USER_CONFIG_TEMPLATE.split('\n')
+    const block = lines
+      .slice(
+        lines.findIndex((line) => line.startsWith('# review:')),
+        lines.findIndex((line) => line.startsWith('#   timeout:')) + 1,
       )
+      .filter((line) => line.startsWith('# review:') || line.startsWith('#   '))
       .map((line) => line.replace(/^# ?/, '').replace(/\s+#.*$/, ''))
       .join('\n')
     expect(parseConfigText(block)).toMatchObject({ ok: true })
   })
+})
+
+describe('config templates with the conversation and CI', () => {
+  it.each([
+    ['the repository', REPOSITORY_CONFIG_TEMPLATE],
+    ['the user', USER_CONFIG_TEMPLATE],
+  ])(
+    'comment the conversation and ci options in %s config, parsing once uncommented',
+    (_case, template) => {
+      const lines = template.split('\n')
+      const start = lines.findIndex((line) => line.startsWith('# conversation:'))
+      const block = lines
+        .slice(start, start + 4)
+        .map((line) => line.replace(/^# ?/, '').replace(/\s+#.*$/, ''))
+        .join('\n')
+      expect(block).toBe('conversation: true\nci:\n  read: true\n  checks: [test, "lint/*"]')
+      expect(parseConfigText(block)).toMatchObject({ ok: true })
+    },
+  )
 })

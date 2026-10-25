@@ -174,6 +174,26 @@ describe('OllamaProvider', () => {
     expect(calls).toHaveLength(1)
   })
 
+  it('suggests leaving out the conversation or CI blocks only when the prompt has them', async () => {
+    const block = (name: string) => `<<<${name}_n1\n${'x'.repeat(10_000)}\n${name}_n1>>>`
+    const error = async (...names: string[]) => {
+      const { provider } = setup({ show: [show(16_384)] })
+      const found = await reviewError(provider, { ...PROMPT, data: names.map(block).join('\n\n') })
+      return found.message.slice(found.message.indexOf(':cloud model'))
+    }
+
+    expect(await error('PHADA_CONVERSATION', 'PHADA_CI')).toBe(
+      ':cloud model, or leave out the conversation and CI blocks with --no-conversation and --no-ci.',
+    )
+    expect(await error('PHADA_CI', 'PHADA_DIFF')).toBe(
+      ':cloud model, or leave out the CI block with --no-ci.',
+    )
+    expect(await error('PHADA_CONVERSATION', 'PHADA_DIFF')).toBe(
+      ':cloud model, or leave out the conversation block with --no-conversation.',
+    )
+    expect(await error('PHADA_DOCS', 'PHADA_DIFF')).toBe(':cloud model.')
+  })
+
   it('counts every character that is not ASCII as two tokens when sizing the context', async () => {
     const { provider, calls } = setup({ chat: [chat(UNCOUNTED_CHAT)] })
 
