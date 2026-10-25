@@ -24,8 +24,8 @@ export interface AppDeps {
   env: ColorEnv
   scheduler: Scheduler
   language?: string
-  configError?: unknown
   now(): Date
+  readLanguage(): Promise<string | undefined>
   readQueue(): Promise<QueueView>
   readReviews(filter: HistoryFilter): Promise<{ runs: ListedRun[]; total: number }>
   readReviewDetail(id: number): Promise<ReviewDetail | undefined>

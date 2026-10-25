@@ -11,6 +11,7 @@ import { DataView } from './data-view.js'
 import type { ScreenDefinition } from './screens.js'
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 50))
+const LANGUAGE_AND_SCREEN_POLLS = [POLL_MS, POLL_MS]
 
 function openScreen(Screen: () => ReactNode) {
   const ticks: { ms: number; tick: () => void }[] = []
@@ -64,7 +65,7 @@ describe('usePolled', () => {
     })
     await settle()
     expect(frame()).toContain('value first')
-    expect(intervals()).toEqual([2000])
+    expect(intervals()).toEqual(LANGUAGE_AND_SCREEN_POLLS)
     tick()
     await settle()
     expect(frame()).toContain('value second')
@@ -100,7 +101,7 @@ describe('usePolled with a key', () => {
     await settle()
     expect(frame()).toContain('value b')
     expect(reads).toEqual(['a', 'b'])
-    expect(intervals()).toEqual([2000])
+    expect(intervals()).toEqual(LANGUAGE_AND_SCREEN_POLLS)
   })
 })
 

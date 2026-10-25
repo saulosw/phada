@@ -143,6 +143,7 @@ export function fakeAppDeps(scheduler: Scheduler, overrides: Partial<AppDeps> = 
     env: { TERM: 'xterm-256color' },
     scheduler,
     now: () => NOW,
+    readLanguage: async () => overrides.language,
     readQueue: async () => emptyQueue(),
     readReviews: async () => ({ runs: [], total: 0 }),
     readReviewDetail: async () => undefined,

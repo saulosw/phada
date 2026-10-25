@@ -164,11 +164,40 @@ describe('runApp', () => {
     expect(opened[0]?.deps.language).toBe('pt-BR')
   })
 
-  it('still opens with an invalid user config, keeping its error for the screens', async () => {
+  it('still opens with an invalid user config, its language read failing with the error', async () => {
     const { app, opened } = deps({ config: 'language: [1\n' })
     expect(await runApp(app)).toBe(0)
     expect(opened[0]?.deps.language).toBeUndefined()
-    expect(opened[0]?.deps.configError).toBeInstanceOf(ConfigError)
+    await expect(opened[0]?.deps.readLanguage()).rejects.toBeInstanceOf(ConfigError)
+  })
+
+  it('reads the language and the watch settings of the user config again on each read', async () => {
+    const seen: unknown[] = []
+    const { app, files } = deps({
+      config: 'language: pt-BR\nwatch:\n  repos: [acme/shop]\n  maxReviewsPerHour: 4\n',
+      history: fakeHistory([]),
+      files: { '/data/history.sqlite': '' },
+      during: async (appDeps) => {
+        seen.push(await appDeps.readLanguage(), (await appDeps.readQueue()).hourly)
+        files.files.set(
+          '/cfg/config.yml',
+          'language: es\nwatch:\n  repos: [acme/shop]\n  maxReviewsPerHour: 6\n',
+        )
+        seen.push(await appDeps.readLanguage(), (await appDeps.readQueue()).hourly)
+        files.files.set('/cfg/config.yml', 'watch: [1\n')
+        seen.push((await appDeps.readQueue()).hourly)
+      },
+    })
+
+    await runApp(app)
+
+    expect(seen).toEqual([
+      'pt-BR',
+      { count: 0, max: 4 },
+      'es',
+      { count: 0, max: 6 },
+      { count: 0, max: 6 },
+    ])
   })
 
   it('reads the repositories and the automations from the user config folder and the cache', async () => {

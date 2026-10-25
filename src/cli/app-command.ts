@@ -110,6 +110,12 @@ export async function runApp(deps: AppCommandDeps): Promise<number> {
 
 async function appDeps(deps: AppCommandDeps, history: AppHistory, lock: string): Promise<AppDeps> {
   let settings: WatchSettings | undefined
+  const watchSettings = () =>
+    loadTopLevelUserLayers(deps).then(
+      (layers) => (settings = resolveWatchSettings(layers)),
+      () => settings,
+    )
+  const readLanguage = async () => (await loadTopLevelUserLayers(deps))[0]?.config.language
   const ghToken: GhTokenReader = () => ghTokenReader(deps.env, deps.runGh)()
   const base = {
     version: deps.version,
@@ -118,10 +124,11 @@ async function appDeps(deps: AppCommandDeps, history: AppHistory, lock: string):
     env: colorEnv(deps.env),
     scheduler: INTERVALS,
     now: deps.clock,
+    readLanguage,
     readQueue: async () =>
       readQueue({
         history: await history.current(),
-        settings,
+        settings: await watchSettings(),
         holder: await deps.lockHolder(lock),
         now: deps.clock(),
       }),
@@ -152,14 +159,8 @@ async function appDeps(deps: AppCommandDeps, history: AppHistory, lock: string):
       }),
     ...rulesReaders({ ...deps, ghToken }),
   }
-  try {
-    const layers = await loadTopLevelUserLayers(deps)
-    settings = resolveWatchSettings(layers)
-    const language = layers[0]?.config.language
-    return language === undefined ? base : { ...base, language }
-  } catch (configError) {
-    return { ...base, configError }
-  }
+  const language = await readLanguage().catch(() => undefined)
+  return language === undefined ? base : { ...base, language }
 }
 
 function colorEnv(env: NodeJS.ProcessEnv): ColorEnv {

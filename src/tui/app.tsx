@@ -1,15 +1,18 @@
 import { Box, Text, useInput } from 'ink'
 import { useCallback, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import {
   AppDepsContext,
   MessagesContext,
   ScreenContext,
   ThemeContext,
   WorkingContext,
+  useAppDeps,
   useMessages,
   useTheme,
 } from './app-context.js'
 import type { AppDeps, KeyHint, ScreenControls, WorkingSignal } from './app-context.js'
+import { usePolled } from './data-hooks.js'
 import { ErrorBoundary } from './error-boundary.js'
 import { Footer } from './footer.js'
 import { Help } from './help.js'
@@ -43,7 +46,6 @@ const SHELL_ROWS = 3
 
 export function App({ deps, size, onExit, screens = SCREENS }: AppProps) {
   const theme = useMemo(() => resolveTheme(colorLevel(deps.env)), [deps.env])
-  const messages = useMemo(() => uiMessagesFor(deps.language), [deps.language])
   const [workers, setWorkers] = useState(0)
   const start = useCallback(() => {
     let running = true
@@ -60,15 +62,29 @@ export function App({ deps, size, onExit, screens = SCREENS }: AppProps) {
     <ErrorBoundary onError={fail}>
       <AppDepsContext.Provider value={deps}>
         <ThemeContext.Provider value={theme}>
-          <MessagesContext.Provider value={messages}>
-            <WorkingContext.Provider value={working}>
+          <WorkingContext.Provider value={working}>
+            <Localized>
               <Shell size={size} screens={screens} onExit={onExit} />
-            </WorkingContext.Provider>
-          </MessagesContext.Provider>
+            </Localized>
+          </WorkingContext.Provider>
         </ThemeContext.Provider>
       </AppDepsContext.Provider>
     </ErrorBoundary>
   )
+}
+
+function Localized({ children }: { children: ReactNode }) {
+  const language = useLanguage()
+  const messages = useMemo(() => uiMessagesFor(language), [language])
+  return <MessagesContext.Provider value={messages}>{children}</MessagesContext.Provider>
+}
+
+function useLanguage(): string | undefined {
+  const deps = useAppDeps()
+  const polled = usePolled(deps.readLanguage)
+  const last = useRef(deps.language)
+  if (polled.status === 'ready') last.current = polled.value
+  return last.current
 }
 
 function Shell({

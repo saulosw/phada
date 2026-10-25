@@ -3,7 +3,7 @@ import { Text } from 'ink'
 import { cleanup, render } from 'ink-testing-library'
 import { useState } from 'react'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { fakeAppDeps, waitFor } from '../../test/support/tui.js'
+import { fakeAppDeps, renderApp, waitFor } from '../../test/support/tui.js'
 import { App } from './app.js'
 import type { AppResult } from './app.js'
 import { useBack, useScreenInput, useScreenKeys, useWorking } from './app-context.js'
@@ -63,7 +63,8 @@ function fakeScheduler() {
     advance: (ms: number) => {
       for (const { ms: every, tick } of [...ticks.values()]) if (every <= ms) tick()
     },
-    active: () => ticks.size,
+    active: (ms?: number) =>
+      [...ticks.values()].filter((entry) => ms === undefined || entry.ms === ms).length,
   }
 }
 
@@ -223,6 +224,34 @@ describe('the footer', () => {
   })
 })
 
+describe('the language', () => {
+  it('follows the user config while the app is open, keeping the last good one on an error', async () => {
+    let read: () => Promise<string | undefined> = async () => 'pt-BR'
+    const footer = (frame: string) => lines(frame).at(-1)?.trim()
+    const { frame, clock } = renderApp({
+      deps: { readLanguage: () => read() },
+      screens: [keyedScreen()],
+    })
+    await settle()
+    expect(footer(frame())).toContain('telas')
+
+    read = async () => 'es'
+    clock.advance(2000)
+    await settle()
+    expect(footer(frame())).toContain('pantallas')
+
+    read = () => Promise.reject(new Error('Invalid config'))
+    clock.advance(2000)
+    await settle()
+    expect(footer(frame())).toContain('pantallas')
+
+    read = async () => undefined
+    clock.advance(2000)
+    await settle()
+    expect(footer(frame())).toContain('screens')
+  })
+})
+
 describe('help', () => {
   it('lists every key, the screen ones first, and closes with Esc or ?', async () => {
     const { frame, press, exits } = openApp({ screens: [keyedScreen()] })
@@ -344,7 +373,7 @@ describe('the mascot', () => {
     const open = MASCOT_FRAMES[0]?.[1]?.trim() ?? ''
     const closed = MASCOT_FRAMES[1]?.[1]?.trim() ?? ''
     const { frame, clock } = openApp({ screens: [screen] })
-    await waitFor(() => clock.active() === 1 && frame().includes(open))
+    await waitFor(() => clock.active(FLAP_MS) === 1 && frame().includes(open))
     clock.advance(FLAP_MS)
     await waitFor(() => frame().includes(closed))
     expect(frame()).toContain(closed)
@@ -354,8 +383,8 @@ describe('the mascot', () => {
     clock.advance(FLAP_MS)
     await waitFor(() => frame().includes(closed))
     finish()
-    await waitFor(() => clock.active() === 0 && frame().includes(open))
-    expect(clock.active()).toBe(0)
+    await waitFor(() => clock.active(FLAP_MS) === 0 && frame().includes(open))
+    expect(clock.active(FLAP_MS)).toBe(0)
     expect(frame()).toContain(open)
   })
 })
