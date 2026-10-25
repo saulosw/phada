@@ -11,7 +11,7 @@ import { afterFailure, MAX_ATTEMPTS, rateLimitPause } from '../watch/failures.js
 import { later } from '../watch/time.js'
 import { ciGate } from '../watch/ci-gate.js'
 import type { CiFailurePolicy } from '../watch/ci-gate.js'
-import { CI_FAILING, ciRevisits, requeueForCi } from '../watch/ci-revisit.js'
+import { CI_FAILING, ciRevisits, requeueForCi, revisitsCi } from '../watch/ci-revisit.js'
 import { NOT_STARTED, notStarted, pickNext, RATE_WINDOW_MS } from '../watch/next-job.js'
 import { planCycle } from '../watch/plan-cycle.js'
 import { prCommands } from '../watch/pr-commands.js'
@@ -175,9 +175,11 @@ async function revisitCi(repo: string, deps: WatchDeps): Promise<void> {
   const { history, readCi } = deps
   if (readCi === undefined) return
   const now = iso(deps)
+  const skipped = history.jobs({ repo, status: ['skipped'] }).filter((job) => revisitsCi(job, now))
   const jobs = ciRevisits({
-    jobs: history.jobs({ repo, status: ['skipped'] }),
+    jobs: skipped,
     pulls: history.pulls(repo),
+    requests: history.requests(skipped.map(({ id }) => id)),
     now,
   })
   for (const job of jobs) {

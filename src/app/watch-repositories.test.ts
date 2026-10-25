@@ -1231,6 +1231,42 @@ describe('watchRepositories', () => {
       expect(h.store.job(id)).toMatchObject({ status: 'skipped', reason: 'ci-failing' })
     })
 
+    it('reads the checks of a requested commit on a draft again and reviews it once they pass', async () => {
+      const h = await setup({
+        listings: () => ({ status: 'ok', pulls: [pull(3, A, { draft: true })] }),
+        baselineAt: BASELINE,
+        ci: (_job, now) => (now < 5 * MIN ? ci('failing', ['test']) : ci('passing', ['test'])),
+        stopWhen: ({ ran }) => ran.length === 1,
+      })
+      const id = skippedForCi(h.store, 3, at(-30))
+      h.store.savePull({ ...h.store.pulls('acme/shop')[0]!, eligible: false })
+      h.store.addRequest({ jobId: id, source: 'slack', publish: 'none', createdAt: at(-30) })
+
+      await watchRepositories(input(), h.deps)
+
+      expect(h.ciReads.slice(0, 2)).toEqual(['#3 @0', '#3 @5'])
+      expect(h.events).toContain('ci-cleared #3 @5')
+      expect(h.ran.map((job) => job.id)).toEqual([id])
+    })
+
+    it('moves the requests of a commit skipped for CI on a draft to its new commit', async () => {
+      const h = await setup({
+        listings: () => ({ status: 'ok', pulls: [pull(3, B, { draft: true })] }),
+        readPull: () => ({ headSha: B }),
+        baselineAt: BASELINE,
+        ci: () => ci('passing', ['test']),
+        stopWhen: ({ ran }) => ran.length === 1,
+      })
+      const id = skippedForCi(h.store, 3, at(-30))
+      h.store.savePull({ ...h.store.pulls('acme/shop')[0]!, eligible: false })
+      h.store.addRequest({ jobId: id, source: 'slack', publish: 'none', createdAt: at(-30) })
+
+      await watchRepositories(input(), h.deps)
+
+      expect(h.ran.map((job) => job.headSha)).toEqual([B])
+      expect(h.asked[0]?.map(({ source }) => source)).toEqual(['slack'])
+    })
+
     it('reads the checks of a skipped commit again for a new request and answers only that request while they still fail', async () => {
       const h = await setup({
         listings: () => ({ status: 'ok', pulls: [pull(3)] }),
