@@ -144,40 +144,47 @@ describe('formatGitHubReview body', () => {
     ])
   })
 
-  it.each<[CiSummary, string, string]>([
+  it.each<[CiSummary, string, string, string]>([
     [
       { state: 'failing', total: 1, failing: ['test'], pending: [] },
       'CI: 1 of 1 check failing (test)',
       'CI: 1 de 1 check falhando (test)',
+      'CI: 1 de 1 check fallido (test)',
     ],
     [
       { state: 'pending', total: 3, failing: [], pending: ['e2e', 'deploy'] },
       'CI: 2 of 3 checks pending (e2e, deploy)',
       'CI: 2 de 3 checks pendentes (e2e, deploy)',
+      'CI: 2 de 3 checks pendientes (e2e, deploy)',
     ],
     [
       { state: 'passing', total: 4, failing: [], pending: [] },
       'CI: all 4 checks passing',
       'CI: todos os 4 checks passando',
+      'CI: todos los 4 checks aprobados',
     ],
     [
       { state: 'passing', total: 1, failing: [], pending: [] },
       'CI: 1 check passing',
       'CI: 1 check passando',
+      'CI: 1 check aprobado',
     ],
     [
       { state: 'failing', total: 9, failing: ['a', 'b', 'c', 'd', 'e', 'f', 'g'], pending: ['h'] },
       'CI: 7 of 9 checks failing (a, b, c, d, e, 2 more) · 1 pending',
       'CI: 7 de 9 checks falhando (a, b, c, d, e, 2 a mais) · 1 pendente',
+      'CI: 7 de 9 checks fallidos (a, b, c, d, e, 2 más) · 1 pendiente',
     ],
-  ])('writes the CI line of %j in English and Portuguese', (ci, english, portuguese) => {
-    expect(formatGitHubReview(RESULT, PLAN, undefined, messagesFor('en'), ci).body).toContain(
-      `\n\n${english}\n\n`,
-    )
-    expect(formatGitHubReview(RESULT, PLAN, undefined, messagesFor('pt'), ci).body).toContain(
-      `\n\n${portuguese}\n\n`,
-    )
-  })
+  ])(
+    'writes the CI line of %j in English, Portuguese and Spanish',
+    (ci, english, portuguese, spanish) => {
+      const line = (language: string) =>
+        formatGitHubReview(RESULT, PLAN, undefined, messagesFor(language), ci).body
+      expect(line('en')).toContain(`\n\n${english}\n\n`)
+      expect(line('pt')).toContain(`\n\n${portuguese}\n\n`)
+      expect(line('es')).toContain(`\n\n${spanish}\n\n`)
+    },
+  )
 
   it('escapes the names of the checks, which their authors chose', () => {
     const ci: CiSummary = { state: 'failing', total: 1, failing: ['<b>@team</b>'], pending: [] }
@@ -422,6 +429,71 @@ describe('formatGitHubReview body', () => {
     expect(review.comments[0]?.body).toContain('**Correção sugerida:**')
     expect(review.body).not.toContain('### Summary')
     expect(review.body).not.toContain('(confidence ')
+  })
+
+  it('writes the whole review artifact in Spanish', () => {
+    const ci: CiSummary = { state: 'failing', total: 3, failing: ['test'], pending: ['e2e'] }
+    const review = formatGitHubReview(
+      result({ dropped: { invalid: 0, belowFloor: 0, outsideDiff: 1, duplicate: 1, rejected: 0 } }),
+      { ...PLAN, fixedThreads: 2 },
+      GITHUB_BODY_LIMIT,
+      messagesFor('es-MX'),
+      ci,
+    )
+
+    expect(review.body).toBe(
+      [
+        '## Revisión de Phada 🦋: 3/5 (problemas de implementación)',
+        '',
+        'CI: 1 de 3 checks fallido (test) · 1 pendiente',
+        '',
+        '2 hallazgos P1 (shop.ts:3, shop.ts:20)',
+        '',
+        '### Resumen',
+        '',
+        'Adds a spend endpoint.',
+        '',
+        '<details><summary>Archivos (1)</summary>',
+        '',
+        '| Archivo | Cambio | Hallazgos |',
+        '| --- | --- | --- |',
+        '| src/shop.ts | Adds spend | 2 |',
+        '',
+        '</details>',
+        '',
+        '**1 P1, 1 P2 como comentarios en línea** · 1 pendiente de revisiones anteriores',
+        '',
+        '2 comentarios de revisiones anteriores están corregidos en a1b2c3d.',
+        '',
+        '### Pendientes de revisiones anteriores',
+        '',
+        '- **P1** · src/shop.ts:20: Balance has no auth (confianza 90)',
+        '',
+        '### Vale la pena revisar (confianza por debajo de 60)',
+        '',
+        '- **P2** · src/shop.ts:15: Balance may be stale (confianza 55)',
+        '',
+        '2 descartados (1 fuera del diff, 1 duplicado)',
+        '',
+        '---',
+        '<sub>Generado con Phada 🦋 · fake-cli (claude-fake-1) · verificado · a1b2c3d</sub>',
+        '',
+        MARKER,
+      ].join('\n'),
+    )
+    expect(review.comments.map((comment) => comment.body)).toEqual([
+      [
+        '**P1** · spend has no auth · confianza 90',
+        'Anyone can spend crystals for any user.',
+        '**Corrección sugerida:** Use the authenticated user id.',
+        '<!-- phada:finding -->',
+      ].join('\n\n'),
+      [
+        '**P2** · Spend returns a stale balance · confianza 70',
+        'The value is read before the update.',
+        '<!-- phada:finding -->',
+      ].join('\n\n'),
+    ])
   })
 })
 
