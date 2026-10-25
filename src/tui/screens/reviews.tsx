@@ -189,7 +189,7 @@ function ReviewList({
   return (
     <Box flexDirection="column" width={size.columns}>
       {head}
-      <Text bold>{summary}</Text>
+      {(total > 0 || text !== '') && <Text bold>{summary}</Text>}
       {runs.length === 0 ? (
         text === '' ? (
           <EmptyHistory />

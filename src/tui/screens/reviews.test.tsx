@@ -198,6 +198,7 @@ describe('the Reviews screen', () => {
     const { frame } = openReviews({ runs: () => [] })
     await settle()
     expect(frame()).toContain('No reviews yet.')
+    expect(frame()).not.toContain('0 reviews')
     expect(frame()).toContain('phada review owner/repo#N')
     expect(frame()).toContain('phada watch')
   })
