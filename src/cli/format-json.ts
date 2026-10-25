@@ -6,7 +6,7 @@ import type { InvestigationReport } from '../investigation/tools/report.js'
 import type { PullRequest } from '../github/pull-request.js'
 import type { TokenUsage } from '../providers/types.js'
 import { CI_LOG_TOTAL_BYTES, CI_MAX_ANNOTATIONS } from '../publish/ci.js'
-import { CONVERSATION_BUDGET_BYTES } from '../publish/conversation.js'
+import { CONVERSATION_BUDGET_BYTES, conversationItemBytes } from '../publish/conversation.js'
 import type { Ci, Conversation, SkipReason } from '../publish/types.js'
 import type {
   CiCheck,
@@ -146,11 +146,12 @@ function conversationJson({ items, report }: Conversation) {
 
 function conversationItemJson(item: ConversationItem) {
   const { kind, at, author, role } = item
+  const bytes = conversationItemBytes(item)
   switch (item.kind) {
     case 'comment':
-      return { kind, at, author, role }
+      return { kind, at, author, role, bytes }
     case 'review':
-      return { kind, at, author, role, state: item.state }
+      return { kind, at, author, role, state: item.state, bytes }
     case 'thread':
       return {
         kind,
@@ -163,6 +164,7 @@ function conversationItemJson(item: ConversationItem) {
         outdated: item.outdated,
         replies: item.replies?.length ?? 0,
         omittedReplies: item.omittedReplies ?? 0,
+        bytes,
       }
   }
 }

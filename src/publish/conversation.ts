@@ -166,6 +166,10 @@ function withinBudget(items: readonly ConversationItem[]): ConversationItem[] {
   return items.filter((item) => kept.has(item))
 }
 
+export function conversationItemBytes(item: ConversationItem): number {
+  return byteLength(JSON.stringify(item))
+}
+
 function conversationLines(items: readonly ConversationItem[]): string {
   return items.map((item) => JSON.stringify(item)).join('\n')
 }

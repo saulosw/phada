@@ -668,13 +668,20 @@ describe('publication', () => {
         truncated: 1,
         budget: { limit: 16_384, used: 900 },
         items: [
-          { kind: 'comment', at: '2026-10-20T10:00:00Z', author: 'alice', role: 'member' },
+          {
+            kind: 'comment',
+            at: '2026-10-20T10:00:00Z',
+            author: 'alice',
+            role: 'member',
+            bytes: 110,
+          },
           {
             kind: 'review',
             at: '2026-10-20T11:00:00Z',
             author: 'bob',
             role: 'owner',
             state: 'approved',
+            bytes: 94,
           },
           {
             kind: 'thread',
@@ -687,6 +694,7 @@ describe('publication', () => {
             outdated: false,
             replies: 1,
             omittedReplies: 1,
+            bytes: 265,
           },
         ],
       },
