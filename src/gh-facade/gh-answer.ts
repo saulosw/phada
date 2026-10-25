@@ -1,4 +1,5 @@
 import type { CapturedComment, CapturedWrite } from '../review/types.js'
+import { answerChecks } from './gh-checks.js'
 import { applyJq } from './gh-jq.js'
 import { GhFacadeError } from './types.js'
 import type { FieldValue, GhAnswer, GhCommand, GhPullData, ReadGitHub } from './types.js'
@@ -9,7 +10,7 @@ export interface GhResult {
 }
 
 const AVAILABLE =
-  'gh pr view, gh pr diff, gh pr list, gh pr comment, gh pr review, gh issue view, gh issue list, gh search prs, gh search issues, gh repo view, gh api, gh auth status'
+  'gh pr view, gh pr diff, gh pr checks, gh pr list, gh pr comment, gh pr review, gh issue view, gh issue list, gh search prs, gh search issues, gh repo view, gh api, gh auth status'
 const PR_FIELDS = [
   'number',
   'title',
@@ -90,6 +91,10 @@ async function answer(command: GhCommand, data: GhPullData, read: ReadGitHub): P
       checkRepo(command.repo, data)
       checkPull(command.target, data)
       return ok(command.nameOnly ? lines(diffFiles(data.diff).map(({ path }) => path)) : data.diff)
+    case 'pr-checks':
+      checkRepo(command.repo, data)
+      checkPull(command.target, data)
+      return { answer: answerChecks(command, data) }
     case 'pr-list': {
       checkRepo(command.repo, data)
       const items =

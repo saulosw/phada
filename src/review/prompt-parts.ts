@@ -139,7 +139,11 @@ export function relatedBlocks(
   nonce: string,
 ): string[] {
   if (related === undefined || related.length === 0) return []
-  return [block('PHADA_RELATED', nonce, related.map(relatedLine).join('\n'))]
+  return [block('PHADA_RELATED', nonce, relatedText(related))]
+}
+
+export function relatedText(related: readonly RelatedSummary[]): string {
+  return related.map(relatedLine).join('\n')
 }
 
 function relatedLine({

@@ -13,7 +13,7 @@ const NO_CUTS: CiReport = {
 }
 
 function ci(summary: CiSummary, checks: CiCheck[] = [], overrides: Partial<Ci> = {}): Ci {
-  return { checks, summary, report: NO_CUTS, ...overrides }
+  return { checks, entries: [], summary, report: NO_CUTS, ...overrides }
 }
 
 describe('formatCiLine', () => {

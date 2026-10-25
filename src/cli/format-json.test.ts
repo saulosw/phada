@@ -620,6 +620,7 @@ describe('publication', () => {
       report: { items: 3, omitted: 2, resolved: 1, bots: 0, truncated: 1, bytes: 900 },
     }
     const ci: Ci = {
+      entries: [],
       checks: [
         {
           name: 'test',

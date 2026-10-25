@@ -962,6 +962,8 @@ describe('run publishing', () => {
           summary: null,
           url: null,
           app: 'other',
+          startedAt: null,
+          completedAt: null,
         },
         {
           id: 8,
@@ -972,6 +974,8 @@ describe('run publishing', () => {
           summary: null,
           url: null,
           app: 'other',
+          startedAt: null,
+          completedAt: null,
         },
         {
           id: 9,
@@ -982,6 +986,8 @@ describe('run publishing', () => {
           summary: null,
           url: null,
           app: 'other',
+          startedAt: null,
+          completedAt: null,
         },
       ],
     }
@@ -2727,6 +2733,8 @@ describe('run prompt', () => {
           summary: null,
           url: null,
           app: 'other',
+          startedAt: null,
+          completedAt: null,
         },
       ],
     }

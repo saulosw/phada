@@ -92,6 +92,7 @@ describe('buildCi', () => {
       logs: new Map([[3, log(JOB_LOG)]]),
     })
 
+    expect(ci.entries).toEqual(entries)
     expect(ci.checks.map(({ name, state }) => [name, state])).toEqual([
       ['test', 'failing'],
       ['scan', 'failing'],
@@ -140,6 +141,7 @@ describe('buildCi', () => {
 
   it('has no checks and a state of none without entries', () => {
     expect(buildCi([], NO_DETAILS)).toEqual({
+      entries: [],
       checks: [],
       summary: { state: 'none', total: 0, failing: [], pending: [] },
       report: {
