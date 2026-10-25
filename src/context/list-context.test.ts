@@ -125,6 +125,33 @@ describe('listContext', () => {
     expect(report.ignored).toEqual([])
   })
 
+  it('returns the review settings of the branch, the repository over the user', async () => {
+    const user: ConfigLayer = {
+      kind: 'user',
+      dir: '',
+      configLabel: 'user:config.yml',
+      config: { review: { skills: ['security'] } },
+    }
+
+    const { review } = await listContext({
+      ref: REF,
+      userLayers: [user],
+      sources: sources({
+        '.phada/config.yml': 'review:\n  prompt:\n    file: .phada/prompt.md\n    mode: replace\n',
+      }),
+    })
+
+    expect(review).toEqual({
+      prompt: {
+        file: '.phada/prompt.md',
+        mode: 'replace',
+        origin: '.phada/config.yml',
+        source: 'repository',
+      },
+      skills: { entries: [{ name: 'security' }], origin: 'user:config.yml', source: 'local' },
+    })
+  })
+
   it('probes the known docs when the tree is too large and skips the missing ones quietly', async () => {
     const { report } = await listContext({
       ref: REF,
