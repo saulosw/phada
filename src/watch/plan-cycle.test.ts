@@ -286,4 +286,25 @@ describe('planCycle', () => {
 
     expect(planCycle(input({ pulls: [open(3)], stored: [stored(3)], jobs }))).toEqual([])
   })
+
+  it('moves the requests of a commit skipped for CI within a day once a new commit arrives, even on a draft', () => {
+    const skipped = (id: number, finishedAt: string) =>
+      job(id, 3, { status: 'skipped', reason: 'ci-failing', finishedAt })
+    const jobs = [skipped(7, at(-60)), skipped(8, at(-24 * 60 - 1))]
+    const pulls = [open(3, B, { draft: true })]
+
+    expect(planCycle(input({ pulls, stored: [stored(3)], jobs }))).toContainEqual({
+      kind: 'move',
+      jobId: 7,
+    })
+    expect(planCycle(input({ pulls, stored: [stored(3)], jobs }))).not.toContainEqual({
+      kind: 'move',
+      jobId: 8,
+    })
+    expect(
+      planCycle(input({ pulls, stored: [stored(3, { headSha: B })], jobs })).map(
+        ({ kind }) => kind,
+      ),
+    ).not.toContain('move')
+  })
 })

@@ -1212,6 +1212,25 @@ describe('watchRepositories', () => {
       expect(h.store.jobs({ status: ['skipped'] })).toHaveLength(2)
     })
 
+    it('moves the requests of a commit skipped for CI to the new commit', async () => {
+      const h = await setup({
+        listings: () => ({ status: 'ok', pulls: [pull(3, B)] }),
+        readPull: () => ({ headSha: B }),
+        baselineAt: BASELINE,
+        ci: (job) => (job.headSha === A ? ci('failing', ['test']) : ci('passing', ['test'])),
+        stopWhen: ({ ran }) => ran.length === 1,
+      })
+      const id = skippedForCi(h.store, 3, at(-30))
+      h.store.addRequest({ jobId: id, source: 'mcp', publish: 'none', createdAt: at(-30) })
+
+      await watchRepositories(input(), h.deps)
+
+      expect(h.ran.map((job) => job.headSha)).toEqual([B])
+      expect(h.asked[0]?.map(({ source }) => source).sort()).toEqual(['mcp', 'watch'])
+      expect(h.notified).toEqual(['started #3 [watch,mcp]', 'finished #3 [watch,mcp]'])
+      expect(h.store.job(id)).toMatchObject({ status: 'skipped', reason: 'ci-failing' })
+    })
+
     it('reads the checks of a skipped commit again for a new request and answers only that request while they still fail', async () => {
       const h = await setup({
         listings: () => ({ status: 'ok', pulls: [pull(3)] }),

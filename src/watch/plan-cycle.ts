@@ -4,6 +4,7 @@ import type { JobRecord, PullRecord, RequestRecord } from './types.js'
 import { later } from './time.js'
 import { eligibility } from './filters.js'
 import { notStarted } from './next-job.js'
+import { CI_REVISIT_MS, skippedForCi } from './ci-revisit.js'
 
 export interface CycleInput {
   repo: WatchedRepoSettings
@@ -23,6 +24,7 @@ export type CycleAction =
   | { kind: 'enqueue'; job: Omit<JobRecord, 'id'> }
   | { kind: 'join'; jobId: number }
   | { kind: 'supersede'; jobId: number }
+  | { kind: 'move'; jobId: number }
   | { kind: 'gone'; pull: PullRecord; jobIds: number[] }
 
 export function planCycle(input: CycleInput): CycleAction[] {
@@ -58,6 +60,8 @@ export function planCycle(input: CycleInput): CycleAction[] {
     for (const job of jobs) {
       if (notStarted(job) && job.headSha !== pull.headSha) {
         actions.push({ kind: 'supersede', jobId: job.id })
+      } else if (newCommit && job.headSha !== pull.headSha && revisitedForCi(job, now)) {
+        actions.push({ kind: 'move', jobId: job.id })
       }
     }
     const known = jobs.some(
@@ -116,6 +120,12 @@ function blocks(job: JobRecord): boolean {
   return !(
     job.status === 'skipped' &&
     (job.reason === 'closed' || job.reason === 'closed-or-draft')
+  )
+}
+
+function revisitedForCi(job: JobRecord, now: string): boolean {
+  return (
+    skippedForCi(job) && job.finishedAt !== undefined && later(job.finishedAt, CI_REVISIT_MS) > now
   )
 }
 

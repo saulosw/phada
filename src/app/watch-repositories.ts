@@ -239,9 +239,15 @@ async function discoverPulls(
     settleMs: input.settings.settleMs,
   })
   const ended: JobEvent[] = []
+  const moved: JobRecord[] = []
   for (const action of actions) {
     if (action.kind === 'enqueue' && (await refusedByWhen(action.job, repo, listing.pulls, deps))) {
       history.addJob({ ...action.job, status: 'skipped', reason: 'when-command', finishedAt: now })
+      continue
+    }
+    if (action.kind === 'move') {
+      const job = jobs.find(({ id }) => id === action.jobId)
+      if (job !== undefined) moved.push(job)
       continue
     }
     ended.push(...apply(action, repo, now, deps))
@@ -257,11 +263,12 @@ async function discoverPulls(
     if (event.reason === 'superseded') await follow(event.job, input.settings, deps)
     await notifyStaying(event, deps)
   }
+  for (const job of moved) await follow(job, input.settings, deps)
   return undefined
 }
 
 function apply(
-  action: CycleAction,
+  action: Exclude<CycleAction, { kind: 'move' }>,
   repo: WatchedRepoSettings,
   now: string,
   deps: WatchDeps,
