@@ -138,6 +138,26 @@ describe('runApp', () => {
     expect(opened[0]?.host.onSignal).toBe(app.onSignal)
   })
 
+  it('hands the app only the variables of the colors, never a token', async () => {
+    const { app, opened } = deps({
+      env: {
+        NO_COLOR: '1',
+        FORCE_COLOR: '2',
+        COLORTERM: 'truecolor',
+        GITHUB_TOKEN: 'ghp_env',
+        PHADA_SLACK_BOT_TOKEN: 'xoxb-secret',
+      },
+    })
+    await runApp(app)
+    expect(opened[0]?.deps.env).toEqual({
+      NO_COLOR: '1',
+      FORCE_COLOR: '2',
+      TERM: 'xterm',
+      COLORTERM: 'truecolor',
+    })
+    expect(opened[0]?.deps.env).not.toBe(app.env)
+  })
+
   it('passes the language of the user config', async () => {
     const { app, opened } = deps({ config: 'language: pt-BR\n' })
     await runApp(app)

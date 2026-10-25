@@ -30,6 +30,7 @@ import { readObservedEdges } from '../store/observed-store.js'
 import { fetchAuthenticatedUser } from '../github/user.js'
 import type { FetchUserOptions, GitHubUser } from '../github/user.js'
 import type { AppDeps, AppResult, openApp, Scheduler } from '../tui/open-app.js'
+import type { ColorEnv } from '../tui/theme.js'
 import { appHistory } from './app-history.js'
 import { rulesReaders } from './app-rules.js'
 import type { RulesReaderDeps } from './app-rules.js'
@@ -72,6 +73,8 @@ const EXIT_CODES: Readonly<Record<Exclude<AppResult['kind'], 'failed'>, number>>
   terminated: 143,
 }
 
+const COLOR_VARIABLES = ['NO_COLOR', 'FORCE_COLOR', 'TERM', 'COLORTERM'] as const
+
 const INTERVALS: Scheduler = {
   every: (ms, tick) => {
     const timer = setInterval(tick, ms)
@@ -112,7 +115,7 @@ async function appDeps(deps: AppCommandDeps, history: AppHistory, lock: string):
     version: deps.version,
     cwd: deps.cwd,
     home: deps.home,
-    env: deps.env,
+    env: colorEnv(deps.env),
     scheduler: INTERVALS,
     now: deps.clock,
     readQueue: async () =>
@@ -157,6 +160,12 @@ async function appDeps(deps: AppCommandDeps, history: AppHistory, lock: string):
   } catch (configError) {
     return { ...base, configError }
   }
+}
+
+function colorEnv(env: NodeJS.ProcessEnv): ColorEnv {
+  return Object.fromEntries(
+    COLOR_VARIABLES.flatMap((name) => (env[name] === undefined ? [] : [[name, env[name]]])),
+  )
 }
 
 function repositoryReaders(deps: AppCommandDeps, history: AppHistory): RepositoryReaders {
