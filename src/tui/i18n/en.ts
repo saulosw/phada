@@ -31,7 +31,68 @@ export const english: UiMessages = {
     `The terminal is ${columns}×${rows}. Phada needs at least 80×24: make the window bigger.`,
   tooSmallHint: 'q quit',
   placeholder: 'This screen is not ready yet.',
-  home: { tagline: 'Review pull requests with the AI you already use.' },
+  home: {
+    tagline: 'Review pull requests with the AI you already use.',
+    labels: { github: 'GitHub', ai: 'AI', watch: 'Watch', queue: 'Queue', graph: 'Graph' },
+    checking: 'checking…',
+    github: {
+      sources: { GITHUB_TOKEN: 'GITHUB_TOKEN', GH_TOKEN: 'GH_TOKEN', gh: 'gh login' },
+      refused: 'refused by GitHub',
+      noToken: 'no token in GITHUB_TOKEN, GH_TOKEN or gh',
+    },
+    defaultModel: 'default model',
+    watch: {
+      running: (pid) => `running · PID ${pid}`,
+      stopped: 'not running',
+      notConfigured: 'not configured',
+      lastCycle: (when) => `last cycle ${when}`,
+      next: (when) => `next ${when}`,
+    },
+    queue: {
+      running: (count) => `${count} running`,
+      queued: (count) => `${count} queued`,
+      waiting: (count) => `${count} waiting for CI`,
+      failed: (count) => `${count} failed`,
+      skipped: (count) => `${count} skipped for failing CI`,
+      paused: (until, relative) => `paused until ${until} (${relative})`,
+      empty: 'empty',
+    },
+    graph: {
+      indexed: (count) => `${count} watched ${count === 1 ? 'repository' : 'repositories'} indexed`,
+      missing: (count) => `${count} without index`,
+      none: 'no watched repositories',
+    },
+    recommendations: {
+      checking: (github, ai) =>
+        github && ai
+          ? 'Checking GitHub and the AI…'
+          : github
+            ? 'Checking GitHub…'
+            : 'Checking the AI…',
+      fixConfig: (file) => `Fix the config file ${file}`,
+      githubToken: 'Phada needs a GitHub token: log in with gh, or set GITHUB_TOKEN',
+      githubRefused: (source) =>
+        `GitHub refused the token from ${source}: log in again, or set another token`,
+      init: 'Create your config, then add the repositories to watch',
+      ai: {
+        install: (provider) => `Install ${provider}`,
+        login: (provider) => `Log in to ${provider}`,
+        serve: (provider) => `Start ${provider}`,
+        pull: (provider) => `Download the model for ${provider}`,
+      },
+      paused: (until, relative, reason) =>
+        `The watch is paused until ${until} (${relative}): ${reason}`,
+      failedJobs: (count, ref, error) =>
+        `${ref} failed${error === null ? '' : `: ${error}`}${count > 1 ? ` (${count} failed in the last day)` : ''}. Retry it`,
+      ciSkipped: (count, ref, failing) =>
+        `${ref} was skipped: CI failing${failing === '' ? '' : ` (${failing})`}${count > 1 ? `, ${count} in all` : ''}. Phada reviews it again when CI passes, or review it now`,
+      index: (repo, count) =>
+        `Index ${repo}${count > 1 ? ` and ${count - 1} more` : ''} so reviews see the graph`,
+      watch: 'The watch is configured but not running: start it',
+      review: 'All set: review a pull request',
+    },
+    reviews: { title: 'Last reviews', none: 'No reviews yet.' },
+  },
   loading: 'Loading…',
   failed: (message) => `Could not load: ${message}`,
   time: {

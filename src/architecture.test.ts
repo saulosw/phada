@@ -339,7 +339,15 @@ const APP: Boundary = {
 }
 const TUI: Boundary = {
   dir: 'tui',
-  values: new Set(['ink', 'react', '../app/error-message.js', '../app/terminal-text.js']),
+  values: new Set([
+    'ink',
+    'react',
+    '../app/error-message.js',
+    '../app/terminal-text.js',
+    '../app/read-home.js',
+    '../app/home-recommendation.js',
+    '../app/read-provider.js',
+  ]),
   types: new Set(),
   typeDirs: ['../app/', '../config/'],
   expected: ['app.tsx', 'open-app.tsx', 'theme.ts', 'screens.ts', 'i18n/messages.ts'],

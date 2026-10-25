@@ -31,7 +31,69 @@ export const portuguese: UiMessages = {
     `O terminal tem ${columns}×${rows}. O Phada precisa de pelo menos 80×24: aumente a janela.`,
   tooSmallHint: 'q sair',
   placeholder: 'Esta tela ainda não está pronta.',
-  home: { tagline: 'Revise pull requests com a IA que você já usa.' },
+  home: {
+    tagline: 'Revise pull requests com a IA que você já usa.',
+    labels: { github: 'GitHub', ai: 'IA', watch: 'Watch', queue: 'Fila', graph: 'Grafo' },
+    checking: 'verificando…',
+    github: {
+      sources: { GITHUB_TOKEN: 'GITHUB_TOKEN', GH_TOKEN: 'GH_TOKEN', gh: 'login do gh' },
+      refused: 'recusado pelo GitHub',
+      noToken: 'sem token no GITHUB_TOKEN, no GH_TOKEN nem no gh',
+    },
+    defaultModel: 'modelo padrão',
+    watch: {
+      running: (pid) => `rodando · PID ${pid}`,
+      stopped: 'parado',
+      notConfigured: 'não configurado',
+      lastCycle: (when) => `último ciclo ${when}`,
+      next: (when) => `próximo ${when}`,
+    },
+    queue: {
+      running: (count) => `${count} rodando`,
+      queued: (count) => `${count} na fila`,
+      waiting: (count) => `${count} esperando o CI`,
+      failed: (count) => `${count} com falha`,
+      skipped: (count) => `${count} ${count === 1 ? 'pulado' : 'pulados'} por CI falhando`,
+      paused: (until, relative) => `pausada até ${until} (${relative})`,
+      empty: 'vazia',
+    },
+    graph: {
+      indexed: (count) =>
+        `${count} ${count === 1 ? 'repositório observado indexado' : 'repositórios observados indexados'}`,
+      missing: (count) => `${count} sem índice`,
+      none: 'nenhum repositório observado',
+    },
+    recommendations: {
+      checking: (github, ai) =>
+        github && ai
+          ? 'Verificando o GitHub e a IA…'
+          : github
+            ? 'Verificando o GitHub…'
+            : 'Verificando a IA…',
+      fixConfig: (file) => `Corrija o arquivo de config ${file}`,
+      githubToken: 'O Phada precisa de um token do GitHub: faça login no gh ou defina GITHUB_TOKEN',
+      githubRefused: (source) =>
+        `O GitHub recusou o token de ${source}: faça login de novo ou use outro token`,
+      init: 'Crie sua config e depois adicione os repositórios a observar',
+      ai: {
+        install: (provider) => `Instale o ${provider}`,
+        login: (provider) => `Faça login no ${provider}`,
+        serve: (provider) => `Inicie o ${provider}`,
+        pull: (provider) => `Baixe o modelo para o ${provider}`,
+      },
+      paused: (until, relative, reason) =>
+        `O watch está pausado até ${until} (${relative}): ${reason}`,
+      failedJobs: (count, ref, error) =>
+        `${ref} falhou${error === null ? '' : `: ${error}`}${count > 1 ? ` (${count} falhas no último dia)` : ''}. Tente de novo`,
+      ciSkipped: (count, ref, failing) =>
+        `${ref} foi pulado: CI falhando${failing === '' ? '' : ` (${failing})`}${count > 1 ? `, ${count} no total` : ''}. O Phada revisa de novo quando o CI passar, ou revise agora`,
+      index: (repo, count) =>
+        `Indexe ${repo}${count > 1 ? ` e mais ${count - 1}` : ''} para os reviews verem o grafo`,
+      watch: 'O watch está configurado mas parado: inicie-o',
+      review: 'Tudo pronto: revise um pull request',
+    },
+    reviews: { title: 'Últimos reviews', none: 'Nenhum review ainda.' },
+  },
   loading: 'Carregando…',
   failed: (message) => `Não foi possível carregar: ${message}`,
   time: {

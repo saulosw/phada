@@ -431,7 +431,7 @@ function statusLabel(status: string, messages: UiMessages): string {
   return statuses[status] ?? oneLine(status)
 }
 
-function verdictLabel(run: ListedRun, messages: UiMessages): string {
+export function verdictLabel(run: ListedRun, messages: UiMessages): string {
   return run.verdict === undefined
     ? messages.reviews.statuses[run.status]
     : messages.reviews.verdicts[run.verdict]
@@ -449,7 +449,7 @@ function place(file: string, line: number | undefined): string {
   return oneLine(line === undefined ? file : `${file}:${line}`)
 }
 
-function verdictColor(run: ListedRun, { colors }: Theme): string | undefined {
+export function verdictColor(run: ListedRun, { colors }: Theme): string | undefined {
   const verdict = run.verdict ?? (run.status === 'failed' ? 'failed' : undefined)
   if (verdict === 'clean') return colors.ok
   if (verdict === 'comments') return colors.warn

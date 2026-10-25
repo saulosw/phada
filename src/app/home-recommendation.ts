@@ -2,7 +2,7 @@ import type { ProviderName } from '../providers/types.js'
 import type { Fact, GitHubTokenSource, HomeLocal, HomeSlow } from './read-home.js'
 import { nextStep } from './read-provider.js'
 import type { NextStep } from './read-provider.js'
-import type { QueueJob } from './read-queue.js'
+import type { QueueJob, QueueView } from './read-queue.js'
 
 export type Recommendation =
   | { kind: 'checking'; github: boolean; ai: boolean }
@@ -55,7 +55,7 @@ export function recommend(local: HomeLocal, slow: HomeSlow, now: Date): Recommen
       command: 'phada watch --status',
     }
   }
-  const failed = (queue?.failed ?? []).filter(({ job }) => recentlyFailed(job, now))
+  const failed = queue === undefined ? [] : recentFailures(queue, now)
   const [lastFailed] = failed
   if (lastFailed !== undefined) {
     const ref = refOf(lastFailed)
@@ -108,8 +108,10 @@ function aiStep(local: HomeLocal, slow: HomeSlow): Recommendation | undefined {
     : { kind: 'ai', provider: choice.provider, step, command: step.command }
 }
 
-function recentlyFailed(job: QueueJob['job'], now: Date): boolean {
-  return now.getTime() - Date.parse(job.finishedAt ?? job.createdAt) < RECENT_FAILURE_MS
+export function recentFailures(queue: QueueView, now: Date): QueueJob[] {
+  return queue.failed.filter(
+    ({ job }) => now.getTime() - Date.parse(job.finishedAt ?? job.createdAt) < RECENT_FAILURE_MS,
+  )
 }
 
 function refOf({ job }: QueueJob): string {

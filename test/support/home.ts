@@ -100,7 +100,7 @@ export function claudeSetup(model: string | null = 'opus'): ProviderSetup {
   }
 }
 
-export function loggedInClaude(): ReportedProvider {
+export function loggedInClaude(): Extract<ReportedProvider, { provider: 'claude' | 'codex' }> {
   return {
     provider: 'claude',
     install: { state: 'installed', version: '2.1.0' },

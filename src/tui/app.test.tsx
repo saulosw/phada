@@ -215,7 +215,9 @@ describe('the footer', () => {
   it('is translated', async () => {
     const { frame } = openApp({ language: 'pt-BR' })
     await settle()
-    expect(lines(frame()).at(-1)?.trim()).toBe('←/→ telas · / ir para · ? ajuda · q sair')
+    expect(lines(frame()).at(-1)?.trim()).toBe(
+      'r atualizar · ←/→ telas · / ir para · ? ajuda · q sair',
+    )
   })
 })
 

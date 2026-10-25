@@ -1,4 +1,5 @@
 import type { FeedbackFinding, ListedRun, ReviewDetail } from '../../app/read-history.js'
+import type { GitHubTokenSource } from '../../app/read-home.js'
 import type { McpServerKind, NextStep } from '../../app/read-provider.js'
 import type { QueueJob } from '../../app/read-queue.js'
 import type { RepositoryOrigin, SettingOrigin } from '../../app/read-repositories.js'
@@ -36,7 +37,7 @@ export interface UiMessages {
   tooSmall(columns: number, rows: number): string
   tooSmallHint: string
   placeholder: string
-  home: { tagline: string }
+  home: HomeMessages
   loading: string
   failed(message: string): string
   time: TimeMessages
@@ -55,6 +56,50 @@ export interface UiMessages {
   automation: AutomationMessages
   provider: ProviderMessages
   learnings: LearningsMessages
+}
+
+export interface HomeMessages {
+  tagline: string
+  labels: { github: string; ai: string; watch: string; queue: string; graph: string }
+  checking: string
+  github: {
+    sources: Readonly<Record<GitHubTokenSource, string>>
+    refused: string
+    noToken: string
+  }
+  defaultModel: string
+  watch: {
+    running(pid: number): string
+    stopped: string
+    notConfigured: string
+    lastCycle(when: string): string
+    next(when: string): string
+  }
+  queue: {
+    running(count: number): string
+    queued(count: number): string
+    waiting(count: number): string
+    failed(count: number): string
+    skipped(count: number): string
+    paused(until: string, relative: string): string
+    empty: string
+  }
+  graph: { indexed(count: number): string; missing(count: number): string; none: string }
+  recommendations: {
+    checking(github: boolean, ai: boolean): string
+    fixConfig(file: string): string
+    githubToken: string
+    githubRefused(source: string): string
+    init: string
+    ai: Readonly<Record<NextStep['kind'], (provider: string) => string>>
+    paused(until: string, relative: string, reason: string): string
+    failedJobs(count: number, ref: string, error: string | null): string
+    ciSkipped(count: number, ref: string, failing: string): string
+    index(repo: string, count: number): string
+    watch: string
+    review: string
+  }
+  reviews: { title: string; none: string }
 }
 
 type RequestSource = QueueJob['requests'][number]['source']
