@@ -1,7 +1,13 @@
+import type { CiState } from '../../publish/types.js'
 import type { ScoreFocus } from '../../review/score.js'
 import type { DroppedFindings, ScoreValue, Severity, Verification } from '../../review/types.js'
 import { english } from './en.js'
 import { portuguese } from './pt.js'
+
+export interface CiNames {
+  count: number
+  shown: readonly string[]
+}
 
 export interface Messages {
   scoreLabels: Readonly<Record<ScoreValue, string>>
@@ -12,6 +18,7 @@ export interface Messages {
   leftOut: string
   rule: string
   skill: string
+  ciCheck: string
   summary: string
   files: string
   fileColumns: readonly [string, string, string]
@@ -47,6 +54,7 @@ export interface Messages {
     preview(index: number, total: number, place: string): string
     fixedThreads(count: number, sha: string): string
     resolvedReply(sha: string, reason: string): string
+    ci(state: Exclude<CiState, 'none'>, total: number, failing: CiNames, pending: CiNames): string
   }
 }
 

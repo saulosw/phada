@@ -1,3 +1,4 @@
+import { CHECK_PREFIX } from '../review/context-findings.js'
 import type { Finding } from '../review/types.js'
 import type { Messages } from './i18n/messages.js'
 
@@ -12,7 +13,11 @@ export function findingReferences(
     (source) => withLocalFiles || !source.startsWith(LOCAL_PREFIX),
   )
   const references = [
-    ...sources.map(codeSpan),
+    ...sources.map((source) =>
+      source.startsWith(CHECK_PREFIX)
+        ? `${messages.ciCheck} ${codeSpan(source.slice(CHECK_PREFIX.length))}`
+        : codeSpan(source),
+    ),
     ...(finding.rule === undefined ? [] : [`${messages.rule} ${codeSpan(finding.rule)}`]),
     ...(finding.skill === undefined ? [] : [`${messages.skill} ${codeSpan(finding.skill)}`]),
   ]

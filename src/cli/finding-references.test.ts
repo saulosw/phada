@@ -15,6 +15,17 @@ describe('findingReferences', () => {
     )
   })
 
+  it('names a CI check the finding is based on', () => {
+    const finding = findingFixture({ sources: ['src/a.ts:3', 'ci:test (ubuntu)'] })
+
+    expect(findingReferences(finding, messagesFor('en'))).toBe(
+      'Based on: `src/a.ts:3` · CI check `test (ubuntu)`',
+    )
+    expect(findingReferences(finding, messagesFor('pt'))).toBe(
+      'Com base em: `src/a.ts:3` · check de CI `test (ubuntu)`',
+    )
+  })
+
   it('names nothing without a skill', () => {
     expect(findingReferences(findingFixture(), messagesFor('en'))).toBe('')
   })

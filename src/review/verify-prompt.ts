@@ -3,6 +3,9 @@ import type { Toolbox } from '../investigation/toolbox.js'
 import { annotateDiff } from './diff-lines.js'
 import {
   block,
+  CI,
+  CI_CHECKS,
+  ciBlocks,
   CONFIDENCE_SCALE,
   CONTEXT_DOCS,
   CONVERSATION,
@@ -11,6 +14,7 @@ import {
   DIFF_LINE_NUMBERS,
   diffScope,
   docsBlock,
+  hasCi,
   hasConversation,
   hasImpact,
   hasRelated,
@@ -89,6 +93,7 @@ export function buildVerifyPrompt(
       block('PHADA_PR', nonce, pullRequestDetails(pullRequest, context?.ignored)),
       ...(docs.length === 0 ? [] : [block('PHADA_DOCS', nonce, docsBlock(docs))]),
       ...conversationBlocks(request.conversation, nonce),
+      ...ciBlocks(request.ci, nonce),
       ...relatedBlocks(request.related, nonce),
       ...impactBlocks(request.impact, nonce),
       block('PHADA_DIFF', nonce, annotateDiff(pullRequest.diff)),
@@ -112,7 +117,7 @@ function userFocus(passes: readonly SkillPass[] | undefined): string {
 }
 
 function instructionsFor(
-  { language, context, impact, related, conversation, passes }: ReviewRequest,
+  { language, context, impact, related, conversation, ci, passes }: ReviewRequest,
   tools?: Toolbox,
 ): string {
   const sections = [
@@ -122,6 +127,7 @@ function instructionsFor(
     rulesSection(context?.rules ?? []),
     (context?.docs.length ?? 0) > 0 ? CONTEXT_DOCS : '',
     hasConversation(conversation) ? `${CONVERSATION}\n${CONVERSATION_CHECKS}` : '',
+    hasCi(ci) ? `${CI}\n${CI_CHECKS}` : '',
     hasRelated(related) ? RELATED : '',
     hasImpact(impact) ? IMPACT : '',
     CONFIDENCE_SCALE,

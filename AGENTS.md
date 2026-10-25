@@ -145,15 +145,16 @@ src/
     suppress-sqlite-warning.ts # drops Node's ExperimentalWarning for the built-in SQLite
     errors.ts            #   UsageError, MissingGitHubTokenError, WatchRunningError
     format-review.ts     #   pull request summary (stderr) and the Markdown review (stdout)
-    format-github.ts     #   the review as GitHub Markdown: body, line comments, suggestion blocks,
-                         #   markers, truncation; formatResolvedReply(); formatGitHubPreview() for
+    format-github.ts     #   the review as GitHub Markdown: body (the CI line under the score),
+                         #   line comments, suggestion blocks, markers, truncation; formatResolvedReply(); formatGitHubPreview() for
                          #   --dry-run
     format-publication.ts #  skip, "Published", recheck and "Resolved" messages
     format-context.ts    #   the "Context:" line and the context section of --dry-run
     format-investigation.ts # the "Investigated:" line and the investigation section of --dry-run
     format-related.ts    #   the "Related:" line and the related repositories section of --dry-run
     format-impact.ts     #   the "Impact:" line and the impact section of --dry-run
-    finding-references.ts #  the "Based on" line: sources, rule and skill of a finding
+    finding-references.ts #  the "Based on" line: sources (a CI check named as such), rule and skill
+                         #   of a finding
     format-json.ts       #   formatReviewJson(): schemaVersion 1, with the publication, context,
                          #   investigation, impact and recheck blocks
     markdown-text.ts     #   escapes AI text: block markers; for GitHub also HTML and mentions;
@@ -378,7 +379,8 @@ src/
   review/                # the engine: data in, result out
     types.ts             #   ReviewRequest, Finding, ReviewResult, ReviewOutcome, …
     prompt-parts.ts      #   text shared by the review and verification prompts: rules section,
-                         #   docs block, conversation block and its rules, related repositories
+                         #   docs block, conversation block and its rules, CI block and its rules
+                         #   (a check cited as ci:<name>), related repositories
                          #   (RELATED, relatedBlocks()), impact block, diff scope and tools
     impact-text.ts       #   renderImpact(): the impact of the diff within its 4 KB budget
     prompt.ts            #   buildReviewPrompt(): instructions + nonce-delimited data + output schema;
@@ -402,7 +404,8 @@ src/
     parse-report.ts      #   parseReviewReport()
     parse-verification.ts #  parseVerification()
     verify-findings.ts   #   verifyCandidates(), applyVerdicts()
-    context-findings.ts  #   known rule and sources on each finding; the severity a rule sets
+    context-findings.ts  #   known rule and sources on each finding (ci:<name> of a failing check);
+                         #   the severity a rule sets
     select-findings.ts   #   candidate filtering, confidence cut, worth checking, ordering
     score.ts             #   scoreFindings(): the 0–5 score, computed by Phada
     verdict.ts           #   reviewVerdict(): clean, comments or blocking, from the findings
