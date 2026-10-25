@@ -3,7 +3,7 @@ import type {
   InvestigationReport,
   McpServerReport,
 } from '../investigation/tools/report.js'
-import { toTerminalText } from './terminal-text.js'
+import { toTerminalText } from '../app/terminal-text.js'
 import { formatBytes, formatCount } from './units.js'
 
 const NOUNS: Readonly<Record<string, string>> = {

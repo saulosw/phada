@@ -64,7 +64,7 @@ import { diskSkillCatalog } from './skill-catalog.js'
 import { repositoryReader } from '../github/read-repository.js'
 import type { RepositoryReaderOptions } from '../github/read-repository.js'
 import type { ReadGitHub } from '../gh-facade/types.js'
-import { toTerminalText } from './terminal-text.js'
+import { toTerminalText } from '../app/terminal-text.js'
 
 export interface ReviewWiringDeps extends ContextReaders, CiReaderDeps {
   env: NodeJS.ProcessEnv

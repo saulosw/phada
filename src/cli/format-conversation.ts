@@ -1,7 +1,7 @@
 import { CONVERSATION_BODY_BYTES, CONVERSATION_BUDGET_BYTES } from '../publish/conversation.js'
 import type { Conversation } from '../publish/types.js'
 import type { ConversationItem } from '../review/types.js'
-import { toTerminalText } from './terminal-text.js'
+import { toTerminalText } from '../app/terminal-text.js'
 import { formatBytes, formatCount } from './units.js'
 
 const BUDGET = `${CONVERSATION_BUDGET_BYTES / 1024} KB`

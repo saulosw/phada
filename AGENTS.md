@@ -79,6 +79,8 @@ src/
     related-report.ts    #   rankOpened(), buildRelatedReport(), relatedSummaries(): the related
                          #   repositories for the prompt, the CLI and the JSON
     error-message.ts     #   errorMessage(): the message of any thrown value
+    terminal-text.ts     #   toTerminalText(): strips control and bidi characters from external
+                         #   text (the CLI and the app)
     wait-for-ci.ts       #   waitForCi(): the checks that count read through the CI gate (the
                          #   command's start as when Phada saw the commit, never skipping) and
                          #   slept on until it reviews; ciWaiting/ciWaited events, a failed read
@@ -239,7 +241,6 @@ src/
                          #   indexProgress(): the "Indexing N files…" lines
     ci-wait-progress.ts  #   ciWaitProgress(): "Waiting for CI… 3m12s, 2 pending: …" live on a
                          #   TTY, one line at the start and one at the end otherwise
-    terminal-text.ts     #   toTerminalText(): strips control and bidi characters from external text
     units.ts             #   duration, tokens, bytes, counts
     name-list.ts         #   nameList(), firstNames(), joinNames(): the first 5 names and "N more"
   tui/                   # the app `phada` opens in a terminal (Ink + React), data in, frames out
@@ -611,7 +612,7 @@ else; requests and replies are wired in `src/cli/slack-port.ts`, which only uses
 is given, and writes are only captured. `src/app/native-skill.ts` runs a native skill with the
 work tree, the gh facade and the work folders, and never sees the token.
 `src/tui/` draws the app with `ink` and `react` and imports, from outside the folder, only types
-of `src/app/` and `src/config/` and the pure helpers it names (`src/app/error-message.ts`); it never
+of `src/app/` and `src/config/` and the pure helpers it names (`src/app/error-message.ts`, `src/app/terminal-text.ts`); it never
 imports `src/github/`, a concrete provider or `src/cli/`, never touches `process` or `console` and
 never starts a timer: the streams, the signals, the environment and the scheduler come in through
 `openApp()`, which `src/cli/app-command.ts` loads with `import()` so the other commands never

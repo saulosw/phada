@@ -1,6 +1,6 @@
 import type { PromptView } from '../app/inspect-prompt.js'
 import { shortSha } from './review-text.js'
-import { toTerminalText } from './terminal-text.js'
+import { toTerminalText } from '../app/terminal-text.js'
 import { formatBytes } from './units.js'
 
 export function formatPromptText(view: PromptView): string {

@@ -1,5 +1,5 @@
 import type { ContextReport, DocReport, RuleReport } from '../context/types.js'
-import { toTerminalText } from './terminal-text.js'
+import { toTerminalText } from '../app/terminal-text.js'
 import { formatBytes, formatCount } from './units.js'
 
 export function formatContextLine(report: ContextReport): string {

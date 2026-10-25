@@ -11,7 +11,7 @@ import type { GitHubTokenDeps } from './github-token.js'
 import { formatIndexJson, formatIndexText } from './format-index.js'
 import { indexProgress } from './progress.js'
 import type { TextOutput } from './progress.js'
-import { toTerminalText } from './terminal-text.js'
+import { toTerminalText } from '../app/terminal-text.js'
 
 export interface IndexCommand {
   repo: RepositoryName

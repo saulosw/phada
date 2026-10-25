@@ -22,7 +22,7 @@ import {
 } from './format-history.js'
 import type { TextOutput } from './progress.js'
 import { feedbackRefreshDeps } from './review-wiring.js'
-import { toTerminalText } from './terminal-text.js'
+import { toTerminalText } from '../app/terminal-text.js'
 import { formatCount } from './units.js'
 
 export interface HistoryCommand {
