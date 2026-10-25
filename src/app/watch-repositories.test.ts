@@ -12,6 +12,7 @@ import type { CommentListing, IssueComment } from '../github/issue-comments.js'
 import type { FailureKind, JobRecord, RequestRecord } from '../watch/types.js'
 import type { WhenInput } from './submit-request.js'
 import { submitRequest } from './submit-request.js'
+import { CiReadError } from './read-ci.js'
 import type { ReviewRun } from './review-and-publish.js'
 import { watchRepositories } from './watch-repositories.js'
 import type { PullCi, WatchDeps } from './watch-repositories.js'
@@ -1048,6 +1049,26 @@ describe('watchRepositories', () => {
           throw new Error('checks:read is missing')
         }),
       ).toEqual([undefined])
+    })
+
+    it('warns with what was not read when the checks cannot be read', async () => {
+      const h = await setup({
+        listings: newPull,
+        ci: () => {
+          throw new CiReadError([
+            'CI check runs were not read: HTTP 403',
+            'Commit statuses were not read: HTTP 502',
+          ])
+        },
+        stopWhen: ({ ran }) => ran.length === 1,
+      })
+
+      await watchRepositories(input(), h.deps)
+
+      expect(h.events).toContain(
+        'warning acme/shop#3: CI check runs were not read: HTTP 403; Commit statuses were not read: HTTP 502; reviewing without waiting for CI',
+      )
+      expect(h.events).toContain('started #3 @8')
     })
 
     it('does not wait when the CI settings turn the wait off', async () => {

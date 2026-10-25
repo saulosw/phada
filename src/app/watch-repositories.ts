@@ -17,6 +17,7 @@ import { planCycle } from '../watch/plan-cycle.js'
 import { prCommands } from '../watch/pr-commands.js'
 import type { CycleAction } from '../watch/plan-cycle.js'
 import { errorMessage } from './error-message.js'
+import { CiReadError } from './read-ci.js'
 import type { ReviewRun } from './review-and-publish.js'
 import { submitRequest, whenInput } from './submit-request.js'
 import type { ReviewRequestInput, SubmitDeps, SubmitResult } from './submit-request.js'
@@ -343,9 +344,11 @@ async function passCiGate(job: JobRecord, deps: WatchDeps): Promise<GatePassed |
   try {
     ci = await deps.readCi(job)
   } catch (error) {
-    deps.events.warning(
-      `${job.repo}#${job.number}: the checks were not read (${errorMessage(error)}); reviewing without waiting for CI`,
-    )
+    const unread =
+      error instanceof CiReadError
+        ? error.warnings.join('; ')
+        : `the checks were not read (${errorMessage(error)})`
+    deps.events.warning(`${job.repo}#${job.number}: ${unread}; reviewing without waiting for CI`)
     return { start }
   }
   if (ci === undefined) return { start }

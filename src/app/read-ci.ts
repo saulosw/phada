@@ -18,6 +18,14 @@ export interface CiReaders {
 
 export type Warn = (message: string) => void
 
+export class CiReadError extends Error {
+  override readonly name = 'CiReadError'
+
+  constructor(readonly warnings: readonly string[]) {
+    super(warnings.join('; '))
+  }
+}
+
 export function countsCheck(patterns: readonly string[] | undefined): (name: string) => boolean {
   if (patterns === undefined || patterns.length === 0) return () => true
   const exact = new Set(patterns)

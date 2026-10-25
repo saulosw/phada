@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { memoryFiles } from '../../test/support/memory-files.js'
 import { pullRequestFixture } from '../../test/support/pull-request.js'
+import { CiReadError } from '../app/read-ci.js'
 import type { CheckRun } from '../github/check-runs.js'
 import type { CommitStatus } from '../github/commit-statuses.js'
 import type { JobRecord } from '../watch/types.js'
@@ -131,8 +132,11 @@ describe('ciGateReader', () => {
   })
 
   it('fails when the checks were not read, instead of taking them for none', async () => {
-    await expect(reader({ runs: new Error('HTTP 403') }).read(JOB)).rejects.toThrow(
-      'CI check runs were not read: HTTP 403',
-    )
+    const failure = await reader({ runs: new Error('HTTP 403') })
+      .read(JOB)
+      .catch((error: unknown) => error)
+
+    expect(failure).toBeInstanceOf(CiReadError)
+    expect(failure).toMatchObject({ warnings: ['CI check runs were not read: HTTP 403'] })
   })
 })

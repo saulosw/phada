@@ -1,4 +1,4 @@
-import { readCheckEntries } from '../app/read-ci.js'
+import { CiReadError, readCheckEntries } from '../app/read-ci.js'
 import type { PullCi } from '../app/watch-repositories.js'
 import type { LocalFileSystem } from '../config/local-files.js'
 import type { CiSettings } from '../config/merge-config.js'
@@ -46,7 +46,7 @@ export function ciGateReader(
       settings.checks,
       (message) => warnings.push(message),
     )
-    if (warnings.length > 0) throw new Error(warnings.join('; '))
+    if (warnings.length > 0) throw new CiReadError(warnings)
     return {
       waitMs,
       onFailure,

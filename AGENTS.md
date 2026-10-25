@@ -85,7 +85,8 @@ src/
                          #   of the failing ones → buildCi(); each failure a warning (kept on
                          #   the Ci), a permission the readers say GitHub denied
                          #   (CiReaders.permissionDenied) stops that kind of read; the logs that
-                         #   are gone (CiReaders.logUnavailable) give one warning
+                         #   are gone (CiReaders.logUnavailable) give one warning; CiReadError:
+                         #   the checks of the CI gate not read, with the warnings
     inspect-context.ts   #   inspectPullRequestContext(), inspectRepositoryContext(): the context
                          #   without a review
     review-passes.ts     #   buildPasses(): review.prompt, review.skills or --skill → one SkillPass
@@ -132,7 +133,8 @@ src/
                          #   .phada/config.yml at the base merged with mergeLayers(), read once
                          #   per job) and the checks
                          #   that count of its head and onFailure, for the CI gate; none with
-                         #   ci.read: false, or ci.wait: 0s with onFailure: review
+                         #   ci.read: false, or ci.wait: 0s with onFailure: review; CiReadError
+                         #   when they were not read
     enqueue-command.ts   #   runEnqueue(): a request from the command line
     mcp-command.ts       #   runMcp(): the queue tools as an MCP server over stdio
     queue-tools.ts       #   queueToolbox(): review_pull_request, job_status, wait_for_job, list_queue
