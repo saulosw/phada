@@ -5,7 +5,7 @@ import { nodeFileSystem } from './config/local-files.js'
 import { fetchComparison } from './github/compare-commits.js'
 import { createReview } from './github/create-review.js'
 import { replyAndResolve } from './github/resolve-thread.js'
-import { fetchReviewState } from './github/pull-request-reviews.js'
+import { fetchPullComments, fetchReviewState } from './github/pull-request-reviews.js'
 import { fetchRepositoryFile, fetchRepositoryTree } from './github/repository-files.js'
 import { suppressSqliteWarning } from './cli/suppress-sqlite-warning.js'
 import { pathSize } from './config/cache-paths.js'
@@ -44,6 +44,7 @@ process.exitCode = await run(process.argv.slice(2), {
   stderr: process.stderr,
   fetchPullRequest,
   fetchReviewState,
+  fetchPullComments,
   createReview,
   fetchComparison,
   replyAndResolve,

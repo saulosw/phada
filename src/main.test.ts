@@ -86,6 +86,7 @@ interface Harness {
   fetches: FetchPullRequestOptions[]
   mcpChecks: [string, string[]][]
   stateFetches: FetchReviewStateOptions[]
+  commentFetches: FetchReviewStateOptions[]
   posts: CreateReviewOptions[]
   comparisons: CompareOptions[]
   replies: ReplyAndResolveOptions[]
@@ -201,6 +202,7 @@ function harness(
   const fetches: FetchPullRequestOptions[] = []
   const mcpChecks: [string, string[]][] = []
   const stateFetches: FetchReviewStateOptions[] = []
+  const commentFetches: FetchReviewStateOptions[] = []
   const posts: CreateReviewOptions[] = []
   const comparisons: CompareOptions[] = []
   const replies: ReplyAndResolveOptions[] = []
@@ -230,6 +232,10 @@ function harness(
     fetchReviewState: (options) => {
       stateFetches.push(options)
       return overrides.reviewState?.() ?? Promise.resolve(EMPTY_STATE)
+    },
+    fetchPullComments: (options) => {
+      commentFetches.push(options)
+      return Promise.resolve([])
     },
     createReview: (options) => {
       events.push('post')
@@ -392,6 +398,7 @@ function harness(
     fetches,
     mcpChecks,
     stateFetches,
+    commentFetches,
     posts,
     comparisons,
     replies,
@@ -880,6 +887,17 @@ describe('run publishing', () => {
     await run(REVIEW, h.deps)
 
     expect(h.stateFetches).toEqual([{ owner: 'acme', repo: 'shop', number: 12, token: TOKEN }])
+  })
+
+  it('reads the pull request comments with the token, unless --no-conversation', async () => {
+    const h = harness()
+    const off = harness()
+
+    await run(REVIEW, h.deps)
+    await run([...REVIEW, '--no-conversation'], off.deps)
+
+    expect(h.commentFetches).toEqual([{ owner: 'acme', repo: 'shop', number: 12, token: TOKEN }])
+    expect(off.commentFetches).toEqual([])
   })
 
   it('skips before the provider when the same commit has open Phada threads', async () => {

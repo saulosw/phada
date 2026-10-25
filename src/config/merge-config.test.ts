@@ -304,6 +304,14 @@ describe('investigation options', () => {
     expect(mergeConfig([user({})]).resolveThreads).toBeUndefined()
   })
 
+  it('takes conversation from the repository over the user', () => {
+    expect(
+      mergeConfig([user({ conversation: true }), root({ conversation: false })]).conversation,
+    ).toBe(false)
+    expect(mergeConfig([user({ conversation: false })]).conversation).toBe(false)
+    expect(mergeConfig([user({})]).conversation).toBeUndefined()
+  })
+
   it('takes investigate like verify, from the most specific layer', () => {
     expect(
       mergeConfig([user({ investigate: true }), root({ investigate: false })]).investigate,

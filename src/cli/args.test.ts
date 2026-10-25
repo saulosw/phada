@@ -81,6 +81,15 @@ describe('parseCliArgs', () => {
     expect(REVIEW_USAGE).toContain('--no-resolve')
   })
 
+  it('turns the pull request conversation off with --no-conversation', () => {
+    expect(parseCliArgs(['review', 'acme/shop#12', '--no-conversation'])).toMatchObject({
+      kind: 'review',
+      conversation: false,
+    })
+    expect(parseCliArgs(['review', 'acme/shop#12'])).not.toHaveProperty('conversation')
+    expect(REVIEW_USAGE).toContain('--no-conversation')
+  })
+
   it('turns verification off with --no-verify', () => {
     expect(parseCliArgs(['review', 'acme/shop#12', '--no-verify'])).toMatchObject({
       verify: false,

@@ -231,6 +231,7 @@ const APP: Boundary = {
     '../investigation/mcp/mcp-client.js',
     '../investigation/tools/mcp-tools.js',
     '../investigation/tools/report.js',
+    '../publish/conversation.js',
     '../publish/decide-run.js',
     '../publish/feedback.js',
     '../publish/markers.js',

@@ -26,6 +26,7 @@ import type { GitMirror } from '../repository/git-mirror.js'
 import { renderImpact } from '../review/impact-text.js'
 import { runReview } from '../review/run-review.js'
 import { recheckThreads } from '../review/recheck-threads.js'
+import type { Conversation, ConversationReport } from '../publish/types.js'
 import type { DiffImpact, RecheckReport, RecheckThread, ReviewOutcome } from '../review/types.js'
 import { IndexStoreError } from '../store/index-store.js'
 import type { IndexStore } from '../store/index-store.js'
@@ -60,6 +61,7 @@ export interface ReviewOptions {
   verify?: boolean
   investigate?: boolean
   resolveThreads?: boolean
+  conversation?: boolean
   skills?: string[]
 }
 
@@ -71,6 +73,7 @@ export interface PullRequestReviewInput {
   loaded?: LoadedContext
   recheck?: readonly RecheckThread[]
   viewer?: string
+  conversation?: Conversation
 }
 
 export interface PullRequestReviewEvents {
@@ -114,6 +117,7 @@ export interface PullRequestReview {
   related: RelatedReport
   recheck?: RecheckReport
   passes?: PassPlan[]
+  conversation?: ConversationReport
 }
 
 export async function loadPullRequestContext(
@@ -324,6 +328,9 @@ export async function reviewPullRequest(
         context: loaded.context,
         ...(impact === undefined ? {} : { impact }),
         ...(kept.length === 0 ? {} : { related: relatedSummaries(kept, graphTools) }),
+        ...(input.conversation === undefined || input.conversation.items.length === 0
+          ? {}
+          : { conversation: input.conversation.items }),
         ...(planned.passes === undefined ? {} : { passes: planned.passes }),
       },
       {
@@ -361,6 +368,7 @@ export async function reviewPullRequest(
       related: relatedReport,
       ...(recheck === undefined ? {} : { recheck }),
       ...(planned.passes === undefined ? {} : { passes: planned.plan }),
+      ...(input.conversation === undefined ? {} : { conversation: input.conversation.report }),
     }
   } finally {
     await native?.close()

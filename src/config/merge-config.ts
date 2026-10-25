@@ -64,6 +64,7 @@ export interface EffectiveConfig {
   verify?: boolean
   investigate?: boolean
   resolveThreads?: boolean
+  conversation?: boolean
   contextDefaults: boolean
   rules: ResolvedRule[]
   disabledRules: ReadonlySet<string>
@@ -84,7 +85,14 @@ export interface ProviderChoice {
 
 const DEFAULT_PROVIDER = 'claude'
 const OPTION_PRECEDENCE: readonly LayerKind[] = ['user-repo', 'repo-root', 'user']
-const OPTIONS = ['language', 'minConfidence', 'verify', 'investigate', 'resolveThreads'] as const
+const OPTIONS = [
+  'language',
+  'minConfidence',
+  'verify',
+  'investigate',
+  'resolveThreads',
+  'conversation',
+] as const
 const USER_ONLY = [
   'provider',
   'model',
@@ -117,12 +125,14 @@ export function mergeConfig(layers: readonly ConfigLayer[]): EffectiveConfig {
   const verify = firstSet((config) => config.verify)
   const investigate = firstSet((config) => config.investigate)
   const resolveThreads = firstSet((config) => config.resolveThreads)
+  const conversation = firstSet((config) => config.conversation)
   const merged: EffectiveConfig = {
     ...(language === undefined ? {} : { language }),
     ...(minConfidence === undefined ? {} : { minConfidence }),
     ...(verify === undefined ? {} : { verify }),
     ...(investigate === undefined ? {} : { investigate }),
     ...(resolveThreads === undefined ? {} : { resolveThreads }),
+    ...(conversation === undefined ? {} : { conversation }),
     contextDefaults: firstSet((config) => config.context?.defaults) ?? true,
     rules: [],
     disabledRules: new Set(

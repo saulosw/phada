@@ -164,6 +164,7 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
           ...(command.resolveThreads === undefined
             ? {}
             : { resolveThreads: command.resolveThreads }),
+          ...(command.conversation === undefined ? {} : { conversation: command.conversation }),
           ...(command.skills === undefined ? {} : { skills: command.skills }),
         },
         userLayers,
@@ -199,6 +200,7 @@ function reviewAndPublishDeps(
   return {
     fetchPullRequest: (ref) => deps.fetchPullRequest({ ...ref, token }),
     fetchReviewState: (ref) => deps.fetchReviewState({ ...ref, token }),
+    fetchPullComments: (ref) => deps.fetchPullComments({ ...ref, token }),
     reviewDeps: (pullRequest) => pullRequestReviewDeps(deps, target, choice, pullRequest),
     render: renderReview,
     createReview: (pullRequest, rendered) =>

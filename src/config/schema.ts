@@ -294,6 +294,7 @@ export const ConfigFileSchema = z.strictObject({
   verify: z.boolean().optional(),
   investigate: z.boolean().optional(),
   resolveThreads: z.boolean().optional(),
+  conversation: z.boolean().optional(),
   mcp: z.array(McpEntrySchema).superRefine(noRepeatedServer).optional(),
   ignore: Globs.optional(),
   rules: z.array(RuleSchema).optional(),

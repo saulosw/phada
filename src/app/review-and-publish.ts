@@ -3,14 +3,15 @@ import type { ConfigLayer } from '../config/types.js'
 import type { ComparedFile } from '../github/compare-commits.js'
 import type { ReviewComment } from '../github/create-review.js'
 import type { PullRequestRef } from '../github/pull-request-ref.js'
-import type { PullRequestReviewState } from '../github/pull-request-reviews.js'
+import type { PullComment, PullRequestReviewState } from '../github/pull-request-reviews.js'
 import type { PullRequest } from '../github/pull-request.js'
+import { buildConversation } from '../publish/conversation.js'
 import { decideRun } from '../publish/decide-run.js'
 import { resolvedMarker } from '../publish/markers.js'
 import { planPublication } from '../publish/plan-publication.js'
 import { threadsToRecheck, withChanges } from '../publish/recheck-candidates.js'
 import type { Comparisons } from '../publish/recheck-candidates.js'
-import type { PublicationPlan, SkipReason } from '../publish/types.js'
+import type { Conversation, PublicationPlan, SkipReason } from '../publish/types.js'
 import { diffFingerprint } from '../review/diff-fingerprint.js'
 import type { RecheckThread, RecheckVerdict, ReviewResult } from '../review/types.js'
 import { errorMessage } from './error-message.js'
@@ -84,6 +85,7 @@ export interface ReviewAndPublishEvents {
 export interface ReviewAndPublishDeps {
   fetchPullRequest(ref: PullRequestRef): Promise<PullRequest>
   fetchReviewState(ref: PullRequestRef): Promise<PullRequestReviewState>
+  fetchPullComments(ref: PullRequestRef): Promise<PullComment[]>
   reviewDeps(pullRequest: PullRequest): PullRequestReviewDeps
   render: {
     review(result: ReviewResult, plan: PublicationPlan, language?: string): RenderedReview
@@ -141,8 +143,18 @@ export async function reviewAndPublish(
 
   const resolve = input.options.resolveThreads ?? loaded.options.resolveThreads ?? true
   const recheck = resolve ? await threadsWithChanges(state, pullRequest, deps) : []
+  const conversation =
+    (input.options.conversation ?? loaded.options.conversation ?? true)
+      ? await readConversation(input.ref, state, pullRequest, deps)
+      : undefined
   const reviewed = await reviewPullRequest(
-    { ...review, loaded, recheck, viewer: state.viewer },
+    {
+      ...review,
+      loaded,
+      recheck,
+      viewer: state.viewer,
+      ...(conversation === undefined ? {} : { conversation }),
+    },
     reviewDeps,
   )
   const fixed = (reviewed.recheck?.verdicts ?? []).filter(({ verdict }) => verdict === 'fixed')
@@ -225,6 +237,21 @@ async function resolveFixed(
     }
   }
   return { resolved, failed: fixed.length - resolved, total: fixed.length }
+}
+
+async function readConversation(
+  ref: PullRequestRef,
+  state: PullRequestReviewState,
+  pullRequest: PullRequest,
+  deps: ReviewAndPublishDeps,
+): Promise<Conversation> {
+  let comments: PullComment[] = []
+  try {
+    comments = await deps.fetchPullComments(ref)
+  } catch (error) {
+    deps.events.warning(`Pull request comments were not read: ${errorMessage(error)}`)
+  }
+  return buildConversation({ state, comments, author: pullRequest.author })
 }
 
 async function threadsWithChanges(

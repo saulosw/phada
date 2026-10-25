@@ -55,6 +55,7 @@ export interface ContextOptions {
   verify?: boolean
   investigate?: boolean
   resolveThreads?: boolean
+  conversation?: boolean
   review?: ReviewSettings
 }
 

@@ -44,7 +44,8 @@ src/
                          #   observed relations → reports; progress through typed events;
                          #   loadPullRequestContext()
     review-and-publish.ts # reviewAndPublish(): fetch → decideRun → context → decideRun with the
-                         #   diff fingerprint → threads to recheck (compare) → reviewPullRequest →
+                         #   diff fingerprint → threads to recheck (compare) → the conversation
+                         #   (comments read unless conversation is off) → reviewPullRequest →
                          #   plan → render (injected) → [checkHead] → reply and resolve the fixed
                          #   threads → createReview; never prints
     watch-repositories.ts # watchRepositories(): the watch loop — discovery with ETags, planCycle
@@ -79,9 +80,10 @@ src/
                          #   investigation and a report per server; none for outside authors
   cli/                   # terminal edge
     args.ts              #   parseCliArgs(): `review` (--dry-run, --force, --verify/--no-verify,
-                         #   --investigate/--no-investigate, --no-resolve, --skill), `init`, `index`
-                         #   (--ref, --format text|json), `rules` (--format text|json), `prompt`
-                         #   (--default, --skill, --format text|json), `watch` (--once,
+                         #   --investigate/--no-investigate, --no-resolve, --no-conversation,
+                         #   --skill), `init`, `index` (--ref, --format text|json), `rules`
+                         #   (--format text|json), `prompt` (--default, --skill, --format
+                         #   text|json), `watch` (--once,
                          #   --backfill, --status) and `history` (--since, --limit, --stats,
                          #   --refresh, prune --older-than), `enqueue` (--publish, --format) and
                          #   `mcp` commands, --help, --version; USAGE, REVIEW_USAGE, INIT_USAGE,
@@ -210,9 +212,11 @@ src/
     json-fields.ts       #   typed reads of fields in GitHub answers
     graphql.ts           #   sendGraphQL(): errors in an HTTP 200 become GitHubGraphQLError
     pull-request.ts      #   fetchPullRequest(), fetchPullRequestMetadata(), fetchPullRequestHead()
-    pull-request-reviews.ts # fetchReviewState(): viewer, pull request state, reviews and threads
-                         #   (id, outdated, first comment with its URL and negative reactions,
-                         #   last 20 replies), paginated
+    pull-request-reviews.ts # fetchReviewState(): viewer, pull request state, reviews (state, date,
+                         #   author association, bot) and threads (id, outdated, first comment
+                         #   with its URL and negative reactions, last 20 replies and the count),
+                         #   paginated; fetchPullComments(): the general comments of the pull
+                         #   request
     create-review.ts     #   createReview(): one COMMENT review with line comments (start_line for
                          #   several lines)
     compare-commits.ts   #   fetchComparison(): the files changed between two commits, with patches
@@ -303,10 +307,14 @@ src/
                          #   filtered diff did not change (same-diff)
     recheck-candidates.ts #  threadsToRecheck(), withChanges(): Phada's open threads of older commits
                          #   and what changed in their files
+    conversation.ts      #   buildConversation(): comments, reviews and threads → items oldest first
+                         #   with the role of each author, without Phada's own (people's replies
+                         #   to them kept), bodies cut at 2 KB, 16 KB in total (resolved ›
+                         #   outdated › oldest left out first) and the report
     plan-publication.ts  #   planPublication(): new comments vs findings still open in a thread vs
                          #   findings whose thread a person resolved vs findings of a thread found
                          #   fixed in this run
-    types.ts             #   PublicationPlan, RunDecision, SkipReason
+    types.ts             #   PublicationPlan, RunDecision, SkipReason, Conversation(Report)
   repository/            # the repository through git objects, in a persistent mirror
     checkout.ts          #   Checkout (read, grep, list, history), CheckoutError
     git-checkout.ts      #   GitCheckout: one commit of the mirror (log, blame); the git environment
@@ -353,8 +361,8 @@ src/
   review/                # the engine: data in, result out
     types.ts             #   ReviewRequest, Finding, ReviewResult, ReviewOutcome, …
     prompt-parts.ts      #   text shared by the review and verification prompts: rules section,
-                         #   docs block, related repositories (RELATED, relatedBlocks()), impact
-                         #   block, diff scope and tools
+                         #   docs block, conversation block and its rules, related repositories
+                         #   (RELATED, relatedBlocks()), impact block, diff scope and tools
     impact-text.ts       #   renderImpact(): the impact of the diff within its 4 KB budget
     prompt.ts            #   buildReviewPrompt(): instructions + nonce-delimited data + output schema;
                          #   reviewInstructionParts(): the reviewer lens (built-in, append, replace,

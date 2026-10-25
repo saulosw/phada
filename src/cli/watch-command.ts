@@ -23,6 +23,7 @@ import type { CommentListing } from '../github/issue-comments.js'
 import type { PullListing } from '../github/list-pull-requests.js'
 import type {
   FetchReviewStateOptions,
+  PullComment,
   PullRequestReviewState,
 } from '../github/pull-request-reviews.js'
 import type {
@@ -74,6 +75,7 @@ export interface WatchCommandDeps extends ReviewWiringDeps {
   stdout: TextOutput
   fetchPullRequest: (options: FetchPullRequestOptions) => Promise<PullRequest>
   fetchReviewState: (options: FetchReviewStateOptions) => Promise<PullRequestReviewState>
+  fetchPullComments: (options: FetchReviewStateOptions) => Promise<PullComment[]>
   createReview: (options: CreateReviewOptions) => Promise<CreatedReview>
   fetchComparison: (options: CompareOptions) => Promise<ComparedFile[]>
   replyAndResolve: (options: ReplyAndResolveOptions) => Promise<void>
@@ -406,6 +408,7 @@ async function runJob(
     {
       fetchPullRequest: (pull) => deps.fetchPullRequest({ ...pull, token }),
       fetchReviewState: (pull) => deps.fetchReviewState({ ...pull, token }),
+      fetchPullComments: (pull) => deps.fetchPullComments({ ...pull, token }),
       reviewDeps: (pullRequest) =>
         pullRequestReviewDeps(deps, publishTarget, { ...choice, detached: true }, pullRequest),
       render: renderReview,
