@@ -133,7 +133,8 @@ describe('the Home screen', () => {
     const { frame } = openHome({ size: WIDE })
     await waitFor(() => frame().includes('All set'))
     expect(frame()).toContain('acme/shop#5')
-    expect(frame()).toContain('Change number 5')
+    const row = frameLines(frame()).find((line) => line.includes('Change number 5')) ?? ''
+    expect(visibleWidth(row.trimEnd())).toBeLessThan(120)
     expectFits(frame(), 160)
   })
 

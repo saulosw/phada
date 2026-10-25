@@ -25,6 +25,7 @@ const BOX_CHROME = 22
 const BOX_ROWS = 6
 const STATUS_ROWS = 5
 const MAX_REF_WIDTH = 24
+const MAX_TITLE_WIDTH = 60
 const GAP = '  '
 
 type Mark = 'ok' | 'attention' | 'off' | 'error' | 'pending'
@@ -365,9 +366,12 @@ function ReviewRows({
   const verdictWidth = widest(cells.map(({ verdict }) => verdict))
   const scoreWidth = widest(cells.map(({ score }) => score))
   const whenWidth = widest(cells.map(({ when }) => when))
-  const titleWidth = Math.max(
-    width - GAP.length - refWidth - verdictWidth - scoreWidth - whenWidth - GAP.length * 4,
-    0,
+  const titleWidth = Math.min(
+    Math.max(
+      width - GAP.length - refWidth - verdictWidth - scoreWidth - whenWidth - GAP.length * 4,
+      0,
+    ),
+    MAX_TITLE_WIDTH,
   )
   return (
     <>
