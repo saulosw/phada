@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 interface PackResult {
   filename: string
@@ -58,7 +58,7 @@ try {
   check(!indexHelp.stderr.includes('ExperimentalWarning'), 'index --help prints a warning')
   const builtInPrompt = spawnSync(phada, ['prompt', '--default'], {
     encoding: 'utf8',
-    env: withoutTokens(),
+    env: withoutGitHub(),
     timeout: TIMEOUT_MS,
   })
   check(
@@ -68,17 +68,19 @@ try {
 
   const noToken = spawnSync(phada, ['review', 'acme/shop#1'], {
     encoding: 'utf8',
-    env: withoutTokens(),
+    env: withoutGitHub(),
     timeout: TIMEOUT_MS,
   })
   check(
-    noToken.status === 1 && noToken.stderr.startsWith('phada: No GitHub token found.'),
+    noToken.status === 1 &&
+      noToken.stderr.startsWith('phada: No GitHub token found.') &&
+      noToken.stderr.includes('gh auth login'),
     `phada review without a token: exit ${noToken.status}, ${noToken.stderr}`,
   )
   const queue = spawnSync(phada, ['mcp'], {
     encoding: 'utf8',
     env: {
-      ...withoutTokens(),
+      ...withoutGitHub(),
       PHADA_CONFIG_HOME: join(dir, 'config'),
       PHADA_DATA_HOME: join(dir, 'data'),
     },
@@ -195,9 +197,9 @@ store.close()
 `
 }
 
-function withoutTokens(): NodeJS.ProcessEnv {
+function withoutGitHub(): NodeJS.ProcessEnv {
   const { GITHUB_TOKEN: _github, GH_TOKEN: _gh, ...env } = process.env
-  return env
+  return { ...env, PATH: dirname(process.execPath), GH_CONFIG_DIR: join(dir, 'gh') }
 }
 
 function check(condition: boolean, message: string): asserts condition {
