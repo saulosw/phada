@@ -407,13 +407,15 @@ function ruleLines(
   const keys = rules.map(({ key }) => oneLine(key.replace(USER_LABEL, '')))
   const keyWidth = Math.min(Math.max(0, ...keys.map(textWidth)), Math.floor(columns * KEY_SHARE))
   const originWidth = Math.max(...Object.values(messages.settings.origins).map(textWidth))
-  const textWidthLeft = Math.max(columns - 2 - keyWidth - originWidth - GAP.length * 2, 1)
+  const texts = rules.map(({ text }) => oneLine(text))
+  const room = columns - 2 - keyWidth - originWidth - GAP.length * 2
+  const textColumn = Math.max(Math.min(room, Math.max(0, ...texts.map(textWidth))), 1)
   return rules.map((rule, index) => (
     <Text>
       {'  '}
       <Text color={colors.soft}>{fit(keys[index] ?? '', keyWidth)}</Text>
       {GAP}
-      {fit(oneLine(rule.text), textWidthLeft)}
+      {fit(texts[index] ?? '', textColumn)}
       {GAP}
       <Text color={colors.dim}>{messages.settings.origins[rule.origin]}</Text>
     </Text>
