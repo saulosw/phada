@@ -91,7 +91,7 @@ export function readFindings(
 }
 
 export function readFeedbackStats(
-  history: HistoryReader | undefined,
+  history: Pick<HistoryReader, 'findings'> | undefined,
   filter: FindingFilter,
 ): { repos: RepoStats[]; rules: RuleStats[] } {
   const findings = history?.findings(filter) ?? []
