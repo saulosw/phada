@@ -130,7 +130,7 @@ function QueueList({
                 {fit(messages.queue.kinds[row.kind], kindWidth)}
               </Text>
               {'  '}
-              {fit(jobRef(row.entry), refWidth)}
+              {fit(jobRef(row.entry), refWidth, 'start')}
               {'  '}
               <Text color={colors.dim}>{shortSha(row.entry.job.headSha)}</Text>
               {'  '}

@@ -4,11 +4,13 @@ export function oneLine(text: string): string {
   return toTerminalText(text.replace(/\s+/g, ' ')).trim()
 }
 
-export function fit(text: string, width: number): string {
+export function fit(text: string, width: number, cut: 'end' | 'start' = 'end'): string {
   if (width <= 0) return ''
   const characters = [...text]
   if (characters.length <= width) return text + ' '.repeat(width - characters.length)
-  return `${characters.slice(0, width - 1).join('')}…`
+  return cut === 'end'
+    ? `${characters.slice(0, width - 1).join('')}…`
+    : `…${characters.slice(characters.length - width + 1).join('')}`
 }
 
 export function wrapText(text: string, width: number): string[] {

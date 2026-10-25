@@ -14,6 +14,11 @@ describe('fit', () => {
     expect(fit('ação', 4)).toBe('ação')
     expect(fit('anything', 0)).toBe('')
   })
+
+  it('cuts the start instead when asked, keeping the end of a path', () => {
+    expect(fit('src/components/leaderboard/index.tsx:20', 20, 'start')).toBe('…rboard/index.tsx:20')
+    expect(fit('src/a.ts:3', 12, 'start')).toBe('src/a.ts:3  ')
+  })
 })
 
 describe('wrapText', () => {

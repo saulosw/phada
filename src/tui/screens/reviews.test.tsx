@@ -219,6 +219,14 @@ describe('the Reviews screen', () => {
     expect(row('acme/web#3')).toMatch(/acme\/web#3\s+failed\s+–\s+–\s+33m ago\s+review/)
   })
 
+  it('keeps the repository name and number of a long reference at 80 columns', async () => {
+    const { frame } = openReviews({
+      runs: () => [run(5, { repo: 'some-organization/phada-dev-web', title: 'Weekly ranking' })],
+    })
+    await settle()
+    expect(frame()).toMatch(/❯ …[\w/-]*phada-dev-web#5\s+Weekly ranking/)
+  })
+
   it('filters by text with f, typing the shell keys into the field, and Esc leaves it unapplied', async () => {
     const { frame, press, type, filters, exits } = openReviews()
     await settle()

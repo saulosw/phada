@@ -28,7 +28,9 @@ import type { Theme } from '../theme.js'
 import { fit, oneLine, wrapText } from '../text-fit.js'
 
 export const REVIEWS_SHOWN = 200
-const MAX_REF_WIDTH = 24
+const MIN_REF_WIDTH = 12
+const REF_SHARE = 0.45
+const PLACE_SHARE = 0.4
 const GAP = '  '
 
 const runKey = (run: ListedRun) => String(run.id ?? `${run.repo}#${run.number}@${run.startedAt}`)
@@ -126,14 +128,9 @@ function ReviewList({
     when: relativeTime(run.startedAt, time, messages.time),
     source: m.sources[sourceOf(run)],
   }))
-  const width = (header: string, values: readonly string[], max = Infinity) =>
-    Math.min(Math.max(textWidth(header), ...values.map(textWidth)), max)
-  const columns = {
-    ref: width(
-      m.columns.pr,
-      rows.map(({ ref }) => ref),
-      MAX_REF_WIDTH,
-    ),
+  const width = (header: string, values: readonly string[]) =>
+    Math.max(textWidth(header), ...values.map(textWidth))
+  const others = {
     verdict: width(
       m.columns.verdict,
       rows.map(({ verdict }) => verdict),
@@ -155,16 +152,17 @@ function ReviewList({
       rows.map(({ source }) => source),
     ),
   }
-  const fixed =
-    2 +
-    columns.ref +
-    columns.verdict +
-    columns.score +
-    columns.findings +
-    columns.when +
-    columns.source +
-    GAP.length * 6
-  const titleWidth = Math.max(size.columns - fixed, 0)
+  const fixed = 2 + Object.values(others).reduce((sum, value) => sum + value, 0) + GAP.length * 5
+  const room = Math.max(size.columns - fixed - GAP.length, 0)
+  const refWidth = Math.min(
+    width(
+      m.columns.pr,
+      rows.map(({ ref }) => ref),
+    ),
+    Math.max(MIN_REF_WIDTH, Math.floor(room * REF_SHARE)),
+  )
+  const columns = { ...others, ref: refWidth }
+  const titleWidth = Math.max(room - refWidth, 0)
   const line = (cells: {
     ref: string
     title: string
@@ -175,7 +173,7 @@ function ReviewList({
     source: string
   }) =>
     [
-      fit(cells.ref, columns.ref),
+      fit(cells.ref, columns.ref, 'start'),
       fit(cells.title, titleWidth),
       fit(cells.verdict, columns.verdict),
       fit(cells.score, columns.score),
@@ -219,7 +217,7 @@ function ReviewList({
             keyOf={({ run }) => runKey(run)}
             renderItem={(row) => (
               <>
-                {fit(row.ref, columns.ref)}
+                {fit(row.ref, columns.ref, 'start')}
                 {GAP}
                 {fit(row.title, titleWidth)}
                 {GAP}
@@ -337,22 +335,29 @@ function ReviewDetailLines({ detail }: { detail: ReviewDetail }) {
         ? []
         : wrapText(detail.summary, size.columns - 2).map((line) => <Text>{`  ${line}`}</Text>),
     ),
-    ...section(d.findings(detail.findings.length), findingLines(detail.findings, theme)),
+    ...section(
+      d.findings(detail.findings.length),
+      findingLines(detail.findings, theme, size.columns),
+    ),
     ...section(
       d.worthChecking(detail.worthChecking.length),
-      findingLines(detail.worthChecking, theme),
+      findingLines(detail.worthChecking, theme, size.columns),
     ),
     ...section(
       d.feedback(detail.published.length),
-      feedbackLines(detail.published, messages, theme),
+      feedbackLines(detail.published, messages, theme, size.columns),
     ),
   ]
   return <ScrollText lines={lines} rows={size.rows} />
 }
 
-function findingLines(findings: readonly StoredFinding[], theme: Theme): ReactNode[] {
+function findingLines(
+  findings: readonly StoredFinding[],
+  theme: Theme,
+  columns: number,
+): ReactNode[] {
   const places = findings.map((finding) => place(finding.file, finding.line ?? undefined))
-  const width = Math.max(0, ...places.map(textWidth))
+  const width = placeWidth(places, columns)
   return findings.map((finding, index) => (
     <Text>
       {'  '}
@@ -360,7 +365,7 @@ function findingLines(findings: readonly StoredFinding[], theme: Theme): ReactNo
         {fit(finding.severity ?? '–', 2)}
       </Text>
       {GAP}
-      {fit(places[index] ?? '', width)}
+      {fit(places[index] ?? '', width, 'start')}
       {GAP}
       {oneLine(finding.title)}
     </Text>
@@ -371,11 +376,12 @@ function feedbackLines(
   published: readonly FeedbackFinding[],
   messages: UiMessages,
   theme: Theme,
+  columns: number,
 ): ReactNode[] {
   const outcomes = Object.values(messages.reviews.outcomes)
   const outcomeWidth = Math.max(...outcomes.map(textWidth))
   const places = published.map((finding) => place(finding.file, finding.line))
-  const width = Math.max(0, ...places.map(textWidth))
+  const width = placeWidth(places, columns)
   return published.map((finding, index) => {
     const marks = finding.marks
       .filter((mark) => mark === 'negative-reaction' || mark === 'human-reply')
@@ -387,7 +393,7 @@ function feedbackLines(
           {fit(messages.reviews.outcomes[finding.destination], outcomeWidth)}
         </Text>
         {GAP}
-        {fit(places[index] ?? '', width)}
+        {fit(places[index] ?? '', width, 'start')}
         {GAP}
         {[oneLine(finding.title), ...marks].join(' · ')}
       </Text>
@@ -433,6 +439,10 @@ function verdictLabel(run: ListedRun, messages: UiMessages): string {
 
 function sourceOf(run: ListedRun): ReviewSource {
   return run.requestSource ?? run.source
+}
+
+function placeWidth(places: readonly string[], columns: number): number {
+  return Math.min(Math.max(0, ...places.map(textWidth)), Math.floor(columns * PLACE_SHARE))
 }
 
 function place(file: string, line: number | undefined): string {
