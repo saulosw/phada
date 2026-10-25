@@ -103,6 +103,9 @@ src/
                          #   for outside authors
     open-mcp.ts          #   openMcp(): declared MCP servers connected → their tools for the
                          #   investigation and a report per server; none for outside authors
+    check-providers.ts   #   checkProviders(): the checkers of Claude Code, Codex and Ollama run
+                         #   at once (injected), the chosen provider marked; one that throws is a
+                         #   failed state
   cli/                   # terminal edge
     args.ts              #   parseCliArgs(): `review` (--dry-run, --force, --verify/--no-verify,
                          #   --investigate/--no-investigate, --no-resolve, --no-conversation,
@@ -365,7 +368,8 @@ src/
     work-dirs.ts         #   openWorkDir(), closeWorkDir(), removeOpenWorkDirs() (Ctrl-C),
                          #   sweepOrphanWorkDirs(): the phada-native-* folders
   providers/             # ReviewProvider and its implementations
-    types.ts             #   ReviewProvider, ReviewPrompt, ReviewOutput, ProviderError
+    types.ts             #   ReviewProvider, ReviewPrompt, ReviewOutput, ProviderError; ProviderStatus
+                         #   (CliStatus, OllamaStatus)
     cli-run.ts           #   shared by AI CLIs: temp dir, env without GitHub tokens, typed errors
     redact-secrets.ts    #   redacts token patterns from CLI output in error messages
     claude.ts            #   ClaudeCliProvider: review() and runSkill() (+ claude-model.ts: model
@@ -374,6 +378,14 @@ src/
                          #   named MCP servers as -c settings; mcp-env-launcher.ts: runs a server
                          #   with the env of a private file)
     ollama.ts            #   OllamaProvider over HTTP (+ ollama-host.ts, node-http-fetch.ts)
+    cli-status.ts        #   runStatusCommand(): a status command of an AI CLI (5 s, env without
+                         #   GitHub tokens) → its result, missing or a problem; installOf(), loginOf()
+    claude-status.ts     #   checkClaudeStatus(): `claude --version` + `claude auth status --json`
+                         #   → installed (version), logged in (method) or out; never the account
+    codex-status.ts      #   checkCodexStatus(): `codex --version` + `codex login status` → the same
+                         #   (chatgpt or api-key, never the key)
+    ollama-status.ts     #   checkOllamaStatus(): /api/version + /api/tags at OLLAMA_HOST → running
+                         #   (version, models), stopped or a problem
   publish/               # pure: what to publish, data in, decision out
     markers.ts           #   the review (with the diff fingerprint), finding and resolved markers,
                          #   read only at the end of a body; findingTitle()
@@ -497,7 +509,7 @@ src/
                          #   score; skill bodies for native passes without findings in the diff
 scripts/smoke.ts         # packs the package, installs the tarball, runs the installed `phada`
 scripts/copy-grammars.ts # build step: the tree-sitter grammars into dist/grammars/
-test/fixtures/bin/       # fake AI CLIs used by the provider tests
+test/fixtures/bin/       # fake AI CLIs used by the provider and status tests
 test/fixtures/github/    # trimmed GitHub API responses (REST and GraphQL) and a synthetic diff
 test/support/            # shared test helpers (fake fetch, fixtures for pull requests, findings, …)
 ```
