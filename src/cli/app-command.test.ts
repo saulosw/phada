@@ -326,6 +326,28 @@ describe('the GitHub reader', () => {
     expect(userTokens).toEqual(['gho_login', 'gho_login'])
   })
 
+  it('gives the Home and the Rules the same token, read again on each load', async () => {
+    let login: string | undefined
+    const seen: unknown[] = []
+    const { app } = deps({
+      github: fakeGitHub(),
+      during: async (appDeps) => {
+        seen.push(await appDeps.readGitHub(), await appDeps.readRepositoryRules('acme/shop'))
+        login = 'gho_login'
+        seen.push((await appDeps.readGitHub()).source)
+        seen.push((await appDeps.readRepositoryRules('acme/shop')).status)
+      },
+    })
+    app.runGh = async () =>
+      login === undefined
+        ? { stdout: '', stderr: 'not logged in', exitCode: 1 }
+        : { stdout: `${login}\n`, stderr: '', exitCode: 0 }
+
+    await runApp(app)
+
+    expect(seen).toEqual([{ source: null }, { status: 'no-token' }, 'gh', 'read'])
+  })
+
   it('has no source without a token in the environment or gh', async () => {
     const seen: unknown[] = []
     const { app, userTokens } = deps({
@@ -435,17 +457,11 @@ function fakeHistory(runs: RunRecord[]) {
 
 type FakeGitHub = ReturnType<typeof fakeGitHub>
 
-function fakeGitHub(
-  options: { files?: Record<string, string>; ghToken?: string; failTree?: boolean } = {},
-) {
+function fakeGitHub(options: { files?: Record<string, string>; failTree?: boolean } = {}) {
   const files = options.files ?? {}
   const calls: string[] = []
   const pull = pullRequestFixture({ baseSha: 'base0001', headSha: 'head0001' })
   const readers = {
-    ghToken: async () => {
-      calls.push('gh')
-      return options.ghToken
-    },
     fetchRepository: async ({
       owner,
       repo,
@@ -544,12 +560,11 @@ describe('the rules readers', () => {
     await runApp(app)
 
     expect(seen).toEqual([{ status: 'no-token' }, { status: 'no-token' }])
-    expect(github.calls.filter((call) => call !== 'gh')).toEqual([])
+    expect(github.calls).toEqual([])
   })
 
   it('read the .phada/ folder of the default branch with the token of the gh login', async () => {
     const github = fakeGitHub({
-      ghToken: 'gho_login',
       files: {
         '.phada/config.yml': 'rules:\n  - id: cents\n    rule: Money in cents.\n',
         'AGENTS.md': 'Agents.',
@@ -558,6 +573,7 @@ describe('the rules readers', () => {
     let read: unknown
     const { app } = deps({
       github,
+      ghToken: 'gho_login',
       during: async (appDeps) => {
         read = await appDeps.readRepositoryRules('acme/shop')
       },
@@ -586,7 +602,7 @@ describe('the rules readers', () => {
       },
     })
     let read: unknown
-    const { app } = deps({
+    const { app, ghCalls } = deps({
       env: { GITHUB_TOKEN: 'ghp_env' },
       github,
       during: async (appDeps) => {
@@ -611,14 +627,15 @@ describe('the rules readers', () => {
     expect(github.calls.filter((call) => call.startsWith('tree '))).toEqual(['tree base0001'])
     expect(github.calls).toContain('review state')
     expect(github.calls).toContain('check runs')
-    expect(github.calls).not.toContain('gh')
+    expect(ghCalls).toEqual([])
   })
 
   it('fail with the error of GitHub, for the screen to show', async () => {
-    const github = fakeGitHub({ ghToken: 'gho_login', failTree: true })
+    const github = fakeGitHub({ failTree: true })
     let error: unknown
     const { app } = deps({
       github,
+      ghToken: 'gho_login',
       during: async (appDeps) => {
         error = await appDeps.readRepositoryRules('acme/shop').catch((thrown: unknown) => thrown)
       },

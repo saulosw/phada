@@ -37,13 +37,13 @@ import type { AppHistory } from './app-history.js'
 import { UsageError } from './errors.js'
 import { readGitHubAccess } from './github-access.js'
 import { ghTokenReader } from './github-token.js'
-import type { RunGh } from './github-token.js'
+import type { GhTokenReader, RunGh } from './github-token.js'
 import type { TextOutput } from './progress.js'
 import { SLACK_APP_TOKEN, SLACK_BOT_TOKEN } from './review-event-sinks.js'
 
 export type StopSignal = 'SIGINT' | 'SIGTERM'
 
-export interface AppCommandDeps extends RulesReaderDeps {
+export interface AppCommandDeps extends Omit<RulesReaderDeps, 'ghToken'> {
   env: NodeJS.ProcessEnv
   home: string
   cwd: string
@@ -107,6 +107,7 @@ export async function runApp(deps: AppCommandDeps): Promise<number> {
 
 async function appDeps(deps: AppCommandDeps, history: AppHistory, lock: string): Promise<AppDeps> {
   let settings: WatchSettings | undefined
+  const ghToken: GhTokenReader = () => ghTokenReader(deps.env, deps.runGh)()
   const base = {
     version: deps.version,
     cwd: deps.cwd,
@@ -143,10 +144,10 @@ async function appDeps(deps: AppCommandDeps, history: AppHistory, lock: string):
     readGitHub: () =>
       readGitHubAccess({
         env: deps.env,
-        ghToken: ghTokenReader(deps.env, deps.runGh),
+        ghToken,
         fetchUser: deps.fetchUser ?? fetchAuthenticatedUser,
       }),
-    ...rulesReaders(deps),
+    ...rulesReaders({ ...deps, ghToken }),
   }
   try {
     const layers = await loadTopLevelUserLayers(deps)
