@@ -199,11 +199,14 @@ function repositoryReaders(deps: AppCommandDeps, history: AppHistory): Repositor
 }
 
 function automationReaders(deps: AppCommandDeps): AutomationReaders {
-  const present = (name: string) => (deps.env[name]?.trim() ?? '') !== ''
+  const token = (variable: string) => ({
+    variable,
+    set: (deps.env[variable]?.trim() ?? '') !== '',
+  })
   return {
     configFile: join(userConfigDir(deps.env, deps.home), 'config.yml'),
     topLevelLayers: () => loadTopLevelUserLayers(deps),
-    slackTokens: () => ({ bot: present(SLACK_BOT_TOKEN), app: present(SLACK_APP_TOKEN) }),
+    slackTokens: () => ({ bot: token(SLACK_BOT_TOKEN), app: token(SLACK_APP_TOKEN) }),
   }
 }
 

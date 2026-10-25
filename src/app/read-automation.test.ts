@@ -17,7 +17,10 @@ function readers(changes: Partial<AutomationReaders> = {}): AutomationReaders {
   return {
     configFile: CONFIG_FILE,
     topLevelLayers: async () => [],
-    slackTokens: () => ({ bot: false, app: false }),
+    slackTokens: () => ({
+      bot: { variable: 'PHADA_SLACK_BOT_TOKEN', set: false },
+      app: { variable: 'PHADA_SLACK_APP_TOKEN', set: false },
+    }),
     ...changes,
   }
 }
@@ -55,7 +58,10 @@ describe('readAutomation', () => {
     const view = await readAutomation(
       readers({
         topLevelLayers: async () => topLevel(EVERYTHING),
-        slackTokens: () => ({ bot: true, app: false }),
+        slackTokens: () => ({
+          bot: { variable: 'PHADA_SLACK_BOT_TOKEN', set: true },
+          app: { variable: 'PHADA_SLACK_APP_TOKEN', set: false },
+        }),
       }),
     )
 
@@ -84,7 +90,10 @@ describe('readAutomation', () => {
             { id: 'C0123ABCD', publish: 'pr', reply: 'link' },
             { id: 'C0456EFGH', publish: 'none', reply: 'full' },
           ],
-          tokens: { bot: true, app: false },
+          tokens: {
+            bot: { variable: 'PHADA_SLACK_BOT_TOKEN', set: true },
+            app: { variable: 'PHADA_SLACK_APP_TOKEN', set: false },
+          },
         },
       },
       hooks: {

@@ -224,7 +224,10 @@ describe('runApp', () => {
           origin: 'repository',
         })
         const automation = await appDeps.readAutomation()
-        expect(automation.sources.slack?.tokens).toEqual({ bot: true, app: false })
+        expect(automation.sources.slack?.tokens).toEqual({
+          bot: { variable: 'PHADA_SLACK_BOT_TOKEN', set: true },
+          app: { variable: 'PHADA_SLACK_APP_TOKEN', set: false },
+        })
         expect(JSON.stringify(automation)).not.toContain('xoxb-secret')
       },
     })

@@ -15,8 +15,6 @@ import { durationText } from '../units.js'
 import { shortenHome } from './home.js'
 
 const GAP = '  '
-const SLACK_BOT_TOKEN = 'PHADA_SLACK_BOT_TOKEN'
-const SLACK_APP_TOKEN = 'PHADA_SLACK_APP_TOKEN'
 
 export function AutomationScreen() {
   const { readAutomation } = useAppDeps()
@@ -160,11 +158,9 @@ function sourceLines(
     ]
   })
   if (slack === null) return lines
-  const tokens = [
-    m.token(SLACK_BOT_TOKEN, slack.tokens.bot),
-    m.token(SLACK_APP_TOKEN, slack.tokens.app),
-  ].join(' · ')
-  const missing = !slack.tokens.bot || !slack.tokens.app
+  const { bot, app } = slack.tokens
+  const tokens = [m.token(bot.variable, bot.set), m.token(app.variable, app.set)].join(' · ')
+  const missing = !bot.set || !app.set
   return [
     ...lines,
     ...continued(wrapText(tokens, valueWidth), missing ? theme.colors.warn : theme.colors.dim),

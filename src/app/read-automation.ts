@@ -11,9 +11,14 @@ import { errorMessage } from './error-message.js'
 import { userSettings } from './read-repositories.js'
 import type { ConfigSetting } from './read-repositories.js'
 
+export interface SlackToken {
+  variable: string
+  set: boolean
+}
+
 export interface SlackTokens {
-  bot: boolean
-  app: boolean
+  bot: SlackToken
+  app: SlackToken
 }
 
 export interface AutomationReaders {

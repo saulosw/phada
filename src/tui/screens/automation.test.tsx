@@ -49,7 +49,10 @@ function everything(): AutomationView {
           { id: 'C0123ABCD', publish: 'pr', reply: 'link' },
           { id: 'C0456EFGH', publish: 'none', reply: 'full' },
         ],
-        tokens: { bot: true, app: false },
+        tokens: {
+          bot: { variable: 'PHADA_SLACK_BOT_TOKEN', set: true },
+          app: { variable: 'PHADA_SLACK_APP_TOKEN', set: false },
+        },
       },
     },
     hooks: {
