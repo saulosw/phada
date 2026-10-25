@@ -731,7 +731,7 @@ describe('reviewAndPublish with the pull request conversation', () => {
     expect(conversationOf(verify)).toEqual(expected)
     expect(review?.instructions).toContain('The PHADA_CONVERSATION block')
     expect(verify?.instructions).toContain('The PHADA_CONVERSATION block')
-    expect(run.status === 'reviewed' && run.reviewed.conversation).toMatchObject({
+    expect(run.status === 'reviewed' && run.reviewed.conversation?.report).toMatchObject({
       items: 4,
       omitted: 0,
       resolved: 1,
@@ -1054,6 +1054,10 @@ describe('reviewAndPublish with the checks of the head', () => {
       ]),
     )
     expect(calls.prompts[0]?.data).not.toContain('PHADA_CI')
+    expect(run.status === 'reviewed' && run.reviewed.ci?.warnings).toEqual([
+      'CI check runs were not read: GitHub denied reading the check runs (HTTP 403): the token needs the checks:read permission.',
+      'Commit statuses were not read: GitHub denied reading the commit statuses (HTTP 403): the token needs the statuses:read permission.',
+    ])
   })
 
   it('warns once and stops reading logs without actions:read, and goes on past a log that is gone', async () => {

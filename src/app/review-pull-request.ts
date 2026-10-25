@@ -26,7 +26,7 @@ import type { GitMirror } from '../repository/git-mirror.js'
 import { renderImpact } from '../review/impact-text.js'
 import { runReview } from '../review/run-review.js'
 import { recheckThreads } from '../review/recheck-threads.js'
-import type { Ci, Conversation, ConversationReport } from '../publish/types.js'
+import type { Ci, Conversation } from '../publish/types.js'
 import type { DiffImpact, RecheckReport, RecheckThread, ReviewOutcome } from '../review/types.js'
 import { IndexStoreError } from '../store/index-store.js'
 import type { IndexStore } from '../store/index-store.js'
@@ -119,7 +119,7 @@ export interface PullRequestReview {
   related: RelatedReport
   recheck?: RecheckReport
   passes?: PassPlan[]
-  conversation?: ConversationReport
+  conversation?: Conversation
   ci?: Ci
 }
 
@@ -372,7 +372,7 @@ export async function reviewPullRequest(
       related: relatedReport,
       ...(recheck === undefined ? {} : { recheck }),
       ...(planned.passes === undefined ? {} : { passes: planned.plan }),
-      ...(input.conversation === undefined ? {} : { conversation: input.conversation.report }),
+      ...(input.conversation === undefined ? {} : { conversation: input.conversation }),
       ...(input.ci === undefined ? {} : { ci: input.ci }),
     }
   } finally {

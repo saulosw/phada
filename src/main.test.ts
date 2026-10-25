@@ -177,6 +177,8 @@ function harness(
     hookWarning?: (event: ReviewEvent) => string | undefined
     slackMessages?: Record<string, unknown>[]
     comments?: MainDeps['listIssueComments']
+    pullComments?: MainDeps['fetchPullComments']
+    checkRuns?: MainDeps['fetchCheckRuns']
   } = {},
 ): Harness {
   const checkouts: (GitMirrorOptions & { sha: string; keepAs: string })[] = []
@@ -237,11 +239,12 @@ function harness(
     },
     fetchPullComments: (options) => {
       commentFetches.push(options)
-      return Promise.resolve([])
+      return overrides.pullComments?.(options) ?? Promise.resolve([])
     },
-    fetchCheckRuns: ({ owner, repo, token, sha }) => {
+    fetchCheckRuns: (options) => {
+      const { owner, repo, token, sha } = options
       ciFetches.push(`runs ${owner}/${repo} ${sha} ${token === TOKEN ? 'token' : 'other'}`)
-      return Promise.resolve([])
+      return overrides.checkRuns?.(options) ?? Promise.resolve([])
     },
     fetchCommitStatuses: ({ owner, repo, sha }) => {
       ciFetches.push(`statuses ${owner}/${repo} ${sha}`)
@@ -923,6 +926,107 @@ describe('run publishing', () => {
 
     expect(h.ciFetches).toEqual([`runs acme/shop ${sha} token`, `statuses acme/shop ${sha}`])
     expect(off.ciFetches).toEqual([])
+  })
+
+  it('shows the conversation and the CI on stderr, in the dry run and in the JSON', async () => {
+    const conversation = {
+      pullComments: async () => [
+        {
+          id: 'c1',
+          author: 'alice',
+          bot: false,
+          association: 'MEMBER',
+          createdAt: '2026-10-20T10:00:00Z',
+          body: 'Please keep the old endpoint.',
+        },
+        {
+          id: 'c2',
+          author: 'ci-bot',
+          bot: true,
+          association: 'NONE',
+          createdAt: '2026-10-20T11:00:00Z',
+          body: 'Coverage dropped.',
+        },
+      ],
+      checkRuns: async () => [
+        {
+          id: 7,
+          name: 'test',
+          status: 'completed',
+          conclusion: 'failure',
+          title: '1 failed',
+          summary: null,
+          url: null,
+          app: 'other',
+        },
+        {
+          id: 8,
+          name: 'e2e',
+          status: 'in_progress',
+          conclusion: null,
+          title: null,
+          summary: null,
+          url: null,
+          app: 'other',
+        },
+        {
+          id: 9,
+          name: 'build',
+          status: 'completed',
+          conclusion: 'success',
+          title: null,
+          summary: null,
+          url: null,
+          app: 'other',
+        },
+      ],
+    }
+    const markdown = harness(conversation)
+    const json = harness(conversation)
+    const off = harness(conversation)
+
+    await run(['review', 'acme/shop#12', '--dry-run'], markdown.deps)
+    await run(['review', 'acme/shop#12', '--dry-run', '--format', 'json'], json.deps)
+    await run(
+      ['review', 'acme/shop#12', '--dry-run', '--format', 'json', '--no-conversation', '--no-ci'],
+      off.deps,
+    )
+
+    expect(markdown.stderr()).toContain(
+      'Conversation: 2 comments (1 bot)\nCI: 3 checks, 1 failing (test), 1 pending\n',
+    )
+    expect(markdown.stdout()).toContain(
+      '## Conversation sent to the AI\n\n- comment by alice (member), 2026-10-20 10:00\n- comment by ci-bot (bot), 2026-10-20 11:00\n',
+    )
+    expect(markdown.stdout()).toContain(
+      '## CI sent to the AI\n\n- test: failing (failure)\n- e2e: pending\n- build: passing\n',
+    )
+    expect(JSON.parse(json.stdout())).toMatchObject({
+      conversation: {
+        items: [
+          { kind: 'comment', author: 'alice', role: 'member' },
+          { kind: 'comment', author: 'ci-bot', role: 'bot' },
+        ],
+        count: 2,
+        omitted: 0,
+        bots: 1,
+      },
+      ci: {
+        state: 'failing',
+        total: 3,
+        failing: ['test'],
+        pending: ['e2e'],
+        checks: [
+          { name: 'test', state: 'failing', conclusion: 'failure' },
+          { name: 'e2e', state: 'pending' },
+          { name: 'build', state: 'passing' },
+        ],
+        warnings: [],
+      },
+    })
+    expect(JSON.parse(off.stdout())).toMatchObject({ conversation: null, ci: null })
+    expect(off.stderr()).not.toContain('Conversation:')
+    expect(off.stderr()).not.toContain('CI:')
   })
 
   it('skips before the provider when the same commit has open Phada threads', async () => {

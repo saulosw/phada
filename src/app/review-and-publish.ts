@@ -82,6 +82,8 @@ export interface ReviewAndPublishEvents {
   reviewed(review: PullRequestReview, pullRequest: PullRequest): void
   publishing(): void
   warning(message: string): void
+  conversationRead?(conversation: Conversation): void
+  ciRead?(ci: Ci): void
 }
 
 export interface ReviewAndPublishDeps {
@@ -161,6 +163,8 @@ export async function reviewAndPublish(
           deps.events.warning(message),
         )
       : undefined
+  if (conversation !== undefined) deps.events.conversationRead?.(conversation)
+  if (ci !== undefined) deps.events.ciRead?.(ci)
   const reviewed = await reviewPullRequest(
     {
       ...review,

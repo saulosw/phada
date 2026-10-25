@@ -13,7 +13,9 @@ import type { CliCommand } from './cli/args.js'
 import { MissingGitHubTokenError } from './cli/errors.js'
 import { formatError } from './cli/format-error.js'
 import { formatGitHubPreview } from './cli/format-github.js'
+import { formatCiLine, formatCiSection } from './cli/format-ci.js'
 import { formatContextSection } from './cli/format-context.js'
+import { formatConversationLine, formatConversationSection } from './cli/format-conversation.js'
 import { formatImpactSection } from './cli/format-impact.js'
 import { formatInvestigationLine, formatInvestigationSection } from './cli/format-investigation.js'
 import { formatRelatedSection } from './cli/format-related.js'
@@ -227,8 +229,14 @@ function reviewAndPublishDeps(
       reviewed: (reviewed, pullRequest) => printReviewed(deps, command, reviewed, pullRequest),
       publishing: () => deps.stderr.write('Publishing the review…\n'),
       warning: (message) => deps.stderr.write(`Warning: ${toTerminalText(message)}\n`),
+      conversationRead: (conversation) => writeLine(deps, formatConversationLine(conversation)),
+      ciRead: (ci) => writeLine(deps, formatCiLine(ci)),
     },
   }
+}
+
+function writeLine(deps: Pick<MainDeps, 'stderr'>, line: string | undefined): void {
+  if (line !== undefined) deps.stderr.write(`${line}\n`)
 }
 
 function printReviewed(
@@ -298,7 +306,7 @@ function printRun(deps: MainDeps, command: ReviewCommand, run: ReviewRun): void 
         deps.stdout.write(
           run.status === 'nothing'
             ? formatGitHubPreview(rendered, messages)
-            : `${formatGitHubPreview(rendered, messages)}\n${formatContextSection(reviewed.context.report)}\n${formatImpactSection(reviewed.impact, reviewed.impactText)}\n${reviewed.related.status === 'none' ? '' : `${formatRelatedSection(reviewed.related)}\n`}${passesSection(run, fixFor)}${formatInvestigationSection(reviewed.investigation)}`,
+            : `${formatGitHubPreview(rendered, messages)}\n${formatContextSection(reviewed.context.report)}\n${formatConversationSection(reviewed.conversation)}\n${formatCiSection(reviewed.ci)}\n${formatImpactSection(reviewed.impact, reviewed.impactText)}\n${reviewed.related.status === 'none' ? '' : `${formatRelatedSection(reviewed.related)}\n`}${passesSection(run, fixFor)}${formatInvestigationSection(reviewed.investigation)}`,
         )
       }
       deps.stderr.write('Dry run: nothing was posted.\n')

@@ -48,7 +48,8 @@ src/
                          #   (comments read unless conversation is off) → the checks of the head
                          #   (readCi, unless ci.read is off) → reviewPullRequest → plan → render
                          #   (injected, with the CI summary) → [checkHead] → reply and resolve
-                         #   the fixed threads → createReview; never prints
+                         #   the fixed threads → createReview; never prints (the conversation
+                         #   and the CI it read go out as events)
     watch-repositories.ts # watchRepositories(): the watch loop — discovery with ETags, planCycle
                          #   (asking the when command before queueing), /phada review comments,
                          #   the next job with its requests, failures and pauses, requests moved
@@ -70,8 +71,8 @@ src/
     error-message.ts     #   errorMessage(): the message of any thrown value
     read-ci.ts           #   readCheckEntries(): check runs and statuses → the checks that count
                          #   (ci.checks: names or globs); readCi(): + the annotations and job logs
-                         #   of the failing ones → buildCi(); each failure a warning, a missing
-                         #   permission stops that kind of read
+                         #   of the failing ones → buildCi(); each failure a warning (kept on
+                         #   the Ci), a missing permission stops that kind of read
     inspect-context.ts   #   inspectPullRequestContext(), inspectRepositoryContext(): the context
                          #   without a review
     review-passes.ts     #   buildPasses(): review.prompt, review.skills or --skill → one SkillPass
@@ -158,10 +159,14 @@ src/
     format-investigation.ts # the "Investigated:" line and the investigation section of --dry-run
     format-related.ts    #   the "Related:" line and the related repositories section of --dry-run
     format-impact.ts     #   the "Impact:" line and the impact section of --dry-run
+    format-conversation.ts # the "Conversation:" line and the conversation section of --dry-run
+                         #   (each item, what was left out over 16 KB and the bodies cut)
+    format-ci.ts         #   the "CI:" line and the CI section of --dry-run (each check, the
+                         #   annotations and logs left out, the cuts and the warnings)
     finding-references.ts #  the "Based on" line: sources (a CI check named as such), rule and skill
                          #   of a finding
     format-json.ts       #   formatReviewJson(): schemaVersion 1, with the publication, context,
-                         #   investigation, impact and recheck blocks
+                         #   conversation, ci, investigation, impact and recheck blocks
     markdown-text.ts     #   escapes AI text: block markers; for GitHub also HTML and mentions;
                          #   codeFence()
     review-text.ts       #   model label and short SHA

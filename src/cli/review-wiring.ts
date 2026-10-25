@@ -235,6 +235,10 @@ export function reviewRunJson(
   if (run.status === 'skipped') return formatAlreadyReviewedJson(pullRequest, run.reason)
   const { reviewed } = run
   const context = reviewed.context.report
+  const blocks = {
+    ...(reviewed.conversation === undefined ? {} : { conversation: reviewed.conversation }),
+    ...(reviewed.ci === undefined ? {} : { ci: reviewed.ci }),
+  }
   if (run.status === 'nothing') {
     const note = run.rendered
     const publication =
@@ -251,6 +255,7 @@ export function reviewRunJson(
       null,
       reviewed.recheck ?? null,
       fixFor,
+      blocks,
     )
   }
   const { plan, rendered } = run
@@ -274,6 +279,7 @@ export function reviewRunJson(
     related,
     reviewed.recheck ?? null,
     fixFor,
+    blocks,
   )
 }
 

@@ -67,4 +67,5 @@ export interface Ci {
   checks: CiCheck[]
   summary: CiSummary
   report: CiReport
+  warnings?: string[]
 }

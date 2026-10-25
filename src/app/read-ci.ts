@@ -48,15 +48,21 @@ export async function readCi(
   patterns: readonly string[] | undefined,
   warn: Warn,
 ): Promise<Ci> {
-  const entries = await readCheckEntries(readers, sha, patterns, warn)
+  const warnings: string[] = []
+  const kept: Warn = (message) => {
+    warnings.push(message)
+    warn(message)
+  }
+  const entries = await readCheckEntries(readers, sha, patterns, kept)
   const failing = entries.filter(
     (entry): entry is CiEntry & { id: number } =>
       entry.state === 'failing' && entry.id !== undefined,
   )
-  return buildCi(entries, {
-    annotations: await readAnnotations(readers, failing, warn),
-    logs: await readLogs(readers, entries, failing, warn),
+  const ci = buildCi(entries, {
+    annotations: await readAnnotations(readers, failing, kept),
+    logs: await readLogs(readers, entries, failing, kept),
   })
+  return warnings.length === 0 ? ci : { ...ci, warnings }
 }
 
 async function readAnnotations(
