@@ -2997,12 +2997,33 @@ describe('run review --wait-ci', () => {
     expect(h.prompts[0]?.data).toContain('{"name":"test","state":"pending"}')
   })
 
-  it('reviews a failing CI at once, without waiting for the checks still pending', async () => {
+  it('waits for the checks still pending when one fails, and reviews once they end', async () => {
     let reads = 0
     const h = harness({
       checkRuns: async () => {
         reads += 1
-        return [testRun('completed', 'failure'), { ...testRun('in_progress'), id: 8, name: 'e2e' }]
+        const e2e = { ...testRun('in_progress'), id: 8, name: 'e2e' }
+        return [
+          testRun('completed', 'failure'),
+          reads <= 2 ? e2e : { ...e2e, status: 'completed' as const, conclusion: 'success' },
+        ]
+      },
+    })
+
+    await run(['review', 'acme/shop#12', '--dry-run', '--wait-ci'], h.deps)
+
+    expect(reads).toBe(4)
+    expect(h.stderr()).toMatch(/Waiting for CI until \d\d:\d\d \(1 pending: e2e\)…\n/)
+    expect(h.stderr()).toContain('Waited 2m00s for CI.\nCI: 2 checks, 1 failing (test)\n')
+    expect(h.prompts).not.toHaveLength(0)
+  })
+
+  it('reviews a failing CI at once when no check is pending', async () => {
+    let reads = 0
+    const h = harness({
+      checkRuns: async () => {
+        reads += 1
+        return [testRun('completed', 'failure')]
       },
     })
 
@@ -3010,8 +3031,7 @@ describe('run review --wait-ci', () => {
 
     expect(reads).toBe(2)
     expect(h.stderr()).not.toContain('Waiting for CI')
-    expect(h.stderr()).toContain('CI: 2 checks, 1 failing (test), 1 pending\n')
-    expect(h.prompts).not.toHaveLength(0)
+    expect(h.stderr()).toContain('CI: 1 check, 1 failing (test)\n')
   })
 
   it('does not wait with ci.wait: 0s, and warns that there is nothing to wait for with ci.read: false', async () => {

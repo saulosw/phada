@@ -49,9 +49,24 @@ describe('ciGate', () => {
       gate: { action: 'review' },
     },
     {
-      name: 'reviews a failing commit with onFailure review',
+      name: 'reviews a failing commit with nothing pending at once with onFailure review',
+      input: { ci: ci('failing', [], ['test']), now: at(0) },
+      gate: { action: 'review' },
+    },
+    {
+      name: 'waits for the pending checks of a failing commit with onFailure review',
       input: { ci: ci('failing', ['e2e'], ['test']), now: at(3) },
+      gate: { action: 'wait', until: at(4), deadline: at(15), pending: ['e2e'] },
+    },
+    {
+      name: 'reviews a failing commit with the pending checks once the deadline passed',
+      input: { ci: ci('failing', ['e2e'], ['test']), now: at(15) },
       gate: { action: 'review', pending: ['e2e'] },
+    },
+    {
+      name: 'skips a failing commit with pending checks at once with onFailure skip',
+      input: { ci: ci('failing', ['e2e'], ['test']), now: at(3), onFailure: 'skip' as const },
+      gate: { action: 'skip', failing: ['test'] },
     },
     {
       name: 'skips a failing commit with onFailure skip',

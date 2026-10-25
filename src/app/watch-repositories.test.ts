@@ -1127,6 +1127,34 @@ describe('watchRepositories', () => {
       expect(h.recorded).toEqual(['3:reviewed'])
     })
 
+    it('waits for the pending checks of a failing commit with onFailure review', async () => {
+      const failingWith = (pending: string[]): PullCi => ({
+        waitMs: 15 * MIN,
+        onFailure: 'review',
+        summary: { state: 'failing', pending, failing: ['test'] },
+        checks: [
+          { name: 'test', state: 'failing' },
+          ...pending.map((name) => ({ name, state: 'pending' as const })),
+        ],
+      })
+      const h = await setup({
+        listings: newPull,
+        ci: (_job, now) => failingWith(now < 10 * MIN ? ['e2e'] : []),
+        stopWhen: ({ ran }) => ran.length === 1,
+      })
+
+      await watchRepositories(input(), h.deps)
+
+      expect(h.events).toEqual([
+        'baseline acme/shop 0',
+        'queued #3 a',
+        'waiting #3 @8 until 20 [e2e]',
+        'started #3 @10',
+        'finished #3',
+      ])
+      expect(h.ran[0]?.ciPending).toBeUndefined()
+    })
+
     it('reads the checks again each discovery cycle and queues the same job once they no longer fail', async () => {
       const h = await setup({
         listings: newPull,

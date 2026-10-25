@@ -171,8 +171,8 @@ Options:
   --no-ci               Do not read the checks of the head: no CI for the AI, no CI
                         line in the review
   --wait-ci             Before reviewing, wait for the pending checks of the head up
-                        to ci.wait (default: 15m) since the command started; a
-                        failing check, or no check after 2 minutes, reviews at once
+                        to ci.wait (default: 15m) since the command started, even
+                        when one fails; no check after 2 minutes reviews at once
   --skill <name>        Review with this skill installed for your AI CLI (plugin:skill
                         for a skill of a plugin; phada is the built-in reviewer);
                         repeat it for several passes; replaces review.skills of the config

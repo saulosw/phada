@@ -235,10 +235,11 @@ phada watch --status     # the queue (and jobs waiting for CI), reviews in progr
   pending, the job waits for CI (`waiting` in `phada watch --status`, with until when and the
   pending checks), read again every minute, for at most `ci.wait` (15 minutes by default, `0s`
   turns it off) after the watch saw the commit; then it is reviewed with the checks as they are.
-  A commit without any check 2 minutes after the watch saw it, or with a failing check, is
-  reviewed at once, and so is one whose checks cannot be read (with a warning). A push replaces a
-  waiting job like a queued one, a request joins it and reads the checks again at once, and
-  waiting does not count in `maxReviewsPerHour`.
+  A failing check does not end the wait while others are still pending, so the review gets the
+  result of the whole pipeline. A commit without any check 2 minutes after the watch saw it, or
+  whose checks all ended, is reviewed at once, and so is one whose checks cannot be read (with a
+  warning). A push replaces a waiting job like a queued one, a request joins it and reads the
+  checks again at once, and waiting does not count in `maxReviewsPerHour`.
 - With `ci.onFailure: skip`, a commit whose checks fail is not reviewed: the job is skipped as
   `ci-failing` (in the history, the `review.skipped` event and Slack), its checks are read again
   every `interval` for 24 hours, and the same job is reviewed once they no longer fail. A request
@@ -610,8 +611,9 @@ each check with its conclusion, annotations and log size, and the warnings), `nu
 
 `phada review` reviews the checks as they are. With `--wait-ci`, it first waits for the pending
 ones, for at most `ci.wait` (15 minutes by default) since the command started, showing
-`Waiting for CI… 3m12s, 2 pending: test, build`; a failing check, or no check 2 minutes after the
-start, reviews at once, and it reviews even when the checks fail. `ci.wait: 0s` does not wait,
+`Waiting for CI… 3m12s, 2 pending: test, build`; a failing check does not end the wait while
+others are pending, no check 2 minutes after the start reviews at once, and it reviews even when
+the checks fail. `ci.wait: 0s` does not wait,
 `ci.read: false` in the config warns and reviews at once, and `--wait-ci` with `--no-ci` is an
 error. [`phada watch`](#watch-mode) waits on its own, and can also skip commits whose checks fail.
 

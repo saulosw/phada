@@ -23,9 +23,8 @@ export type CiGate =
 export function ciGate(input: CiGateInput): CiGate {
   const { ci, now, seenAt } = input
   if (ci.state === 'failing') {
-    return input.onFailure === 'skip'
-      ? { action: 'skip', failing: [...ci.failing] }
-      : review(ci.pending)
+    if (input.onFailure === 'skip') return { action: 'skip', failing: [...ci.failing] }
+    if (ci.pending.length === 0) return { action: 'review' }
   }
   if (ci.state === 'passing') return { action: 'review' }
   const deadline = later(seenAt, input.waitMs)
