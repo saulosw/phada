@@ -12,8 +12,12 @@ export function textWidth(text: string): number {
   return [...text].length
 }
 
+export function tabText(label: string, marked = false): string {
+  return marked ? `[${label}]` : ` ${label} `
+}
+
 export function tabWidth(label: string): number {
-  return textWidth(label) + 2
+  return textWidth(tabText(label))
 }
 
 export function layoutTabs(

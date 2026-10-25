@@ -358,8 +358,8 @@ src/
     labeled-lines.tsx    #   labeledLines(): label and value rows of a detail, values wrapped
     relative-time.ts     #   relativeTime() ("2m ago", "in ~4m" for an estimate), absoluteTime();
                          #   TimeMessages
-    tab-bar.tsx          #   TabBar (+ tab-layout.ts: layoutTabs(): full › short › a window with
-                         #   ‹ ›)
+    tab-bar.tsx          #   TabBar: the active tab inverse, or in brackets without colors (+
+                         #   tab-layout.ts: layoutTabs(): full › short › a window with ‹ ›; tabText())
     footer.tsx           #   Footer (+ key-hints.ts: fitHints(): the keys that fit, then "? more")
     help.tsx             #   Help: the screen's keys and the global ones
     palette.tsx          #   Palette: screens filtered by name (the catalog's and English, without

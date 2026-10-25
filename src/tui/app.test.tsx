@@ -135,6 +135,60 @@ describe('the tabs', () => {
     expect(rows).toHaveLength(24)
   })
 
+  it.each([
+    [
+      'en',
+      '[Home] Repositories  Rules  Reviews  Queue  Automation  Provider  Learnings',
+      '3',
+      'Home  Repositories [Rules] Reviews  Queue  Automation  Provider  Learnings',
+    ],
+    [
+      'pt',
+      '[Início] Repos  Regras  Reviews  Fila  Auto  IA  Aprend.',
+      '8',
+      'Início  Repos  Regras  Reviews  Fila  Auto  IA [Aprend.]',
+    ],
+    [
+      'es',
+      '[Inicio] Repos  Reglas  Revis.  Cola  Auto  IA  Aprend.',
+      '4',
+      'Inicio  Repos  Reglas [Revis.] Cola  Auto  IA  Aprend.',
+    ],
+  ])(
+    'mark the active tab with brackets when the terminal has no colors or styles (%s)',
+    async (language, first, key, moved) => {
+      const { frame, press } = openApp({
+        language,
+        env: { TERM: 'dumb' },
+        size: { columns: 80, rows: 24 },
+      })
+      await settle()
+      expect(lines(frame())[0]?.trim()).toBe(first)
+      await press(key)
+      const rows = lines(frame())
+      expect(rows[0]?.trim()).toBe(moved)
+      expect(rows.every((row) => [...row].length <= 80)).toBe(true)
+    },
+  )
+
+  it('marks the active tab with brackets inside a window of tabs', async () => {
+    const screens = Array.from({ length: 9 }, (_, index) => ({
+      id: `s${index}`,
+      title: () => ({ full: `Screen number ${index + 1}`, short: `Screen ${index + 1}` }),
+      Screen: () => <Text>screen {index + 1}</Text>,
+    }))
+    const { frame, press } = openApp({
+      screens,
+      env: { NO_COLOR: '1', TERM: 'dumb' },
+      size: { columns: 80, rows: 24 },
+    })
+    await settle()
+    await press('9')
+    expect(lines(frame())[0]).toBe(
+      '‹  Screen 3  Screen 4  Screen 5  Screen 6  Screen 7  Screen 8 [Screen 9]',
+    )
+  })
+
   it('show a window around the active tab with markers when even the short names do not fit', async () => {
     const screens = Array.from({ length: 9 }, (_, index) => ({
       id: `s${index}`,

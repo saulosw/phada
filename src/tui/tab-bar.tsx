@@ -1,7 +1,7 @@
 import { Box, Text } from 'ink'
 import { useTheme } from './app-context.js'
 import type { ScreenTitle } from './i18n/messages.js'
-import { layoutTabs } from './tab-layout.js'
+import { layoutTabs, tabText } from './tab-layout.js'
 
 export function TabBar({
   titles,
@@ -12,7 +12,7 @@ export function TabBar({
   active: number
   width: number
 }) {
-  const { colors } = useTheme()
+  const { colors, level } = useTheme()
   const layout = layoutTabs(titles, active, width)
   const windowed = layout.hiddenLeft || layout.hiddenRight
   return (
@@ -28,10 +28,12 @@ export function TabBar({
               ? {}
               : { backgroundColor: colors.accent, color: 'white' })}
           >
-            {` ${label} `}
+            {tabText(label, level === 'none')}
           </Text>
         ) : (
-          <Text key={index} color={colors.dim}>{` ${label} `}</Text>
+          <Text key={index} color={colors.dim}>
+            {tabText(label)}
+          </Text>
         ),
       )}
       {windowed && <Text color={colors.dim}>{layout.hiddenRight ? ' ›' : '  '}</Text>}
