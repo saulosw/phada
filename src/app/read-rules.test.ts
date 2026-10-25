@@ -3,7 +3,7 @@ import { modifiedFile } from '../../test/support/diff-sections.js'
 import type { ConfigLayer } from '../config/types.js'
 import { loadContext } from '../context/load-context.js'
 import type { ContextSources } from '../context/types.js'
-import { readRules } from './read-rules.js'
+import { localRules, readRules } from './read-rules.js'
 import type { RulesReaders } from './read-rules.js'
 
 const BASE = 'b1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
@@ -165,5 +165,46 @@ describe('readRules', () => {
       },
       prompt: null,
     })
+  })
+})
+
+describe('localRules', () => {
+  const userRepo = (config: ConfigLayer['config']): ConfigLayer => ({
+    kind: 'user-repo',
+    dir: '',
+    configLabel: 'user:repos/acme/shop/config.yml',
+    config,
+  })
+
+  it('gives the built-in lens and no rules without user config', () => {
+    expect(localRules([])).toEqual({ lens: { kind: 'built-in' }, rules: [], warnings: [] })
+  })
+
+  it('gives the lens of the user layers and their rules, global or of the repository', () => {
+    const read = localRules([
+      user({
+        rules: [{ id: 'utc', rule: 'Store times in UTC.' }],
+        review: { prompt: { file: '/home/ana/lens.md' } },
+      }),
+      {
+        ...userRepo({ rules: [{ rule: 'Money in cents.' }] }),
+        rulesMarkdown: { label: 'user:repos/acme/shop/rules.md', text: 'No floats.' },
+      },
+    ])
+
+    expect(read.lens).toEqual({
+      kind: 'prompt',
+      prompt: {
+        file: '/home/ana/lens.md',
+        mode: 'append',
+        origin: 'user:config.yml',
+        source: 'local',
+      },
+    })
+    expect(read.rules).toEqual([
+      { key: 'utc', text: 'Store times in UTC.', origin: 'global' },
+      { key: 'user:repos/acme/shop/config.yml#1', text: 'Money in cents.', origin: 'repository' },
+      { key: 'user:repos/acme/shop/rules.md', text: 'No floats.', origin: 'repository' },
+    ])
   })
 })

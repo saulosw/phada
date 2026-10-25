@@ -1,4 +1,5 @@
 import { DEFAULT_CI, mergeConfig, resolveProvider } from '../config/merge-config.js'
+import type { ResolvedRule } from '../config/merge-config.js'
 import type { ConfigFile } from '../config/schema.js'
 import type { ConfigLayer } from '../config/types.js'
 import { resolveWatchSettings } from '../config/watch-settings.js'
@@ -147,11 +148,7 @@ export async function readRepository(
         ? {
             status: 'read',
             settings: userSettings(layers.layers),
-            rules: merged.rules.map(({ key, text, origin }) => ({
-              key,
-              text,
-              origin: originOfLabel(origin),
-            })),
+            rules: userRules(merged.rules),
             warnings: merged.warnings,
           }
         : { status: 'invalid', error: 'error' in layers ? layers.error : '' },
@@ -210,6 +207,10 @@ async function indexOf(
     indexedSha: record?.indexedSha ?? null,
     checkedAt: record?.branchCheckedAt ?? null,
   }
+}
+
+export function userRules(rules: readonly ResolvedRule[]): UserRule[] {
+  return rules.map(({ key, text, origin }) => ({ key, text, origin: originOfLabel(origin) }))
 }
 
 function originOfLabel(label: string): SettingOrigin {

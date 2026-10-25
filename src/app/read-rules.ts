@@ -1,3 +1,4 @@
+import { mergeConfig } from '../config/merge-config.js'
 import type { ConfigLayer } from '../config/types.js'
 import { DEFAULT_IGNORE } from '../context/ignore.js'
 import { listContext } from '../context/list-context.js'
@@ -7,6 +8,8 @@ import type { PullRequest } from '../github/pull-request.js'
 import type { RepositoryInfo } from '../github/repository.js'
 import { configuredLens } from './review-passes.js'
 import type { ConfiguredLens } from './review-passes.js'
+import { userRules } from './read-repositories.js'
+import type { UserRule } from './read-repositories.js'
 
 export interface RulesReaders {
   fetchPullRequest(number: number): Promise<Pick<PullRequest, 'diff' | 'baseSha'>>
@@ -27,6 +30,21 @@ export type RepositoryRules =
       ignore: string[]
       lens: ConfiguredLens
     }
+
+export interface LocalRules {
+  lens: ConfiguredLens
+  rules: UserRule[]
+  warnings: string[]
+}
+
+export function localRules(userLayers: readonly ConfigLayer[]): LocalRules {
+  const merged = mergeConfig(userLayers)
+  return {
+    lens: configuredLens(merged.review),
+    rules: userRules(merged.rules),
+    warnings: merged.warnings,
+  }
+}
 
 export async function readRules(input: {
   target: RulesTarget
