@@ -180,7 +180,7 @@ describe('navigation', () => {
   it('shows an honest placeholder on the screens not drawn yet', async () => {
     const { frame, press } = openApp()
     await settle()
-    await press('6')
+    await press('3')
     expect(frame()).toContain('This screen is not ready yet.')
     expect(frame()).not.toContain('Phada v1.2.3')
   })
