@@ -1,5 +1,5 @@
-import { CI_LOG_TOTAL_BYTES, CI_MAX_ANNOTATIONS } from '../publish/ci.js'
-import type { Ci } from '../publish/types.js'
+import { CI_LOG_TOTAL_BYTES, CI_MAX_ANNOTATIONS } from '../context/ci.js'
+import type { Ci } from '../context/types.js'
 import type { CiCheck } from '../review/types.js'
 import { toTerminalText } from './terminal-text.js'
 import { formatBytes, formatCount } from './units.js'

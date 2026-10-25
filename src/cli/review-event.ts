@@ -1,6 +1,6 @@
 import type { JobEvent } from '../app/watch-repositories.js'
 import type { ReviewEventName } from '../config/schema.js'
-import type { CiState } from '../publish/types.js'
+import type { CiState } from '../context/types.js'
 import type { CiCheckState } from '../review/types.js'
 import type { Verdict } from '../review/verdict.js'
 import type { HistoryStore, RunRecord, RunStatus } from '../store/history-store.js'

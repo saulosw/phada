@@ -1,4 +1,4 @@
-import type { CiSummary } from '../publish/types.js'
+import type { CiSummary } from '../context/types.js'
 import { later } from './time.js'
 
 export const DEFAULT_CI_WAIT_MS = 900_000

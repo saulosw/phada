@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { findingFixture } from '../../test/support/finding.js'
 import { parseReviewMarker } from '../publish/markers.js'
-import type { CiSummary, PublicationPlan } from '../publish/types.js'
+import type { PublicationPlan } from '../publish/types.js'
+import type { CiSummary } from '../context/types.js'
 import type { FileChange, Finding, ReviewResult } from '../review/types.js'
 import {
   formatGitHubPreview,

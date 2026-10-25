@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { CiState } from '../publish/types.js'
+import type { CiState } from '../context/types.js'
 import { ciGate } from './ci-gate.js'
 
 const SEEN = '2026-10-18T12:00:00.000Z'

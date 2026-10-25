@@ -1,4 +1,4 @@
-import type { CiCheck, CiCheckState, ConversationItem, Finding } from '../review/types.js'
+import type { ConversationItem, Finding } from '../review/types.js'
 
 export interface PublicationPlan {
   comments: Finding[]
@@ -31,45 +31,4 @@ export interface ConversationReport {
 export interface Conversation {
   items: ConversationItem[]
   report: ConversationReport
-}
-
-export type CiState = 'none' | 'pending' | 'passing' | 'failing'
-
-export interface CiEntry {
-  name: string
-  kind: 'check-run' | 'status'
-  id?: number
-  actions: boolean
-  state: CiCheckState
-  status?: string
-  conclusion?: string
-  title?: string
-  summary?: string
-  url?: string
-  startedAt?: string
-  completedAt?: string
-}
-
-export interface CiSummary {
-  state: CiState
-  total: number
-  failing: string[]
-  pending: string[]
-}
-
-export interface CiReport {
-  annotations: number
-  omittedAnnotations: number
-  logs: number
-  omittedLogs: number
-  truncated: number
-  bytes: number
-}
-
-export interface Ci {
-  entries: CiEntry[]
-  checks: CiCheck[]
-  summary: CiSummary
-  report: CiReport
-  warnings?: string[]
 }

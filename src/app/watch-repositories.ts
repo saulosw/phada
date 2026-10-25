@@ -2,7 +2,7 @@ import type { WatchedRepoSettings, WatchSettings } from '../config/watch-setting
 import type { CommentListing } from '../github/issue-comments.js'
 import type { OpenPull, PullListing } from '../github/list-pull-requests.js'
 import type { BranchHead } from '../github/repository.js'
-import type { CiSummary } from '../publish/types.js'
+import type { CiSummary } from '../context/types.js'
 import type { CiCheckState } from '../review/types.js'
 import type { DuePull, HistoryStore } from '../store/history-store.js'
 import { listedPullFacts } from '../watch/pull-facts.js'

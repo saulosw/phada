@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Ci, CiReport, CiSummary } from '../publish/types.js'
+import type { Ci, CiReport, CiSummary } from '../context/types.js'
 import type { CiCheck } from '../review/types.js'
 import { formatCiLine, formatCiSection } from './format-ci.js'
 

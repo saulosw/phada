@@ -1,4 +1,4 @@
-import type { CiState } from '../../publish/types.js'
+import type { CiState } from '../../context/types.js'
 import type { ScoreFocus } from '../../review/score.js'
 import type { DroppedFindings, ScoreValue, Severity, Verification } from '../../review/types.js'
 import { english } from './en.js'

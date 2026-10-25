@@ -1,13 +1,13 @@
 import type { BlockedCommand } from '../providers/types.js'
 import type { RelatedReport } from '../app/related-report.js'
-import type { ContextReport } from '../context/types.js'
+import type { Ci, ContextReport } from '../context/types.js'
 import type { ImpactReport } from '../graph/report.js'
 import type { InvestigationReport } from '../investigation/tools/report.js'
 import type { PullRequest } from '../github/pull-request.js'
 import type { TokenUsage } from '../providers/types.js'
-import { CI_LOG_TOTAL_BYTES, CI_MAX_ANNOTATIONS } from '../publish/ci.js'
+import { CI_LOG_TOTAL_BYTES, CI_MAX_ANNOTATIONS } from '../context/ci.js'
 import { CONVERSATION_BUDGET_BYTES, conversationItemBytes } from '../publish/conversation.js'
-import type { Ci, Conversation, SkipReason } from '../publish/types.js'
+import type { Conversation, SkipReason } from '../publish/types.js'
 import type {
   CiCheck,
   ConversationItem,

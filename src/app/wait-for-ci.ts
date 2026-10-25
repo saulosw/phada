@@ -1,5 +1,5 @@
-import { ciSummary } from '../publish/ci-state.js'
-import type { CiSummary } from '../publish/types.js'
+import { ciSummary } from '../context/ci-state.js'
+import type { CiSummary } from '../context/types.js'
 import { ciGate } from '../watch/ci-gate.js'
 import { readCheckEntries } from './read-ci.js'
 import type { CiReaders, Warn } from './read-ci.js'

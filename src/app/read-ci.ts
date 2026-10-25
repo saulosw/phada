@@ -2,9 +2,9 @@ import { matcher } from '../context/ignore.js'
 import type { CheckAnnotation, CheckRun } from '../github/check-runs.js'
 import type { CommitStatus } from '../github/commit-statuses.js'
 import type { JobLog } from '../github/job-log.js'
-import { buildCi, CI_MAX_ANNOTATIONS, ciLogsLeft, keepsAnnotation } from '../publish/ci.js'
-import { ciEntries } from '../publish/ci-state.js'
-import type { Ci, CiEntry } from '../publish/types.js'
+import { buildCi, CI_MAX_ANNOTATIONS, ciLogsLeft, keepsAnnotation } from '../context/ci.js'
+import { ciEntries } from '../context/ci-state.js'
+import type { Ci, CiEntry } from '../context/types.js'
 import { errorMessage } from './error-message.js'
 
 export interface CiReaders {
