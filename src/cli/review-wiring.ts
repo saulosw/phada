@@ -60,7 +60,7 @@ import type { RepositoryReaderOptions } from '../github/read-repository.js'
 import type { ReadGitHub } from '../gh-facade/types.js'
 import { toTerminalText } from './terminal-text.js'
 
-export interface ReviewWiringDeps extends ContextReaders {
+export interface ReviewWiringDeps extends ContextReaders, CiReaderDeps {
   env: NodeJS.ProcessEnv
   version: string
   files: LocalFileSystem
@@ -75,6 +75,9 @@ export interface ReviewWiringDeps extends ContextReaders {
   runsSkills?: (provider: string) => boolean
   openNativeRunner?: PullRequestReviewDeps['openNativeRunner']
   checkMcpNames?: NameCheck
+}
+
+export interface CiReaderDeps {
   fetchCheckRuns: (options: RepositoryFilesOptions & { sha: string }) => Promise<CheckRun[]>
   fetchCommitStatuses: (
     options: RepositoryFilesOptions & { sha: string },
@@ -87,10 +90,7 @@ export interface ReviewWiringDeps extends ContextReaders {
 
 export type PublishTarget = PullRequestRef & { token: string }
 
-export function ciReaders(
-  deps: ReviewWiringDeps,
-  { owner, repo, token }: PublishTarget,
-): CiReaders {
+export function ciReaders(deps: CiReaderDeps, { owner, repo, token }: PublishTarget): CiReaders {
   const repository = { owner, repo, token }
   return {
     checkRuns: (sha) => deps.fetchCheckRuns({ ...repository, sha }),

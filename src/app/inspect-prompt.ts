@@ -1,6 +1,7 @@
 import type { LoadedContext } from '../context/types.js'
 import { splitDiff } from '../context/split-diff.js'
 import type { PullRequest } from '../github/pull-request.js'
+import type { Ci, Conversation } from '../publish/types.js'
 import { reviewDataBlocks, reviewInstructionParts } from '../review/prompt.js'
 import type { PromptPart } from '../review/prompt.js'
 import type { SkillPass } from '../review/types.js'
@@ -58,6 +59,9 @@ export async function inspectPrompt(input: {
   cliSkills?: readonly string[]
   investigate: boolean
   native?: boolean
+  conversation?: Conversation
+  ci?: Ci
+  warnings?: readonly string[]
   skills: SkillCatalog
   readRepoFile(path: string): Promise<string | null>
   readLocalFile(path: string): Promise<string | null>
@@ -72,13 +76,22 @@ export async function inspectPrompt(input: {
     skills: input.skills,
     native: input.native ?? false,
   })
-  const request = { pullRequest: { ...pullRequest, diff: loaded.diff }, context: loaded.context }
+  const read = {
+    ...(input.conversation === undefined ? {} : { conversation: input.conversation.items }),
+    ...(input.ci === undefined ? {} : { ci: input.ci.checks }),
+  }
+  const request = {
+    pullRequest: { ...pullRequest, diff: loaded.diff },
+    context: loaded.context,
+    ...read,
+  }
   const data = reviewDataBlocks(request).map(({ name, content }) => ({
     name,
     bytes: new TextEncoder().encode(content).length,
   }))
   const options = {
     context: loaded.context,
+    ...read,
     verify: loaded.options.verify ?? true,
     ...(loaded.options.language === undefined ? {} : { language: loaded.options.language }),
     ...(input.investigate ? { toolNames: REVIEW_TOOL_NAMES } : {}),
@@ -118,7 +131,7 @@ export async function inspectPrompt(input: {
       }
     }),
     notes: [...(input.investigate ? [TOOLS_NOTE] : []), COMPUTED_NOTE],
-    warnings: [...loaded.report.warnings, ...planned.warnings],
+    warnings: [...loaded.report.warnings, ...planned.warnings, ...(input.warnings ?? [])],
   }
 }
 

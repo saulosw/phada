@@ -78,7 +78,10 @@ src/
     review-passes.ts     #   buildPasses(): review.prompt, review.skills or --skill → one SkillPass
                          #   per skill (paths matched here), SkillCatalog, PassPlan
     inspect-prompt.ts    #   inspectPrompt(), defaultPromptView(): the prompt of each pass and the
-                         #   size of its data blocks, without the AI
+                         #   size of its data blocks (with the conversation and CI read), without
+                         #   the AI
+    read-conversation.ts #   readConversation(): the general comments (a failure is a warning) and
+                         #   the review state → buildConversation()
     native-skill.ts      #   openNativeRunner(): work folder → work tree → gh facade → the skill
                          #   run by the provider; skillPolicy(): commands and folders, read-only
                          #   for outside authors
@@ -101,6 +104,7 @@ src/
     rules-command.ts     #   runRules(): token, user config, the context of a pull request or of
                          #   the default branch, printed as text or JSON
     prompt-command.ts    #   runPrompt(): the built-in prompt, or the prompt of a pull request
+                         #   with its conversation and checks (as the config turns them on)
     format-prompt.ts     #   formatPromptText(), formatPromptJson() (schemaVersion 1)
     skill-catalog.ts     #   diskSkillCatalog(): the installed skills, listed once, found by name;
                          #   claude:<name> for a skill built into Claude Code
@@ -144,7 +148,7 @@ src/
     classify-failure.ts  #   classifyFailure(): an error → transient, usage-limit, rate-limit,
                          #   definitive or fatal
     review-wiring.ts     #   pullRequestReviewDeps(), ciReaders(), renderReview, reviewRunJson():
-                         #   shared by review and watch
+                         #   shared by review, watch and prompt
     history-run.ts       #   historyRun(), watchRun(): a run or a failure → the history record
     format-rules.ts      #   formatRulesText(), formatRulesJson() (schemaVersion 1)
     context-sources.ts   #   contextSourcesAt(): the repository at a commit and the local files

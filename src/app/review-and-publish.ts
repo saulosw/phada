@@ -5,7 +5,6 @@ import type { ReviewComment } from '../github/create-review.js'
 import type { PullRequestRef } from '../github/pull-request-ref.js'
 import type { PullComment, PullRequestReviewState } from '../github/pull-request-reviews.js'
 import type { PullRequest } from '../github/pull-request.js'
-import { buildConversation } from '../publish/conversation.js'
 import { decideRun } from '../publish/decide-run.js'
 import { resolvedMarker } from '../publish/markers.js'
 import { planPublication } from '../publish/plan-publication.js'
@@ -16,6 +15,7 @@ import { diffFingerprint } from '../review/diff-fingerprint.js'
 import type { RecheckThread, RecheckVerdict, ReviewResult } from '../review/types.js'
 import { errorMessage } from './error-message.js'
 import { readCi } from './read-ci.js'
+import { readConversation } from './read-conversation.js'
 import type { CiReaders } from './read-ci.js'
 import { loadPullRequestContext, reviewPullRequest } from './review-pull-request.js'
 import type {
@@ -155,7 +155,12 @@ export async function reviewAndPublish(
   const recheck = resolve ? await threadsWithChanges(state, pullRequest, deps) : []
   const conversation =
     (input.options.conversation ?? loaded.options.conversation ?? true)
-      ? await readConversation(input.ref, state, pullRequest, deps)
+      ? await readConversation(
+          state,
+          pullRequest.author,
+          () => deps.fetchPullComments(input.ref),
+          (message) => deps.events.warning(message),
+        )
       : undefined
   const ci: Ci | undefined =
     (input.options.ci ?? loaded.options.ci?.read ?? true)
@@ -256,21 +261,6 @@ async function resolveFixed(
     }
   }
   return { resolved, failed: fixed.length - resolved, total: fixed.length }
-}
-
-async function readConversation(
-  ref: PullRequestRef,
-  state: PullRequestReviewState,
-  pullRequest: PullRequest,
-  deps: ReviewAndPublishDeps,
-): Promise<Conversation> {
-  let comments: PullComment[] = []
-  try {
-    comments = await deps.fetchPullComments(ref)
-  } catch (error) {
-    deps.events.warning(`Pull request comments were not read: ${errorMessage(error)}`)
-  }
-  return buildConversation({ state, comments, author: pullRequest.author })
 }
 
 async function threadsWithChanges(

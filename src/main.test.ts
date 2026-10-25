@@ -16,7 +16,11 @@ import { formatAlreadyReviewedJson } from './cli/format-json.js'
 import type { ComparedFile, CompareOptions } from './github/compare-commits.js'
 import type { CreateReviewOptions, CreatedReview } from './github/create-review.js'
 import type { ReplyAndResolveOptions } from './github/resolve-thread.js'
-import { PullRequestNotFoundError, ReviewPermissionError } from './github/errors.js'
+import {
+  GitHubPermissionError,
+  PullRequestNotFoundError,
+  ReviewPermissionError,
+} from './github/errors.js'
 import type {
   FetchReviewStateOptions,
   PullRequestReviewState,
@@ -2699,6 +2703,73 @@ describe('run prompt', () => {
     const h = harness({ env: { PHADA_CONFIG_HOME: '/cfg' } })
 
     expect(await run(['prompt', 'acme/shop#12'], h.deps)).toBe(1)
+  })
+
+  it('lists the conversation and CI blocks with their sizes, and their rules, as a review sends them', async () => {
+    const overrides = {
+      pullComments: async () => [
+        {
+          id: 'c1',
+          author: 'alice',
+          bot: false,
+          association: 'MEMBER',
+          createdAt: '2026-10-20T10:00:00Z',
+          body: 'Please keep the old endpoint.',
+        },
+      ],
+      checkRuns: async () => [
+        {
+          id: 7,
+          name: 'test',
+          status: 'completed',
+          conclusion: 'failure',
+          title: '1 failed',
+          summary: null,
+          url: null,
+          app: 'other',
+        },
+      ],
+    }
+    const text = harness(overrides)
+    const json = harness(overrides)
+    const off = harness({
+      ...overrides,
+      repoFiles: { '.phada/config.yml': 'conversation: false\nci:\n  read: false\n' },
+    })
+
+    expect(await run(['prompt', 'acme/shop#12'], text.deps)).toBe(0)
+    await run(['prompt', 'acme/shop#12', '--format', 'json'], json.deps)
+    await run(['prompt', 'acme/shop#12'], off.deps)
+
+    expect(text.stdout()).toMatch(/ {2}PHADA_CONVERSATION {2}\d+ B\n/)
+    expect(text.stdout()).toMatch(/ {2}PHADA_CI {12}\d+ B\n/)
+    expect(text.stdout()).toContain('The PHADA_CONVERSATION block')
+    expect(text.stdout()).toContain('The PHADA_CI block')
+    const view = JSON.parse(json.stdout()) as {
+      passes: { data: { name: string; bytes: number }[] }[]
+    }
+    expect(view.passes[0]?.data.map(({ name }) => name)).toEqual([
+      'PHADA_PR',
+      'PHADA_CONVERSATION',
+      'PHADA_CI',
+      'PHADA_DIFF',
+    ])
+    expect(off.stdout()).not.toContain('PHADA_CONVERSATION')
+    expect(off.stdout()).not.toContain('PHADA_CI')
+    expect(off.commentFetches).toEqual([])
+    expect(off.ciFetches).toEqual([])
+    expect(text.prompts).toHaveLength(0)
+  })
+
+  it('shows the CI permission a token lacks as a warning of the prompt', async () => {
+    const h = harness({
+      checkRuns: () => Promise.reject(new GitHubPermissionError('the check runs', 'checks:read')),
+    })
+
+    expect(await run(['prompt', 'acme/shop#12'], h.deps)).toBe(0)
+    expect(h.stdout()).toContain(
+      'Warning: CI check runs were not read: GitHub denied reading the check runs (HTTP 403): the token needs the checks:read permission.',
+    )
   })
 })
 

@@ -248,7 +248,7 @@ export const PROMPT_USAGE = `Usage: phada prompt <owner/repo#N | pull request UR
 Shows the prompt a review would send to the AI, without calling it: for each
 review pass (each skill), the instructions with where each part comes from (the
 built-in reviewer, review.prompt, a skill, the rules) and the size of the data
-blocks (pull request, docs, diff).
+blocks (pull request, docs, conversation, CI, diff).
 
 Options:
   --default          Show the built-in prompt, without a pull request or a token
