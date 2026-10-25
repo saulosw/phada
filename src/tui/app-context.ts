@@ -2,6 +2,8 @@ import { useInput } from 'ink'
 import type { Key } from 'ink'
 import { createContext, useContext, useEffect, useRef } from 'react'
 import type { HistoryFilter, ListedRun, ReviewDetail } from '../app/read-history.js'
+import type { Learnings } from '../app/read-learnings.js'
+import type { ProviderReport, ProviderSetup } from '../app/read-provider.js'
 import type { QueueView } from '../app/read-queue.js'
 import type { AutomationView } from '../app/read-automation.js'
 import type { RepositoryDetail, RepositoryList } from '../app/read-repositories.js'
@@ -28,6 +30,9 @@ export interface AppDeps {
   readRepositories(): Promise<RepositoryList>
   readRepository(repo: string): Promise<RepositoryDetail>
   readAutomation(): Promise<AutomationView>
+  readProviderSetup(): Promise<ProviderSetup>
+  readProviders(): Promise<ProviderReport>
+  readLearnings(): Promise<Learnings>
 }
 
 export interface KeyHint {

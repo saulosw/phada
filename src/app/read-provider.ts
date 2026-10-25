@@ -27,9 +27,11 @@ export interface ProviderSetup {
   mcp: McpServerView[]
 }
 
+export type ReportedProvider = CheckedProvider & { next: NextStep | null }
+
 export interface ProviderReport {
   choice: ProviderChoiceView
-  providers: CheckedProvider[]
+  providers: ReportedProvider[]
 }
 
 export interface NextStep {
@@ -73,7 +75,14 @@ export async function readProviders(
   input: ProviderConfigInput & { checkers: ProviderCheckers },
 ): Promise<ProviderReport> {
   const choice = providerChoice(input)
-  return { choice, providers: await checkProviders(input.checkers, choice.provider) }
+  const providers = await checkProviders(input.checkers, choice.provider)
+  return {
+    choice,
+    providers: providers.map((status) => ({
+      ...status,
+      next: nextStep(status, choice.model) ?? null,
+    })),
+  }
 }
 
 export function nextStep(status: CheckedProvider, model: string | null): NextStep | undefined {

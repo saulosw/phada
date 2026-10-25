@@ -1,11 +1,16 @@
 import { join } from 'node:path'
+import type { ProviderCheckers } from '../app/check-providers.js'
 import { readReviewDetail, readReviews } from '../app/read-history.js'
+import { readLearnings } from '../app/read-learnings.js'
+import type { ObservedRead } from '../app/read-learnings.js'
+import { providerSetup, readProviders } from '../app/read-provider.js'
+import type { ProviderConfigInput } from '../app/read-provider.js'
 import { readQueue } from '../app/read-queue.js'
 import { readAutomation } from '../app/read-automation.js'
 import type { AutomationReaders } from '../app/read-automation.js'
 import { readRepositories, readRepository } from '../app/read-repositories.js'
 import type { RepositoryReaders } from '../app/read-repositories.js'
-import { repositoryCache } from '../config/cache-paths.js'
+import { observedRepositories, phadaCacheDir, repositoryCache } from '../config/cache-paths.js'
 import { dataFiles } from '../config/data-paths.js'
 import type { LocalFileSystem } from '../config/local-files.js'
 import {
@@ -16,8 +21,12 @@ import {
 } from '../config/user-config.js'
 import { resolveWatchSettings } from '../config/watch-settings.js'
 import type { WatchSettings } from '../config/watch-settings.js'
+import { checkClaudeStatus } from '../providers/claude-status.js'
+import { checkCodexStatus } from '../providers/codex-status.js'
+import { checkOllamaStatus } from '../providers/ollama-status.js'
 import { openExistingHistoryStore } from '../store/history-store.js'
 import type { HistoryStore } from '../store/history-store.js'
+import { readObservedEdges } from '../store/observed-store.js'
 import type { AppDeps, AppResult, openApp, Scheduler } from '../tui/open-app.js'
 import { appHistory } from './app-history.js'
 import type { AppHistory } from './app-history.js'
@@ -41,6 +50,11 @@ export interface AppCommandDeps {
   lockHolder: (path: string) => Promise<number | undefined>
   openHistoryStore: (path: string) => Promise<HistoryStore>
   pathSize: (path: string) => Promise<number>
+  providerCheckers?: ProviderCheckers
+  observed?: {
+    list(cacheDir: string): Promise<string[]>
+    read: typeof readObservedEdges
+  }
 }
 
 const EXIT_CODES: Readonly<Record<Exclude<AppResult['kind'], 'failed'>, number>> = {
@@ -104,6 +118,19 @@ async function appDeps(deps: AppCommandDeps, history: AppHistory, lock: string):
     readRepositories: () => readRepositories(repositoryReaders(deps, history)),
     readRepository: (repo: string) => readRepository(repositoryReaders(deps, history), repo),
     readAutomation: () => readAutomation(automationReaders(deps)),
+    readProviderSetup: async () => providerSetup(await providerConfig(deps)),
+    readProviders: async () =>
+      readProviders({
+        ...(await providerConfig(deps)),
+        checkers: deps.providerCheckers ?? statusCheckers(deps.env),
+      }),
+    readLearnings: async () =>
+      readLearnings({
+        history: await history.current(),
+        observedRepos: () =>
+          (deps.observed?.list ?? observedRepositories)(phadaCacheDir(deps.env, deps.home)),
+        readObserved: (repo) => observedOf(deps, repo),
+      }),
   }
   try {
     const layers = await loadTopLevelUserLayers(deps)
@@ -141,6 +168,30 @@ function automationReaders(deps: AppCommandDeps): AutomationReaders {
     topLevelLayers: () => loadTopLevelUserLayers(deps),
     slackTokens: () => ({ bot: present(SLACK_BOT_TOKEN), app: present(SLACK_APP_TOKEN) }),
   }
+}
+
+async function providerConfig(deps: AppCommandDeps): Promise<ProviderConfigInput> {
+  return {
+    layers: await loadTopLevelUserLayers(deps),
+    configPath: join(userConfigDir(deps.env, deps.home), 'config.yml'),
+  }
+}
+
+function statusCheckers(env: NodeJS.ProcessEnv): ProviderCheckers {
+  return {
+    claude: () => checkClaudeStatus({ env }),
+    codex: () => checkCodexStatus({ env }),
+    ollama: () => checkOllamaStatus({ env }),
+  }
+}
+
+async function observedOf(deps: AppCommandDeps, repo: string): Promise<ObservedRead> {
+  const [owner = '', name = ''] = repo.split('/')
+  const read = await (deps.observed?.read ?? readObservedEdges)(
+    repositoryCache(deps.env, deps.home, owner, name).observed,
+  )
+  if (read === 'unreadable') return { state: 'unreadable' }
+  return { state: 'read', edges: read === 'missing' ? [] : read }
 }
 
 function isTerminalInput(stream: NodeJS.ReadableStream): stream is NodeJS.ReadStream {

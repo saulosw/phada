@@ -82,7 +82,7 @@ describe('providerSetup', () => {
 })
 
 describe('readProviders', () => {
-  it('checks every provider and marks the chosen one', async () => {
+  it('checks every provider, marks the chosen one and gives each its next step', async () => {
     const report = await readProviders({
       layers: layers({ provider: 'codex' }),
       configPath: CONFIG_PATH,
@@ -93,6 +93,11 @@ describe('readProviders', () => {
       ['claude', false],
       ['codex', true],
       ['ollama', false],
+    ])
+    expect(report.providers.map(({ next }) => next?.command ?? null)).toEqual([
+      null,
+      'npm install -g @openai/codex',
+      'ollama serve',
     ])
   })
 })

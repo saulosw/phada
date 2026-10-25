@@ -25,6 +25,7 @@ function deps(
     result?: AppResult
     history?: HistoryStore
     holder?: number
+    observed?: AppCommandDeps['observed']
     during?: (deps: AppDeps) => Promise<void>
   } = {},
 ) {
@@ -58,6 +59,20 @@ function deps(
       return options.history
     },
     pathSize: async (path) => (files.files.get(path)?.length ?? 0) * 1000,
+    providerCheckers: {
+      claude: async () => ({
+        provider: 'claude',
+        install: { state: 'installed', version: '2.1.0' },
+        login: { state: 'logged-out' },
+      }),
+      codex: async () => ({
+        provider: 'codex',
+        install: { state: 'missing' },
+        login: { state: 'unknown', problem: 'not-installed' },
+      }),
+      ollama: async () => ({ provider: 'ollama', baseUrl: null, server: { state: 'stopped' } }),
+    },
+    ...(options.observed === undefined ? {} : { observed: options.observed }),
   }
   app.env.PHADA_DATA_HOME = '/data'
   return { app, opened, files, historyPaths }
@@ -214,6 +229,68 @@ describe('runApp', () => {
     })
     await runApp(app)
     expect(historyPaths).toEqual([])
+  })
+})
+
+describe('the provider and learnings readers', () => {
+  it('read the provider chosen in the user config, its MCP servers and the checked providers', async () => {
+    const seen: unknown[] = []
+    const { app } = deps({
+      config: 'provider: codex\nmcp:\n  - github\n',
+      during: async (appDeps) => {
+        seen.push(await appDeps.readProviderSetup())
+        const report = await appDeps.readProviders()
+        seen.push(report.providers.map(({ provider, chosen }) => [provider, chosen]))
+      },
+    })
+    await runApp(app)
+    expect(seen).toEqual([
+      {
+        choice: {
+          provider: 'codex',
+          model: null,
+          origin: { kind: 'user-config', path: '/cfg/config.yml' },
+        },
+        mcp: [{ name: 'github', kind: 'named', tools: [], description: null }],
+      },
+      [
+        ['claude', false],
+        ['codex', true],
+        ['ollama', false],
+      ],
+    ])
+  })
+
+  it('read the observed files of the cache folder, each by its own path', async () => {
+    const lists: string[] = []
+    const reads: string[] = []
+    const { app } = deps({
+      observed: {
+        list: async (cacheDir) => {
+          lists.push(cacheDir)
+          return ['acme/shop', 'acme/web']
+        },
+        read: async (path) => {
+          reads.push(path)
+          return path.endsWith('shop.sqlite') ? [] : 'unreadable'
+        },
+      },
+      during: async (appDeps) => {
+        const learnings = await appDeps.readLearnings()
+        expect(learnings.recorded).toBe(false)
+        expect(learnings.repos.map(({ repo, observed }) => [repo, observed.state])).toEqual([
+          ['acme/shop', 'read'],
+          ['acme/web', 'unreadable'],
+        ])
+      },
+    })
+    app.env.PHADA_CACHE_HOME = '/cache'
+    await runApp(app)
+    expect(lists).toEqual(['/cache'])
+    expect(reads.sort()).toEqual([
+      '/cache/observed/acme/shop.sqlite',
+      '/cache/observed/acme/web.sqlite',
+    ])
   })
 })
 
