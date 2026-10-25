@@ -298,6 +298,7 @@ export const ConfigFileSchema = z.strictObject({
   ci: z
     .strictObject({
       read: z.boolean().optional(),
+      wait: Duration.optional(),
       checks: z.array(z.string().trim().min(1)).optional(),
     })
     .optional(),

@@ -60,6 +60,7 @@ export interface ReviewSettings {
 
 export interface CiSettings {
   read?: boolean
+  waitMs?: number
   checks?: string[]
 }
 
@@ -134,6 +135,7 @@ export function mergeConfig(layers: readonly ConfigLayer[]): EffectiveConfig {
   const resolveThreads = firstSet((config) => config.resolveThreads)
   const conversation = firstSet((config) => config.conversation)
   const ciRead = firstSet((config) => config.ci?.read)
+  const ciWait = firstSet((config) => config.ci?.wait)
   const ciChecks = firstSet((config) => config.ci?.checks)
   const merged: EffectiveConfig = {
     ...(language === undefined ? {} : { language }),
@@ -144,6 +146,7 @@ export function mergeConfig(layers: readonly ConfigLayer[]): EffectiveConfig {
     ...(conversation === undefined ? {} : { conversation }),
     ci: {
       ...(ciRead === undefined ? {} : { read: ciRead }),
+      ...(ciWait === undefined ? {} : { waitMs: durationMs(ciWait) }),
       ...(ciChecks === undefined ? {} : { checks: ciChecks }),
     },
     contextDefaults: firstSet((config) => config.context?.defaults) ?? true,

@@ -321,6 +321,10 @@ describe('investigation options', () => {
     ).toEqual({ read: false, checks: ['build', 'lint-*'] })
     expect(mergeConfig([user({ ci: { read: false } })]).ci).toEqual({ read: false })
     expect(mergeConfig([user({})]).ci).toEqual({})
+    expect(mergeConfig([user({ ci: { wait: '30m' } }), root({ ci: { wait: '0s' } })]).ci).toEqual({
+      waitMs: 0,
+    })
+    expect(mergeConfig([user({ ci: { wait: '30m' } })]).ci).toEqual({ waitMs: 1_800_000 })
   })
 
   it('ignores ci in a subfolder with a warning', () => {

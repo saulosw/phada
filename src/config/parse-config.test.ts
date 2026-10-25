@@ -10,6 +10,18 @@ describe('parseConfigText', () => {
     expect(parseConfigText('ci:\n  reed: false\n').ok).toBe(false)
   })
 
+  it('reads ci.wait as a duration, 0s included', () => {
+    expect(parseConfigText('ci:\n  wait: 20m\n')).toEqual({
+      ok: true,
+      config: { ci: { wait: '20m' } },
+    })
+    expect(parseConfigText('ci:\n  wait: 0s\n')).toEqual({
+      ok: true,
+      config: { ci: { wait: '0s' } },
+    })
+    expect(parseConfigText('ci:\n  wait: soon\n').ok).toBe(false)
+  })
+
   it('reads every key', () => {
     const text = [
       'provider: codex',
