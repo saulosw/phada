@@ -20,6 +20,8 @@ function deps(
     stdin?: boolean
     stdout?: boolean
     config?: string
+    files?: Record<string, string>
+    env?: Record<string, string>
     result?: AppResult
     history?: HistoryStore
     holder?: number
@@ -28,11 +30,12 @@ function deps(
 ) {
   const opened: { deps: AppDeps; host: AppHost }[] = []
   const historyPaths: string[] = []
-  const files = memoryFiles(
-    options.config === undefined ? {} : { '/cfg/config.yml': options.config },
-  )
+  const files = memoryFiles({
+    ...(options.config === undefined ? {} : { '/cfg/config.yml': options.config }),
+    ...options.files,
+  })
   const app: AppCommandDeps = {
-    env: { PHADA_CONFIG_HOME: '/cfg', TERM: 'xterm' },
+    env: { PHADA_CONFIG_HOME: '/cfg', TERM: 'xterm', ...options.env },
     home: '/home/ana',
     cwd: '/home/ana/shop',
     version: '1.2.3',
@@ -54,6 +57,7 @@ function deps(
       if (options.history === undefined) throw new Error('no history')
       return options.history
     },
+    pathSize: async (path) => (files.files.get(path)?.length ?? 0) * 1000,
   }
   app.env.PHADA_DATA_HOME = '/data'
   return { app, opened, files, historyPaths }
@@ -102,6 +106,38 @@ describe('runApp', () => {
     expect(await runApp(app)).toBe(0)
     expect(opened[0]?.deps.language).toBeUndefined()
     expect(opened[0]?.deps.configError).toBeInstanceOf(ConfigError)
+  })
+
+  it('reads the repositories and the automations from the user config folder and the cache', async () => {
+    const { app, opened } = deps({
+      config: 'watch:\n  repos: [acme/shop]\nslack:\n  channels: [C0123ABCD]\n',
+      files: {
+        '/cfg/repos/acme/api/config.yml': 'verify: false\n',
+        '/cache/index/acme/shop.sqlite': 'db',
+      },
+      env: { PHADA_CACHE_HOME: '/cache', PHADA_SLACK_BOT_TOKEN: 'xoxb-secret' },
+      during: async (appDeps) => {
+        const list = await appDeps.readRepositories()
+        expect(list.configFile).toBe('/cfg/config.yml')
+        expect(
+          list.repositories.map(({ repo, origins, index }) => [repo, origins, index.file]),
+        ).toEqual([
+          ['acme/api', ['own-config'], null],
+          ['acme/shop', ['watched'], { path: '/cache/index/acme/shop.sqlite', bytes: 2000 }],
+        ])
+        const detail = await appDeps.readRepository('acme/api')
+        expect(detail.config.status === 'read' && detail.config.settings).toContainEqual({
+          key: 'verify',
+          value: { kind: 'flag', on: false },
+          origin: 'repository',
+        })
+        const automation = await appDeps.readAutomation()
+        expect(automation.sources.slack?.tokens).toEqual({ bot: true, app: false })
+        expect(JSON.stringify(automation)).not.toContain('xoxb-secret')
+      },
+    })
+    expect(await runApp(app)).toBe(0)
+    expect(opened).toHaveLength(1)
   })
 
   it.each([

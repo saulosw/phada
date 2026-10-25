@@ -3,6 +3,8 @@ import type { Key } from 'ink'
 import { createContext, useContext, useEffect, useRef } from 'react'
 import type { HistoryFilter, ListedRun, ReviewDetail } from '../app/read-history.js'
 import type { QueueView } from '../app/read-queue.js'
+import type { AutomationView } from '../app/read-automation.js'
+import type { RepositoryDetail, RepositoryList } from '../app/read-repositories.js'
 import type { UiMessages } from './i18n/messages.js'
 import type { TerminalSize } from './terminal-size.js'
 import type { ColorEnv, Theme } from './theme.js'
@@ -23,6 +25,9 @@ export interface AppDeps {
   readQueue(): Promise<QueueView>
   readReviews(filter: HistoryFilter): Promise<{ runs: ListedRun[]; total: number }>
   readReviewDetail(id: number): Promise<ReviewDetail | undefined>
+  readRepositories(): Promise<RepositoryList>
+  readRepository(repo: string): Promise<RepositoryDetail>
+  readAutomation(): Promise<AutomationView>
 }
 
 export interface KeyHint {

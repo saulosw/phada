@@ -1,8 +1,19 @@
+import { join } from 'node:path'
 import { readReviewDetail, readReviews } from '../app/read-history.js'
 import { readQueue } from '../app/read-queue.js'
+import { readAutomation } from '../app/read-automation.js'
+import type { AutomationReaders } from '../app/read-automation.js'
+import { readRepositories, readRepository } from '../app/read-repositories.js'
+import type { RepositoryReaders } from '../app/read-repositories.js'
+import { repositoryCache } from '../config/cache-paths.js'
 import { dataFiles } from '../config/data-paths.js'
 import type { LocalFileSystem } from '../config/local-files.js'
-import { loadTopLevelUserLayers } from '../config/user-config.js'
+import {
+  listUserRepoConfigs,
+  loadTopLevelUserLayers,
+  loadUserLayers,
+  userConfigDir,
+} from '../config/user-config.js'
 import { resolveWatchSettings } from '../config/watch-settings.js'
 import type { WatchSettings } from '../config/watch-settings.js'
 import { openExistingHistoryStore } from '../store/history-store.js'
@@ -12,6 +23,7 @@ import { appHistory } from './app-history.js'
 import type { AppHistory } from './app-history.js'
 import { UsageError } from './errors.js'
 import type { TextOutput } from './progress.js'
+import { SLACK_APP_TOKEN, SLACK_BOT_TOKEN } from './review-event-sinks.js'
 
 export type StopSignal = 'SIGINT' | 'SIGTERM'
 
@@ -28,6 +40,7 @@ export interface AppCommandDeps {
   clock: () => Date
   lockHolder: (path: string) => Promise<number | undefined>
   openHistoryStore: (path: string) => Promise<HistoryStore>
+  pathSize: (path: string) => Promise<number>
 }
 
 const EXIT_CODES: Readonly<Record<Exclude<AppResult['kind'], 'failed'>, number>> = {
@@ -88,6 +101,9 @@ async function appDeps(deps: AppCommandDeps, history: AppHistory, lock: string):
     readReviews: async (filter: Parameters<AppDeps['readReviews']>[0]) =>
       readReviews(await history.current(), filter),
     readReviewDetail: async (id: number) => readReviewDetail(await history.current(), id),
+    readRepositories: () => readRepositories(repositoryReaders(deps, history)),
+    readRepository: (repo: string) => readRepository(repositoryReaders(deps, history), repo),
+    readAutomation: () => readAutomation(automationReaders(deps)),
   }
   try {
     const layers = await loadTopLevelUserLayers(deps)
@@ -96,6 +112,34 @@ async function appDeps(deps: AppCommandDeps, history: AppHistory, lock: string):
     return language === undefined ? base : { ...base, language }
   } catch (configError) {
     return { ...base, configError }
+  }
+}
+
+function repositoryReaders(deps: AppCommandDeps, history: AppHistory): RepositoryReaders {
+  const { env, home, files } = deps
+  return {
+    configFile: join(userConfigDir(env, home), 'config.yml'),
+    topLevelLayers: () => loadTopLevelUserLayers(deps),
+    userLayers: (repo) => {
+      const [owner = '', name = ''] = repo.split('/')
+      return loadUserLayers({ env, home, files, owner, repo: name })
+    },
+    userRepoConfigs: () => listUserRepoConfigs(deps),
+    history: () => history.current(),
+    indexFile: async (repo) => {
+      const [owner = '', name = ''] = repo.split('/')
+      const path = repositoryCache(env, home, owner, name).index
+      return (await files.exists(path)) ? { path, bytes: await deps.pathSize(path) } : null
+    },
+  }
+}
+
+function automationReaders(deps: AppCommandDeps): AutomationReaders {
+  const present = (name: string) => (deps.env[name]?.trim() ?? '') !== ''
+  return {
+    configFile: join(userConfigDir(deps.env, deps.home), 'config.yml'),
+    topLevelLayers: () => loadTopLevelUserLayers(deps),
+    slackTokens: () => ({ bot: present(SLACK_BOT_TOKEN), app: present(SLACK_APP_TOKEN) }),
   }
 }
 

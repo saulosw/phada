@@ -1,5 +1,7 @@
 import { render } from 'ink-testing-library'
 import type { QueueView } from '../../src/app/read-queue.js'
+import type { AutomationView } from '../../src/app/read-automation.js'
+import type { RepositoryDetail, RepositoryList } from '../../src/app/read-repositories.js'
 import { App } from '../../src/tui/app.js'
 import type { AppResult } from '../../src/tui/app.js'
 import type { AppDeps, Scheduler } from '../../src/tui/app-context.js'
@@ -57,6 +59,44 @@ export function emptyQueue(): QueueView {
   }
 }
 
+export const CONFIG_FILE = '/home/ana/.config/phada/config.yml'
+
+export function emptyRepositories(): RepositoryList {
+  return {
+    configFile: CONFIG_FILE,
+    configured: false,
+    configError: null,
+    watching: false,
+    repositories: [],
+  }
+}
+
+export function emptyRepository(repo: string): RepositoryDetail {
+  return {
+    repo,
+    configFile: CONFIG_FILE,
+    origins: [],
+    config: { status: 'read', settings: [], rules: [], warnings: [] },
+    watch: null,
+    index: { file: null, indexedSha: null, checkedAt: null },
+    related: [],
+    reviews: { runs: [], total: 0 },
+  }
+}
+
+export function emptyAutomation(): AutomationView {
+  return {
+    configFile: CONFIG_FILE,
+    configured: false,
+    configError: null,
+    watch: null,
+    ci: [],
+    sources: { prComments: false, enqueue: false, mcp: false, slack: null },
+    hooks: null,
+    when: { global: null, repos: [] },
+  }
+}
+
 export function fakeScheduler() {
   const ticks = new Map<number, { ms: number; tick: () => void }>()
   let next = 0
@@ -106,6 +146,9 @@ export function fakeAppDeps(scheduler: Scheduler, overrides: Partial<AppDeps> = 
     readQueue: async () => emptyQueue(),
     readReviews: async () => ({ runs: [], total: 0 }),
     readReviewDetail: async () => undefined,
+    readRepositories: async () => emptyRepositories(),
+    readRepository: async (repo) => emptyRepository(repo),
+    readAutomation: async () => emptyAutomation(),
     ...overrides,
   }
 }
