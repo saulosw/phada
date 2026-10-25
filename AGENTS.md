@@ -52,7 +52,9 @@ src/
                          #   and the CI it read go out as events)
     watch-repositories.ts # watchRepositories(): the watch loop — discovery with ETags, planCycle
                          #   (asking the when command before queueing), /phada review comments,
-                         #   the next job with its requests, failures and pauses, requests moved
+                         #   the next job through the CI gate (readCi: waiting jobs read again
+                         #   each minute, a failed read reviews at once) with its requests,
+                         #   failures and pauses, requests moved
                          #   to a new commit, job events (notify), the idle index and feedback
                          #   refresh (30 min per pull request, 10 per cycle); events
     submit-request.ts    #   submitRequest(): a review request of any source → the policy (and the
@@ -115,6 +117,10 @@ src/
     format-passes.ts     #   the "Skills:" line and the skills section of --dry-run
     watch-command.ts     #   runWatch(): settings, providers checked on start, history, lock, the
                          #   watch deps, one job's review; each job event sent to the sinks
+    ci-gate-reader.ts    #   ciGateReader(): the ci settings of a job (user config and the root
+                         #   .phada/config.yml at the base, read once per job) and the checks
+                         #   that count of its head, for the CI gate; none with ci.read: false
+                         #   or ci.wait: 0s
     enqueue-command.ts   #   runEnqueue(): a request from the command line
     mcp-command.ts       #   runMcp(): the queue tools as an MCP server over stdio
     queue-tools.ts       #   queueToolbox(): review_pull_request, job_status, wait_for_job, list_queue
@@ -141,7 +147,8 @@ src/
     history-command.ts   #   runHistory() (list, stats, --refresh), runHistoryPrune()
     format-history.ts    #   formatHistoryText/Json(), feedbackStats(), formatStatsText/Json()
                          #   (schemaVersion 1)
-    format-watch.ts      #   formatWatchEvent(), formatWatchStatus(), formatWatchStatusJson()
+    format-watch.ts      #   formatWatchEvent(), formatWatchStatus(), formatWatchStatusJson(); a
+                         #   job waiting for CI with its deadline and pending checks
     provider-choice.ts   #   assertProviderChoice(): known provider, model for ollama, no MCP
                          #   server names with ollama; providerRunsSkills()
     mcp-names.ts         #   checkMcpNames(): MCP server names checked with `claude mcp get` or
@@ -184,7 +191,7 @@ src/
     terminal-text.ts     #   toTerminalText(): strips control and bidi characters from external text
     units.ts             #   duration, tokens, bytes, counts
   config/                # the config files: .phada/ in the repository and the user's own
-    schema.ts            #   Zod schema of config.yml (ci: read, checks); LANGUAGE_TAG
+    schema.ts            #   Zod schema of config.yml (ci: read, wait, checks); LANGUAGE_TAG
     parse-config.ts      #   parseConfigText(): YAML → config or an error naming the key
     merge-config.ts      #   mergeConfig(): layers → options, rules, files, ignore with origins (pure);
                          #   resolveProvider(): provider and model as a pair
@@ -382,19 +389,25 @@ src/
     history-feedback.ts  #   published findings, observations and their signals (observed and
                          #   cleared), feedbackDue()
     history-columns.ts   #   the history tables (columns, keys) and their insert/upsert/update
-    history-migrations.ts #  versioned migrations (PRAGMA user_version); a newer file is refused
+    history-migrations.ts #  versioned migrations (PRAGMA user_version), a table rebuilt with the
+                         #   foreign keys off; a newer file is refused
   watch/                 # pure: what the watch does, data in, decision out
     filters.ts           #   eligibility(): draft, bot, outside author, authors, labels, base
     plan-cycle.ts        #   planCycle(): baseline, seen, enqueue, supersede, gone
-    next-job.ts          #   pickNext(): the next ready job, or until when to wait (pause, limit)
+    next-job.ts          #   pickNext(): the next ready job, queued or waiting for CI, or until
+                         #   when to wait (pause, limit); NOT_STARTED, notStarted()
+    ci-gate.ts           #   ciGate(): CI state, ci.wait, onFailure, when Phada saw the commit and
+                         #   now → review (with the checks still pending), wait (until, deadline)
+                         #   or skip; 2 min for checks to appear, read again each minute
     failures.ts          #   afterFailure(): retries, pauses, failed, stop; rateLimitPause()
     request-policy.ts    #   decideRequest(): closed, outside author, join, already reviewed, ask the
                          #   when command, hourly limit; publishOf()
     pull-facts.ts        #   PullFacts of a listed or fetched pull request
     pr-commands.ts       #   prCommands(): /phada review comments → requests, and the cursor
     time.ts              #   later(): an ISO time plus a duration
-    types.ts             #   JobRecord, RequestRecord, RequestSource, PublishTarget, PullRecord,
-                         #   PauseState, JobStatus, FailureKind
+    types.ts             #   JobRecord (ciDeadline, ciPending), RequestRecord, RequestSource,
+                         #   PublishTarget, PullRecord, PauseState, JobStatus (waiting for CI),
+                         #   FailureKind
   review/                # the engine: data in, result out
     types.ts             #   ReviewRequest, Finding, ReviewResult, ReviewOutcome, …
     prompt-parts.ts      #   text shared by the review and verification prompts: rules section,
@@ -457,7 +470,7 @@ repository and of the local disk as data, and its only value imports from outsid
 `src/github/pull-request-reviews.ts`, `src/github/compare-commits.ts` and the check runs,
 commit statuses and job log of `src/github/`). `src/store/` stores the
 feedback records of `src/publish/feedback.ts` as types only. `src/watch/` imports only types from outside the folder
-(the watch settings, the listed and fetched pull requests and the issue comments) and never reads the clock: `now` comes in as
+(the watch settings, the listed and fetched pull requests, the issue comments and the CI summary) and never reads the clock: `now` comes in as
 data. Its records (`src/watch/types.ts`) are the watch's own; `src/store/` stores them.
 `src/cli/review-wiring.ts` and `src/cli/watch-command.ts` declare the deps they need
 (`ReviewWiringDeps`, `WatchCommandDeps`); `MainDeps` extends them. `src/repository/` runs `git` through

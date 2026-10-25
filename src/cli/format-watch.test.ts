@@ -38,6 +38,20 @@ const published: ReviewRun = {
   },
 }
 
+const WAITING: Pick<JobRecord, 'status' | 'reason' | 'ciDeadline' | 'ciPending'> = {
+  status: 'waiting',
+  reason: 'ci-pending',
+  ciDeadline: local(14, 20).toISOString(),
+  ciPending: ['test', 'build'],
+}
+
+const NO_CHECKS_YET: JobRecord = {
+  ...JOB,
+  ...WAITING,
+  ciDeadline: local(14, 5).toISOString(),
+  ciPending: [],
+}
+
 describe('formatWatchEvent', () => {
   it.each([
     [
@@ -47,6 +61,14 @@ describe('formatWatchEvent', () => {
     [{ kind: 'queued', job: JOB }, '[14:03] Queued acme/shop#3 at a1b2c3d; review after 14:06.'],
     [{ kind: 'superseded', job: JOB }, '[14:03] acme/shop#3: a newer commit replaces a1b2c3d.'],
     [{ kind: 'started', job: JOB }, '[14:03] Reviewing acme/shop#3 at a1b2c3d…'],
+    [
+      { kind: 'waiting', job: { ...JOB, ...WAITING } },
+      '[14:03] acme/shop#3 at a1b2c3d waits for CI until 14:20 (2 pending: test, build).',
+    ],
+    [
+      { kind: 'waiting', job: NO_CHECKS_YET },
+      '[14:03] acme/shop#3 at a1b2c3d waits for CI until 14:05 (no checks yet).',
+    ],
     [
       { kind: 'finished', job: JOB, run: published },
       '[14:03] Published acme/shop#3: https://github.com/acme/shop/pull/3#r1',
@@ -224,6 +246,29 @@ describe('formatWatchStatus', () => {
     )
   })
 
+  it('shows a job waiting for CI with its deadline and the pending checks', () => {
+    const many = ['a', 'b', 'c', 'd', 'e', 'f', 'g']
+    const status: HistoryStatus = {
+      ...STATUS,
+      queued: [
+        { ...JOB, ...WAITING, number: 4, sources: ['watch'] },
+        { ...JOB, ...WAITING, number: 7, ciPending: many },
+        { ...JOB, ...WAITING, number: 8, ciPending: [] },
+        ...STATUS.queued,
+      ],
+    }
+
+    expect(formatWatchStatus(status, undefined, AT)).toContain(
+      [
+        'Queue:',
+        '  acme/shop#4  a1b2c3d  waiting for CI until 2026-10-18 14:20 (2 pending: test, build)',
+        '  acme/shop#7  a1b2c3d  waiting for CI until 2026-10-18 14:20 (7 pending: a, b, c, d, e, 2 more)',
+        '  acme/shop#8  a1b2c3d  waiting for CI until 2026-10-18 14:20 (no checks yet)',
+        '  acme/shop#3  a1b2c3d  after 2026-10-18 14:06 · attempt 2 · asked from slack',
+      ].join('\n'),
+    )
+  })
+
   it('leaves out a pause that is over', () => {
     const over = { ...STATUS, pause: { ...STATUS.pause!, until: local(13, 0).toISOString() } }
 
@@ -254,5 +299,9 @@ describe('formatWatchStatusJson', () => {
     expect(
       JSON.parse(formatWatchStatusJson({ ...STATUS, pause: undefined } as never, undefined, AT)),
     ).toMatchObject({ running: null, pause: null })
+    const waiting = { ...STATUS, queued: [{ ...JOB, ...WAITING }] }
+    expect(JSON.parse(formatWatchStatusJson(waiting, undefined, AT)).queue).toEqual([
+      { ...JOB, ...WAITING },
+    ])
   })
 })

@@ -2027,7 +2027,7 @@ describe('run history', () => {
 })
 
 describe('phada enqueue', () => {
-  const WATCH_CONFIG = 'verify: false\nwatch:\n  repos: [acme/shop]\n'
+  const WATCH_CONFIG = 'verify: false\nci:\n  wait: 0s\nwatch:\n  repos: [acme/shop]\n'
   const withConfig = (text = WATCH_CONFIG) => memoryFiles({ '/cfg/config.yml': text })
 
   it('queues a review of a watched pull request and says no watch is running', async () => {
@@ -2245,7 +2245,7 @@ describe('phada mcp', () => {
 })
 
 describe('phada watch', () => {
-  const WATCH_CONFIG = 'verify: false\nwatch:\n  repos: [acme/shop]\n'
+  const WATCH_CONFIG = 'verify: false\nci:\n  wait: 0s\nwatch:\n  repos: [acme/shop]\n'
   const OPEN_PULL = {
     number: 12,
     headSha: HEAD_SHA,
@@ -2518,7 +2518,7 @@ describe('phada watch', () => {
   it('keeps the review in the history only with publish: false', async () => {
     const h = harness({
       files: withConfig(
-        'verify: false\nwatch:\n  repos:\n    - repo: acme/shop\n      publish: false\n',
+        'verify: false\nci:\n  wait: 0s\nwatch:\n  repos:\n    - repo: acme/shop\n      publish: false\n',
       ),
       listPulls: listed,
     })
@@ -2580,6 +2580,46 @@ describe('phada watch', () => {
 
     expect(await run(['watch', '--backfill'], h.deps)).toBe(1)
     expect(h.stderr()).toContain('phada: Claude Code is not logged in.')
+  })
+
+  it('waits for the pending checks of the head with the default ci.wait, read from the repository config', async () => {
+    const h = harness({
+      files: withConfig('verify: false\nwatch:\n  repos: [acme/shop]\n'),
+      repoFiles: { '.phada/config.yml': 'ci:\n  wait: 10m\n' },
+      listPulls: listed,
+      checkRuns: async () => [
+        {
+          id: 7,
+          name: 'test',
+          status: 'in_progress',
+          conclusion: null,
+          title: null,
+          summary: null,
+          url: null,
+          app: 'github-actions',
+          startedAt: null,
+          completedAt: null,
+        },
+      ],
+    })
+
+    expect(await run(['watch', '--once', '--backfill'], h.deps)).toBe(0)
+    expect(h.posts).toHaveLength(0)
+    expect(h.stderr()).toMatch(
+      /acme\/shop#12 at a1b2c3d waits for CI until \d\d:\d\d \(1 pending: test\)\./,
+    )
+    expect(h.stderr()).not.toContain('Reviewing')
+
+    expect(await run(['watch', '--status', '--format', 'json'], h.deps)).toBe(0)
+    expect(JSON.parse(h.stdout()).queue).toEqual([
+      expect.objectContaining({
+        number: 12,
+        status: 'waiting',
+        reason: 'ci-pending',
+        ciDeadline: '2026-10-18T12:10:00.000Z',
+        ciPending: ['test'],
+      }),
+    ])
   })
 
   it('prints the status from the history', async () => {

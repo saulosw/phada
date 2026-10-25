@@ -14,7 +14,7 @@ import type { WhenInput } from './submit-request.js'
 import { submitRequest } from './submit-request.js'
 import type { ReviewRun } from './review-and-publish.js'
 import { watchRepositories } from './watch-repositories.js'
-import type { WatchDeps } from './watch-repositories.js'
+import type { PullCi, WatchDeps } from './watch-repositories.js'
 
 const dir = mkdtempSync(join(tmpdir(), 'phada-watch-'))
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
@@ -80,6 +80,7 @@ interface Script {
   whenRefusal?: string
   comments?: (since: string) => CommentListing
   baselineAt?: string
+  ci?: (job: JobRecord, now: number) => PullCi | undefined
 }
 
 async function setup(script: Script, history?: HistoryStore) {
@@ -99,6 +100,7 @@ async function setup(script: Script, history?: HistoryStore) {
   const events: string[] = []
   const recorded: string[] = []
   const indexed: number[] = []
+  const ciReads: string[] = []
   const deps: WatchDeps = {
     history: store,
     listPulls: async () => {
@@ -142,6 +144,14 @@ async function setup(script: Script, history?: HistoryStore) {
       asked.push([...requests])
       return script.runJob?.(job, now) ?? published(job)
     },
+    ...(script.ci === undefined
+      ? {}
+      : {
+          readCi: async (job: JobRecord) => {
+            ciReads.push(`#${job.number} @${(now - START) / MIN}`)
+            return script.ci?.(job, now - START)
+          },
+        }),
     recordRun: (job, outcome) => {
       recorded.push(`${job.number}:${'run' in outcome ? outcome.run.status : outcome.kind}`)
     },
@@ -174,6 +184,10 @@ async function setup(script: Script, history?: HistoryStore) {
       queued: (job) => events.push(`queued #${job.number} ${job.headSha.slice(0, 1)}`),
       superseded: (job) => events.push(`superseded #${job.number}`),
       started: (job) => events.push(`started #${job.number} @${(now - START) / MIN}`),
+      waiting: (job) =>
+        events.push(
+          `waiting #${job.number} @${(now - START) / MIN} until ${(Date.parse(job.ciDeadline ?? '') - START) / MIN} [${(job.ciPending ?? []).join(',')}]`,
+        ),
       finished: (job) => events.push(`finished #${job.number}`),
       retry: (job, at) => events.push(`retry #${job.number} @${(Date.parse(at) - START) / MIN}`),
       paused: (pause) => events.push(`paused until ${(Date.parse(pause.until) - START) / MIN}`),
@@ -199,6 +213,7 @@ async function setup(script: Script, history?: HistoryStore) {
     events,
     recorded,
     indexed,
+    ciReads,
     now: () => now - START,
   }
 }
@@ -901,6 +916,119 @@ describe('watchRepositories', () => {
 
       expect(await watchRepositories(input({ once: true }), h.deps)).toEqual({ reason: 'once' })
       expect(h.events).toContain('warning could not refresh the feedback (disk full)')
+    })
+  })
+
+  describe('waiting for CI', () => {
+    const newPull = (cycle: number) => ({
+      status: 'ok' as const,
+      pulls: cycle === 1 ? [] : [pull(3)],
+    })
+    const summary = (
+      state: 'none' | 'pending' | 'passing' | 'failing',
+      pending: string[] = [],
+    ) => ({
+      waitMs: 15 * MIN,
+      summary: { state, pending, failing: [] },
+    })
+
+    it('waits for pending checks without starting the job, reads them each minute and reviews once they pass', async () => {
+      const h = await setup({
+        listings: newPull,
+        ci: (_job, now) => (now < 11 * MIN ? summary('pending', ['test']) : summary('passing')),
+        stopWhen: ({ ran }) => ran.length === 1,
+      })
+
+      await watchRepositories(input(), h.deps)
+
+      expect(h.events).toEqual([
+        'baseline acme/shop 0',
+        'queued #3 a',
+        'waiting #3 @8 until 20 [test]',
+        'started #3 @11',
+        'finished #3',
+      ])
+      expect(h.ciReads).toEqual(['#3 @8', '#3 @9', '#3 @10', '#3 @11'])
+      expect(h.notified).toEqual(['started #3 [watch]', 'finished #3 [watch]'])
+      expect(h.recorded).toEqual(['3:reviewed'])
+      expect(h.ran[0]?.reason).toBeUndefined()
+      expect(h.store.jobs({ status: ['done'] })).toHaveLength(1)
+    })
+
+    it('reviews at the deadline with the checks still pending', async () => {
+      const h = await setup({
+        listings: newPull,
+        ci: () => summary('pending', ['e2e']),
+        stopWhen: ({ ran }) => ran.length === 1,
+      })
+
+      await watchRepositories(input(), h.deps)
+
+      expect(h.events).toContain('started #3 @20')
+      expect(h.ciReads).toHaveLength(13)
+      expect(h.ran[0]?.ciPending).toEqual(['e2e'])
+      expect(h.store.jobs({ status: ['done'] })[0]?.ciPending).toEqual(['e2e'])
+    })
+
+    it('reviews the other jobs while one waits for CI', async () => {
+      const h = await setup({
+        listings: (cycle) => ({ status: 'ok', pulls: cycle === 1 ? [] : [pull(3), pull(4)] }),
+        ci: (job) => (job.number === 3 ? summary('pending', ['test']) : summary('passing')),
+        stopWhen: ({ ran }) => ran.length === 1,
+      })
+
+      await watchRepositories(input(), h.deps)
+
+      expect(h.ran.map(({ number }) => number)).toEqual([4])
+      expect(h.store.jobs({ status: ['waiting'] })).toEqual([
+        expect.objectContaining({ number: 3, reason: 'ci-pending', ciPending: ['test'] }),
+      ])
+    })
+
+    it('waits 2 minutes for checks to appear on a commit it just saw, then reviews without CI', async () => {
+      const h = await setup({
+        listings: () => ({ status: 'ok', pulls: [pull(3)] }),
+        baselineAt: BASELINE,
+        ci: () => summary('none'),
+        stopWhen: ({ ran }) => ran.length === 1,
+      })
+      await submitRequest(
+        { repo: 'acme/shop', number: 3, source: 'slack', publish: 'none' },
+        h.deps.submit,
+      )
+
+      await watchRepositories(input(), h.deps)
+
+      expect(h.events).toEqual(['waiting #3 @0 until 2 []', 'started #3 @2', 'finished #3'])
+    })
+
+    it('does not wait when the CI settings turn the wait off', async () => {
+      const h = await setup({
+        listings: newPull,
+        ci: () => undefined,
+        stopWhen: ({ ran }) => ran.length === 1,
+      })
+
+      await watchRepositories(input(), h.deps)
+
+      expect(h.events).toContain('started #3 @8')
+    })
+
+    it('reviews without waiting when the checks cannot be read', async () => {
+      const h = await setup({
+        listings: newPull,
+        ci: () => {
+          throw new Error('checks:read is missing')
+        },
+        stopWhen: ({ ran }) => ran.length === 1,
+      })
+
+      await watchRepositories(input(), h.deps)
+
+      expect(h.events).toContain(
+        'warning acme/shop#3: the checks were not read (checks:read is missing); reviewing without waiting for CI',
+      )
+      expect(h.events).toContain('started #3 @8')
     })
   })
 })

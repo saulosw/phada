@@ -65,6 +65,8 @@ import type {
   ReviewEventSinkDeps,
   ReviewEventSinkSettings,
 } from './review-event-sinks.js'
+import { NOT_STARTED } from '../watch/next-job.js'
+import { ciGateReader } from './ci-gate-reader.js'
 import { printWatchEvents } from './watch-events.js'
 import { watchStatusText } from './watch-status.js'
 import { ABORTED_EXIT_CODE, createStopControl, trackRunningJob } from './watch-stop.js'
@@ -240,6 +242,7 @@ function watchDeps(
       deps.listIssueComments({ ...splitRepoName(repo), token, since, ...withEtag(etag) }),
     react: (repo, commentId) =>
       deps.addCommentReaction({ ...splitRepoName(repo), token, commentId }),
+    readCi: ciGateReader(deps, token),
     runJob: async (job, requests) => {
       const setup = await jobSetup(job.repo, deps, check)
       choices.set(job.id, setup.choice)
@@ -304,7 +307,7 @@ function watchDeps(
         readyJobs: () => {
           const now = deps.clock().toISOString()
           return history
-            .jobs({ status: ['queued'] })
+            .jobs({ status: NOT_STARTED })
             .filter(({ notBefore }) => notBefore <= now)
             .map(({ id }) => id)
         },

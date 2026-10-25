@@ -8,6 +8,7 @@ export function printWatchEvents(print: (event: WatchEventView) => void): WatchE
     queued: (job) => print({ kind: 'queued', job }),
     superseded: (job) => print({ kind: 'superseded', job }),
     started: (job) => print({ kind: 'started', job }),
+    waiting: (job) => print({ kind: 'waiting', job }),
     finished: (job, run) => print({ kind: 'finished', job, run }),
     retry: (job, at, error) => print({ kind: 'retry', job, at, error }),
     paused: (pause) => print({ kind: 'paused', pause }),
