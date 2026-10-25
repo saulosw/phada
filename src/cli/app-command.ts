@@ -1,4 +1,3 @@
-import { join } from 'node:path'
 import type { ProviderCheckers } from '../app/check-providers.js'
 import { readReviewDetail, readReviews } from '../app/read-history.js'
 import { readLearnings } from '../app/read-learnings.js'
@@ -17,7 +16,7 @@ import {
   listUserRepoConfigs,
   loadTopLevelUserLayers,
   loadUserLayers,
-  userConfigDir,
+  userConfigFile,
 } from '../config/user-config.js'
 import { resolveWatchSettings } from '../config/watch-settings.js'
 import type { WatchSettings } from '../config/watch-settings.js'
@@ -27,6 +26,7 @@ import { checkOllamaStatus } from '../providers/ollama-status.js'
 import { openExistingHistoryStore, openHistoryStore } from '../store/history-store.js'
 import type { HistoryStore } from '../store/history-store.js'
 import { readObservedEdges } from '../store/observed-store.js'
+import { splitRepoName } from '../github/pull-request-ref.js'
 import { fetchAuthenticatedUser } from '../github/user.js'
 import type { FetchUserOptions, GitHubUser } from '../github/user.js'
 import type { AppDeps, AppResult, openApp, Scheduler } from '../tui/open-app.js'
@@ -182,16 +182,13 @@ function colorEnv(env: NodeJS.ProcessEnv): ColorEnv {
 function repositoryReaders(deps: AppCommandDeps, history: AppHistory): RepositoryReaders {
   const { env, home, files } = deps
   return {
-    configFile: join(userConfigDir(env, home), 'config.yml'),
+    configFile: userConfigFile(env, home),
     topLevelLayers: () => loadTopLevelUserLayers(deps),
-    userLayers: (repo) => {
-      const [owner = '', name = ''] = repo.split('/')
-      return loadUserLayers({ env, home, files, owner, repo: name })
-    },
+    userLayers: (repo) => loadUserLayers({ env, home, files, ...splitRepoName(repo) }),
     userRepoConfigs: () => listUserRepoConfigs(deps),
     history: () => history.current(),
     indexFile: async (repo) => {
-      const [owner = '', name = ''] = repo.split('/')
+      const { owner, repo: name } = splitRepoName(repo)
       const path = repositoryCache(env, home, owner, name).index
       return (await files.exists(path)) ? { path, bytes: await deps.pathSize(path) } : null
     },
@@ -204,7 +201,7 @@ function automationReaders(deps: AppCommandDeps): AutomationReaders {
     set: (deps.env[variable]?.trim() ?? '') !== '',
   })
   return {
-    configFile: join(userConfigDir(deps.env, deps.home), 'config.yml'),
+    configFile: userConfigFile(deps.env, deps.home),
     topLevelLayers: () => loadTopLevelUserLayers(deps),
     slackTokens: () => ({ bot: token(SLACK_BOT_TOKEN), app: token(SLACK_APP_TOKEN) }),
   }
@@ -213,7 +210,7 @@ function automationReaders(deps: AppCommandDeps): AutomationReaders {
 async function providerConfig(deps: AppCommandDeps): Promise<ProviderConfigInput> {
   return {
     layers: await loadTopLevelUserLayers(deps),
-    configPath: join(userConfigDir(deps.env, deps.home), 'config.yml'),
+    configPath: userConfigFile(deps.env, deps.home),
   }
 }
 
@@ -226,7 +223,7 @@ function statusCheckers(env: NodeJS.ProcessEnv): ProviderCheckers {
 }
 
 async function observedOf(deps: AppCommandDeps, repo: string): Promise<ObservedRead> {
-  const [owner = '', name = ''] = repo.split('/')
+  const { owner, repo: name } = splitRepoName(repo)
   const read = await (deps.observed?.read ?? readObservedEdges)(
     repositoryCache(deps.env, deps.home, owner, name).observed,
   )

@@ -8,6 +8,7 @@ import {
   loadTopLevelUserLayers,
   loadUserLayers,
   userConfigDir,
+  userConfigFile,
   userRepoDir,
 } from './user-config.js'
 
@@ -30,6 +31,10 @@ describe('userConfigDir', () => {
     [{ PHADA_CONFIG_HOME: '  ', XDG_CONFIG_HOME: '' }, '/home/u/.config/phada'],
   ])('resolves %o', (env, dir) => {
     expect(userConfigDir(env, '/home/u')).toBe(dir)
+  })
+
+  it('names the config.yml of the folder', () => {
+    expect(userConfigFile({ PHADA_CONFIG_HOME: '/cfg' }, '/home/u')).toBe('/cfg/config.yml')
   })
 
   it('lowercases the per-repository folder', () => {

@@ -5,11 +5,17 @@ import type { LocalFileSystem } from './local-files.js'
 import { parseConfigText } from './parse-config.js'
 import type { ConfigLayer, LayerKind } from './types.js'
 
+const CONFIG_FILE = 'config.yml'
+
 export function userConfigDir(env: NodeJS.ProcessEnv, home: string): string {
   const explicit = env.PHADA_CONFIG_HOME?.trim()
   if (explicit) return explicit
   const xdg = env.XDG_CONFIG_HOME?.trim()
   return xdg ? join(xdg, 'phada') : join(home, '.config', 'phada')
+}
+
+export function userConfigFile(env: NodeJS.ProcessEnv, home: string): string {
+  return join(userConfigDir(env, home), CONFIG_FILE)
 }
 
 export function userRepoDir(
@@ -55,7 +61,7 @@ async function loadLayer(
   dir: string,
   repo?: { owner: string; repo: string },
 ): Promise<ConfigLayer | undefined> {
-  const configPath = join(dir, 'config.yml')
+  const configPath = join(dir, CONFIG_FILE)
   const [configText, rulesText] = await Promise.all([
     files.readText(configPath),
     files.readText(join(dir, 'rules.md')),

@@ -3,6 +3,7 @@ import type { BranchRules, LocalRules, PullRequestRules } from '../app/read-rule
 import type { ConfigLayer } from '../config/types.js'
 import { loadUserLayers } from '../config/user-config.js'
 import type { ContextSources } from '../context/types.js'
+import { splitRepoName } from '../github/pull-request-ref.js'
 import type { RepositoryFilesOptions } from '../github/repository-files.js'
 import type { RepositoryInfo } from '../github/repository.js'
 import { contextSourcesAt } from './context-sources.js'
@@ -26,7 +27,7 @@ export function rulesReaders(deps: RulesReaderDeps): RulesReaders {
     readRepositoryRules: async (repo) => {
       const token = await readGitHubToken(deps)
       if (token === undefined) return { status: 'no-token' }
-      const repository = { ...ownerAndName(repo), token }
+      const repository = { ...splitRepoName(repo), token }
       return readRules({
         target: { kind: 'default-branch' },
         userLayers: await userLayersOf(deps, repo),
@@ -40,7 +41,7 @@ export function rulesReaders(deps: RulesReaderDeps): RulesReaders {
     readPullRequestRules: async (repo, number) => {
       const token = await readGitHubToken(deps)
       if (token === undefined) return { status: 'no-token' }
-      const repository = { ...ownerAndName(repo), token }
+      const repository = { ...splitRepoName(repo), token }
       const userLayers = await userLayersOf(deps, repo)
       const pullRequest = await deps.fetchPullRequest({ ...repository, number })
       const sources = sharedSources(contextSourcesAt(deps, repository, pullRequest.baseSha))
@@ -66,17 +67,12 @@ export function rulesReaders(deps: RulesReaderDeps): RulesReaders {
   }
 }
 
-function ownerAndName(repo: string): { owner: string; repo: string } {
-  const [owner = '', name = ''] = repo.split('/')
-  return { owner, repo: name }
-}
-
 function userLayersOf(deps: RulesReaderDeps, repo: string): Promise<ConfigLayer[]> {
   return loadUserLayers({
     env: deps.env,
     home: deps.home,
     files: deps.files,
-    ...ownerAndName(repo),
+    ...splitRepoName(repo),
   })
 }
 

@@ -1,7 +1,7 @@
-import { dirname, join } from 'node:path'
+import { dirname } from 'node:path'
 import { skillPolicy } from '../app/native-skill.js'
 import type { ReviewSettings } from '../config/merge-config.js'
-import { userConfigDir } from '../config/user-config.js'
+import { userConfigFile } from '../config/user-config.js'
 import type { PullRequest } from '../github/pull-request.js'
 import { READ_ONLY_COMMANDS } from '../providers/claude-skill-args.js'
 import type { BlockedCommand, CommandPolicy } from '../providers/types.js'
@@ -78,7 +78,7 @@ export function blockedFixer(input: {
   const context: FixContext = {
     external:
       !input.pullRequest.private && !TRUSTED_ASSOCIATIONS.has(input.pullRequest.association),
-    configPath: join(userConfigDir(input.env, input.home), 'config.yml'),
+    configPath: userConfigFile(input.env, input.home),
     policy: skillPolicy(input.pullRequest, input.review ?? {}).commands,
   }
   return (blocked) => blockedFix(blocked, context)
