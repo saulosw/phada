@@ -352,7 +352,14 @@ function ReviewRows({
     return <Text color={colors.error}>{status.text}</Text>
   }
   const runs = reviews.value.runs.slice(0, rows)
-  if (runs.length === 0) return <Text color={colors.dim}>{messages.home.reviews.none}</Text>
+  if (runs.length === 0) {
+    return (
+      <Text color={colors.dim}>
+        {GAP}
+        {messages.home.reviews.none}
+      </Text>
+    )
+  }
   const cells = runs.map((run) => ({
     run,
     ref: oneLine(`${run.repo}#${run.number}`),
