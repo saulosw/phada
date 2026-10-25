@@ -7,6 +7,8 @@ import type { AppDeps, AppHost, AppResult } from '../tui/open-app.js'
 import { runApp } from './app-command.js'
 import type { AppCommandDeps } from './app-command.js'
 import { UsageError } from './errors.js'
+import { pullRequestFixture } from '../../test/support/pull-request.js'
+import { reviewState } from '../../test/support/review-state.js'
 
 function terminal(isTTY: boolean) {
   return {
@@ -26,6 +28,7 @@ function deps(
     history?: HistoryStore
     holder?: number
     observed?: AppCommandDeps['observed']
+    github?: FakeGitHub
     during?: (deps: AppDeps) => Promise<void>
     ghToken?: string
   } = {},
@@ -86,6 +89,7 @@ function deps(
       userTokens.push(token)
       return { login: 'ana' }
     },
+    ...(options.github ?? fakeGitHub()).readers,
   }
   app.env.PHADA_DATA_HOME = '/data'
   return { app, opened, files, historyPaths, ghCalls, userTokens }
@@ -388,3 +392,200 @@ function fakeHistory(runs: RunRecord[]) {
   }
   return store as typeof store & HistoryStore
 }
+
+type FakeGitHub = ReturnType<typeof fakeGitHub>
+
+function fakeGitHub(
+  options: { files?: Record<string, string>; ghToken?: string; failTree?: boolean } = {},
+) {
+  const files = options.files ?? {}
+  const calls: string[] = []
+  const pull = pullRequestFixture({ baseSha: 'base0001', headSha: 'head0001' })
+  const readers = {
+    ghToken: async () => {
+      calls.push('gh')
+      return options.ghToken
+    },
+    fetchRepository: async ({
+      owner,
+      repo,
+      token,
+    }: {
+      owner: string
+      repo: string
+      token: string
+    }) => {
+      calls.push(`repository ${owner}/${repo} ${token}`)
+      return { repo: `${owner}/${repo}`, private: false, defaultBranch: 'trunk', empty: false }
+    },
+    fetchPullRequest: async ({ number, token }: { number: number; token: string }) => {
+      calls.push(`pull ${number} ${token}`)
+      return { ...pull, number }
+    },
+    fetchRepositoryTree: async ({ sha }: { sha: string }) => {
+      calls.push(`tree ${sha}`)
+      if (options.failTree === true) throw new Error('Resource not accessible by integration')
+      return {
+        entries: Object.entries(files).map(([path, text]) => ({ path, size: text.length })),
+        truncated: false,
+      }
+    },
+    fetchRepositoryFile: async ({ path, ref }: { path: string; ref: string }) => {
+      calls.push(`file ${path} ${ref}`)
+      return files[path] ?? null
+    },
+    fetchReviewState: async () => {
+      calls.push('review state')
+      return reviewState()
+    },
+    fetchPullComments: async () => {
+      calls.push('comments')
+      return []
+    },
+    fetchCheckRuns: async () => {
+      calls.push('check runs')
+      return []
+    },
+    fetchCommitStatuses: async () => [],
+    fetchCheckAnnotations: async () => [],
+    fetchJobLog: async () => ({ text: '', partial: false }),
+  }
+  return { readers, calls }
+}
+
+describe('the rules readers', () => {
+  it('read the lens and the rules of the user config without GitHub', async () => {
+    const github = fakeGitHub()
+    const seen: unknown[] = []
+    const { app } = deps({
+      config:
+        'review:\n  prompt:\n    file: lens.md\n    mode: replace\nrules:\n  - rule: Use UTC.\n',
+      files: { '/cfg/repos/acme/shop/rules.md': 'Money in cents.' },
+      github,
+      during: async (appDeps) => {
+        seen.push(await appDeps.readLocalRules('acme/shop'))
+      },
+    })
+
+    await runApp(app)
+
+    expect(seen).toEqual([
+      {
+        lens: {
+          kind: 'prompt',
+          prompt: {
+            file: '/cfg/lens.md',
+            mode: 'replace',
+            origin: 'user:config.yml',
+            source: 'local',
+          },
+        },
+        rules: [
+          { key: 'user:config.yml#1', text: 'Use UTC.', origin: 'global' },
+          { key: 'user:repos/acme/shop/rules.md', text: 'Money in cents.', origin: 'repository' },
+        ],
+        warnings: [],
+      },
+    ])
+    expect(github.calls).toEqual([])
+  })
+
+  it('say there is no GitHub token instead of reading the repository or a pull request', async () => {
+    const github = fakeGitHub()
+    const seen: unknown[] = []
+    const { app } = deps({
+      github,
+      during: async (appDeps) => {
+        seen.push(await appDeps.readRepositoryRules('acme/shop'))
+        seen.push(await appDeps.readPullRequestRules('acme/shop', 15))
+      },
+    })
+
+    await runApp(app)
+
+    expect(seen).toEqual([{ status: 'no-token' }, { status: 'no-token' }])
+    expect(github.calls.filter((call) => call !== 'gh')).toEqual([])
+  })
+
+  it('read the .phada/ folder of the default branch with the token of the gh login', async () => {
+    const github = fakeGitHub({
+      ghToken: 'gho_login',
+      files: {
+        '.phada/config.yml': 'rules:\n  - id: cents\n    rule: Money in cents.\n',
+        'AGENTS.md': 'Agents.',
+      },
+    })
+    let read: unknown
+    const { app } = deps({
+      github,
+      during: async (appDeps) => {
+        read = await appDeps.readRepositoryRules('acme/shop')
+      },
+    })
+
+    await runApp(app)
+
+    expect(read).toMatchObject({
+      status: 'read',
+      target: { kind: 'default-branch', ref: 'trunk' },
+      lens: { kind: 'built-in' },
+    })
+    const report = (read as { report: { rules: { key: string }[]; docs: { path: string }[] } })
+      .report
+    expect(report.rules.map(({ key }) => key)).toEqual(['cents'])
+    expect(report.docs.map(({ path }) => path)).toEqual(['AGENTS.md'])
+    expect(github.calls).toContain('repository acme/shop gho_login')
+    expect(github.calls).toContain('tree trunk')
+  })
+
+  it('read the rules a pull request loads and its prompt, fetching the pull request and the tree once', async () => {
+    const github = fakeGitHub({
+      files: {
+        '.phada/config.yml': 'review:\n  prompt:\n    file: .phada/lens.md\n',
+        '.phada/lens.md': 'Look at money.',
+      },
+    })
+    let read: unknown
+    const { app } = deps({
+      env: { GITHUB_TOKEN: 'ghp_env' },
+      github,
+      during: async (appDeps) => {
+        read = await appDeps.readPullRequestRules('acme/shop', 15)
+      },
+    })
+
+    await runApp(app)
+
+    expect(read).toMatchObject({
+      status: 'read',
+      rules: {
+        status: 'read',
+        target: { kind: 'pull-request', number: 15, baseSha: 'base0001' },
+        lens: { kind: 'prompt', prompt: { file: '.phada/lens.md', origin: '.phada/config.yml' } },
+      },
+      prompt: { pullRequest: { repo: 'acme/shop', number: 15, headSha: 'head0001' } },
+    })
+    const prompt = (read as { prompt: { passes: { data: { name: string }[] }[] } }).prompt
+    expect(prompt.passes[0]?.data.map(({ name }) => name)).toContain('PHADA_DIFF')
+    expect(github.calls.filter((call) => call.startsWith('pull '))).toEqual(['pull 15 ghp_env'])
+    expect(github.calls.filter((call) => call.startsWith('tree '))).toEqual(['tree base0001'])
+    expect(github.calls).toContain('review state')
+    expect(github.calls).toContain('check runs')
+    expect(github.calls).not.toContain('gh')
+  })
+
+  it('fail with the error of GitHub, for the screen to show', async () => {
+    const github = fakeGitHub({ ghToken: 'gho_login', failTree: true })
+    let error: unknown
+    const { app } = deps({
+      github,
+      during: async (appDeps) => {
+        error = await appDeps.readRepositoryRules('acme/shop').catch((thrown: unknown) => thrown)
+      },
+    })
+
+    await runApp(app)
+
+    expect(error).toEqual(new Error('Resource not accessible by integration'))
+  })
+})

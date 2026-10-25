@@ -31,6 +31,8 @@ import { fetchAuthenticatedUser } from '../github/user.js'
 import type { FetchUserOptions, GitHubUser } from '../github/user.js'
 import type { AppDeps, AppResult, openApp, Scheduler } from '../tui/open-app.js'
 import { appHistory } from './app-history.js'
+import { rulesReaders } from './app-rules.js'
+import type { RulesReaderDeps } from './app-rules.js'
 import type { AppHistory } from './app-history.js'
 import { UsageError } from './errors.js'
 import { readGitHubAccess } from './github-access.js'
@@ -41,7 +43,7 @@ import { SLACK_APP_TOKEN, SLACK_BOT_TOKEN } from './review-event-sinks.js'
 
 export type StopSignal = 'SIGINT' | 'SIGTERM'
 
-export interface AppCommandDeps {
+export interface AppCommandDeps extends RulesReaderDeps {
   env: NodeJS.ProcessEnv
   home: string
   cwd: string
@@ -144,6 +146,7 @@ async function appDeps(deps: AppCommandDeps, history: AppHistory, lock: string):
         ghToken: ghTokenReader(deps.env, deps.runGh),
         fetchUser: deps.fetchUser ?? fetchAuthenticatedUser,
       }),
+    ...rulesReaders(deps),
   }
   try {
     const layers = await loadTopLevelUserLayers(deps)

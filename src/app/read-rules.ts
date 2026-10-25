@@ -5,6 +5,7 @@ import { listContext } from '../context/list-context.js'
 import { loadContext } from '../context/load-context.js'
 import type { ContextReport, ContextSources } from '../context/types.js'
 import type { PullRequest } from '../github/pull-request.js'
+import type { PromptView } from './inspect-prompt.js'
 import type { RepositoryInfo } from '../github/repository.js'
 import { configuredLens } from './review-passes.js'
 import type { ConfiguredLens } from './review-passes.js'
@@ -31,6 +32,17 @@ export type RepositoryRules =
       lens: ConfiguredLens
     }
 
+export type ReadRules = Extract<RepositoryRules, { status: 'read' }>
+
+export interface NoGitHubToken {
+  status: 'no-token'
+}
+
+export type BranchRules = RepositoryRules | NoGitHubToken
+
+export type PullRequestRules =
+  NoGitHubToken | { status: 'read'; rules: ReadRules; prompt: PromptView }
+
 export interface LocalRules {
   lens: ConfiguredLens
   rules: UserRule[]
@@ -46,11 +58,17 @@ export function localRules(userLayers: readonly ConfigLayer[]): LocalRules {
   }
 }
 
-export async function readRules(input: {
-  target: RulesTarget
+interface RulesInput<T extends RulesTarget> {
+  target: T
   userLayers: readonly ConfigLayer[]
   readers: RulesReaders
-}): Promise<RepositoryRules> {
+}
+
+export async function readRules(
+  input: RulesInput<Extract<RulesTarget, { kind: 'pull-request' }>>,
+): Promise<ReadRules>
+export async function readRules(input: RulesInput<RulesTarget>): Promise<RepositoryRules>
+export async function readRules(input: RulesInput<RulesTarget>): Promise<RepositoryRules> {
   const { target, userLayers, readers } = input
   if (target.kind === 'pull-request') {
     const { diff, baseSha } = await readers.fetchPullRequest(target.number)

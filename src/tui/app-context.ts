@@ -7,6 +7,7 @@ import type { Learnings } from '../app/read-learnings.js'
 import type { ProviderReport, ProviderSetup } from '../app/read-provider.js'
 import type { QueueView } from '../app/read-queue.js'
 import type { AutomationView } from '../app/read-automation.js'
+import type { BranchRules, LocalRules, PullRequestRules } from '../app/read-rules.js'
 import type { RepositoryDetail, RepositoryList } from '../app/read-repositories.js'
 import type { UiMessages } from './i18n/messages.js'
 import type { TerminalSize } from './terminal-size.js'
@@ -35,6 +36,9 @@ export interface AppDeps {
   readProviders(): Promise<ProviderReport>
   readLearnings(): Promise<Learnings>
   readGitHub(): Promise<GitHubAccess>
+  readLocalRules(repo: string): Promise<LocalRules>
+  readRepositoryRules(repo: string): Promise<BranchRules>
+  readPullRequestRules(repo: string, number: number): Promise<PullRequestRules>
 }
 
 export interface KeyHint {
