@@ -44,7 +44,8 @@ src/
                          #   observed relations → reports; progress through typed events;
                          #   loadPullRequestContext()
     review-and-publish.ts # reviewAndPublish(): fetch → decideRun → context → decideRun with the
-                         #   diff fingerprint → threads to recheck (compare) → the conversation
+                         #   diff fingerprint → [--wait-ci: waitForCi()] → threads to recheck
+                         #   (compare) → the conversation
                          #   (comments read unless conversation is off) → the checks of the head
                          #   (readCi, unless ci.read is off) → reviewPullRequest → plan → render
                          #   (injected, with the CI summary) → [checkHead] → reply and resolve
@@ -74,6 +75,10 @@ src/
     related-report.ts    #   rankOpened(), buildRelatedReport(), relatedSummaries(): the related
                          #   repositories for the prompt, the CLI and the JSON
     error-message.ts     #   errorMessage(): the message of any thrown value
+    wait-for-ci.ts       #   waitForCi(): the checks that count read through the CI gate (the
+                         #   command's start as when Phada saw the commit, never skipping) and
+                         #   slept on until it reviews; ciWaiting/ciWaited events, a failed read
+                         #   ends the wait with a warning; WaitClock (now and sleep injected)
     read-ci.ts           #   readCheckEntries(): check runs and statuses → the checks that count
                          #   (ci.checks: names or globs); readCi(): + the annotations and job logs
                          #   of the failing ones → buildCi(); each failure a warning (kept on
@@ -96,9 +101,9 @@ src/
   cli/                   # terminal edge
     args.ts              #   parseCliArgs(): `review` (--dry-run, --force, --verify/--no-verify,
                          #   --investigate/--no-investigate, --no-resolve, --no-conversation,
-                         #   --no-ci, --skill), `init`, `index` (--ref, --format text|json), `rules`
-                         #   (--format text|json), `prompt` (--default, --skill, --format
-                         #   text|json), `watch` (--once,
+                         #   --no-ci, --wait-ci, --skill), `init`, `index` (--ref, --format
+                         #   text|json), `rules` (--format text|json), `prompt` (--default,
+                         #   --skill, --format text|json), `watch` (--once,
                          #   --backfill, --status) and `history` (--since, --limit, --stats,
                          #   --refresh, prune --older-than), `enqueue` (--publish, --format) and
                          #   `mcp` commands, --help, --version; USAGE, REVIEW_USAGE, INIT_USAGE,
@@ -195,6 +200,8 @@ src/
     format-error.ts      #   error → one line + exit code (2 usage, 1 failure); --debug details
     progress.ts          #   withProgress(): ReviewProvider decorator with a live timer on a TTY;
                          #   indexProgress(): the "Indexing N files…" lines
+    ci-wait-progress.ts  #   ciWaitProgress(): "Waiting for CI… 3m12s, 2 pending: …" live on a
+                         #   TTY, one line at the start and one at the end otherwise
     terminal-text.ts     #   toTerminalText(): strips control and bidi characters from external text
     units.ts             #   duration, tokens, bytes, counts
   config/                # the config files: .phada/ in the repository and the user's own

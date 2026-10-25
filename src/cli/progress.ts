@@ -6,8 +6,8 @@ export interface TextOutput {
   isTTY?: boolean
 }
 
-const TICK_MS = 1000
-const CLEAR_LINE = '\r\u001B[2K'
+export const TICK_MS = 1000
+export const CLEAR_LINE = '\r\u001B[2K'
 
 export function withProgress(
   provider: ReviewProvider,

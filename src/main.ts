@@ -22,6 +22,7 @@ import { formatRelatedSection } from './cli/format-related.js'
 import { formatPassesSection, formatSkillRunLines } from './cli/format-passes.js'
 import type { BlockedFix } from './cli/format-passes.js'
 import { blockedFixer } from './cli/blocked-fix.js'
+import { ciWaitProgress } from './cli/ci-wait-progress.js'
 import type { ReviewOutcome } from './review/types.js'
 import {
   formatPublishedMessage,
@@ -159,6 +160,7 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
         force: command.force,
         dryRun: command.dryRun,
         publish: true,
+        ...(command.waitCi === true ? { waitCi: { since: startedAt } } : {}),
         options: {
           language: command.language,
           minConfidence: command.minConfidence,
@@ -201,6 +203,8 @@ function reviewAndPublishDeps(
   command: ReviewCommand,
 ): ReviewAndPublishDeps {
   const target = { ...command.ref, token }
+  const ciWait = ciWaitProgress(deps.stderr, deps.clock)
+  const forever = new AbortController().signal
   return {
     fetchPullRequest: (ref) => deps.fetchPullRequest({ ...ref, token }),
     fetchReviewState: (ref) => deps.fetchReviewState({ ...ref, token }),
@@ -224,6 +228,10 @@ function reviewAndPublishDeps(
         head: pullRequest.headSha,
       }),
     replyAndResolve: (threadId, body) => deps.replyAndResolve({ token, threadId, body }),
+    clock: {
+      now: () => deps.clock().toISOString(),
+      sleep: (ms) => deps.sleep(ms, forever),
+    },
     events: {
       fetched: (pullRequest) => deps.stderr.write(`${formatPullRequestSummary(pullRequest)}\n`),
       reviewed: (reviewed, pullRequest) => printReviewed(deps, command, reviewed, pullRequest),
@@ -231,6 +239,8 @@ function reviewAndPublishDeps(
       warning: (message) => deps.stderr.write(`Warning: ${toTerminalText(message)}\n`),
       conversationRead: (conversation) => writeLine(deps, formatConversationLine(conversation)),
       ciRead: (ci) => writeLine(deps, formatCiLine(ci)),
+      ciWaiting: (wait) => ciWait.waiting(wait),
+      ciWaited: (wait) => ciWait.waited(wait),
     },
   }
 }
