@@ -9,7 +9,7 @@ import { listedPullFacts } from '../watch/pull-facts.js'
 import type { FailureKind, JobRecord, PauseState, RequestRecord } from '../watch/types.js'
 import { afterFailure, MAX_ATTEMPTS, rateLimitPause } from '../watch/failures.js'
 import { later } from '../watch/time.js'
-import { ciGate } from '../watch/ci-gate.js'
+import { CI_PENDING, ciGate } from '../watch/ci-gate.js'
 import type { CiFailurePolicy } from '../watch/ci-gate.js'
 import { CI_FAILING, ciRevisits, requeueForCi, revisitsCi } from '../watch/ci-revisit.js'
 import { NOT_STARTED, notStarted, pickNext, RATE_WINDOW_MS } from '../watch/next-job.js'
@@ -324,7 +324,7 @@ type JobStart = Partial<Pick<JobRecord, 'reason' | 'ciPending'>>
 
 async function passCiGate(job: JobRecord, deps: WatchDeps): Promise<JobStart | undefined> {
   const start: JobStart = {
-    ...(job.reason === 'ci-pending' ? { reason: undefined } : {}),
+    ...(job.reason === CI_PENDING ? { reason: undefined } : {}),
     ...(job.ciPending === undefined ? {} : { ciPending: undefined }),
   }
   if (deps.readCi === undefined) return start
@@ -351,7 +351,7 @@ async function passCiGate(job: JobRecord, deps: WatchDeps): Promise<JobStart | u
   }
   const waiting = {
     status: 'waiting' as const,
-    reason: 'ci-pending',
+    reason: CI_PENDING,
     notBefore: gate.until,
     ciDeadline: gate.deadline,
     ciPending: gate.pending,

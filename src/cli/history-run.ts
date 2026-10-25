@@ -6,6 +6,7 @@ import { phadaReviewUrlAt } from '../publish/phada-state.js'
 import { InvalidReviewReportError } from '../review/errors.js'
 import { reviewVerdict } from '../review/verdict.js'
 import type { RunRecord, RunStatus } from '../store/history-store.js'
+import { CI_FAILING } from '../watch/ci-revisit.js'
 import type { FailureKind, JobRecord, RequestRecord, RequestSource } from '../watch/types.js'
 import { errorSummary } from './format-error.js'
 
@@ -125,7 +126,7 @@ function ciFailingRun(job: JobRecord, ci: PullCi, meta: RunMeta): RunRecord {
     finishedAt: meta.finishedAt,
     status: 'skipped',
     aiCalled: false,
-    reason: job.reason ?? 'ci-failing',
+    reason: job.reason ?? CI_FAILING,
     verdict: 'skipped',
     resultJson: JSON.stringify({ ci: { state, failing, pending, checks: ci.checks } }),
   }

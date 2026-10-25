@@ -1,4 +1,5 @@
 import type { SlackEmojis, SlackReply } from '../config/watch-settings.js'
+import { CI_FAILING } from '../watch/ci-revisit.js'
 import type { ReviewedFinding, ReviewEvent } from './review-event.js'
 import { shortSha } from './review-text.js'
 import { toTerminalText } from './terminal-text.js'
@@ -40,7 +41,7 @@ export function slackReplies(event: ReviewEvent, reply: SlackReply, emojis: Slac
   }
   if (event.event === 'review.skipped') {
     const why =
-      event.reason === 'ci-failing'
+      event.reason === CI_FAILING
         ? ciFailingText(event)
         : event.reason === undefined
           ? undefined

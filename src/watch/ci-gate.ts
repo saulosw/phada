@@ -1,6 +1,7 @@
 import type { CiSummary } from '../context/types.js'
 import { later } from './time.js'
 
+export const CI_PENDING = 'ci-pending'
 export const NO_CHECKS_GRACE_MS = 120_000
 export const CI_RECHECK_MS = 60_000
 
