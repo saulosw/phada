@@ -1,3 +1,4 @@
+import type { GitHubTokenSource } from '../app/read-home.js'
 import { runCommand } from '../process/run-command.js'
 import type { RunCommandOptions, RunCommandResult } from '../process/run-command.js'
 import { withoutGitHubTokens } from '../providers/cli-run.js'
@@ -10,7 +11,7 @@ export interface GitHubTokenDeps {
   ghToken: GhTokenReader
 }
 
-type RunGh = (
+export type RunGh = (
   command: string,
   args: readonly string[],
   options: RunCommandOptions,
@@ -20,13 +21,24 @@ const GH_TIMEOUT_MS = 10_000
 const HOST = ['--hostname', 'github.com']
 const STATUS_TOKEN = /Token:\s*(\S+)/
 
+export interface FoundGitHubToken {
+  source: GitHubTokenSource
+  token: string
+}
+
 export async function readGitHubToken(deps: GitHubTokenDeps): Promise<string | undefined> {
-  return (
-    deps.env.GITHUB_TOKEN?.trim() ||
-    deps.env.GH_TOKEN?.trim() ||
-    (await deps.ghToken()) ||
-    undefined
-  )
+  return (await findGitHubToken(deps))?.token
+}
+
+export async function findGitHubToken(
+  deps: GitHubTokenDeps,
+): Promise<FoundGitHubToken | undefined> {
+  for (const source of ['GITHUB_TOKEN', 'GH_TOKEN'] as const) {
+    const token = deps.env[source]?.trim()
+    if (token) return { source, token }
+  }
+  const token = await deps.ghToken()
+  return token ? { source: 'gh', token } : undefined
 }
 
 export async function requireGitHubToken(deps: GitHubTokenDeps, need?: string): Promise<string> {
