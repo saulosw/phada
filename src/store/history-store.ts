@@ -176,10 +176,25 @@ export class HistoryVersionError extends HistoryStoreError {
   }
 }
 
+export class HistoryOutdatedError extends HistoryStoreError {
+  override readonly name = 'HistoryOutdatedError'
+  readonly found: number
+  readonly known: number
+
+  constructor(path: string, found: number, known: number) {
+    super(
+      `${path} was written by an older Phada (history version ${found}, this one knows ${known}); run any phada command, such as phada history, to update it`,
+    )
+    this.found = found
+    this.known = known
+  }
+}
+
 export type HistoryOpening =
   | { status: 'open'; history: HistoryStore }
   | { status: 'missing'; path: string }
   | { status: 'newer'; path: string; error: HistoryVersionError }
+  | { status: 'older'; path: string; error: HistoryOutdatedError }
   | { status: 'unreadable'; path: string; error: HistoryStoreError }
 
 export interface OpenExistingHistoryOptions {
@@ -197,6 +212,7 @@ export async function openExistingHistoryStore(
     return { status: 'open', history: await (options.open ?? openHistoryStore)(path) }
   } catch (error) {
     if (error instanceof HistoryVersionError) return { status: 'newer', path, error }
+    if (error instanceof HistoryOutdatedError) return { status: 'older', path, error }
     if (error instanceof HistoryStoreError) return { status: 'unreadable', path, error }
     throw error
   }
@@ -216,6 +232,7 @@ type Sqlite = typeof import('node:sqlite')
 export interface OpenHistoryStoreOptions {
   loadSqlite?: () => Promise<Sqlite>
   migrations?: readonly HistoryMigration[]
+  readOnly?: boolean
 }
 
 const RECENT_FAILURES = 20
@@ -233,22 +250,30 @@ export async function openHistoryStore(
   } catch {
     throw new HistoryStoreError('The review history needs Node.js 22.13 or newer')
   }
-  try {
-    await mkdir(dirname(path), { recursive: true, mode: 0o700 })
-  } catch (error) {
-    throw new HistoryStoreError(`Cannot write ${path}: ${(error as Error).message}`)
+  const readOnly = options.readOnly === true
+  if (!readOnly) {
+    try {
+      await mkdir(dirname(path), { recursive: true, mode: 0o700 })
+    } catch (error) {
+      throw new HistoryStoreError(`Cannot write ${path}: ${(error as Error).message}`)
+    }
   }
   let db: DatabaseSync
   try {
-    db = new sqlite.DatabaseSync(path)
+    db = new sqlite.DatabaseSync(path, { readOnly })
   } catch (error) {
     throw new HistoryStoreError(`Cannot open ${path}: ${(error as Error).message}`)
   }
+  const migrations = options.migrations ?? HISTORY_MIGRATIONS
   try {
     db.exec('pragma busy_timeout = 5000')
-    db.exec('pragma journal_mode = wal')
-    db.exec('pragma foreign_keys = on')
-    migrate(db, path, options.migrations ?? HISTORY_MIGRATIONS)
+    if (readOnly) {
+      checkVersion(db, path, migrations)
+    } else {
+      db.exec('pragma journal_mode = wal')
+      db.exec('pragma foreign_keys = on')
+      migrate(db, path, migrations)
+    }
   } catch (error) {
     db.close()
     if (error instanceof HistoryStoreError) throw error
@@ -262,10 +287,28 @@ export async function openHistoryStore(
   return new SqliteHistoryStore(db, path)
 }
 
-function migrate(db: DatabaseSync, path: string, migrations: readonly HistoryMigration[]): void {
+function checkVersion(
+  db: DatabaseSync,
+  path: string,
+  migrations: readonly HistoryMigration[],
+): void {
+  const { current, known } = versions(db, path, migrations)
+  if (current < known) throw new HistoryOutdatedError(path, current, known)
+}
+
+function versions(
+  db: DatabaseSync,
+  path: string,
+  migrations: readonly HistoryMigration[],
+): { current: number; known: number } {
   const known = migrations.at(-1)?.version ?? 0
   const current = Number(db.prepare('pragma user_version').get()?.user_version ?? 0)
   if (current > known) throw new HistoryVersionError(path, current, known)
+  return { current, known }
+}
+
+function migrate(db: DatabaseSync, path: string, migrations: readonly HistoryMigration[]): void {
+  const { current } = versions(db, path, migrations)
   for (const migration of migrations) {
     if (migration.version <= current) continue
     if (migration.rebuildsTables === true) db.exec('pragma foreign_keys = off')

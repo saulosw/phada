@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { HISTORY_MIGRATIONS } from './history-migrations.js'
 import {
+  HistoryOutdatedError,
   HistoryStoreError,
   HistoryVersionError,
   openExistingHistoryStore,
@@ -680,6 +681,68 @@ describe('openExistingHistoryStore', () => {
         open: () => Promise.reject(new Error('boom')),
       }),
     ).rejects.toThrow('boom')
+  })
+})
+
+describe('openHistoryStore read-only', () => {
+  const userVersion = (path: string) => {
+    const db = new DatabaseSync(path, { readOnly: true })
+    const version = db.prepare('pragma user_version').get()?.user_version
+    db.close()
+    return version
+  }
+
+  it('reads a current history without being able to write it', async () => {
+    const path = fresh()
+    const writer = await openHistoryStore(path)
+    const id = writer.addRun(RUN)
+    writer.close()
+    const before = readFileSync(path)
+
+    const reader = await openHistoryStore(path, { readOnly: true })
+
+    expect(reader.run(id)).toEqual({ ...RUN, id })
+    expect(() => reader.addRun(RUN)).toThrow(/readonly/)
+    reader.close()
+    expect(readFileSync(path).equals(before)).toBe(true)
+  })
+
+  it('leaves a history of an older Phada as it is and says how to update it', async () => {
+    const path = fresh()
+    ;(await openHistoryStore(path, { migrations: HISTORY_MIGRATIONS.slice(0, 1) })).close()
+    const known = HISTORY_MIGRATIONS.at(-1)?.version
+
+    const opening = await openExistingHistoryStore(path, {
+      open: (file) => openHistoryStore(file, { readOnly: true }),
+    })
+
+    expect(opening).toMatchObject({ status: 'older', path })
+    expect(opening.status === 'older' && opening.error).toBeInstanceOf(HistoryOutdatedError)
+    expect(opening.status === 'older' && opening.error.message).toBe(
+      `${path} was written by an older Phada (history version 1, this one knows ${known}); run any phada command, such as phada history, to update it`,
+    )
+    expect(userVersion(path)).toBe(1)
+  })
+
+  it('still refuses a history of a newer Phada', async () => {
+    const path = fresh()
+    ;(await openHistoryStore(path)).close()
+    const db = new DatabaseSync(path)
+    db.exec('pragma user_version = 99')
+    db.close()
+
+    await expect(openHistoryStore(path, { readOnly: true })).rejects.toBeInstanceOf(
+      HistoryVersionError,
+    )
+  })
+
+  it('never creates the file or its folder', async () => {
+    const path = fresh()
+
+    await expect(openHistoryStore(path, { readOnly: true })).rejects.toBeInstanceOf(
+      HistoryStoreError,
+    )
+    expect(existsSync(dirname(path))).toBe(false)
   })
 })
 

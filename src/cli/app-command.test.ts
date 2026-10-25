@@ -1,7 +1,13 @@
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 import { Readable } from 'node:stream'
 import { describe, expect, it } from 'vitest'
 import { memoryFiles } from '../../test/support/memory-files.js'
 import { ConfigError } from '../config/errors.js'
+import { HISTORY_MIGRATIONS } from '../store/history-migrations.js'
+import { HistoryOutdatedError, openHistoryStore } from '../store/history-store.js'
 import type { HistoryStore, RunRecord } from '../store/history-store.js'
 import type { AppDeps, AppHost, AppResult } from '../tui/open-app.js'
 import { runApp } from './app-command.js'
@@ -31,6 +37,7 @@ function deps(
     github?: FakeGitHub
     during?: (deps: AppDeps) => Promise<void>
     ghToken?: string
+    dataHome?: string
   } = {},
 ) {
   const ghCalls: string[][] = []
@@ -59,11 +66,15 @@ function deps(
     }),
     clock: () => new Date('2026-10-25T12:00:00.000Z'),
     lockHolder: async (path) => (path === '/data/watch.lock' ? options.holder : undefined),
-    openHistoryStore: async (path) => {
-      historyPaths.push(path)
-      if (options.history === undefined) throw new Error('no history')
-      return options.history
-    },
+    ...(options.dataHome === undefined
+      ? {
+          openHistoryReader: async (path: string) => {
+            historyPaths.push(path)
+            if (options.history === undefined) throw new Error('no history')
+            return options.history
+          },
+        }
+      : {}),
     pathSize: async (path) => (files.files.get(path)?.length ?? 0) * 1000,
     providerCheckers: {
       claude: async () => ({
@@ -91,7 +102,7 @@ function deps(
     },
     ...(options.github ?? fakeGitHub()).readers,
   }
-  app.env.PHADA_DATA_HOME = '/data'
+  app.env.PHADA_DATA_HOME = options.dataHome ?? '/data'
   return { app, opened, files, historyPaths, ghCalls, userTokens }
 }
 
@@ -246,6 +257,35 @@ describe('runApp', () => {
     })
     await runApp(app)
     expect(historyPaths).toEqual([])
+  })
+})
+
+describe('the history of the app', () => {
+  it('reads a real history without changing it, and shows one of an older Phada as such', async () => {
+    const dataHome = mkdtempSync(join(tmpdir(), 'phada-app-history-'))
+    const path = join(dataHome, 'history.sqlite')
+    try {
+      ;(await openHistoryStore(path, { migrations: HISTORY_MIGRATIONS.slice(0, 1) })).close()
+      let error: unknown
+      const { app } = deps({
+        dataHome,
+        files: { [path]: '' },
+        during: async (appDeps) => {
+          error = await appDeps.readQueue().catch((thrown: unknown) => thrown)
+        },
+      })
+
+      await runApp(app)
+
+      expect(error).toBeInstanceOf(HistoryOutdatedError)
+      expect((error as Error).message).toContain('run any phada command, such as phada history')
+      const db = new DatabaseSync(path, { readOnly: true })
+      expect(db.prepare('pragma user_version').get()?.user_version).toBe(1)
+      expect(db.prepare('pragma journal_mode').get()?.journal_mode).toBe('wal')
+      db.close()
+    } finally {
+      rmSync(dataHome, { recursive: true, force: true })
+    }
   })
 })
 

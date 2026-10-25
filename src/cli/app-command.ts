@@ -24,7 +24,7 @@ import type { WatchSettings } from '../config/watch-settings.js'
 import { checkClaudeStatus } from '../providers/claude-status.js'
 import { checkCodexStatus } from '../providers/codex-status.js'
 import { checkOllamaStatus } from '../providers/ollama-status.js'
-import { openExistingHistoryStore } from '../store/history-store.js'
+import { openExistingHistoryStore, openHistoryStore } from '../store/history-store.js'
 import type { HistoryStore } from '../store/history-store.js'
 import { readObservedEdges } from '../store/observed-store.js'
 import { fetchAuthenticatedUser } from '../github/user.js'
@@ -55,7 +55,7 @@ export interface AppCommandDeps extends RulesReaderDeps {
   loadApp?: () => Promise<{ openApp: typeof openApp }>
   clock: () => Date
   lockHolder: (path: string) => Promise<number | undefined>
-  openHistoryStore: (path: string) => Promise<HistoryStore>
+  openHistoryReader?: (path: string) => Promise<HistoryStore>
   pathSize: (path: string) => Promise<number>
   providerCheckers?: ProviderCheckers
   observed?: {
@@ -89,7 +89,7 @@ export async function runApp(deps: AppCommandDeps): Promise<number> {
   const history = appHistory(files.history, (path) =>
     openExistingHistoryStore(path, {
       exists: (file) => deps.files.exists(file),
-      open: deps.openHistoryStore,
+      open: deps.openHistoryReader ?? ((path) => openHistoryStore(path, { readOnly: true })),
     }),
   )
   try {
