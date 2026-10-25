@@ -259,6 +259,23 @@ describe('HistoryStore records', () => {
     store.close()
   })
 
+  it('finds the requests of a source whose data has the given values', async () => {
+    const store = await openHistoryStore(fresh())
+    const id = store.addJob(JOB)
+    const at = '2026-10-18T12:00:00.000Z'
+    const add = (source: 'slack' | 'mcp', data: Record<string, string>) =>
+      store.addRequest({ jobId: id, source, publish: 'none', data, createdAt: at })
+    const first = add('slack', { channel: 'C1', ts: '1.2', thread: '1.0' })
+    add('slack', { channel: 'C2', ts: '1.2' })
+    add('mcp', { channel: 'C1', ts: '1.2' })
+    store.addRequest({ jobId: id, source: 'slack', publish: 'none', createdAt: at })
+
+    expect(store.requestsWith('slack', { channel: 'C1', ts: '1.2' }).map((r) => r.id)).toEqual([
+      first,
+    ])
+    store.close()
+  })
+
   it('reports the sources that asked for each queued and running job', async () => {
     const store = await openHistoryStore(fresh())
     const id = store.addJob(JOB)

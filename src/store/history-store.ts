@@ -135,6 +135,7 @@ export interface HistoryStore {
   jobCreationTimesSince(iso: string): string[]
   addRequest(request: Omit<RequestRecord, 'id'>): number
   requests(jobIds: readonly number[]): RequestRecord[]
+  requestsWith(source: RequestSource, data: Readonly<Record<string, string>>): RequestRecord[]
   transaction<T>(work: () => T): T
   addRun(run: RunRecord): number
   runOfJob(jobId: number): RunRecord | undefined
@@ -349,6 +350,16 @@ class SqliteHistoryStore implements HistoryStore {
         `select * from review_request where job_id in (${jobIds.map(() => '?').join(', ')}) order by id`,
       )
       .all(...jobIds)
+      .map((row) => fromRow<RequestRecord>(row, REQUEST_TABLE))
+  }
+
+  requestsWith(source: RequestSource, data: Readonly<Record<string, string>>): RequestRecord[] {
+    const entries = Object.entries(data)
+    if (entries.some(([key]) => !/^\w+$/.test(key))) throw new RangeError('invalid data key')
+    const matches = entries.map(([key]) => ` and json_extract(data, '$.${key}') = ?`).join('')
+    return this.#db
+      .prepare(`select * from review_request where source = ?${matches} order by id`)
+      .all(source, ...entries.map(([, value]) => value))
       .map((row) => fromRow<RequestRecord>(row, REQUEST_TABLE))
   }
 
