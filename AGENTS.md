@@ -30,7 +30,8 @@ talks to GitHub itself.
 ```
 src/
   bin.ts                 # entry point of the `phada` command: reads the package version, drops the
-                         #   SQLite ExperimentalWarning (suppressSqliteWarning), calls run()
+                         #   SQLite ExperimentalWarning (suppressSqliteWarning), calls run() with
+                         #   the gh token reader (ghTokenReader)
   main.ts                # run(argv, deps): CLI flow — flags, token, user config, provider choice,
                          #   then reviewAndPublish(), printing and saving the run in the history;
                          #   createProvider()
@@ -185,6 +186,9 @@ src/
     format-index.ts      #   formatIndexText(), formatIndexJson() (schemaVersion 1)
     suppress-sqlite-warning.ts # drops Node's ExperimentalWarning for the built-in SQLite
     errors.ts            #   UsageError, MissingGitHubTokenError, WatchRunningError
+    github-token.ts      #   readGitHubToken(), requireGitHubToken(): GITHUB_TOKEN › GH_TOKEN › the
+                         #   gh login; ghTokenReader(): gh auth token, or gh auth status
+                         #   --show-token on an old gh, asked once, no token on any failure
     format-review.ts     #   pull request summary (stderr) and the Markdown review (stdout)
     format-github.ts     #   the review as GitHub Markdown: body (the CI line under the score),
                          #   line comments, suggestion blocks, markers, truncation; formatResolvedReply(); formatGitHubPreview() for
@@ -563,7 +567,7 @@ npm run typecheck
 npm test
 npm run format
 npm run smoke                          # pack, install and run the package
-npm run dev -- review owner/repo#N     # needs GITHUB_TOKEN or GH_TOKEN
+npm run dev -- review owner/repo#N     # needs GITHUB_TOKEN, GH_TOKEN or a gh login
 npm run dev -- index owner/repo        # the repository map; PHADA_CACHE_HOME to keep it apart
 ```
 
