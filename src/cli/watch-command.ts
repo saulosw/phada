@@ -33,6 +33,7 @@ import type {
 } from '../github/pull-request.js'
 import type { BranchHead } from '../github/repository.js'
 import type { RepositoryFilesOptions } from '../github/repository-files.js'
+import type { StopSignal } from './app-command.js'
 import type { TextOutput } from './progress.js'
 import { MirrorLockTimeoutError } from '../repository/mirror-lock.js'
 import type { HistoryStore } from '../store/history-store.js'
@@ -101,7 +102,7 @@ export interface WatchCommandDeps extends ReviewWiringDeps, GitHubTokenDeps {
   ) => Promise<BranchHead>
   withLock: <T>(path: string, work: () => Promise<T>) => Promise<T>
   lockHolder: (path: string) => Promise<number | undefined>
-  onSignal: (handler: () => void) => void
+  onSignal: (handler: (signal?: StopSignal) => void) => void
   killDetachedChildren: () => void
   abort: (code: number) => void
   sleep: (ms: number, signal: AbortSignal) => Promise<void>

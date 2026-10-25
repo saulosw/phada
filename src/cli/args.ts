@@ -24,6 +24,7 @@ export type RulesTarget =
 export type CliCommand =
   | { kind: 'help'; text: string }
   | { kind: 'version' }
+  | { kind: 'app'; debug: boolean }
   | { kind: 'init'; global: boolean; repo?: RepositoryName }
   | { kind: 'index'; repo: RepositoryName; ref?: string; format: IndexFormat; debug: boolean }
   | { kind: 'rules'; target: RulesTarget; format: IndexFormat; debug: boolean }
@@ -356,13 +357,16 @@ export function parseCliArgs(argv: readonly string[]): CliCommand {
   if (command === 'mcp') return parseMcpArgs(rest)
   if (command !== undefined && !command.startsWith('-')) throw unknownCommand(command)
 
-  const { values } = parseOptions(argv, {
+  const { values, positionals } = parseOptions(argv, {
     help: { type: 'boolean', short: 'h', default: false },
     version: { type: 'boolean', short: 'v', default: false },
+    debug: { type: 'boolean', default: false },
   })
   if (values.help) return { kind: 'help', text: USAGE }
   if (values.version) return { kind: 'version' }
-  throw new UsageError('Missing the command, e.g. phada review owner/repo#123.')
+  const [extra] = positionals
+  if (extra !== undefined) throw unknownCommand(extra)
+  return { kind: 'app', debug: values.debug }
 }
 
 function unknownCommand(command: string): UsageError {

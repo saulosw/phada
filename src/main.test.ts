@@ -494,6 +494,54 @@ describe('run', () => {
     expect(h.stderr()).toBe('')
   })
 
+  it('keeps the missing command error without a terminal', async () => {
+    const h = harness()
+
+    expect(await run([], h.deps)).toBe(2)
+    expect(h.stderr()).toBe(
+      'phada: Missing the command, e.g. phada review owner/repo#123. Run with --help for usage.\n',
+    )
+    expect(h.stdout()).toBe('')
+  })
+
+  it('opens the app with no command in a terminal and exits with its code', async () => {
+    const h = harness()
+    const opened: string[] = []
+    const deps: MainDeps = {
+      ...h.deps,
+      stdin: Object.assign(Readable.from([]), { isTTY: true }),
+      stdout: { write: () => true, isTTY: true },
+      loadApp: async () => ({
+        openApp: async ({ version }) => {
+          opened.push(version)
+          return { kind: 'terminated' }
+        },
+      }),
+    }
+
+    expect(await run([], deps)).toBe(143)
+    expect(opened).toEqual(['1.2.3'])
+    expect(h.stderr()).toBe('')
+  })
+
+  it('prints the error the app failed with in one line, with the details under --debug', async () => {
+    const h = harness()
+    const failure = new Error('the screen broke')
+    const deps: MainDeps = {
+      ...h.deps,
+      stdin: Object.assign(Readable.from([]), { isTTY: true }),
+      stdout: { write: () => true, isTTY: true },
+      loadApp: async () => ({ openApp: async () => ({ kind: 'failed', error: failure }) }),
+    }
+
+    expect(await run([], deps)).toBe(1)
+    expect(h.stderr()).toBe(
+      'phada: Unexpected error: the screen broke. Run with --debug for details.\n',
+    )
+    expect(await run(['--debug'], deps)).toBe(1)
+    expect(h.stderr()).toContain('Error: the screen broke\n    at ')
+  })
+
   it('suggests the review command for a pull request given without it', async () => {
     const h = harness()
 

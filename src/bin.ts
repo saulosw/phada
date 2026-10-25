@@ -77,8 +77,8 @@ process.exitCode = await run(process.argv.slice(2), {
     withMirrorLock(path, { timeoutMs: 0, staleMs: Number.POSITIVE_INFINITY }, work),
   lockHolder,
   onSignal: (handler) => {
-    process.on('SIGINT', handler)
-    process.on('SIGTERM', handler)
+    process.on('SIGINT', () => handler('SIGINT'))
+    process.on('SIGTERM', () => handler('SIGTERM'))
   },
   killDetachedChildren,
   abort: (code) => {

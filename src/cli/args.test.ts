@@ -35,7 +35,18 @@ describe('parseCliArgs', () => {
   })
 
   it.each([
-    [[], 'Missing the command, e.g. phada review owner/repo#123.'],
+    [[], false],
+    [['--debug'], true],
+  ])('opens the app for %j', (argv, debug) => {
+    expect(parseCliArgs(argv)).toEqual({ kind: 'app', debug })
+  })
+
+  it('prefers the help and the version to the app', () => {
+    expect(parseCliArgs(['--debug', '--help'])).toEqual({ kind: 'help', text: USAGE })
+    expect(parseCliArgs(['--debug', '--version'])).toEqual({ kind: 'version' })
+  })
+
+  it.each([
     [['acme/shop#12'], 'Unknown command "acme/shop#12". Did you mean "phada review acme/shop#12"?'],
     [
       ['https://github.com/acme/shop/pull/12', '--verify'],
@@ -46,6 +57,10 @@ describe('parseCliArgs', () => {
       'Unknown command "reveiw". Available: review, init, index, rules, prompt, watch, enqueue, mcp, history.',
     ],
     [['--verify'], "Unknown option '--verify'."],
+    [
+      ['--debug', 'acme/shop#12'],
+      'Unknown command "acme/shop#12". Did you mean "phada review acme/shop#12"?',
+    ],
   ])('rejects the command line %j with a usage error', (argv, message) => {
     expect(() => parseCliArgs(argv)).toThrow(new UsageError(message))
   })

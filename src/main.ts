@@ -8,6 +8,8 @@ import { dataFiles } from './config/data-paths.js'
 import type { ConfigLayer } from './config/types.js'
 import { historyEnabled } from './config/watch-settings.js'
 import type { PullRequestReview } from './app/review-pull-request.js'
+import { runApp } from './cli/app-command.js'
+import type { AppCommandDeps } from './cli/app-command.js'
 import { parseCliArgs } from './cli/args.js'
 import type { CliCommand } from './cli/args.js'
 import { requireGitHubToken } from './cli/github-token.js'
@@ -66,7 +68,7 @@ import { CodexCliProvider } from './providers/codex.js'
 import { OllamaProvider } from './providers/ollama.js'
 import type { ReviewProvider } from './providers/types.js'
 
-export interface MainDeps extends WatchCommandDeps, McpCommandDeps {
+export interface MainDeps extends WatchCommandDeps, McpCommandDeps, AppCommandDeps {
   cwd: string
   pathSize: (path: string) => Promise<number>
 }
@@ -107,6 +109,7 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
       return 0
     }
     debug = command.debug
+    if (command.kind === 'app') return await runApp(deps)
     if (command.kind === 'index') {
       await runIndex(command, deps)
       return 0
