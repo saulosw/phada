@@ -137,7 +137,12 @@ src/
                          #   command error), the language of the user config (an invalid config
                          #   kept as configError), src/tui/ loaded by import() only here
                          #   (loadApp), setInterval as the scheduler; quit 0, interrupted 130,
-                         #   terminated 143, a failure thrown for formatError()
+                         #   terminated 143, a failure thrown for formatError(); the readers of
+                         #   the screens (readQueue with the lock holder and the watch settings,
+                         #   readReviews, readReviewDetail) over appHistory(), closed on exit
+    app-history.ts       #   appHistory(): the history for the app, opened once when its file
+                         #   exists (looked for again while missing, never created), a newer or
+                         #   unreadable file thrown on each read
     init.ts              #   runInit(): .phada/ in the repository, or the user's own config
     init-templates.ts    #   the commented files phada init writes
     index-command.ts     #   runIndex(): token, cache folder, mirror, progress, the map's report
@@ -252,17 +257,31 @@ src/
                          #   shell — tabs, the active screen, footer, ? help, / palette, Esc
                          #   (a screen's back first), q, 1–9, ←/→, Tab, Ctrl-C; the size warning
                          #   below 80×24
-    app-context.ts       #   AppDeps (version, cwd, home, env, scheduler, language, configError),
-                         #   Scheduler, KeyHint; useAppDeps(), useTheme(), useMessages(),
-                         #   useWorking(), useIsWorking(), useScreenKeys(), useBack(),
-                         #   useScreenInput()
+    app-context.ts       #   AppDeps (version, cwd, home, env, scheduler, language, configError,
+                         #   now, readQueue, readReviews, readReviewDetail), Scheduler, KeyHint;
+                         #   useAppDeps(), useTheme(), useMessages(), useWorking(),
+                         #   useIsWorking(), useScreenKeys(), useBack(), useScreenInput() (quiet
+                         #   while a text field is focused), useScreenSize()
     screens.ts           #   ScreenDefinition (id, title from the catalog, Screen) and SCREENS,
                          #   in tab order
     screens/             #   one file per screen: home.tsx (the box with the mascot, version and
-                         #   folder under ~; shortenHome()), placeholder.tsx
-    data-hooks.ts        #   usePolled() (local data, at once and every 2 s on the scheduler),
-                         #   useLoaded() (slow data, on open and on r); DataState
+                         #   folder under ~; shortenHome()), queue.tsx (the watch from the lock
+                         #   and the history, its jobs by kind → a job with its requests;
+                         #   queueRows()), reviews.tsx (the history with a text filter → one
+                         #   review with findings, publication, CI and feedback), placeholder.tsx
+    data-hooks.ts        #   usePolled() (local data, at once, every 2 s on the scheduler and when
+                         #   its key changes), useLoaded() (slow data, on open and on r); DataState
     data-view.tsx        #   DataView: loading, the error in one line, or the value
+    scroll-list.tsx      #   useSelection() (↑/↓, PgUp/PgDn, Home/End, Enter; follows the selected
+                         #   key when the list changes), ScrollList (the rows that fit and
+                         #   "n–m of N"), ScrollText (lines that scroll); listWindow()
+    text-field.tsx       #   useTextField() (every key while focused, Enter applies, Esc leaves;
+                         #   switched after the key that asked), TextFieldLine
+    text-fit.ts          #   oneLine() (toTerminalText on one line), fit() (pad or cut with …, at
+                         #   the end or the start), wrapText()
+    labeled-lines.tsx    #   labeledLines(): label and value rows of a detail, values wrapped
+    relative-time.ts     #   relativeTime() ("2m ago", "in ~4m" for an estimate), absoluteTime();
+                         #   TimeMessages
     tab-bar.tsx          #   TabBar (+ tab-layout.ts: layoutTabs(): full › short › a window with
                          #   ‹ ›)
     footer.tsx           #   Footer (+ key-hints.ts: fitHints(): the keys that fit, then "? more")
@@ -571,7 +590,8 @@ scripts/smoke.ts         # packs the package, installs the tarball, runs the ins
 scripts/copy-grammars.ts # build step: the tree-sitter grammars into dist/grammars/
 test/fixtures/bin/       # fake AI CLIs used by the provider and status tests
 test/fixtures/github/    # trimmed GitHub API responses (REST and GraphQL) and a synthetic diff
-test/support/            # shared test helpers (fake fetch, fixtures for pull requests, findings, …)
+test/support/            # shared test helpers (fake fetch, fixtures for pull requests, findings, …;
+                         #   tui.tsx: the app rendered with fake deps, size, scheduler and keys)
 ```
 
 Tests live next to the code they test (`*.test.ts`, `*.test.tsx` for the app's frames with
