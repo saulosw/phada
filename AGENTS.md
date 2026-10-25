@@ -78,7 +78,8 @@ src/
                          #   per skill (paths matched here), SkillCatalog, PassPlan
     inspect-prompt.ts    #   inspectPrompt(), defaultPromptView(): the prompt of each pass and the
                          #   size of its data blocks, without the AI
-    native-skill.ts      #   openNativeRunner(): work folder → work tree → gh facade → the skill
+    native-skill.ts      #   openNativeRunner(): work folder → work tree (with the conversation,
+                         #   CI and impact files) → gh facade (with the checks as read) → the skill
                          #   run by the provider; skillPolicy(): commands and folders, read-only
                          #   for outside authors
     open-mcp.ts          #   openMcp(): declared MCP servers connected → their tools for the
@@ -235,8 +236,8 @@ src/
                          #   addCommentReaction()
     read-repository.ts   #   repositoryReader(): GET reads of one repository (and search/issues)
                          #   for the gh facade
-    check-runs.ts        #   fetchCheckRuns(): the check runs of a commit, paginated;
-                         #   fetchCheckAnnotations(): the annotations of a check run
+    check-runs.ts        #   fetchCheckRuns(): the check runs of a commit with their times,
+                         #   paginated; fetchCheckAnnotations(): the annotations of a check run
     commit-statuses.ts   #   fetchCommitStatuses(): the statuses of a commit (none when the
                          #   combined status counts zero)
     job-log.ts           #   fetchJobLog(): the end of an Actions job log, the redirect followed
@@ -246,13 +247,15 @@ src/
     gh-jq.ts             #   applyJq(): --jq with paths only
     gh-answer.ts         #   answerGh(): reads from Phada's data or the repository reader, writes
                          #   captured, the rest refused
+    gh-checks.ts         #   answerChecks(): gh pr checks from the checks Phada read, tab-separated
+                         #   or --json (--jq), with gh's buckets and exit codes
     gh-server.ts         #   serveGhFacade(): socket server, bin/gh and bin/git, read limit per pass,
                          #   captures
     gh-bridge.ts         #   the executable bin/gh runs: argv, stdin and files in the checkout
                          #   → the socket
     git-guard.ts         #   gitRefusal(): git options a native skill may not use
     git-bridge.ts        #   the executable bin/git runs: refuse or exec the real git
-    types.ts             #   GhPullData, GhCommand, ReadGitHub, GhFacadeError
+    types.ts             #   GhPullData, GhCheck, GhCommand, ReadGitHub, GhFacadeError
   slack/                 # Slack, and nothing else: no queue, no review
     pull-links.ts        #   pullRequestLinks(): the pull request links of a message, 5 at most
     web-api.ts           #   slackWebApi(): replies in a thread, reactions, the Socket Mode URL
@@ -331,8 +334,8 @@ src/
                          #   timestamps or colors, the final 8 KB
     ci.ts                #   buildCi(): the checks for the AI (failing › pending › passing) with
                          #   title, summary, annotations (failure and warning, 50 in total) and
-                         #   the failed step of the log (12 KB in total), the summary and the
-                         #   report; ciLogsLeft()
+                         #   the failed step of the log (12 KB in total), the entries as read, the
+                         #   summary and the report; ciLogsLeft()
     plan-publication.ts  #   planPublication(): new comments vs findings still open in a thread vs
                          #   findings whose thread a person resolved vs findings of a thread found
                          #   fixed in this run
@@ -348,7 +351,8 @@ src/
     mirror-lock.ts       #   withMirrorLock(): one fetch at a time per mirror, stale locks taken over
     repo-path.ts         #   toRepoPath(): paths inside the repository only
     work-tree.ts         #   materializeWorkTree(): a checkout of the head with origin/<base> at
-                         #   the merge base, objects shared with the mirror, the diff in a file
+                         #   the merge base, objects shared with the mirror, the diff and the
+                         #   files it is given next to it
   repo-map/              # the code elements of a file, with tree-sitter (WASM)
     languages.ts         #   languageOf(): extension → TypeScript, TSX, JavaScript, Python, Go
     grammars.ts          #   readGrammar(): dist/grammars/ in the package, node_modules in development
@@ -401,6 +405,9 @@ src/
     suggestions.ts       #   checkSuggestion(), checkSuggestions(): a code suggestion against the diff
     convert-prompt.ts    #   buildConvertPrompt(): a native skill's output → Phada's report
     native-context.ts    #   nativeSkillContext(): what a native skill is told about the checkout
+                         #   and the files next to the diff; nativeSkillTexts(): the conversation
+                         #   (conversation.jsonl), CI (ci.md) and impact with the related
+                         #   repositories (impact.md) as the prompt blocks have them
     skill-output.ts      #   skillOutputText(), skillBodyText(): what a native skill wrote, 64 KB
     recheck-prompt.ts    #   buildRecheckPrompt(): earlier comments and what changed since them
     recheck-schema.ts    #   Zod schema of the recheck verdicts (fixed, still-valid, unsure)

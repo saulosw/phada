@@ -292,6 +292,12 @@ export async function reviewPullRequest(
       )
     }
 
+    const related = kept.length === 0 ? undefined : relatedSummaries(kept, graphTools)
+    const conversation =
+      input.conversation === undefined || input.conversation.items.length === 0
+        ? undefined
+        : input.conversation.items
+    const ci = input.ci === undefined || input.ci.checks.length === 0 ? undefined : input.ci.checks
     const provider = deps.createProvider(
       investigation !== undefined && !outside && input.mcp.names.length > 0,
     )
@@ -304,6 +310,11 @@ export async function reviewPullRequest(
           review: loaded.options.review ?? {},
           nativeSkills: planned.nativeSkills,
           viewer: input.viewer ?? '',
+          ...(conversation === undefined ? {} : { conversation }),
+          ...(input.ci === undefined ? {} : { checks: input.ci.entries }),
+          ...(ci === undefined ? {} : { ci }),
+          ...(impact === undefined ? {} : { impact }),
+          ...(related === undefined ? {} : { related }),
           ...(language === undefined ? {} : { language }),
         },
         {
@@ -330,11 +341,9 @@ export async function reviewPullRequest(
         verify: options.verify ?? loaded.options.verify ?? true,
         context: loaded.context,
         ...(impact === undefined ? {} : { impact }),
-        ...(kept.length === 0 ? {} : { related: relatedSummaries(kept, graphTools) }),
-        ...(input.conversation === undefined || input.conversation.items.length === 0
-          ? {}
-          : { conversation: input.conversation.items }),
-        ...(input.ci === undefined || input.ci.checks.length === 0 ? {} : { ci: input.ci.checks }),
+        ...(related === undefined ? {} : { related }),
+        ...(conversation === undefined ? {} : { conversation }),
+        ...(ci === undefined ? {} : { ci }),
         ...(planned.passes === undefined ? {} : { passes: planned.passes }),
       },
       {

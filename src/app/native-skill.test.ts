@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
@@ -15,8 +15,9 @@ import type {
   SkillRunOutput,
 } from '../providers/types.js'
 import { openGitMirror } from '../repository/git-mirror.js'
-import type { SkillPass } from '../review/types.js'
+import type { DiffImpact, SkillPass } from '../review/types.js'
 import { openNativeRunner } from './native-skill.js'
+import type { NativeRunnerInput } from './native-skill.js'
 
 const exec = promisify(execFile)
 
@@ -61,10 +62,44 @@ class SkillProvider implements ReviewProvider {
   }
 }
 
+const IMPACT: DiffImpact = {
+  symbols: [
+    {
+      kind: 'function',
+      name: 'total',
+      path: 'src/shop.ts',
+      startLine: 1,
+      endLine: 3,
+      exported: true,
+      callers: 1,
+      files: 1,
+      sites: [
+        {
+          repo: 'acme/web',
+          path: 'src/cart.ts',
+          line: 9,
+          in: 'checkout',
+          kind: 'calls',
+          how: 'resolved',
+          text: 'total(items)',
+        },
+      ],
+      dependencies: [],
+    },
+  ],
+  omittedSymbols: 0,
+  callerFiles: 1,
+}
+
 let count = 0
 async function runner(
   provider: ReviewProvider,
-  overrides: { review?: ReviewSettings; association?: string; private?: boolean } = {},
+  overrides: {
+    review?: ReviewSettings
+    association?: string
+    private?: boolean
+    data?: Partial<NativeRunnerInput>
+  } = {},
 ) {
   count += 1
   const mirror = await openGitMirror({
@@ -93,6 +128,7 @@ async function runner(
       review: overrides.review ?? {},
       nativeSkills: new Map([['my-review', REF]]),
       viewer: 'me',
+      ...overrides.data,
     },
     {
       mirror,
@@ -204,6 +240,153 @@ describe('openNativeRunner', () => {
     expect(run.captured).toEqual([
       { command: 'gh pr comment', body: 'Posted by the skill.', comments: [] },
     ])
+  })
+
+  it('gives the skill the conversation, CI and impact next to the diff and cites them', async () => {
+    const read: Record<string, string> = {}
+    const provider = new SkillProvider(async (request) => {
+      for (const name of ['conversation.jsonl', 'ci.md', 'impact.md']) {
+        read[name] = readFileSync(join(request.cwd, '.git', name), 'utf8')
+      }
+    })
+    const { native } = await runner(provider, {
+      data: {
+        conversation: [
+          {
+            kind: 'comment',
+            at: '2026-10-20T10:00:00Z',
+            author: 'ana',
+            role: 'member',
+            body: 'Why?',
+          },
+        ],
+        ci: [
+          { name: 'test', state: 'failing', conclusion: 'failure', log: 'Error: boom' },
+          { name: 'lint', state: 'passing' },
+        ],
+        impact: IMPACT,
+        related: [
+          { repo: 'acme/web', commit: 'c'.repeat(40), state: 'consumers', count: 1, graph: true },
+        ],
+      },
+    })
+
+    await native.runSkill(PASS)
+    await native.close()
+
+    expect(read['conversation.jsonl']).toBe(
+      '{"kind":"comment","at":"2026-10-20T10:00:00Z","author":"ana","role":"member","body":"Why?"}\n',
+    )
+    expect(read['ci.md']).toBe(
+      '{"name":"test","state":"failing","conclusion":"failure","log":"Error: boom"}\n{"name":"lint","state":"passing"}\n',
+    )
+    expect(read['impact.md']).toBe(
+      [
+        '## Related repositories',
+        '',
+        `acme/web at ccccccc — uses the changed code at 1 place`,
+        '',
+        '## Impact',
+        '',
+        'function total (src/shop.ts:1-3, exported) — 1 caller in 1 file',
+        '  acme/web:src/cart.ts:9 in checkout: total(items)',
+        '',
+      ].join('\n'),
+    )
+    const context = provider.requests[0]?.context ?? ''
+    expect(context).toContain('/.git/conversation.jsonl')
+    expect(context).toContain('/.git/ci.md')
+    expect(context).toContain('/.git/impact.md')
+  })
+
+  it('answers gh pr checks with the checks Phada read', async () => {
+    let answer = ''
+    const provider = new SkillProvider(async (request) => {
+      const run = await exec('gh', ['pr', 'checks', '--json', 'name,state,bucket,link,startedAt'], {
+        cwd: request.cwd,
+        env: { ...process.env, ...request.env },
+      })
+      answer = run.stdout
+    })
+    const { native } = await runner(provider, {
+      data: {
+        checks: [
+          {
+            name: 'test',
+            kind: 'check-run',
+            id: 3,
+            actions: true,
+            state: 'failing',
+            conclusion: 'failure',
+            title: 'Tests failed',
+            url: 'https://github.com/acme/shop/actions/runs/1/job/3',
+            startedAt: '2026-10-20T10:00:00Z',
+            completedAt: '2026-10-20T10:02:00Z',
+          },
+          {
+            name: 'e2e',
+            kind: 'check-run',
+            id: 4,
+            actions: true,
+            state: 'pending',
+            status: 'in_progress',
+          },
+          {
+            name: 'ci/lint',
+            kind: 'status',
+            actions: false,
+            state: 'passing',
+            conclusion: 'success',
+          },
+        ],
+      },
+    })
+
+    await native.runSkill(PASS)
+    await native.close()
+
+    expect(JSON.parse(answer)).toEqual([
+      {
+        name: 'test',
+        state: 'FAILURE',
+        bucket: 'fail',
+        link: 'https://github.com/acme/shop/actions/runs/1/job/3',
+        startedAt: '2026-10-20T10:00:00Z',
+      },
+      {
+        name: 'e2e',
+        state: 'IN_PROGRESS',
+        bucket: 'pending',
+        link: '',
+        startedAt: '0001-01-01T00:00:00Z',
+      },
+      {
+        name: 'ci/lint',
+        state: 'SUCCESS',
+        bucket: 'pass',
+        link: '',
+        startedAt: '0001-01-01T00:00:00Z',
+      },
+    ])
+  })
+
+  it('writes only the files that have content', async () => {
+    const seen: string[] = []
+    const provider = new SkillProvider(async (request) => {
+      seen.push(...readdirSync(join(request.cwd, '.git')))
+    })
+    const { native } = await runner(provider, {
+      data: { conversation: [], ci: [{ name: 'lint', state: 'passing' }] },
+    })
+
+    await native.runSkill(PASS)
+    await native.close()
+
+    expect(seen).toContain('ci.md')
+    expect(seen).not.toContain('conversation.jsonl')
+    expect(seen).not.toContain('impact.md')
+    expect(provider.requests[0]?.context).not.toContain('conversation.jsonl')
+    expect(provider.requests[0]?.context).not.toContain('impact.md')
   })
 
   it('reuses the checkout for two passes and gives each its own captures', async () => {

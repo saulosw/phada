@@ -19,6 +19,7 @@ import { verdictFixture, verificationJson } from '../../test/support/verificatio
 import { diffFingerprint } from '../review/diff-fingerprint.js'
 import { reviewAndPublish } from './review-and-publish.js'
 import type { ReviewAndPublishDeps, ReviewAndPublishInput } from './review-and-publish.js'
+import type { NativeRunnerInput } from './native-skill.js'
 import type { CiReaders } from './read-ci.js'
 import type { PullRequestReviewDeps } from './review-pull-request.js'
 
@@ -1126,6 +1127,104 @@ describe('reviewAndPublish with the checks of the head', () => {
 })
 
 describe('reviewAndPublish with a native skill', () => {
+  const nativeDeps = (deps: ReviewAndPublishDeps, inputs: NativeRunnerInput[]) => {
+    const base = deps.reviewDeps
+    deps.reviewDeps = (pull) => ({
+      ...base(pull),
+      runsSkills: true,
+      openMirror: async () => ({}) as never,
+      skills: {
+        find: async (name) => ({
+          name,
+          origin: 'Claude Code',
+          text: 'Skill built into Claude Code: code-review.',
+          omitted: [],
+          native: { kind: 'builtin', invoke: 'code-review' },
+        }),
+      },
+      openNativeRunner: async (runnerInput) => {
+        inputs.push(runnerInput)
+        return {
+          runSkill: async () => ({ text: 'ok', captured: [], durationMs: 1, blocked: [] }),
+          close: async () => undefined,
+        }
+      },
+    })
+  }
+  const SKILL_INPUT: ReviewAndPublishInput = {
+    ...INPUT,
+    options: { ...INPUT.options, skills: ['claude:code-review'] },
+  }
+
+  it('gives the skill runner the conversation, the checks for the AI and the checks as read', async () => {
+    const inputs: NativeRunnerInput[] = []
+    const { deps } = setup({
+      fetchPullComments: async () => [
+        {
+          id: 'IC1',
+          author: 'ana',
+          bot: false,
+          association: 'MEMBER',
+          createdAt: '2026-10-01T11:00:00Z',
+          body: 'Why the retry?',
+        },
+      ],
+      ci: {
+        checkRuns: async () => [
+          {
+            id: 7,
+            name: 'test',
+            status: 'completed',
+            conclusion: 'failure',
+            title: 'Tests failed',
+            summary: null,
+            url: 'https://github.com/acme/shop/actions/runs/1/job/7',
+            app: 'other-ci',
+            startedAt: '2026-10-01T10:00:00Z',
+            completedAt: '2026-10-01T10:05:00Z',
+          },
+        ],
+        statuses: async () => [],
+        annotations: async () => [],
+        jobLog: () => Promise.reject(new Error('no job log in this test')),
+      },
+    })
+    nativeDeps(deps, inputs)
+
+    await reviewAndPublish(SKILL_INPUT, deps)
+
+    expect(inputs[0]?.conversation).toEqual([
+      {
+        kind: 'comment',
+        at: '2026-10-01T11:00:00Z',
+        author: 'ana',
+        role: 'member',
+        body: 'Why the retry?',
+      },
+    ])
+    expect(inputs[0]?.ci).toEqual([
+      { name: 'test', state: 'failing', conclusion: 'failure', title: 'Tests failed' },
+    ])
+    expect(inputs[0]?.checks?.map(({ name, startedAt }) => [name, startedAt])).toEqual([
+      ['test', '2026-10-01T10:00:00Z'],
+    ])
+  })
+
+  it('gives the skill runner no conversation or checks when they are off', async () => {
+    const inputs: NativeRunnerInput[] = []
+    const { deps } = setup()
+    nativeDeps(deps, inputs)
+
+    await reviewAndPublish(
+      { ...SKILL_INPUT, options: { ...SKILL_INPUT.options, conversation: false, ci: false } },
+      deps,
+    )
+
+    expect(inputs[0]?.conversation).toBeUndefined()
+    expect(inputs[0]?.ci).toBeUndefined()
+    expect(inputs[0]?.checks).toBeUndefined()
+  })
+
   it('gives the skill runner the owner of the token', async () => {
     const viewers: string[] = []
     const { deps } = setup()
