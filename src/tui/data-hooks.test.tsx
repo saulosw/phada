@@ -1,11 +1,12 @@
 import { Text } from 'ink'
 import { cleanup, render } from 'ink-testing-library'
+import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 import { fakeAppDeps } from '../../test/support/tui.js'
 import { App } from './app.js'
 import type { AppDeps, Scheduler } from './app-context.js'
-import { usePolled, useLoaded } from './data-hooks.js'
+import { POLL_MS, usePolled, useLoaded } from './data-hooks.js'
 import { DataView } from './data-view.js'
 import type { ScreenDefinition } from './screens.js'
 
@@ -73,6 +74,33 @@ describe('usePolled', () => {
     tick()
     await settle()
     expect(frame()).toContain('value back')
+  })
+})
+
+describe('usePolled with a key', () => {
+  it('reads again at once when the key changes, keeping the last value meanwhile', async () => {
+    const reads: string[] = []
+    let setKey = (_key: string) => {}
+    const { frame, intervals } = openScreen(() => {
+      const [key, update] = useState('a')
+      setKey = update
+      const state = usePolled(
+        () => {
+          reads.push(key)
+          return key
+        },
+        POLL_MS,
+        key,
+      )
+      return <DataView state={state}>{(value) => <Text>value {value}</Text>}</DataView>
+    })
+    await settle()
+    expect(frame()).toContain('value a')
+    setKey('b')
+    await settle()
+    expect(frame()).toContain('value b')
+    expect(reads).toEqual(['a', 'b'])
+    expect(intervals()).toEqual([2000])
   })
 })
 

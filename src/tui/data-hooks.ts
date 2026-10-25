@@ -6,7 +6,11 @@ export const POLL_MS = 2000
 export type DataState<T> =
   { status: 'loading' } | { status: 'ready'; value: T } | { status: 'failed'; error: unknown }
 
-export function usePolled<T>(read: () => T | Promise<T>, intervalMs = POLL_MS): DataState<T> {
+export function usePolled<T>(
+  read: () => T | Promise<T>,
+  intervalMs = POLL_MS,
+  key = '',
+): DataState<T> {
   const { scheduler } = useAppDeps()
   const [state, setState] = useState<DataState<T>>({ status: 'loading' })
   const latest = useRef(read)
@@ -32,7 +36,7 @@ export function usePolled<T>(read: () => T | Promise<T>, intervalMs = POLL_MS): 
       mounted = false
       stop()
     }
-  }, [scheduler, intervalMs])
+  }, [scheduler, intervalMs, key])
   return state
 }
 
