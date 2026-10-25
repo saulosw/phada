@@ -58,8 +58,8 @@ src/
                          #   recorded as a run and read again each discovery cycle, the same job
                          #   queued again once they pass) with its requests,
                          #   failures and pauses, requests moved to a new commit (from a
-                         #   superseded job or a ci-failing one), job events (notify), the idle
-                         #   index and feedback
+                         #   superseded job or a ci-failing one), job events (notify; the CI
+                         #   the gate read on started), the idle index and feedback
                          #   refresh (30 min per pull request, 10 per cycle); events
     submit-request.ts    #   submitRequest(): a review request of any source → the policy (and the
                          #   when command) → a new job, a joined job (a ci-failing one queued
@@ -435,7 +435,7 @@ src/
                          #   now → review (with the checks still pending), wait (until, deadline;
                          #   also while a check fails and others run, unless onFailure: skip)
                          #   or skip; 2 min for checks to appear, read again each minute;
-                         #   CI_PENDING
+                         #   CI_PENDING, CiGateSummary
     ci-revisit.ts        #   ciRevisits(): the ci-failing jobs to read again (24 h, head still
                          #   the pull request's, eligible or asked by a request other than the
                          #   watch, 10 per cycle, read longest ago first); revisitsCi(),

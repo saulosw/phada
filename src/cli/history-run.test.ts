@@ -32,7 +32,7 @@ describe('watchRun', () => {
     const run = watchRun(
       JOB,
       {
-        ci: {
+        skippedForCi: {
           waitMs: 900_000,
           onFailure: 'skip',
           summary: { state: 'failing', pending: [], failing: ['test', 'lint'] },

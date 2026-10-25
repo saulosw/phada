@@ -7,8 +7,10 @@ export const CI_RECHECK_MS = 60_000
 
 export type CiFailurePolicy = 'review' | 'skip'
 
+export type CiGateSummary = Pick<CiSummary, 'state' | 'pending' | 'failing'>
+
 export interface CiGateInput {
-  ci: Pick<CiSummary, 'state' | 'pending' | 'failing'>
+  ci: CiGateSummary
   waitMs: number
   onFailure: CiFailurePolicy
   seenAt: string

@@ -2,7 +2,7 @@ import type { WatchedRepoSettings, WatchSettings } from '../config/watch-setting
 import type { CommentListing } from '../github/issue-comments.js'
 import type { OpenPull, PullListing } from '../github/list-pull-requests.js'
 import type { BranchHead } from '../github/repository.js'
-import type { CiState, CiSummary } from '../context/types.js'
+import type { CiState } from '../context/types.js'
 import type { CiCheckState } from '../review/types.js'
 import type { DuePull, HistoryStore } from '../store/history-store.js'
 import { listedPullFacts } from '../watch/pull-facts.js'
@@ -10,7 +10,7 @@ import type { FailureKind, JobRecord, PauseState, RequestRecord } from '../watch
 import { afterFailure, MAX_ATTEMPTS, rateLimitPause } from '../watch/failures.js'
 import { later } from '../watch/time.js'
 import { CI_PENDING, ciGate } from '../watch/ci-gate.js'
-import type { CiFailurePolicy } from '../watch/ci-gate.js'
+import type { CiFailurePolicy, CiGateSummary } from '../watch/ci-gate.js'
 import { CI_FAILING, ciRevisits, requeueForCi, revisitsCi } from '../watch/ci-revisit.js'
 import { NOT_STARTED, notStarted, pickNext, RATE_WINDOW_MS } from '../watch/next-job.js'
 import { planCycle } from '../watch/plan-cycle.js'
@@ -43,7 +43,7 @@ export type WatchExit = { reason: 'once' | 'stopped' } | { reason: 'fatal'; erro
 export interface PullCi {
   waitMs: number
   onFailure: CiFailurePolicy
-  summary: Pick<CiSummary, 'state' | 'pending' | 'failing'>
+  summary: CiGateSummary
   checks: readonly { name: string; state: CiCheckState }[]
 }
 
@@ -52,7 +52,8 @@ export interface JobCi {
   checks: readonly { name: string; state: CiCheckState }[]
 }
 
-export type RunOutcome = { run: ReviewRun } | { error: unknown; kind: FailureKind } | { ci: PullCi }
+export type RunOutcome =
+  { run: ReviewRun } | { error: unknown; kind: FailureKind } | { skippedForCi: PullCi }
 
 export interface WatchEvents {
   cycle(repo: string, pulls: number): void
@@ -327,15 +328,15 @@ function apply(
   }
 }
 
-type JobStart = Partial<Pick<JobRecord, 'reason' | 'ciPending'>>
+type JobStartUpdate = Partial<Pick<JobRecord, 'reason' | 'ciPending'>>
 
 interface GatePassed {
-  start: JobStart
+  start: JobStartUpdate
   ci?: JobCi
 }
 
 async function passCiGate(job: JobRecord, deps: WatchDeps): Promise<GatePassed | undefined> {
-  const start: JobStart = {
+  const start: JobStartUpdate = {
     ...(job.reason === CI_PENDING ? { reason: undefined } : {}),
     ...(job.ciPending === undefined ? {} : { ciPending: undefined }),
   }
@@ -359,13 +360,13 @@ async function passCiGate(job: JobRecord, deps: WatchDeps): Promise<GatePassed |
     return undefined
   }
   if (gate.action !== 'wait') {
-    const read: JobCi = {
+    const startCi: JobCi = {
       state: ci.summary.state,
       checks: ci.checks.map(({ name, state }) => ({ name, state })),
     }
     return {
       start: gate.pending === undefined ? start : { ...start, ciPending: gate.pending },
-      ci: read,
+      ci: startCi,
     }
   }
   const waiting = {
@@ -408,7 +409,7 @@ async function skipForCi(
   }
   history.updateJob(job.id, skipped)
   const ended: JobRecord = { ...job, ...skipped }
-  deps.recordRun(ended, { ci }, now)
+  deps.recordRun(ended, { skippedForCi: ci }, now)
   deps.events.ciFailing(ended)
   const since = job.ciSince
   const requests = history

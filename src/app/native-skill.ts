@@ -199,7 +199,8 @@ async function commandPolicy(
 }
 
 function kinds(files: NativeSkillFiles): (keyof NativeSkillFiles)[] {
-  return (['conversation', 'ci', 'impact'] as const).filter((kind) => files[kind] !== undefined)
+  const all = Object.keys(NATIVE_FILE_NAMES) as (keyof NativeSkillFiles)[]
+  return all.filter((kind) => files[kind] !== undefined)
 }
 
 function ghCheck(entry: CiEntry): GhCheck {

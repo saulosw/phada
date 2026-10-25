@@ -76,14 +76,14 @@ export async function inspectPrompt(input: {
     skills: input.skills,
     native: input.native ?? false,
   })
-  const read = {
+  const conversationAndCi = {
     ...(input.conversation === undefined ? {} : { conversation: input.conversation.items }),
     ...(input.ci === undefined ? {} : { ci: input.ci.checks }),
   }
   const request = {
     pullRequest: { ...pullRequest, diff: loaded.diff },
     context: loaded.context,
-    ...read,
+    ...conversationAndCi,
   }
   const data = reviewDataBlocks(request).map(({ name, content }) => ({
     name,
@@ -91,7 +91,7 @@ export async function inspectPrompt(input: {
   }))
   const options = {
     context: loaded.context,
-    ...read,
+    ...conversationAndCi,
     verify: loaded.options.verify ?? true,
     ...(loaded.options.language === undefined ? {} : { language: loaded.options.language }),
     ...(input.investigate ? { toolNames: REVIEW_TOOL_NAMES } : {}),

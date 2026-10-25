@@ -155,7 +155,7 @@ async function setup(script: Script, history?: HistoryStore) {
         }),
     recordRun: (job, outcome) => {
       recorded.push(
-        `${job.number}:${'run' in outcome ? outcome.run.status : 'kind' in outcome ? outcome.kind : `ci-failing ${outcome.ci.summary.failing.join(',')}`}`,
+        `${job.number}:${'run' in outcome ? outcome.run.status : 'kind' in outcome ? outcome.kind : `ci-failing ${outcome.skippedForCi.summary.failing.join(',')}`}`,
       )
     },
     refreshIndex: async (_repo, budgetMs) => {

@@ -93,7 +93,7 @@ export function watchRun(
   runJson: (run: ReviewRun) => string,
 ): RunRecord {
   if ('run' in outcome) return historyRun(outcome.run, runJson(outcome.run), meta)
-  if ('ci' in outcome) return ciFailingRun(job, outcome.ci, meta)
+  if ('skippedForCi' in outcome) return ciFailingRun(job, outcome.skippedForCi, meta)
   return {
     jobId: job.id,
     source: meta.source,
