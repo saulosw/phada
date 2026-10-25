@@ -398,7 +398,7 @@ function reviewLines(
   ))
 }
 
-function ruleLines(
+export function ruleLines(
   rules: readonly UserRule[],
   messages: UiMessages,
   { colors }: Theme,

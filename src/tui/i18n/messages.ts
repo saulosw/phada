@@ -56,6 +56,7 @@ export interface UiMessages {
   automation: AutomationMessages
   provider: ProviderMessages
   learnings: LearningsMessages
+  rules: RulesMessages
 }
 
 export interface HomeMessages {
@@ -321,6 +322,56 @@ export interface LearningsMessages {
     unreadable: string
     gone: string
   }
+}
+
+export type RuleStatus = 'applied' | 'disabled' | 'out-of-scope' | 'listed'
+export type DocStatus = 'included' | 'truncated' | 'omitted' | 'listed'
+export type DocReason =
+  'budget' | 'binary' | 'not-found' | 'unreadable' | 'out-of-scope' | 'manual' | 'excluded'
+
+export interface RulesMessages {
+  pick: string
+  none: string
+  noneHint: string
+  pullKey: string
+  pullField: string
+  invalidNumber(text: string): string
+  noToken: string
+  lens: string
+  builtIn: string
+  prompt(file: string, mode: string): string
+  promptModes: { append: string; replace: string }
+  skills(names: string): string
+  native: string
+  setBy(where: string): string
+  layers: { global: string; repository: string; phada(file: string): string }
+  localOnly: string
+  userRules(count: number): string
+  noUserRules: string
+  phadaFolder: string
+  atBranch(ref: string): string
+  empty: string
+  nothingLoaded: string
+  initHint: string
+  configFiles(count: number): string
+  configOrigins: { repository: string; user: string }
+  rules(count: number): string
+  docs(count: number): string
+  ignore: string
+  ruleStatuses: Readonly<Record<RuleStatus, string>>
+  docStatuses: Readonly<Record<DocStatus, string>>
+  docReasons: Readonly<Record<DocReason, string>>
+  appliesTo(scope: string): string
+  commits(head: string, base: string): string
+  loadedRules: string
+  promptHeading: string
+  computed: string
+  pass(index: number, skill: string): string
+  builtInOrigin: string
+  skipped(reason: string): string
+  nativeMessage(message: string): string
+  dataBlocks: string
+  instructions: string
 }
 
 const CATALOGS: Readonly<Record<string, UiMessages>> = {

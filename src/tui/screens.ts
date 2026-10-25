@@ -3,11 +3,11 @@ import type { ScreenTitle, UiMessages } from './i18n/messages.js'
 import { AutomationScreen } from './screens/automation.js'
 import { HomeScreen } from './screens/home.js'
 import { LearningsScreen } from './screens/learnings.js'
-import { PlaceholderScreen } from './screens/placeholder.js'
 import { ProviderScreen } from './screens/provider.js'
 import { QueueScreen } from './screens/queue.js'
 import { RepositoriesScreen } from './screens/repositories.js'
 import { ReviewsScreen } from './screens/reviews.js'
+import { RulesScreen } from './screens/rules.js'
 
 export interface ScreenDefinition {
   id: string
@@ -22,7 +22,7 @@ export const SCREENS: readonly ScreenDefinition[] = [
     title: (messages) => messages.screens.repositories,
     Screen: RepositoriesScreen,
   },
-  { id: 'rules', title: (messages) => messages.screens.rules, Screen: PlaceholderScreen },
+  { id: 'rules', title: (messages) => messages.screens.rules, Screen: RulesScreen },
   { id: 'reviews', title: (messages) => messages.screens.reviews, Screen: ReviewsScreen },
   { id: 'queue', title: (messages) => messages.screens.queue, Screen: QueueScreen },
   { id: 'automation', title: (messages) => messages.screens.automation, Screen: AutomationScreen },

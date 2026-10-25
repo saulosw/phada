@@ -13,6 +13,7 @@ import type { ScreenDefinition } from './screens.js'
 import { FLAP_MS, Mascot, MASCOT_FRAMES } from './mascot.js'
 import { HomeScreen } from './screens/home.js'
 import type { SizeSource, TerminalSize } from './terminal-size.js'
+import { PlaceholderScreen } from './screens/placeholder.js'
 
 const ESC = '\u001B'
 const KEYS = {
@@ -179,9 +180,10 @@ describe('navigation', () => {
   })
 
   it('shows an honest placeholder on the screens not drawn yet', async () => {
-    const { frame, press } = openApp()
+    const { frame } = openApp({
+      screens: [{ id: 'rules', title: (m) => m.screens.rules, Screen: PlaceholderScreen }],
+    })
     await settle()
-    await press('3')
     expect(frame()).toContain('This screen is not ready yet.')
     expect(frame()).not.toContain('Phada v1.2.3')
   })
