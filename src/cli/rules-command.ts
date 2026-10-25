@@ -9,7 +9,8 @@ import type { ContextSources } from '../context/types.js'
 import type { IndexFormat, RulesTarget } from './args.js'
 import { contextSourcesAt } from './context-sources.js'
 import type { ContextReaders } from './context-sources.js'
-import { MissingGitHubTokenError } from './errors.js'
+import { requireGitHubToken } from './github-token.js'
+import type { GitHubTokenDeps } from './github-token.js'
 import { formatRulesJson, formatRulesText } from './format-rules.js'
 import type { RulesView } from './format-rules.js'
 import type { TextOutput } from './progress.js'
@@ -19,8 +20,7 @@ export interface RulesCommand {
   format: IndexFormat
 }
 
-export interface RulesCommandDeps extends ContextReaders {
-  env: NodeJS.ProcessEnv
+export interface RulesCommandDeps extends ContextReaders, GitHubTokenDeps {
   files: LocalFileSystem
   stdout: TextOutput
   fetchPullRequest: (options: FetchPullRequestOptions) => Promise<PullRequest>
@@ -28,8 +28,7 @@ export interface RulesCommandDeps extends ContextReaders {
 }
 
 export async function runRules(command: RulesCommand, deps: RulesCommandDeps): Promise<void> {
-  const token = deps.env.GITHUB_TOKEN?.trim() || deps.env.GH_TOKEN?.trim()
-  if (!token) throw new MissingGitHubTokenError('read the repository contents')
+  const token = await requireGitHubToken(deps, 'read the repository contents')
   const { owner, repo } = command.target.kind === 'pull' ? command.target.ref : command.target.repo
   const userLayers = await loadUserLayers({
     env: deps.env,

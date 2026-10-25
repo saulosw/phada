@@ -26,6 +26,7 @@ import {
   fetchPullRequestMetadata,
 } from './github/pull-request.js'
 import { fetchBranchHead, fetchRepository } from './github/repository.js'
+import { ghTokenReader } from './cli/github-token.js'
 import { killDetachedChildren } from './process/run-command.js'
 import { removeOpenWorkDirs } from './process/work-dirs.js'
 import { lockHolder, withMirrorLock } from './repository/mirror-lock.js'
@@ -38,6 +39,7 @@ suppressSqliteWarning(process)
 
 process.exitCode = await run(process.argv.slice(2), {
   env: process.env,
+  ghToken: ghTokenReader(process.env),
   version,
   cwd: process.cwd(),
   home: homedir(),

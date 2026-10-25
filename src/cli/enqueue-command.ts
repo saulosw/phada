@@ -5,7 +5,7 @@ import { formatPullRequestRef } from '../github/pull-request-ref.js'
 import type { PullRequestRef } from '../github/pull-request-ref.js'
 import type { PublishTarget } from '../watch/types.js'
 import type { IndexFormat } from './args.js'
-import { MissingGitHubTokenError } from './errors.js'
+import { requireGitHubToken } from './github-token.js'
 import { formatSubmitJson, formatSubmitText, NO_WATCH_WARNING } from './format-request.js'
 import { requireWatchSettings, submitDeps } from './request-wiring.js'
 import type { RequestCommandDeps } from './request-wiring.js'
@@ -21,8 +21,7 @@ export async function runEnqueue(
   deps: RequestCommandDeps,
 ): Promise<number> {
   const settings = requireWatchSettings(await loadTopLevelUserLayers(deps))
-  const token = deps.env.GITHUB_TOKEN?.trim() || deps.env.GH_TOKEN?.trim()
-  if (!token) throw new MissingGitHubTokenError()
+  const token = await requireGitHubToken(deps)
   const files = dataFiles(deps.env, deps.home)
   const { owner, repo, number } = command.ref
   const history = await deps.openHistoryStore(files.history)

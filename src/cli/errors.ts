@@ -9,7 +9,7 @@ export class MissingGitHubTokenError extends Error {
     need = 'read the pull request and write reviews (read-only is enough with --dry-run)',
   ) {
     super(
-      `No GitHub token found. Set GITHUB_TOKEN (or GH_TOKEN) to a token that can ${need}, e.g. export GITHUB_TOKEN=$(gh auth token)`,
+      `No GitHub token found. Log in with gh auth login, or set GITHUB_TOKEN (or GH_TOKEN) to a token that can ${need}.`,
     )
   }
 }

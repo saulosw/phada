@@ -9,7 +9,9 @@ import type {
 } from '../github/pull-request-reviews.js'
 import type { HistoryStore } from '../store/history-store.js'
 import type { IndexFormat, RulesTarget } from './args.js'
-import { MissingGitHubTokenError, UsageError } from './errors.js'
+import { UsageError } from './errors.js'
+import { requireGitHubToken } from './github-token.js'
+import type { GitHubTokenDeps } from './github-token.js'
 import {
   feedbackStats,
   formatHistoryJson,
@@ -35,8 +37,7 @@ export interface HistoryPruneCommand {
   olderThanMs: number
 }
 
-export interface HistoryCommandDeps {
-  env: NodeJS.ProcessEnv
+export interface HistoryCommandDeps extends GitHubTokenDeps {
   home: string
   files: LocalFileSystem
   stdout: TextOutput
@@ -48,7 +49,7 @@ export interface HistoryCommandDeps {
 
 export async function runHistory(command: HistoryCommand, deps: HistoryCommandDeps): Promise<void> {
   const enabled = historyEnabled(await loadTopLevelUserLayers(deps))
-  const token = command.refresh ? refreshToken(deps.env, enabled) : undefined
+  const token = command.refresh ? await refreshToken(deps, enabled) : undefined
   if (!enabled) deps.stderr.write('The history is off in your config; nothing new is saved.\n')
   const now = deps.clock()
   const since =
@@ -159,13 +160,11 @@ async function refresh(
   )
 }
 
-function refreshToken(env: NodeJS.ProcessEnv, enabled: boolean): string {
+async function refreshToken(deps: HistoryCommandDeps, enabled: boolean): Promise<string> {
   if (!enabled) {
     throw new UsageError('--refresh saves to the history; remove history: false from your config.')
   }
-  const token = env.GITHUB_TOKEN?.trim() || env.GH_TOKEN?.trim()
-  if (!token) throw new MissingGitHubTokenError('read the pull requests and their comments')
-  return token
+  return requireGitHubToken(deps, 'read the pull requests and their comments')
 }
 
 function filterOf(target: RulesTarget | undefined): Filter {

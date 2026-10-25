@@ -14,7 +14,8 @@ import type { FetchPullRequestOptions, PullRequest } from '../github/pull-reques
 import type { CliCommand } from './args.js'
 import { contextSourcesAt } from './context-sources.js'
 import type { ContextReaders } from './context-sources.js'
-import { MissingGitHubTokenError } from './errors.js'
+import { requireGitHubToken } from './github-token.js'
+import type { GitHubTokenDeps } from './github-token.js'
 import { formatPromptJson, formatPromptText } from './format-prompt.js'
 import type { TextOutput } from './progress.js'
 import { providerRunsSkills } from './provider-choice.js'
@@ -24,8 +25,7 @@ import { diskSkillCatalog } from './skill-catalog.js'
 
 export type PromptCommand = Extract<CliCommand, { kind: 'prompt' }>
 
-export interface PromptCommandDeps extends ContextReaders, CiReaderDeps {
-  env: NodeJS.ProcessEnv
+export interface PromptCommandDeps extends ContextReaders, CiReaderDeps, GitHubTokenDeps {
   files: LocalFileSystem
   stdout: TextOutput
   fetchPullRequest: (options: FetchPullRequestOptions) => Promise<PullRequest>
@@ -39,8 +39,7 @@ export async function runPrompt(command: PromptCommand, deps: PromptCommandDeps)
     deps.stdout.write(format(defaultPromptView()))
     return
   }
-  const token = deps.env.GITHUB_TOKEN?.trim() || deps.env.GH_TOKEN?.trim()
-  if (!token) throw new MissingGitHubTokenError('read the pull request and the repository contents')
+  const token = await requireGitHubToken(deps, 'read the pull request and the repository contents')
   const { ref } = command.target
   const userLayers = await loadUserLayers({
     env: deps.env,

@@ -10,7 +10,7 @@ import { historyEnabled } from './config/watch-settings.js'
 import type { PullRequestReview } from './app/review-pull-request.js'
 import { parseCliArgs } from './cli/args.js'
 import type { CliCommand } from './cli/args.js'
-import { MissingGitHubTokenError } from './cli/errors.js'
+import { requireGitHubToken } from './cli/github-token.js'
 import { formatError } from './cli/format-error.js'
 import { formatGitHubPreview } from './cli/format-github.js'
 import { formatCiLine, formatCiSection } from './cli/format-ci.js'
@@ -131,8 +131,7 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
       return 0
     }
 
-    const token = deps.env.GITHUB_TOKEN?.trim() || deps.env.GH_TOKEN?.trim()
-    if (!token) throw new MissingGitHubTokenError()
+    const token = await requireGitHubToken(deps)
     const { owner, repo } = command.ref
     const userLayers = await loadUserLayers({
       env: deps.env,

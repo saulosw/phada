@@ -6,7 +6,8 @@ import type { Extractor } from '../repo-map/extract.js'
 import type { GitMirror, GitMirrorOptions } from '../repository/git-mirror.js'
 import type { IndexStore } from '../store/index-store.js'
 import type { IndexFormat, RepositoryName } from './args.js'
-import { MissingGitHubTokenError } from './errors.js'
+import { requireGitHubToken } from './github-token.js'
+import type { GitHubTokenDeps } from './github-token.js'
 import { formatIndexJson, formatIndexText } from './format-index.js'
 import { indexProgress } from './progress.js'
 import type { TextOutput } from './progress.js'
@@ -18,8 +19,7 @@ export interface IndexCommand {
   format: IndexFormat
 }
 
-export interface IndexCommandDeps {
-  env: NodeJS.ProcessEnv
+export interface IndexCommandDeps extends GitHubTokenDeps {
   version: string
   home: string
   files: LocalFileSystem
@@ -33,8 +33,7 @@ export interface IndexCommandDeps {
 }
 
 export async function runIndex(command: IndexCommand, deps: IndexCommandDeps): Promise<void> {
-  const token = deps.env.GITHUB_TOKEN?.trim() || deps.env.GH_TOKEN?.trim()
-  if (!token) throw new MissingGitHubTokenError('read the repository contents')
+  const token = await requireGitHubToken(deps, 'read the repository contents')
   const { owner, repo } = command.repo
   const userLayers = await loadUserLayers({
     env: deps.env,

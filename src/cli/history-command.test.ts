@@ -62,6 +62,7 @@ function harness(
       PHADA_DATA_HOME: data,
       ...(options.token === false ? {} : { GITHUB_TOKEN: 'ghp_test' }),
     },
+    ghToken: async () => undefined,
     home: '/home/u',
     files: { ...config, exists: (path) => nodeFileSystem.exists(path) },
     stdout: { write: (text: string) => out.push(text) },
