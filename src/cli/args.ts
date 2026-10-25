@@ -73,6 +73,7 @@ export type CliCommand =
       investigate?: boolean
       resolveThreads?: boolean
       conversation?: boolean
+      ci?: boolean
       skills?: string[]
       dryRun: boolean
       force: boolean
@@ -166,6 +167,8 @@ Options:
                         resolve the ones whose problem was fixed
   --no-conversation     Do not send the comments, reviews and threads of the pull
                         request to the AI
+  --no-ci               Do not read the checks of the head: no CI for the AI, no CI
+                        line in the review
   --skill <name>        Review with this skill installed for your AI CLI (plugin:skill
                         for a skill of a plugin; phada is the built-in reviewer);
                         repeat it for several passes; replaces review.skills of the config
@@ -409,6 +412,7 @@ function parseReviewArgs(argv: readonly string[]): CliCommand {
     ...(investigate === undefined ? {} : { investigate }),
     ...(values['no-resolve'] === true ? { resolveThreads: false } : {}),
     ...(values['no-conversation'] === true ? { conversation: false } : {}),
+    ...(values['no-ci'] === true ? { ci: false } : {}),
     ...(skills === undefined ? {} : { skills }),
     dryRun: values['dry-run'],
     force: values.force,
@@ -428,6 +432,7 @@ const REVIEW_OPTIONS = {
   'no-investigate': { type: 'boolean' },
   'no-resolve': { type: 'boolean' },
   'no-conversation': { type: 'boolean' },
+  'no-ci': { type: 'boolean' },
   skill: { type: 'string', multiple: true },
   'dry-run': { type: 'boolean', default: false },
   force: { type: 'boolean', default: false },

@@ -2,6 +2,14 @@ import { describe, expect, it } from 'vitest'
 import { parseConfigText } from './parse-config.js'
 
 describe('parseConfigText', () => {
+  it('reads the ci options and refuses an unknown one', () => {
+    expect(parseConfigText('ci:\n  read: false\n  checks: [test, "lint-*"]\n')).toEqual({
+      ok: true,
+      config: { ci: { read: false, checks: ['test', 'lint-*'] } },
+    })
+    expect(parseConfigText('ci:\n  reed: false\n').ok).toBe(false)
+  })
+
   it('reads every key', () => {
     const text = [
       'provider: codex',

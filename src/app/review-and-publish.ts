@@ -11,10 +11,12 @@ import { resolvedMarker } from '../publish/markers.js'
 import { planPublication } from '../publish/plan-publication.js'
 import { threadsToRecheck, withChanges } from '../publish/recheck-candidates.js'
 import type { Comparisons } from '../publish/recheck-candidates.js'
-import type { Conversation, PublicationPlan, SkipReason } from '../publish/types.js'
+import type { Ci, CiSummary, Conversation, PublicationPlan, SkipReason } from '../publish/types.js'
 import { diffFingerprint } from '../review/diff-fingerprint.js'
 import type { RecheckThread, RecheckVerdict, ReviewResult } from '../review/types.js'
 import { errorMessage } from './error-message.js'
+import { readCi } from './read-ci.js'
+import type { CiReaders } from './read-ci.js'
 import { loadPullRequestContext, reviewPullRequest } from './review-pull-request.js'
 import type {
   PullRequestReview,
@@ -86,9 +88,15 @@ export interface ReviewAndPublishDeps {
   fetchPullRequest(ref: PullRequestRef): Promise<PullRequest>
   fetchReviewState(ref: PullRequestRef): Promise<PullRequestReviewState>
   fetchPullComments(ref: PullRequestRef): Promise<PullComment[]>
+  ci: CiReaders
   reviewDeps(pullRequest: PullRequest): PullRequestReviewDeps
   render: {
-    review(result: ReviewResult, plan: PublicationPlan, language?: string): RenderedReview
+    review(
+      result: ReviewResult,
+      plan: PublicationPlan,
+      language?: string,
+      ci?: CiSummary,
+    ): RenderedReview
     ignoredOnly(
       headSha: string,
       ignored: readonly string[],
@@ -147,6 +155,12 @@ export async function reviewAndPublish(
     (input.options.conversation ?? loaded.options.conversation ?? true)
       ? await readConversation(input.ref, state, pullRequest, deps)
       : undefined
+  const ci: Ci | undefined =
+    (input.options.ci ?? loaded.options.ci?.read ?? true)
+      ? await readCi(deps.ci, pullRequest.headSha, loaded.options.ci?.checks, (message) =>
+          deps.events.warning(message),
+        )
+      : undefined
   const reviewed = await reviewPullRequest(
     {
       ...review,
@@ -154,6 +168,7 @@ export async function reviewAndPublish(
       recheck,
       viewer: state.viewer,
       ...(conversation === undefined ? {} : { conversation }),
+      ...(ci === undefined ? {} : { ci }),
     },
     reviewDeps,
   )
@@ -183,7 +198,7 @@ export async function reviewAndPublish(
 
   const fixedIds = new Set(fixed.map(({ threadId }) => threadId))
   const plan = planPublication(outcome.result.findings, state, fixedIds)
-  const rendered = deps.render.review(outcome.result, plan, reviewed.language)
+  const rendered = deps.render.review(outcome.result, plan, reviewed.language, ci?.summary)
   deps.events.reviewed(reviewed, pullRequest)
   return {
     status: 'reviewed',

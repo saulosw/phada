@@ -48,6 +48,7 @@ import { assertProviderChoice, providerRunsSkills } from './provider-choice.js'
 import { diskSkillCatalog } from './skill-catalog.js'
 import {
   feedbackRefreshDeps,
+  ciReaders,
   pullRequestReviewDeps,
   renderReview,
   reviewRunJson,
@@ -409,6 +410,7 @@ async function runJob(
       fetchPullRequest: (pull) => deps.fetchPullRequest({ ...pull, token }),
       fetchReviewState: (pull) => deps.fetchReviewState({ ...pull, token }),
       fetchPullComments: (pull) => deps.fetchPullComments({ ...pull, token }),
+      ci: ciReaders(deps, publishTarget),
       reviewDeps: (pullRequest) =>
         pullRequestReviewDeps(deps, publishTarget, { ...choice, detached: true }, pullRequest),
       render: renderReview,

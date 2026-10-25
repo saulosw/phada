@@ -312,6 +312,26 @@ describe('investigation options', () => {
     expect(mergeConfig([user({})]).conversation).toBeUndefined()
   })
 
+  it('takes each ci option from the repository over the user', () => {
+    expect(
+      mergeConfig([
+        user({ ci: { read: false, checks: ['test'] } }),
+        root({ ci: { checks: ['build', 'lint-*'] } }),
+      ]).ci,
+    ).toEqual({ read: false, checks: ['build', 'lint-*'] })
+    expect(mergeConfig([user({ ci: { read: false } })]).ci).toEqual({ read: false })
+    expect(mergeConfig([user({})]).ci).toEqual({})
+  })
+
+  it('ignores ci in a subfolder with a warning', () => {
+    const merged = mergeConfig([sub('src/api', { ci: { read: false } })])
+
+    expect(merged.ci).toEqual({})
+    expect(merged.warnings).toEqual([
+      'src/api/.phada/config.yml: ci is only read from the root .phada/config.yml or your own config; ignored.',
+    ])
+  })
+
   it('takes investigate like verify, from the most specific layer', () => {
     expect(
       mergeConfig([user({ investigate: true }), root({ investigate: false })]).investigate,

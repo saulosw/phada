@@ -2,7 +2,10 @@
 import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { nodeFileSystem } from './config/local-files.js'
+import { fetchCheckAnnotations, fetchCheckRuns } from './github/check-runs.js'
+import { fetchCommitStatuses } from './github/commit-statuses.js'
 import { fetchComparison } from './github/compare-commits.js'
+import { fetchJobLog } from './github/job-log.js'
 import { createReview } from './github/create-review.js'
 import { replyAndResolve } from './github/resolve-thread.js'
 import { fetchPullComments, fetchReviewState } from './github/pull-request-reviews.js'
@@ -45,6 +48,10 @@ process.exitCode = await run(process.argv.slice(2), {
   fetchPullRequest,
   fetchReviewState,
   fetchPullComments,
+  fetchCheckRuns,
+  fetchCommitStatuses,
+  fetchCheckAnnotations,
+  fetchJobLog,
   createReview,
   fetchComparison,
   replyAndResolve,

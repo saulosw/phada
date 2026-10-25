@@ -1,8 +1,14 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { findingFixture } from '../../test/support/finding.js'
 import { pullRequestFixture } from '../../test/support/pull-request.js'
 import { reviewReportJson } from '../../test/support/review-report.js'
+import { formatGitHubReview } from '../cli/format-github.js'
+import { messagesFor } from '../cli/i18n/messages.js'
 import type { ContextSources } from '../context/types.js'
+import type { CheckAnnotation, CheckRun } from '../github/check-runs.js'
+import { GitHubPermissionError } from '../github/errors.js'
+import { JobLogUnavailableError } from '../github/job-log.js'
 import type { PullRequestReviewState } from '../github/pull-request-reviews.js'
 import type { PullRequest } from '../github/pull-request.js'
 import type { ReviewPrompt, ReviewProvider } from '../providers/types.js'
@@ -13,6 +19,7 @@ import { verdictFixture, verificationJson } from '../../test/support/verificatio
 import { diffFingerprint } from '../review/diff-fingerprint.js'
 import { reviewAndPublish } from './review-and-publish.js'
 import type { ReviewAndPublishDeps, ReviewAndPublishInput } from './review-and-publish.js'
+import type { CiReaders } from './read-ci.js'
 import type { PullRequestReviewDeps } from './review-pull-request.js'
 
 const PR = pullRequestFixture()
@@ -107,6 +114,7 @@ function setup(
   overrides: Partial<ReviewAndPublishDeps> = {},
   pullRequest: PullRequest = PR,
   recheckAnswer: () => Promise<string> = async () => verdicts({ id: 1, verdict: 'fixed' }),
+  reviewAnswer: () => string = () => REPORT,
 ) {
   const calls = {
     reviews: 0,
@@ -118,6 +126,7 @@ function setup(
     warnings: [] as string[],
     prompts: [] as ReviewPrompt[],
     commentReads: 0,
+    ciReads: [] as string[],
   }
   const provider: ReviewProvider = {
     id: 'fake',
@@ -133,7 +142,7 @@ function setup(
       }
       calls.reviews += 1
       calls.log.push('review')
-      return { text: REPORT, durationMs: 5 }
+      return { text: reviewAnswer(), durationMs: 5 }
     },
   }
   const reviewDeps = (): PullRequestReviewDeps => ({
@@ -160,6 +169,18 @@ function setup(
     fetchPullComments: async () => {
       calls.commentReads += 1
       return []
+    },
+    ci: {
+      checkRuns: async (sha) => {
+        calls.ciReads.push(`runs ${sha}`)
+        return []
+      },
+      statuses: async (sha) => {
+        calls.ciReads.push(`statuses ${sha}`)
+        return []
+      },
+      annotations: async () => [],
+      jobLog: () => Promise.reject(new Error('no job log in this test')),
     },
     reviewDeps,
     render: {
@@ -803,6 +824,302 @@ describe('reviewAndPublish with the pull request conversation', () => {
     expect(conversationOf(calls.prompts[0]).map((item) => (item as { kind: string }).kind)).toEqual(
       ['thread', 'thread', 'review'],
     )
+  })
+})
+
+describe('reviewAndPublish with the checks of the head', () => {
+  const VERIFY_INPUT: ReviewAndPublishInput = {
+    ...INPUT,
+    options: { ...INPUT.options, verify: true },
+  }
+  const JOB_LOG = readFileSync(
+    new globalThis.URL('../../test/fixtures/github/job-log.txt', import.meta.url),
+    'utf8',
+  )
+  const checkRun = (name: string, overrides: Partial<CheckRun> = {}): CheckRun => ({
+    id: 1,
+    name,
+    status: 'completed',
+    conclusion: 'success',
+    title: null,
+    summary: null,
+    url: null,
+    app: 'github-actions',
+    ...overrides,
+  })
+  const annotation = (overrides: Partial<CheckAnnotation> = {}): CheckAnnotation => ({
+    path: 'src/shop.ts',
+    line: 3,
+    level: 'failure',
+    title: null,
+    message: 'expected 3 to be 2',
+    ...overrides,
+  })
+  const RUNS: CheckRun[] = [
+    checkRun('test', {
+      id: 11,
+      conclusion: 'failure',
+      title: 'Tests failed',
+      summary: '1 of 40 failed',
+    }),
+    checkRun('e2e', { id: 12, status: 'in_progress', conclusion: null }),
+    checkRun('build', { id: 13 }),
+  ]
+  const readers = (
+    calls: { ciReads: string[] },
+    overrides: Partial<CiReaders> = {},
+  ): CiReaders => ({
+    checkRuns: async () => RUNS,
+    statuses: async () => [{ context: 'ci/lint', state: 'success', description: null, url: null }],
+    annotations: async (id) => {
+      calls.ciReads.push(`annotations ${id}`)
+      return [
+        annotation(),
+        annotation({ path: '.github', line: 1, message: 'Process completed with exit code 1.' }),
+        annotation({ path: '.github', line: 1, level: 'notice', message: 'Runner ubuntu-24.04' }),
+      ]
+    },
+    jobLog: async (id) => {
+      calls.ciReads.push(`log ${id}`)
+      return { text: JOB_LOG, partial: false }
+    },
+    ...overrides,
+  })
+  const ciOf = (prompt: ReviewPrompt | undefined): unknown[] => {
+    const match = /<<<PHADA_CI_(\w+)\n([\s\S]*?)\nPHADA_CI_\1>>>/.exec(prompt?.data ?? '')
+    return match === null ? [] : match[2]!.split('\n').map((line) => JSON.parse(line) as unknown)
+  }
+  const ANSWER = () =>
+    reviewReportJson({
+      findings: [
+        {
+          ...findingFixture({ line: 3, confidence: 95, title: 'Total adds the fee twice' }),
+          rule: null,
+          sources: ['ci:test', 'ci:build', 'src/shop.ts:3'],
+          suggestion: null,
+        },
+      ],
+    })
+  const withConfig = (deps: ReviewAndPublishDeps, config: string) => {
+    const reviewDeps = deps.reviewDeps
+    deps.reviewDeps = (pullRequest) => ({
+      ...reviewDeps(pullRequest),
+      contextSources: {
+        ...SOURCES,
+        readTree: async () => ({
+          entries: [{ path: '.phada/config.yml', size: config.length }],
+          truncated: false,
+        }),
+        readRepoFile: async (path) => (path === '.phada/config.yml' ? config : null),
+      },
+    })
+  }
+  const withoutNonce = (prompt: ReviewPrompt) => ({
+    ...prompt,
+    data: prompt.data.replace(/_[0-9a-f]{12}(\n|>>>)/g, '_<id>$1'),
+  })
+
+  it('sends the checks to the review and the verifier, and publishes the CI line and a finding based on a check', async () => {
+    const rendered: string[] = []
+    const { deps, calls } = setup({}, PR, undefined, ANSWER)
+    deps.ci = readers(calls)
+    deps.render.review = (result, plan, language, ci) => {
+      const review = formatGitHubReview(result, plan, undefined, messagesFor(language), ci)
+      rendered.push(review.body, ...review.comments.map(({ body }) => body))
+      return review
+    }
+
+    const run = await reviewAndPublish(VERIFY_INPUT, deps)
+
+    const [review, verify] = calls.prompts
+    const block = ciOf(review)
+    expect(block).toEqual([
+      {
+        name: 'test',
+        state: 'failing',
+        conclusion: 'failure',
+        title: 'Tests failed',
+        summary: '1 of 40 failed',
+        annotations: [
+          'src/shop.ts:3 failure: expected 3 to be 2',
+          '.github:1 failure: Process completed with exit code 1.',
+        ],
+        log: expect.stringMatching(
+          /^##\[group\]Run go mod tidy -diff\n[\s\S]*\n##\[error\]Process completed with exit code 1\.$/,
+        ),
+      },
+      { name: 'e2e', state: 'pending' },
+      { name: 'build', state: 'passing' },
+      { name: 'ci/lint', state: 'passing' },
+    ])
+    expect(ciOf(verify)).toEqual(block)
+    expect(review?.instructions).toContain('The PHADA_CI block')
+    expect(verify?.instructions).toContain('cites a check ("ci:<name>")')
+    expect(calls.ciReads).toEqual(['annotations 11', 'log 11'])
+    expect(run.status === 'reviewed' && run.reviewed.outcome.status === 'reviewed').toBe(true)
+    if (run.status !== 'reviewed' || run.reviewed.outcome.status !== 'reviewed') return
+    expect(run.reviewed.outcome.result.findings[0]?.sources).toEqual(['ci:test', 'src/shop.ts:3'])
+    expect(run.reviewed.outcome.result.score.value).toBe(3)
+    expect(run.reviewed.ci?.summary).toEqual({
+      state: 'failing',
+      total: 4,
+      failing: ['test'],
+      pending: ['e2e'],
+    })
+    expect(rendered[0]?.split('\n')[2]).toBe('CI: 1 of 4 checks failing (test) · 1 pending')
+    expect(calls.posts[0]).toBe(rendered[0])
+    expect(rendered[1]).toContain('Based on: CI check `test` · `src/shop.ts:3`')
+  })
+
+  it('sends the prompts of 0.8.0 and no CI line when no check counts', async () => {
+    const none = setup()
+    const filtered = setup()
+    filtered.deps.ci = readers(filtered.calls)
+    withConfig(filtered.deps, 'ci:\n  checks: [deploy-*]\n')
+    const summaries: unknown[] = []
+    filtered.deps.render.review = (result, plan, language, ci) => {
+      summaries.push(ci)
+      return none.deps.render.review(result, plan, language)
+    }
+
+    await reviewAndPublish(VERIFY_INPUT, none.deps)
+    const run = await reviewAndPublish(VERIFY_INPUT, filtered.deps)
+
+    expect(none.calls.ciReads).toEqual([`runs ${PR.headSha}`, `statuses ${PR.headSha}`])
+    expect(filtered.calls.prompts.map(withoutNonce)).toEqual(none.calls.prompts.map(withoutNonce))
+    expect(filtered.calls.ciReads).toEqual([])
+    expect(summaries).toEqual([{ state: 'none', total: 0, failing: [], pending: [] }])
+    expect(run.status === 'reviewed' && run.reviewed.ci?.summary.state).toBe('none')
+  })
+
+  it('counts only the checks ci.checks names, by name or glob', async () => {
+    const { deps, calls } = setup()
+    deps.ci = readers(calls)
+    withConfig(deps, 'ci:\n  checks: [test, "ci/*"]\n')
+
+    await reviewAndPublish(INPUT, deps)
+
+    expect(ciOf(calls.prompts[0]).map((check) => (check as { name: string }).name)).toEqual([
+      'test',
+      'ci/lint',
+    ])
+  })
+
+  it('reads no check with --no-ci, nor with ci.read: false in the repository config', async () => {
+    const flag = setup()
+    flag.deps.ci = readers(flag.calls)
+    const config = setup()
+    config.deps.ci = readers(config.calls)
+    withConfig(config.deps, 'ci:\n  read: false\n')
+    const none = setup()
+    const user = {
+      kind: 'user' as const,
+      dir: '/home/me/.config/phada',
+      config: { ci: { read: true } },
+      configLabel: 'user:config.yml',
+    }
+
+    const run = await reviewAndPublish(
+      { ...VERIFY_INPUT, options: { ...VERIFY_INPUT.options, ci: false } },
+      flag.deps,
+    )
+    await reviewAndPublish({ ...VERIFY_INPUT, userLayers: [user] }, config.deps)
+
+    await reviewAndPublish(VERIFY_INPUT, none.deps)
+
+    expect(flag.calls.ciReads).toEqual([])
+    expect(config.calls.ciReads).toEqual([])
+    expect(flag.calls.prompts.map(withoutNonce)).toEqual(none.calls.prompts.map(withoutNonce))
+    expect(config.calls.prompts.map(({ data }) => data)).not.toContainEqual(
+      expect.stringContaining('PHADA_CI'),
+    )
+    expect(run.status === 'reviewed' && run.reviewed.ci).toBeUndefined()
+  })
+
+  it('reviews with a warning naming the permission when GitHub denies the checks', async () => {
+    const { deps, calls } = setup()
+    deps.ci = readers(calls, {
+      checkRuns: () => Promise.reject(new GitHubPermissionError('the check runs', 'checks:read')),
+      statuses: () =>
+        Promise.reject(new GitHubPermissionError('the commit statuses', 'statuses:read')),
+    })
+
+    const run = await reviewAndPublish(INPUT, deps)
+
+    expect(run.status).toBe('reviewed')
+    expect(calls.events).toEqual(
+      expect.arrayContaining([
+        'warning: CI check runs were not read: GitHub denied reading the check runs (HTTP 403): the token needs the checks:read permission.',
+        'warning: Commit statuses were not read: GitHub denied reading the commit statuses (HTTP 403): the token needs the statuses:read permission.',
+      ]),
+    )
+    expect(calls.prompts[0]?.data).not.toContain('PHADA_CI')
+  })
+
+  it('warns once and stops reading logs without actions:read, and goes on past a log that is gone', async () => {
+    const failing = (id: number) =>
+      checkRun(`job ${id}`, { id, conclusion: 'failure', title: 'Failed' })
+    const denied = setup()
+    denied.deps.ci = readers(denied.calls, {
+      checkRuns: async () => [failing(1), failing(2)],
+      jobLog: (id) => {
+        denied.calls.ciReads.push(`log ${id}`)
+        return Promise.reject(new GitHubPermissionError('the job logs', 'actions:read'))
+      },
+    })
+    const gone = setup()
+    gone.deps.ci = readers(gone.calls, {
+      checkRuns: async () => [failing(1), failing(2)],
+      jobLog: async (id) => {
+        gone.calls.ciReads.push(`log ${id}`)
+        if (id === 1) throw new JobLogUnavailableError(1)
+        return { text: '##[group]Run make\n##[error]boom', partial: false }
+      },
+    })
+
+    await reviewAndPublish(INPUT, denied.deps)
+    await reviewAndPublish(INPUT, gone.deps)
+
+    expect(denied.calls.ciReads.filter((read) => read.startsWith('log'))).toEqual(['log 1'])
+    expect(denied.calls.events.filter((event) => event.includes('actions:read'))).toEqual([
+      'warning: Job logs were not read: GitHub denied reading the job logs (HTTP 403): the token needs the actions:read permission.',
+    ])
+    expect(ciOf(denied.calls.prompts[0])).toHaveLength(3)
+    expect(gone.calls.events).toContain(
+      'warning: The log of job 1 was not read: The log of job 1 is not available (expired or deleted)',
+    )
+    expect(ciOf(gone.calls.prompts[0])).toMatchObject([
+      { name: 'job 1', state: 'failing' },
+      { name: 'job 2', state: 'failing', log: '##[group]Run make\n##[error]boom' },
+      { name: 'ci/lint', state: 'passing' },
+    ])
+    expect((ciOf(gone.calls.prompts[0])[0] as { log?: string }).log).toBeUndefined()
+  })
+
+  it(`stops reading annotations once 50 are kept`, async () => {
+    const many = Array.from({ length: 30 }, (_, index) => annotation({ line: index + 1 }))
+    const { deps, calls } = setup()
+    deps.ci = readers(calls, {
+      checkRuns: async () =>
+        [1, 2, 3].map((id) => checkRun(`job ${id}`, { id, conclusion: 'failure' })),
+      annotations: async (id) => {
+        calls.ciReads.push(`annotations ${id}`)
+        return many
+      },
+      jobLog: async () => ({ text: '##[error]boom', partial: false }),
+    })
+
+    await reviewAndPublish(INPUT, deps)
+
+    expect(calls.ciReads.filter((read) => read.startsWith('annotations'))).toEqual([
+      'annotations 1',
+      'annotations 2',
+    ])
+    expect(
+      ciOf(calls.prompts[0]).flatMap(
+        (check) => (check as { annotations?: string[] }).annotations ?? [],
+      ),
+    ).toHaveLength(50)
   })
 })
 

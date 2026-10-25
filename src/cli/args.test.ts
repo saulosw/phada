@@ -90,6 +90,15 @@ describe('parseCliArgs', () => {
     expect(REVIEW_USAGE).toContain('--no-conversation')
   })
 
+  it('turns the reading of the checks off with --no-ci', () => {
+    expect(parseCliArgs(['review', 'acme/shop#12', '--no-ci'])).toMatchObject({
+      kind: 'review',
+      ci: false,
+    })
+    expect(parseCliArgs(['review', 'acme/shop#12'])).not.toHaveProperty('ci')
+    expect(REVIEW_USAGE).toContain('--no-ci')
+  })
+
   it('turns verification off with --no-verify', () => {
     expect(parseCliArgs(['review', 'acme/shop#12', '--no-verify'])).toMatchObject({
       verify: false,

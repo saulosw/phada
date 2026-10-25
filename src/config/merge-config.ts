@@ -58,6 +58,11 @@ export interface ReviewSettings {
   timeoutMs?: number
 }
 
+export interface CiSettings {
+  read?: boolean
+  checks?: string[]
+}
+
 export interface EffectiveConfig {
   language?: string
   minConfidence?: number
@@ -65,6 +70,7 @@ export interface EffectiveConfig {
   investigate?: boolean
   resolveThreads?: boolean
   conversation?: boolean
+  ci: CiSettings
   contextDefaults: boolean
   rules: ResolvedRule[]
   disabledRules: ReadonlySet<string>
@@ -92,6 +98,7 @@ const OPTIONS = [
   'investigate',
   'resolveThreads',
   'conversation',
+  'ci',
 ] as const
 const USER_ONLY = [
   'provider',
@@ -126,6 +133,8 @@ export function mergeConfig(layers: readonly ConfigLayer[]): EffectiveConfig {
   const investigate = firstSet((config) => config.investigate)
   const resolveThreads = firstSet((config) => config.resolveThreads)
   const conversation = firstSet((config) => config.conversation)
+  const ciRead = firstSet((config) => config.ci?.read)
+  const ciChecks = firstSet((config) => config.ci?.checks)
   const merged: EffectiveConfig = {
     ...(language === undefined ? {} : { language }),
     ...(minConfidence === undefined ? {} : { minConfidence }),
@@ -133,6 +142,10 @@ export function mergeConfig(layers: readonly ConfigLayer[]): EffectiveConfig {
     ...(investigate === undefined ? {} : { investigate }),
     ...(resolveThreads === undefined ? {} : { resolveThreads }),
     ...(conversation === undefined ? {} : { conversation }),
+    ci: {
+      ...(ciRead === undefined ? {} : { read: ciRead }),
+      ...(ciChecks === undefined ? {} : { checks: ciChecks }),
+    },
     contextDefaults: firstSet((config) => config.context?.defaults) ?? true,
     rules: [],
     disabledRules: new Set(

@@ -45,9 +45,10 @@ src/
                          #   loadPullRequestContext()
     review-and-publish.ts # reviewAndPublish(): fetch → decideRun → context → decideRun with the
                          #   diff fingerprint → threads to recheck (compare) → the conversation
-                         #   (comments read unless conversation is off) → reviewPullRequest →
-                         #   plan → render (injected) → [checkHead] → reply and resolve the fixed
-                         #   threads → createReview; never prints
+                         #   (comments read unless conversation is off) → the checks of the head
+                         #   (readCi, unless ci.read is off) → reviewPullRequest → plan → render
+                         #   (injected, with the CI summary) → [checkHead] → reply and resolve
+                         #   the fixed threads → createReview; never prints
     watch-repositories.ts # watchRepositories(): the watch loop — discovery with ETags, planCycle
                          #   (asking the when command before queueing), /phada review comments,
                          #   the next job with its requests, failures and pauses, requests moved
@@ -67,6 +68,10 @@ src/
     related-report.ts    #   rankOpened(), buildRelatedReport(), relatedSummaries(): the related
                          #   repositories for the prompt, the CLI and the JSON
     error-message.ts     #   errorMessage(): the message of any thrown value
+    read-ci.ts           #   readCheckEntries(): check runs and statuses → the checks that count
+                         #   (ci.checks: names or globs); readCi(): + the annotations and job logs
+                         #   of the failing ones → buildCi(); each failure a warning, a missing
+                         #   permission stops that kind of read
     inspect-context.ts   #   inspectPullRequestContext(), inspectRepositoryContext(): the context
                          #   without a review
     review-passes.ts     #   buildPasses(): review.prompt, review.skills or --skill → one SkillPass
@@ -81,7 +86,7 @@ src/
   cli/                   # terminal edge
     args.ts              #   parseCliArgs(): `review` (--dry-run, --force, --verify/--no-verify,
                          #   --investigate/--no-investigate, --no-resolve, --no-conversation,
-                         #   --skill), `init`, `index` (--ref, --format text|json), `rules`
+                         #   --no-ci, --skill), `init`, `index` (--ref, --format text|json), `rules`
                          #   (--format text|json), `prompt` (--default, --skill, --format
                          #   text|json), `watch` (--once,
                          #   --backfill, --status) and `history` (--since, --limit, --stats,
@@ -136,8 +141,8 @@ src/
                          #   read with `codex mcp get --json` before the review
     classify-failure.ts  #   classifyFailure(): an error → transient, usage-limit, rate-limit,
                          #   definitive or fatal
-    review-wiring.ts     #   pullRequestReviewDeps(), renderReview, reviewRunJson(): shared by
-                         #   review and watch
+    review-wiring.ts     #   pullRequestReviewDeps(), ciReaders(), renderReview, reviewRunJson():
+                         #   shared by review and watch
     history-run.ts       #   historyRun(), watchRun(): a run or a failure → the history record
     format-rules.ts      #   formatRulesText(), formatRulesJson() (schemaVersion 1)
     context-sources.ts   #   contextSourcesAt(): the repository at a commit and the local files
@@ -168,7 +173,7 @@ src/
     terminal-text.ts     #   toTerminalText(): strips control and bidi characters from external text
     units.ts             #   duration, tokens, bytes, counts
   config/                # the config files: .phada/ in the repository and the user's own
-    schema.ts            #   Zod schema of config.yml; LANGUAGE_TAG
+    schema.ts            #   Zod schema of config.yml (ci: read, checks); LANGUAGE_TAG
     parse-config.ts      #   parseConfigText(): YAML → config or an error naming the key
     merge-config.ts      #   mergeConfig(): layers → options, rules, files, ignore with origins (pure);
                          #   resolveProvider(): provider and model as a pair

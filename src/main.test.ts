@@ -87,6 +87,7 @@ interface Harness {
   mcpChecks: [string, string[]][]
   stateFetches: FetchReviewStateOptions[]
   commentFetches: FetchReviewStateOptions[]
+  ciFetches: string[]
   posts: CreateReviewOptions[]
   comparisons: CompareOptions[]
   replies: ReplyAndResolveOptions[]
@@ -203,6 +204,7 @@ function harness(
   const mcpChecks: [string, string[]][] = []
   const stateFetches: FetchReviewStateOptions[] = []
   const commentFetches: FetchReviewStateOptions[] = []
+  const ciFetches: string[] = []
   const posts: CreateReviewOptions[] = []
   const comparisons: CompareOptions[] = []
   const replies: ReplyAndResolveOptions[] = []
@@ -237,6 +239,16 @@ function harness(
       commentFetches.push(options)
       return Promise.resolve([])
     },
+    fetchCheckRuns: ({ owner, repo, token, sha }) => {
+      ciFetches.push(`runs ${owner}/${repo} ${sha} ${token === TOKEN ? 'token' : 'other'}`)
+      return Promise.resolve([])
+    },
+    fetchCommitStatuses: ({ owner, repo, sha }) => {
+      ciFetches.push(`statuses ${owner}/${repo} ${sha}`)
+      return Promise.resolve([])
+    },
+    fetchCheckAnnotations: () => Promise.resolve([]),
+    fetchJobLog: () => Promise.reject(new Error('no job log in this test')),
     createReview: (options) => {
       events.push('post')
       posts.push(options)
@@ -399,6 +411,7 @@ function harness(
     mcpChecks,
     stateFetches,
     commentFetches,
+    ciFetches,
     posts,
     comparisons,
     replies,
@@ -898,6 +911,18 @@ describe('run publishing', () => {
 
     expect(h.commentFetches).toEqual([{ owner: 'acme', repo: 'shop', number: 12, token: TOKEN }])
     expect(off.commentFetches).toEqual([])
+  })
+
+  it('reads the checks of the head with the token, unless --no-ci', async () => {
+    const h = harness()
+    const off = harness()
+    const sha = pullRequestFixture().headSha
+
+    await run(REVIEW, h.deps)
+    await run([...REVIEW, '--no-ci'], off.deps)
+
+    expect(h.ciFetches).toEqual([`runs acme/shop ${sha} token`, `statuses acme/shop ${sha}`])
+    expect(off.ciFetches).toEqual([])
   })
 
   it('skips before the provider when the same commit has open Phada threads', async () => {

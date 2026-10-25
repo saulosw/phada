@@ -36,6 +36,7 @@ import { runPrompt } from './cli/prompt-command.js'
 import { runRules } from './cli/rules-command.js'
 import { runHistory, runHistoryPrune } from './cli/history-command.js'
 import {
+  ciReaders,
   mcpNameChecker,
   pullRequestReviewDeps,
   renderReview,
@@ -165,6 +166,7 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
             ? {}
             : { resolveThreads: command.resolveThreads }),
           ...(command.conversation === undefined ? {} : { conversation: command.conversation }),
+          ...(command.ci === undefined ? {} : { ci: command.ci }),
           ...(command.skills === undefined ? {} : { skills: command.skills }),
         },
         userLayers,
@@ -201,6 +203,7 @@ function reviewAndPublishDeps(
     fetchPullRequest: (ref) => deps.fetchPullRequest({ ...ref, token }),
     fetchReviewState: (ref) => deps.fetchReviewState({ ...ref, token }),
     fetchPullComments: (ref) => deps.fetchPullComments({ ...ref, token }),
+    ci: ciReaders(deps, target),
     reviewDeps: (pullRequest) => pullRequestReviewDeps(deps, target, choice, pullRequest),
     render: renderReview,
     createReview: (pullRequest, rendered) =>
