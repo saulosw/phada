@@ -8,6 +8,7 @@ import type {
   RepositoryIndex,
   RepositoryList,
   RepositoryOrigin,
+  UserRule,
 } from '../../app/read-repositories.js'
 import {
   useAppDeps,
@@ -33,6 +34,8 @@ import { shortenHome } from './home.js'
 const GAP = '  '
 const MIN_NAME_WIDTH = 16
 const SHORT_SHA = 7
+const KEY_SHARE = 0.3
+const USER_LABEL = /^user:(repos\/[^/]+\/[^/]+\/)?/
 
 const repoKey = ({ repo }: ListedRepository) => repo
 
@@ -252,16 +255,7 @@ function RepositoryDetailLines({ detail }: { detail: RepositoryDetail }) {
     ...(detail.config.status === 'read' && detail.config.rules.length > 0
       ? section(
           d.rules(detail.config.rules.length),
-          detail.config.rules.map((rule) => (
-            <Text>
-              {'  '}
-              <Text color={colors.soft}>{oneLine(rule.key)}</Text>
-              {GAP}
-              {oneLine(rule.text)}
-              {GAP}
-              <Text color={colors.dim}>{messages.settings.origins[rule.origin]}</Text>
-            </Text>
-          )),
+          ruleLines(detail.config.rules, messages, theme, size.columns),
         )
       : []),
     <Text> </Text>,
@@ -400,6 +394,28 @@ function reviewLines(
       <Text color={theme.colors.dim}>{fit(cell.when, columns.when)}</Text>
       {GAP}
       {oneLine(cell.run.title ?? '')}
+    </Text>
+  ))
+}
+
+function ruleLines(
+  rules: readonly UserRule[],
+  messages: UiMessages,
+  { colors }: Theme,
+  columns: number,
+): ReactNode[] {
+  const keys = rules.map(({ key }) => oneLine(key.replace(USER_LABEL, '')))
+  const keyWidth = Math.min(Math.max(0, ...keys.map(textWidth)), Math.floor(columns * KEY_SHARE))
+  const originWidth = Math.max(...Object.values(messages.settings.origins).map(textWidth))
+  const textWidthLeft = Math.max(columns - 2 - keyWidth - originWidth - GAP.length * 2, 1)
+  return rules.map((rule, index) => (
+    <Text>
+      {'  '}
+      <Text color={colors.soft}>{fit(keys[index] ?? '', keyWidth)}</Text>
+      {GAP}
+      {fit(oneLine(rule.text), textWidthLeft)}
+      {GAP}
+      <Text color={colors.dim}>{messages.settings.origins[rule.origin]}</Text>
     </Text>
   ))
 }

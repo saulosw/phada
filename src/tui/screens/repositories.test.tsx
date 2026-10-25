@@ -95,7 +95,14 @@ function shopDetail(): RepositoryDetail {
           origin: 'repository',
         },
       ],
-      rules: [{ key: 'no-any', text: 'Avoid any in new code.', origin: 'global' }],
+      rules: [
+        { key: 'no-any', text: 'Avoid any in new code.', origin: 'global' },
+        {
+          key: 'user:repos/acme/shop/rules.md',
+          text: 'Prefer small functions.',
+          origin: 'repository',
+        },
+      ],
       warnings: [],
     },
     watch: {
@@ -179,6 +186,8 @@ describe('RepositoriesScreen', () => {
 
     await view.press(KEYS.end)
     const end = view.frame()
+    expect(end).toMatch(/no-any\s+Avoid any in new code\.\s+global/)
+    expect(end).toMatch(/rules\.md\s+Prefer small functions\.\s+this repo/)
     expect(end).toContain('see the Rules')
     expect(end).toContain('acme/api — The API it calls')
     expect(end).toContain('Last reviews (2 of 7)')
