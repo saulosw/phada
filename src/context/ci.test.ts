@@ -46,6 +46,15 @@ function log(text: string, partial = false): JobLog {
 }
 
 describe('buildCi', () => {
+  it('leaves out an empty annotation title', () => {
+    const ci = buildCi([failing('lint', 4)], {
+      annotations: new Map([[4, [annotation({ title: '', message: 'unused import' })]]]),
+      logs: new Map(),
+    })
+
+    expect(ci.checks[0]).toMatchObject({ annotations: ['src/cart.ts:12 failure: unused import'] })
+  })
+
   it('lists failing checks first with their details, then pending, then passing by name', () => {
     const entries: CiEntry[] = [
       {

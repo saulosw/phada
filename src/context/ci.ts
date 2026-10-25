@@ -105,7 +105,7 @@ function cutLogs(entries: readonly CiEntry[], logs: ReadonlyMap<number, JobLog>)
 
 function annotationLine(annotation: CheckAnnotation, cuts: CutCount): string {
   const title =
-    annotation.title === null || annotation.title === annotation.message
+    annotation.title === null || annotation.title === '' || annotation.title === annotation.message
       ? ''
       : `${annotation.title}: `
   return `${annotation.path}:${annotation.line} ${annotation.level}: ${title}${cutBytes(annotation.message, CI_ANNOTATION_BYTES, cuts)}`
