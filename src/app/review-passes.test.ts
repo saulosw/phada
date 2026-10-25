@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { ConfigError } from '../config/errors.js'
 import type { ReviewSettings } from '../config/merge-config.js'
 import { SkillError } from '../skills/errors.js'
-import { buildPasses } from './review-passes.js'
+import { buildPasses, configuredLens } from './review-passes.js'
 import type { SkillCatalog } from './review-passes.js'
 
 const catalog = (known: Record<string, string>, omitted: string[] = []): SkillCatalog => ({
@@ -386,5 +386,38 @@ describe('buildPasses native mode on a provider without skills', () => {
     expect(planned.warnings).toContain(
       'Skill code-review: this provider does not run skills natively; its text is sent instead.',
     )
+  })
+})
+
+describe('configuredLens', () => {
+  const prompt = {
+    file: '.phada/prompt.md',
+    mode: 'replace' as const,
+    origin: '.phada/config.yml',
+    source: 'repository' as const,
+  }
+  const skills = {
+    entries: [{ name: 'security', paths: ['src/**'] }],
+    origin: 'user:config.yml',
+    source: 'local' as const,
+  }
+
+  it('is the built-in lens without a prompt or skills', () => {
+    expect(configuredLens(undefined)).toEqual({ kind: 'built-in' })
+    expect(configuredLens({ timeoutMs: 1000 })).toEqual({ kind: 'built-in' })
+  })
+
+  it('is the own prompt, with its mode and where it comes from', () => {
+    expect(configuredLens({ prompt })).toEqual({ kind: 'prompt', prompt })
+  })
+
+  it('is the skills, and the prompt only when phada is one of them', () => {
+    expect(configuredLens({ prompt, skills })).toEqual({ kind: 'skills', skills, prompt: null })
+    const withPhada = { ...skills, entries: [{ name: 'phada' }, ...skills.entries] }
+    expect(configuredLens({ prompt, skills: withPhada })).toEqual({
+      kind: 'skills',
+      skills: withPhada,
+      prompt,
+    })
   })
 })
