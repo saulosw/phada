@@ -100,3 +100,22 @@ async function loadLayer(
 function fromConfigDir(dir: string, path: string): string {
   return path === '~' || path.startsWith('~/') || isAbsolute(path) ? path : join(dir, path)
 }
+
+const REPO_CONFIG_FILES = ['config.yml', 'rules.md']
+
+export async function listUserRepoConfigs(options: {
+  env: NodeJS.ProcessEnv
+  home: string
+  files: LocalFileSystem
+}): Promise<string[]> {
+  const { files } = options
+  const root = join(userConfigDir(options.env, options.home), 'repos')
+  const repos: string[] = []
+  for (const owner of (await files.listDir(root)) ?? []) {
+    for (const repo of (await files.listDir(join(root, owner))) ?? []) {
+      const entries = (await files.listDir(join(root, owner, repo))) ?? []
+      if (entries.some((entry) => REPO_CONFIG_FILES.includes(entry))) repos.push(`${owner}/${repo}`)
+    }
+  }
+  return repos.sort()
+}
