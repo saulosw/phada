@@ -85,6 +85,20 @@ describe('ScrollList', () => {
     expect(frame()).toContain('❯ item 30')
   })
 
+  it('opens the item the keys moved to when they arrive in one write', async () => {
+    const opened: string[] = []
+    const { app, frame } = renderApp({ screens: [listScreen(NAMES, {}, opened)] })
+    await settle()
+    app.stdin.write(`${KEYS.down}${KEYS.enter}`)
+    await settle()
+    app.stdin.write(`${KEYS.end}${KEYS.enter}`)
+    await settle()
+    app.stdin.write(`${KEYS.up}${KEYS.up}${KEYS.enter}`)
+    await settle()
+    expect(opened).toEqual(['item 2', 'item 40', 'item 38'])
+    expect(frame()).toContain('❯ item 38')
+  })
+
   it('keeps the selected item when the list changes under it, or the same place when it is gone', async () => {
     const setItems: { current?: (items: string[]) => void } = {}
     const { frame, press } = renderApp({ screens: [listScreen(['a', 'b', 'c'], setItems, [])] })
@@ -167,5 +181,25 @@ describe('ScrollText', () => {
     await press(KEYS.escape, KEYS.enter)
     expect(opened).toEqual(['two', 'two'])
     expect(frame()).toContain('1–9 of 40')
+  })
+
+  it('scrolls by every key of one write', async () => {
+    const screen: ScreenDefinition = {
+      id: 'text',
+      title: () => ({ full: 'Text', short: 'Text' }),
+      Screen: () => (
+        <ScrollText
+          rows={10}
+          lines={NAMES.map((name) => (
+            <Text key={name}>{name}</Text>
+          ))}
+        />
+      ),
+    }
+    const { app, frame } = renderApp({ screens: [screen] })
+    await settle()
+    app.stdin.write(`${KEYS.down}${KEYS.down}${KEYS.down}`)
+    await settle()
+    expect(frame()).toContain('4–12 of 40')
   })
 })

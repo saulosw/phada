@@ -49,13 +49,17 @@ export function useSelection<T>(
 
   useScreenInput((_input, key) => {
     if (!active || items.length === 0) return
+    const at = lastIndex.current
     if (key.return) {
-      if (item !== undefined) options.onOpen?.(item)
+      const current = items[at]
+      if (current !== undefined) options.onOpen?.(current)
       return
     }
-    const next = moved(index, items.length, page, key)
+    const next = moved(at, items.length, page, key)
     const target = next === undefined ? undefined : items[next]
-    if (target !== undefined) setSelectedKey(keyOf(target))
+    if (next === undefined || target === undefined) return
+    lastIndex.current = next
+    setSelectedKey(keyOf(target))
   })
 
   return { index, item }
@@ -118,11 +122,15 @@ export function ScrollText({
   const visible = lines.length <= rows ? lines.length : Math.max(rows - 1, 1)
   const maxOffset = Math.max(lines.length - visible, 0)
   const start = Math.min(offset, maxOffset)
+  const latestStart = useRef(start)
+  latestStart.current = start
 
   useScreenInput((_input, key) => {
     if (!active) return
-    const next = moved(start, maxOffset + 1, visible, key)
-    if (next !== undefined) setOffset(next)
+    const next = moved(latestStart.current, maxOffset + 1, visible, key)
+    if (next === undefined) return
+    latestStart.current = next
+    setOffset(next)
   })
 
   const window = { start, end: start + visible, overflow: lines.length > rows }
