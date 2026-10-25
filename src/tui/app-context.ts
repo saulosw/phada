@@ -36,6 +36,7 @@ export interface ScreenControls {
   size: TerminalSize
   setKeys(hints: readonly KeyHint[]): void
   setBack(back: (() => void) | undefined): void
+  isTyping(): boolean
   setTyping(typing: boolean): void
 }
 
@@ -57,6 +58,7 @@ export const ScreenContext = createContext<ScreenControls>({
   size: { columns: 80, rows: 21 },
   setKeys: () => {},
   setBack: () => {},
+  isTyping: () => false,
   setTyping: () => {},
 })
 
@@ -107,8 +109,13 @@ export function useBack(back: (() => void) | undefined): void {
 }
 
 export function useScreenInput(handler: (input: string, key: Key) => void): void {
-  const { inputActive, typing } = useContext(ScreenContext)
-  useInput(handler, { isActive: inputActive && !typing })
+  const { inputActive, isTyping } = useContext(ScreenContext)
+  useInput(
+    (input, key) => {
+      if (!isTyping()) handler(input, key)
+    },
+    { isActive: inputActive },
+  )
 }
 
 export function useScreenSize(): TerminalSize {

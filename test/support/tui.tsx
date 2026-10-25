@@ -27,6 +27,13 @@ export const KEYS = {
 
 export const settle = () => new Promise((resolve) => setTimeout(resolve, 50))
 
+export async function waitFor(ready: () => boolean, timeoutMs = 2000): Promise<void> {
+  for (let waited = 0; !ready() && waited < timeoutMs; waited += 10) {
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  }
+  await settle()
+}
+
 export const NOW = new Date('2026-10-25T12:00:00.000Z')
 
 export function minutesFrom(now: Date, minutes: number): string {

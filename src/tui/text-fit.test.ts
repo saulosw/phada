@@ -3,7 +3,7 @@ import { fit, oneLine, wrapText } from './text-fit.js'
 
 describe('oneLine', () => {
   it('strips control and bidi characters and keeps the text on one line', () => {
-    expect(oneLine('Fix\u001B[31m the\n\tcart‮  total ')).toBe('Fix[31m the cart total')
+    expect(oneLine('Fix\u001B[31m the\n\tcart\u202E  total ')).toBe('Fix[31m the cart total')
   })
 })
 

@@ -16,38 +16,56 @@ export function useTextField(
   const [value, setValue] = useState(options.initial ?? '')
   const [draft, setDraft] = useState(value)
   const [focused, setFocused] = useState(false)
+  const focusedNow = useRef(false)
+  const draftNow = useRef(draft)
   const submit = useRef(options.onSubmit)
   submit.current = options.onSubmit
 
-  useEffect(() => {
-    if (!focused) return undefined
-    setTyping(true)
-    return () => setTyping(false)
-  }, [focused, setTyping])
+  const edit = (next: string) => {
+    draftNow.current = next
+    setDraft(next)
+  }
+
+  const leave = (apply: boolean) =>
+    queueMicrotask(() => {
+      focusedNow.current = false
+      setTyping(false)
+      setFocused(false)
+      if (!apply) return
+      const applied = draftNow.current
+      setValue(applied)
+      submit.current?.(applied)
+    })
+
+  useEffect(
+    () => () => {
+      if (focusedNow.current) setTyping(false)
+    },
+    [setTyping],
+  )
 
   useInput(
     (input, key) => {
-      if (key.escape) {
-        setDraft(value)
-        return setFocused(false)
-      }
-      if (key.return) {
-        setValue(draft)
-        setFocused(false)
-        return submit.current?.(draft)
-      }
-      if (key.backspace || key.delete) return setDraft((text) => [...text].slice(0, -1).join(''))
-      if (key.ctrl && input === 'u') return setDraft('')
+      if (!focusedNow.current) return
+      if (key.escape) return leave(false)
+      if (key.return) return leave(true)
+      if (key.backspace || key.delete) return edit([...draftNow.current].slice(0, -1).join(''))
+      if (key.ctrl && input === 'u') return edit('')
       if (key.ctrl || key.meta || key.tab || input === '' || /\p{Cc}/u.test(input)) return
-      setDraft((text) => text + input)
+      edit(draftNow.current + input)
     },
-    { isActive: inputActive && focused },
+    { isActive: inputActive },
   )
 
   const focus = useCallback(() => {
-    setDraft(value)
-    setFocused(true)
-  }, [value])
+    queueMicrotask(() => {
+      if (focusedNow.current) return
+      focusedNow.current = true
+      setTyping(true)
+      edit(value)
+      setFocused(true)
+    })
+  }, [value, setTyping])
 
   return { value, draft: focused ? draft : value, focused, focus }
 }

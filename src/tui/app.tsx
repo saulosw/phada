@@ -87,7 +87,12 @@ function Shell({
   const [active, setActive] = useState(0)
   const [overlay, setOverlay] = useState<Overlay>('none')
   const [screenKeys, setScreenKeys] = useState<readonly KeyHint[]>([])
-  const [typing, setTyping] = useState(false)
+  const [typing, setTypingState] = useState(false)
+  const typingNow = useRef(false)
+  const setTyping = useCallback((on: boolean) => {
+    typingNow.current = on
+    setTypingState(on)
+  }, [])
   const back = useRef<(() => void) | undefined>(undefined)
   const titles = screens.map((screen) => screen.title(messages))
   const quit = () => onExit({ kind: 'quit' })
@@ -105,9 +110,10 @@ function Shell({
       setBack: (handler) => {
         back.current = handler
       },
+      isTyping: () => typingNow.current,
       setTyping,
     }),
-    [overlay, tooSmall, typing, size.columns, size.rows],
+    [overlay, tooSmall, typing, size.columns, size.rows, setTyping],
   )
 
   useInput((input, key) => {
@@ -116,7 +122,7 @@ function Shell({
       if (input === 'q' || key.escape) quit()
       return
     }
-    if (overlay === 'palette' || typing) return
+    if (overlay === 'palette' || typingNow.current) return
     if (overlay === 'help') {
       if (key.escape || input === '?') setOverlay('none')
       else if (input === 'q') quit()
