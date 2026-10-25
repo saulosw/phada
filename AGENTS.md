@@ -138,6 +138,16 @@ src/
     read-learnings.ts    #   readLearnings(): per repository, the observed relations (newest
                          #   first; none, read or unreadable) and the feedback of Phada's comments
                          #   per repository and per rule; readers injected
+    read-home.ts         #   readHomeLocal(): the config, queue, repositories, last reviews and
+                         #   chosen AI as facts (each read that fails is its own error), never a
+                         #   slow reader; homeSnapshot(): + the last GitHub access and provider
+                         #   checks → the recommendation; GitHubAccess (where the token comes
+                         #   from and its owner, never the token)
+    home-recommendation.ts # recommend(): the one next step of the Home with its command — invalid
+                         #   config › no token (or refused) › no user config › the chosen AI ›
+                         #   paused › failed in the last day › skipped for CI › watched without
+                         #   index › watch stopped › review; "checking" while a slow fact it
+                         #   could be outranked by is loading; recentFailures()
   cli/                   # terminal edge
     args.ts              #   parseCliArgs(): `review` (--dry-run, --force, --verify/--no-verify,
                          #   --investigate/--no-investigate, --no-resolve, --no-conversation,
@@ -161,7 +171,9 @@ src/
                          #   file in the cache), readAutomation (the Slack tokens only as set or
                          #   missing), readProviderSetup (the user config read each time),
                          #   readProviders (the status checkers of src/providers/, injectable),
-                         #   readLearnings (the observed files of the cache, read only)
+                         #   readLearnings (the observed files of the cache, read only),
+                         #   readGitHub (readGitHubAccess() with gh asked again on each read;
+                         #   runGh and fetchUser injectable)
     app-history.ts       #   appHistory(): the history for the app, opened once when its file
                          #   exists (looked for again while missing, never created), a newer or
                          #   unreadable file thrown on each read
@@ -238,8 +250,11 @@ src/
     suppress-sqlite-warning.ts # drops Node's ExperimentalWarning for the built-in SQLite
     errors.ts            #   UsageError, MissingGitHubTokenError, WatchRunningError
     github-token.ts      #   readGitHubToken(), requireGitHubToken(): GITHUB_TOKEN › GH_TOKEN › the
-                         #   gh login; ghTokenReader(): gh auth token, or gh auth status
+                         #   gh login; findGitHubToken(): the token and where it came from;
+                         #   ghTokenReader(): gh auth token, or gh auth status
                          #   --show-token on an old gh, asked once, no token on any failure
+    github-access.ts     #   readGitHubAccess(): where the token comes from and its owner's login,
+                         #   a refused token (401) or the error of the read; never the token
     format-review.ts     #   pull request summary (stderr) and the Markdown review (stdout)
     format-github.ts     #   the review as GitHub Markdown: body (the CI line under the score),
                          #   line comments, suggestion blocks, markers, truncation; formatResolvedReply(); formatGitHubPreview() for
@@ -282,14 +297,17 @@ src/
     app-context.ts       #   AppDeps (version, cwd, home, env, scheduler, language, configError,
                          #   now, readQueue, readReviews, readReviewDetail, readRepositories,
                          #   readRepository, readAutomation, readProviderSetup, readProviders,
-                         #   readLearnings), Scheduler, KeyHint;
+                         #   readLearnings, readGitHub), Scheduler, KeyHint;
                          #   useAppDeps(), useTheme(), useMessages(), useWorking(),
                          #   useIsWorking(), useScreenKeys(), useBack(), useScreenInput() (quiet
                          #   while a text field is focused), useScreenSize()
     screens.ts           #   ScreenDefinition (id, title from the catalog, Screen) and SCREENS,
                          #   in tab order
     screens/             #   one file per screen: home.tsx (the box with the mascot, version and
-                         #   folder under ~; shortenHome()), queue.tsx (the watch from the lock
+                         #   folder under ~ cut to the width; GitHub, AI, watch, queue and graph
+                         #   in one line each, the recommendation with its command and the last
+                         #   reviews that fit; local facts every 2 s, GitHub and the AI checks on
+                         #   open and on r; shortenHome()), queue.tsx (the watch from the lock
                          #   and the history, its jobs by kind → a job with its requests;
                          #   queueRows()), reviews.tsx (the history with a text filter → one
                          #   review with findings, publication, CI and feedback),
@@ -421,6 +439,7 @@ src/
                          #   combined status counts zero)
     job-log.ts           #   fetchJobLog(): the end of an Actions job log, the redirect followed
                          #   without the token, the last 512 KB by Range, 10 MB at most
+    user.ts              #   fetchAuthenticatedUser(): the login of the token owner (GET /user)
   gh-facade/             # the gh a native skill runs: answered by Phada, writes captured
     gh-command.ts        #   parseGhCommand(), filesToRead(): gh argv → command
     gh-jq.ts             #   applyJq(): --jq with paths only
@@ -672,7 +691,9 @@ else; requests and replies are wired in `src/cli/slack-port.ts`, which only uses
 is given, and writes are only captured. `src/app/native-skill.ts` runs a native skill with the
 work tree, the gh facade and the work folders, and never sees the token.
 `src/tui/` draws the app with `ink` and `react` and imports, from outside the folder, only types
-of `src/app/` and `src/config/` and the pure helpers it names (`src/app/error-message.ts`, `src/app/terminal-text.ts`); it never
+of `src/app/` and `src/config/` and the pure helpers it names (`src/app/error-message.ts`,
+`src/app/terminal-text.ts`, `src/app/read-home.ts`, `src/app/home-recommendation.ts`,
+`src/app/read-provider.ts`); it never
 imports `src/github/`, a concrete provider or `src/cli/`, never touches `process` or `console` and
 never starts a timer: the streams, the signals, the environment and the scheduler come in through
 `openApp()`, which `src/cli/app-command.ts` loads with `import()` so the other commands never
