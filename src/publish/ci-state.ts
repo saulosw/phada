@@ -48,10 +48,13 @@ function runEntry(run: CheckRun): CiEntry {
     id: run.id,
     actions: run.app === ACTIONS_APP,
     state,
+    ...(state === 'pending' ? { status: run.status } : {}),
     ...(state === 'pending' || run.conclusion === null ? {} : { conclusion: run.conclusion }),
     ...(run.title === null ? {} : { title: run.title }),
     ...(run.summary === null ? {} : { summary: run.summary }),
     ...(run.url === null ? {} : { url: run.url }),
+    ...(run.startedAt === null ? {} : { startedAt: run.startedAt }),
+    ...(run.completedAt === null ? {} : { completedAt: run.completedAt }),
   }
 }
 

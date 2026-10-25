@@ -845,6 +845,8 @@ describe('reviewAndPublish with the checks of the head', () => {
     summary: null,
     url: null,
     app: 'github-actions',
+    startedAt: null,
+    completedAt: null,
     ...overrides,
   })
   const annotation = (overrides: Partial<CheckAnnotation> = {}): CheckAnnotation => ({

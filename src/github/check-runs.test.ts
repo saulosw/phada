@@ -34,6 +34,8 @@ describe('fetchCheckRuns', () => {
                 name: 'test',
                 conclusion: 'failure',
                 output: { title: 'Tests failed', summary: '2 of 40 failed' },
+                started_at: '2026-10-20T10:00:00Z',
+                completed_at: '2026-10-20T10:02:00Z',
               }),
             ],
           }),
@@ -67,6 +69,8 @@ describe('fetchCheckRuns', () => {
         summary: '2 of 40 failed',
         url: 'https://github.com/acme/shop/actions/runs/1/job/11',
         app: 'github-actions',
+        startedAt: '2026-10-20T10:00:00Z',
+        completedAt: '2026-10-20T10:02:00Z',
       },
       {
         id: 12,
@@ -77,6 +81,8 @@ describe('fetchCheckRuns', () => {
         summary: null,
         url: 'https://github.com/acme/shop/actions/runs/1/job/12',
         app: null,
+        startedAt: null,
+        completedAt: null,
       },
     ])
   })

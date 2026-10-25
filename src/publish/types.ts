@@ -41,10 +41,13 @@ export interface CiEntry {
   id?: number
   actions: boolean
   state: CiCheckState
+  status?: string
   conclusion?: string
   title?: string
   summary?: string
   url?: string
+  startedAt?: string
+  completedAt?: string
 }
 
 export interface CiSummary {
@@ -64,6 +67,7 @@ export interface CiReport {
 }
 
 export interface Ci {
+  entries: CiEntry[]
   checks: CiCheck[]
   summary: CiSummary
   report: CiReport

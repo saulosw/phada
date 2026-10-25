@@ -61,6 +61,7 @@ export function buildCi(entries: readonly CiEntry[], details: CiDetails): Ci {
     }
   })
   return {
+    entries: [...entries],
     checks,
     summary: ciSummary(entries),
     report: {

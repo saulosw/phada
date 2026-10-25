@@ -26,6 +26,8 @@ export interface CheckRun {
   summary: string | null
   url: string | null
   app: string | null
+  startedAt: string | null
+  completedAt: string | null
 }
 
 export interface CheckAnnotation {
@@ -76,6 +78,8 @@ function toCheckRun(json: unknown): CheckRun {
     summary: optionalString(json, 'output.summary'),
     url: optionalString(json, 'html_url'),
     app: optionalString(json, 'app.slug'),
+    startedAt: optionalString(json, 'started_at'),
+    completedAt: optionalString(json, 'completed_at'),
   }
 }
 
