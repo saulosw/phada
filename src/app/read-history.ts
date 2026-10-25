@@ -5,8 +5,11 @@ import type {
   FindingRecord,
   HistoryFilter,
   HistoryStore,
+  ListedRun,
   RunRecord,
 } from '../store/history-store.js'
+
+export type { HistoryFilter, ListedRun, RunRecord } from '../store/history-store.js'
 
 export type HistoryReader = Pick<HistoryStore, 'runs' | 'findings' | 'run'>
 
@@ -76,7 +79,7 @@ export interface ReviewDetail {
 export function readReviews(
   history: HistoryReader | undefined,
   filter: HistoryFilter,
-): { runs: RunRecord[]; total: number } {
+): { runs: ListedRun[]; total: number } {
   return history?.runs(filter) ?? { runs: [], total: 0 }
 }
 

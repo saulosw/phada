@@ -491,8 +491,9 @@ src/
     observed-store.ts    #   openObservedStore(): relations learned from reviews (own schema)
     history-store.ts     #   openHistoryStore(): the review history, never rebuilt; watched
                          #   repositories and pull requests, jobs and their review requests, runs
-                         #   with their verdict, pause, runs(), run(), prune(); requestsWith(): the
-                         #   requests of a source whose data has some values (a Slack message);
+                         #   with their verdict, pause, runs() (with the title, by text), run(),
+                         #   prune(); requestsWith(): the requests of a source whose data has
+                         #   some values (a Slack message);
                          #   openExistingHistoryStore(): missing, open, newer or unreadable as
                          #   data, never creating the file
     history-feedback.ts  #   published findings, observations and their signals (observed and

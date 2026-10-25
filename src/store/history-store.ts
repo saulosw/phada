@@ -111,7 +111,12 @@ export interface HistoryFilter {
   repo?: string
   number?: number
   since?: string
+  text?: string
   limit?: number
+}
+
+export interface ListedRun extends RunRecord {
+  title?: string
 }
 
 export interface PruneCounts {
@@ -148,7 +153,7 @@ export interface HistoryStore {
   observeFeedback(observation: FeedbackObservation): void
   findings(filter: FindingFilter): FindingRecord[]
   feedbackDue(filter: DueFilter, before: string, limit?: number): DuePull[]
-  runs(filter: HistoryFilter): { runs: RunRecord[]; total: number }
+  runs(filter: HistoryFilter): { runs: ListedRun[]; total: number }
   prune(before: string): PruneCounts
   close(): void
 }
@@ -214,6 +219,8 @@ export interface OpenHistoryStoreOptions {
 }
 
 const RECENT_FAILURES = 20
+const RUN_TITLE =
+  "case when json_valid(result_json) then json_extract(result_json, '$.pullRequest.title') end"
 const PAUSE_KEY = 'pause'
 
 export async function openHistoryStore(
@@ -491,7 +498,7 @@ class SqliteHistoryStore implements HistoryStore {
     return feedbackDue(this.#db, filter, before, limit)
   }
 
-  runs(filter: HistoryFilter): { runs: RunRecord[]; total: number } {
+  runs(filter: HistoryFilter): { runs: ListedRun[]; total: number } {
     const where: string[] = []
     const values: SQLInputValue[] = []
     if (filter.repo !== undefined) {
@@ -506,17 +513,27 @@ class SqliteHistoryStore implements HistoryStore {
       where.push('started_at >= ?')
       values.push(filter.since)
     }
+    if (filter.text !== undefined && filter.text !== '') {
+      where.push(
+        "(instr(lower(repo || '#' || number), ?) > 0 or instr(lower(coalesce(title, '')), ?) > 0)",
+      )
+      values.push(filter.text.toLowerCase(), filter.text.toLowerCase())
+    }
+    const listed = `with listed as (select *, ${RUN_TITLE} as title from run) `
     const clause = where.length === 0 ? '' : ` where ${where.join(' and ')}`
     const total = Number(
-      this.#db.prepare(`select count(*) as total from run${clause}`).get(...values)?.total ?? 0,
+      this.#db.prepare(`${listed}select count(*) as total from listed${clause}`).get(...values)
+        ?.total ?? 0,
     )
     const limit = filter.limit === undefined ? '' : ' limit ?'
     const runs = this.#db
-      .prepare(`select * from run${clause} order by started_at desc, id desc${limit}`)
+      .prepare(`${listed}select * from listed${clause} order by started_at desc, id desc${limit}`)
       .all(...values, ...(filter.limit === undefined ? [] : [filter.limit]))
       .map((row) => {
         const { resultJson: _json, ...run } = fromRow<RunRecord>(row, RUN_TABLE)
-        return run
+        return row.title === null || row.title === undefined
+          ? run
+          : { ...run, title: String(row.title) }
       })
     return { runs, total }
   }

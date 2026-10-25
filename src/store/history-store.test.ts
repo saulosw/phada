@@ -446,6 +446,33 @@ describe('HistoryStore queries', () => {
     store.close()
   })
 
+  it('runs carry the pull request title of their stored JSON and filter by text over repo#number and title', async () => {
+    const store = await openHistoryStore(fresh())
+    const titled = (title: string) => JSON.stringify({ pullRequest: { title } })
+    store.addRun({ ...RUN, startedAt: at(1), resultJson: titled('Fix the CART total') })
+    store.addRun({ ...RUN, number: 14, startedAt: at(2), resultJson: titled('Add 100% coverage') })
+    store.addRun({ ...RUN, repo: 'acme/api', number: 2, startedAt: at(3), resultJson: '{oops' })
+    store.addRun({ ...RUN, repo: 'acme/web', number: 31, startedAt: at(4) })
+
+    const refs = (text: string) =>
+      store.runs({ text }).runs.map((run) => `${run.repo}#${run.number}`)
+
+    expect(store.runs({}).runs.map((run) => run.title)).toEqual([
+      undefined,
+      undefined,
+      'Add 100% coverage',
+      'Fix the CART total',
+    ])
+    expect(refs('cart')).toEqual(['acme/shop#3'])
+    expect(refs('SHOP#14')).toEqual(['acme/shop#14'])
+    expect(refs('acme/')).toHaveLength(4)
+    expect(refs('#3')).toEqual(['acme/web#31', 'acme/shop#3'])
+    expect(refs('100%')).toEqual(['acme/shop#14'])
+    expect(refs('1_0')).toEqual([])
+    expect(store.runs({ text: 'acme', limit: 1 }).total).toBe(4)
+    store.close()
+  })
+
   it('runs never return resultJson', async () => {
     const store = await openHistoryStore(fresh())
     store.addRun(RUN)
