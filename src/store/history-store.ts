@@ -1,4 +1,4 @@
-import { mkdir } from 'node:fs/promises'
+import { access, mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { DatabaseSync, SQLInputValue } from 'node:sqlite'
 import type { Verdict } from '../review/verdict.js'
@@ -139,6 +139,7 @@ export interface HistoryStore {
   transaction<T>(work: () => T): T
   addRun(run: RunRecord): number
   runOfJob(jobId: number): RunRecord | undefined
+  run(id: number): RunRecord | undefined
   watchRunsSince(iso: string): string[]
   pause(): PauseState | undefined
   setPause(state: PauseState | undefined): void
@@ -167,6 +168,41 @@ export class HistoryVersionError extends HistoryStoreError {
     )
     this.found = found
     this.known = known
+  }
+}
+
+export type HistoryOpening =
+  | { status: 'open'; history: HistoryStore }
+  | { status: 'missing'; path: string }
+  | { status: 'newer'; path: string; error: HistoryVersionError }
+  | { status: 'unreadable'; path: string; error: HistoryStoreError }
+
+export interface OpenExistingHistoryOptions {
+  exists?: (path: string) => Promise<boolean>
+  open?: (path: string) => Promise<HistoryStore>
+}
+
+export async function openExistingHistoryStore(
+  path: string,
+  options: OpenExistingHistoryOptions = {},
+): Promise<HistoryOpening> {
+  const exists = options.exists ?? fileExists
+  if (!(await exists(path))) return { status: 'missing', path }
+  try {
+    return { status: 'open', history: await (options.open ?? openHistoryStore)(path) }
+  } catch (error) {
+    if (error instanceof HistoryVersionError) return { status: 'newer', path, error }
+    if (error instanceof HistoryStoreError) return { status: 'unreadable', path, error }
+    throw error
+  }
+}
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path)
+    return true
+  } catch {
+    return false
   }
 }
 
@@ -375,6 +411,11 @@ class SqliteHistoryStore implements HistoryStore {
     const row = this.#db
       .prepare('select * from run where job_id = ? order by id desc limit 1')
       .get(jobId)
+    return row === undefined ? undefined : fromRow<RunRecord>(row, RUN_TABLE)
+  }
+
+  run(id: number): RunRecord | undefined {
+    const row = this.#db.prepare('select * from run where id = ?').get(id)
     return row === undefined ? undefined : fromRow<RunRecord>(row, RUN_TABLE)
   }
 

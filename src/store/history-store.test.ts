@@ -1,11 +1,16 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { HISTORY_MIGRATIONS } from './history-migrations.js'
-import { HistoryStoreError, HistoryVersionError, openHistoryStore } from './history-store.js'
-import type { RunRecord } from './history-store.js'
+import {
+  HistoryStoreError,
+  HistoryVersionError,
+  openExistingHistoryStore,
+  openHistoryStore,
+} from './history-store.js'
+import type { HistoryStore, RunRecord } from './history-store.js'
 import type { JobRecord } from '../watch/types.js'
 
 const dir = mkdtempSync(join(tmpdir(), 'phada-history-'))
@@ -577,6 +582,87 @@ describe('HistoryStore prune', () => {
       jobs: 0,
       vacuumed: true,
     })
+    store.close()
+  })
+})
+
+describe('openExistingHistoryStore', () => {
+  it('says the history is missing without creating the file or its folder', async () => {
+    const path = fresh()
+
+    expect(await openExistingHistoryStore(path)).toEqual({ status: 'missing', path })
+    expect(existsSync(dirname(path))).toBe(false)
+  })
+
+  it('opens a history that exists', async () => {
+    const path = fresh()
+    ;(await openHistoryStore(path)).close()
+
+    const opening = await openExistingHistoryStore(path)
+
+    expect(opening.status).toBe('open')
+    if (opening.status === 'open') opening.history.close()
+  })
+
+  it('gives a file written by a newer Phada as data', async () => {
+    const path = fresh()
+    ;(await openHistoryStore(path)).close()
+    const db = new DatabaseSync(path)
+    db.exec('pragma user_version = 99')
+    db.close()
+
+    const opening = await openExistingHistoryStore(path)
+
+    expect(opening).toMatchObject({ status: 'newer', path })
+    expect(opening.status === 'newer' && opening.error).toBeInstanceOf(HistoryVersionError)
+  })
+
+  it('gives a file it cannot open as data', async () => {
+    const path = fresh()
+    ;(await openHistoryStore(path)).close()
+    writeFileSync(path, 'not sqlite at all, just some text that is long enough')
+
+    const opening = await openExistingHistoryStore(path)
+
+    expect(opening).toMatchObject({ status: 'unreadable', path })
+    expect(opening.status === 'unreadable' && opening.error.message).toContain(
+      'is not a Phada history file',
+    )
+  })
+
+  it('uses the exists check and the opener it is given, and lets other errors through', async () => {
+    const opened: string[] = []
+    const store = { close: () => undefined } as HistoryStore
+    const open = async (path: string) => {
+      opened.push(path)
+      return store
+    }
+
+    expect(await openExistingHistoryStore('/h', { exists: async () => false, open })).toEqual({
+      status: 'missing',
+      path: '/h',
+    })
+    expect(await openExistingHistoryStore('/h', { exists: async () => true, open })).toEqual({
+      status: 'open',
+      history: store,
+    })
+    expect(opened).toEqual(['/h'])
+    await expect(
+      openExistingHistoryStore('/h', {
+        exists: async () => true,
+        open: () => Promise.reject(new Error('boom')),
+      }),
+    ).rejects.toThrow('boom')
+  })
+})
+
+describe('HistoryStore run', () => {
+  it('reads one run with its stored result, and nothing for an unknown id', async () => {
+    const store = await openHistoryStore(fresh())
+    const id = store.addRun(RUN)
+
+    expect(store.run(id)).toEqual({ ...RUN, id })
+    expect(store.run(id + 1)).toBeUndefined()
     store.close()
   })
 })
