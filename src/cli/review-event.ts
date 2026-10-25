@@ -3,6 +3,8 @@ import type { ReviewEventName } from '../config/schema.js'
 import type { Verdict } from '../review/verdict.js'
 import type { HistoryStore, RunRecord, RunStatus } from '../store/history-store.js'
 import type { JobRecord, PublishTarget, RequestRecord, RequestSource } from '../watch/types.js'
+import { storedCi } from './stored-ci.js'
+import type { EventCi } from './stored-ci.js'
 
 const SCHEMA_VERSION = 1
 
@@ -31,6 +33,7 @@ export interface ReviewEvent {
   job: { id: number; repo: string; number: number; headSha: string; url: string }
   requests: { source: RequestSource; publish: PublishTarget; data?: Record<string, unknown> }[]
   verdict: Verdict | null
+  ci: EventCi | null
   reason?: string
   publication: { status: RunStatus; url?: string } | null
   review?: ReviewDocument
@@ -57,6 +60,7 @@ export function reviewEvent(event: JobEvent, run: RunRecord | undefined): Review
       ...(data === undefined ? {} : { data }),
     })),
     verdict: verdictOf(kind, run),
+    ci: ended ? storedCi(run?.resultJson) : startedCi(event),
     ...(event.reason === undefined ? {} : { reason: event.reason }),
     publication:
       ended && run !== undefined
@@ -67,6 +71,11 @@ export function reviewEvent(event: JobEvent, run: RunRecord | undefined): Review
       : {}),
     ...(error === undefined ? {} : { error }),
   }
+}
+
+function startedCi({ ci }: JobEvent): EventCi | null {
+  if (ci === undefined) return null
+  return { state: ci.state, checks: ci.checks.map(({ name, state }) => ({ name, state })) }
 }
 
 function verdictOf(kind: JobEvent['kind'], run: RunRecord | undefined): Verdict | null {
@@ -93,6 +102,7 @@ export function storedEvent(
 ): ReviewEvent | undefined {
   switch (job.status) {
     case 'queued':
+    case 'waiting':
     case 'running':
       return undefined
     case 'done':

@@ -21,12 +21,14 @@ export interface WorkTreeInput {
   number: number
   commits: number
   diff: string
+  files?: Readonly<Record<string, string>>
 }
 
 export interface WorkTree {
   dir: string
   mergeBase: string
   diffFile: string
+  files: Record<string, string>
   warnings: string[]
 }
 
@@ -98,7 +100,12 @@ export async function materializeWorkTree(
   )
   const diffFile = join(input.dir, '.git', DIFF_FILE)
   await writeFile(diffFile, input.diff)
-  return { dir: input.dir, mergeBase: base, diffFile, warnings }
+  const files: Record<string, string> = {}
+  for (const [name, content] of Object.entries(input.files ?? {})) {
+    files[name] = join(input.dir, '.git', name)
+    await writeFile(files[name], content)
+  }
+  return { dir: input.dir, mergeBase: base, diffFile, files, warnings }
 }
 
 async function findMergeBase(

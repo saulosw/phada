@@ -1,4 +1,4 @@
-import type { Finding } from '../review/types.js'
+import type { ConversationItem, Finding } from '../review/types.js'
 
 export interface PublicationPlan {
   comments: Finding[]
@@ -18,3 +18,17 @@ export type SkipReason =
 
 export type RunDecision =
   { action: 'run'; wouldSkip?: SkipReason } | { action: 'skip'; reason: SkipReason }
+
+export interface ConversationReport {
+  items: number
+  omitted: number
+  resolved: number
+  bots: number
+  truncated: number
+  bytes: number
+}
+
+export interface Conversation {
+  items: ConversationItem[]
+  report: ConversationReport
+}

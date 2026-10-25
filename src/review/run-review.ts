@@ -80,6 +80,7 @@ export async function runReview(
       touched: answered.touched,
       servers: passExternalCalls.map((call) => call.server),
     },
+    (request.ci ?? []).filter(({ state }) => state === 'failing').map(({ name }) => name),
   )
   const prepared = prepareCandidates(
     reported,

@@ -1,11 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import {
-  byteLength,
-  DOC_LIMIT_BYTES,
-  fitDoc,
-  repositoryDocCandidates,
-  truncateDoc,
-} from './select-docs.js'
+import { byteLength } from './byte-cut.js'
+import { DOC_LIMIT_BYTES, fitDoc, repositoryDocCandidates, truncateDoc } from './select-docs.js'
 
 const TREE = [
   'README.md',

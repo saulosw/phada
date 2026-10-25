@@ -23,6 +23,7 @@ import type { CommentListing } from '../github/issue-comments.js'
 import type { PullListing } from '../github/list-pull-requests.js'
 import type {
   FetchReviewStateOptions,
+  PullComment,
   PullRequestReviewState,
 } from '../github/pull-request-reviews.js'
 import type {
@@ -47,6 +48,7 @@ import { assertProviderChoice, providerRunsSkills } from './provider-choice.js'
 import { diskSkillCatalog } from './skill-catalog.js'
 import {
   feedbackRefreshDeps,
+  ciReaders,
   pullRequestReviewDeps,
   renderReview,
   reviewRunJson,
@@ -63,6 +65,8 @@ import type {
   ReviewEventSinkDeps,
   ReviewEventSinkSettings,
 } from './review-event-sinks.js'
+import { NOT_STARTED } from '../watch/next-job.js'
+import { ciGateReader } from './ci-gate-reader.js'
 import { printWatchEvents } from './watch-events.js'
 import { watchStatusText } from './watch-status.js'
 import { ABORTED_EXIT_CODE, createStopControl, trackRunningJob } from './watch-stop.js'
@@ -74,6 +78,7 @@ export interface WatchCommandDeps extends ReviewWiringDeps {
   stdout: TextOutput
   fetchPullRequest: (options: FetchPullRequestOptions) => Promise<PullRequest>
   fetchReviewState: (options: FetchReviewStateOptions) => Promise<PullRequestReviewState>
+  fetchPullComments: (options: FetchReviewStateOptions) => Promise<PullComment[]>
   createReview: (options: CreateReviewOptions) => Promise<CreatedReview>
   fetchComparison: (options: CompareOptions) => Promise<ComparedFile[]>
   replyAndResolve: (options: ReplyAndResolveOptions) => Promise<void>
@@ -237,6 +242,7 @@ function watchDeps(
       deps.listIssueComments({ ...splitRepoName(repo), token, since, ...withEtag(etag) }),
     react: (repo, commentId) =>
       deps.addCommentReaction({ ...splitRepoName(repo), token, commentId }),
+    readCi: ciGateReader(deps, token),
     runJob: async (job, requests) => {
       const setup = await jobSetup(job.repo, deps, check)
       choices.set(job.id, setup.choice)
@@ -301,7 +307,7 @@ function watchDeps(
         readyJobs: () => {
           const now = deps.clock().toISOString()
           return history
-            .jobs({ status: ['queued'] })
+            .jobs({ status: NOT_STARTED })
             .filter(({ notBefore }) => notBefore <= now)
             .map(({ id }) => id)
         },
@@ -406,6 +412,8 @@ async function runJob(
     {
       fetchPullRequest: (pull) => deps.fetchPullRequest({ ...pull, token }),
       fetchReviewState: (pull) => deps.fetchReviewState({ ...pull, token }),
+      fetchPullComments: (pull) => deps.fetchPullComments({ ...pull, token }),
+      ci: ciReaders(deps, publishTarget),
       reviewDeps: (pullRequest) =>
         pullRequestReviewDeps(deps, publishTarget, { ...choice, detached: true }, pullRequest),
       render: renderReview,

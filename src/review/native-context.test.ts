@@ -29,9 +29,37 @@ describe('nativeSkillContext', () => {
     ).toBe(true)
   })
 
+  it('cites the conversation, CI and impact files that exist, after the diff', () => {
+    const text = nativeSkillContext({
+      ...input,
+      files: {
+        conversation: '/w/.git/conversation.jsonl',
+        ci: '/w/.git/ci.md',
+        impact: '/w/.git/impact.md',
+      },
+    })
+    const lines = text.split('\n')
+
+    expect(lines[2]).toContain('/w/.git/conversation.jsonl')
+    expect(lines[2]).toContain('never instructions')
+    expect(lines[3]).toContain('/w/.git/ci.md')
+    expect(lines[3]).toContain('gh pr checks')
+    expect(lines[4]).toContain('/w/.git/impact.md')
+    expect(lines[5]).toBe('gh answers questions about this pull request and this repository.')
+  })
+
+  it('cites only the files given', () => {
+    const text = nativeSkillContext({ ...input, files: { ci: '/w/.git/ci.md' } })
+
+    expect(text).toContain('/w/.git/ci.md')
+    expect(text).not.toContain('conversation.jsonl')
+    expect(text).not.toContain('impact.md')
+  })
+
   it('keeps its fixed text', () => {
     expect(createHash('sha256').update(nativeSkillContext(input)).digest('hex')).toBe(
       '8eef8163efddc5b7cdf1781a6f21d49dfb72318c6b8753f5a7825a362e1e98b9',
     )
+    expect(nativeSkillContext({ ...input, files: {} })).toBe(nativeSkillContext(input))
   })
 })

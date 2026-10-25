@@ -1,8 +1,13 @@
 import { CONFIDENCE_FLOOR } from '../../review/select-findings.js'
-import type { Messages } from './messages.js'
+import { joinNames } from '../name-list.js'
+import type { CiNames, Messages } from './messages.js'
 
 function count(value: number, singular: string, plural: string): string {
   return `${value} ${value === 1 ? singular : plural}`
+}
+
+function ciNames({ count, shown }: CiNames): string {
+  return `(${joinNames(shown, count, (more) => `${more} a mais`)})`
 }
 
 export const portuguese: Messages = {
@@ -24,6 +29,7 @@ export const portuguese: Messages = {
   leftOut: 'Fora do review',
   rule: 'regra',
   skill: 'skill',
+  ciCheck: 'check de CI',
   summary: 'Resumo',
   files: 'Arquivos',
   fileColumns: ['Arquivo', 'Alteração', 'Problemas'],
@@ -95,5 +101,17 @@ export const portuguese: Messages = {
         ? `1 comentário de revisões anteriores está corrigido em ${sha}.`
         : `${value} comentários de revisões anteriores estão corrigidos em ${sha}.`,
     resolvedReply: (sha, reason) => `Corrigido em \`${sha}\`: ${reason}`,
+    ci: (state, total, failing, pending) => {
+      const checks = count(total, 'check', 'checks')
+      if (state === 'passing') {
+        return total === 1 ? 'CI: 1 check passando' : `CI: todos os ${checks} passando`
+      }
+      if (state === 'pending') {
+        return `CI: ${pending.count} de ${checks} ${pending.count === 1 ? 'pendente' : 'pendentes'} ${ciNames(pending)}`
+      }
+      const waiting =
+        pending.count === 0 ? '' : ` · ${count(pending.count, 'pendente', 'pendentes')}`
+      return `CI: ${failing.count} de ${checks} falhando ${ciNames(failing)}${waiting}`
+    },
   },
 }

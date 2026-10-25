@@ -1,4 +1,9 @@
-import { GitHubAuthError, GitHubRateLimitError, GitHubRequestError } from './errors.js'
+import {
+  GitHubAuthError,
+  GitHubPermissionError,
+  GitHubRateLimitError,
+  GitHubRequestError,
+} from './errors.js'
 import type { RateLimitDetails } from './errors.js'
 
 const API_BASE_URL = 'https://api.github.com'
@@ -25,6 +30,7 @@ export interface GitHubRequestInit {
   method?: 'GET' | 'POST'
   body?: string
   ifNoneMatch?: string
+  redirect?: 'manual'
 }
 
 export interface GitHubRequestContext {
@@ -58,6 +64,7 @@ export async function sendGitHubRequest(
         'User-Agent': USER_AGENT,
       },
       ...(init.body === undefined ? {} : { body: init.body }),
+      ...(init.redirect === undefined ? {} : { redirect: init.redirect }),
       signal: AbortSignal.timeout(ctx.timeoutMs),
     })
   } catch (error) {
@@ -84,6 +91,24 @@ export async function ensureOk(response: Response, ctx: GitHubRequestContext): P
     `GitHub responded with HTTP ${status}${snippet === '' ? '' : `: ${snippet}`}`,
     { status },
   )
+}
+
+export interface ReadPermission {
+  what: string
+  permission: string
+}
+
+export async function ensureReadable(
+  response: Response,
+  ctx: GitHubRequestContext,
+  { what, permission }: ReadPermission,
+): Promise<void> {
+  if (response.status !== 403) return ensureOk(response, ctx)
+  const apiMessage = await readApiMessage(response, ctx)
+  if (isRateLimited(response.headers, apiMessage)) {
+    throw new GitHubRateLimitError(readRateLimit(response.headers))
+  }
+  throw new GitHubPermissionError(what, permission, apiMessage)
 }
 
 export async function readText(response: Response, ctx: GitHubRequestContext): Promise<string> {

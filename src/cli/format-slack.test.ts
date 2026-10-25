@@ -24,6 +24,7 @@ const event = (overrides: Partial<ReviewEvent> = {}, findings = [finding(3)]): R
   },
   requests: [],
   verdict: 'blocking',
+  ci: null,
   publication: { status: 'published', url: 'https://github.com/acme/shop/pull/12#r1' },
   review: {
     review: {

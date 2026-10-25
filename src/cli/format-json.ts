@@ -1,12 +1,17 @@
 import type { BlockedCommand } from '../providers/types.js'
 import type { RelatedReport } from '../app/related-report.js'
-import type { ContextReport } from '../context/types.js'
+import type { Ci, ContextReport } from '../context/types.js'
 import type { ImpactReport } from '../graph/report.js'
 import type { InvestigationReport } from '../investigation/tools/report.js'
 import type { PullRequest } from '../github/pull-request.js'
 import type { TokenUsage } from '../providers/types.js'
-import type { SkipReason } from '../publish/types.js'
+import { byteLength } from '../context/byte-cut.js'
+import { CI_LOG_TOTAL_BYTES, CI_MAX_ANNOTATIONS } from '../context/ci.js'
+import { CONVERSATION_BUDGET_BYTES, conversationItemBytes } from '../publish/conversation.js'
+import type { Conversation, SkipReason } from '../publish/types.js'
 import type {
+  CiCheck,
+  ConversationItem,
   Finding,
   RecheckReport,
   RecheckVerdict,
@@ -19,6 +24,11 @@ import { reviewVerdict } from '../review/verdict.js'
 import type { GitHubReview } from './format-github.js'
 
 const SCHEMA_VERSION = 1
+
+export interface ReviewJsonBlocks {
+  conversation?: Conversation
+  ci?: Ci
+}
 
 export interface ResolvedCounts {
   resolved: number
@@ -59,8 +69,12 @@ export function formatReviewJson(
   related: RelatedReport | null = null,
   recheck: RecheckReport | null = null,
   fixFor?: (blocked: BlockedCommand) => string,
+  blocks: ReviewJsonBlocks = {},
 ): string {
   const pullRequest = pullRequestJson(pr)
+  const conversation =
+    blocks.conversation === undefined ? null : conversationJson(blocks.conversation)
+  const ci = blocks.ci === undefined ? null : ciJson(blocks.ci)
   const publicationBlock = publication === null ? null : publicationJson(publication)
   const contextBlock = context === null ? null : contextJson(context)
   const body =
@@ -73,6 +87,8 @@ export function formatReviewJson(
           pullRequest,
           publication: publicationBlock,
           context: contextBlock,
+          conversation,
+          ci,
           investigation,
           impact,
           related: relatedJson(related),
@@ -86,6 +102,8 @@ export function formatReviewJson(
           review: reviewJson(outcome.result, fixFor),
           publication: publicationBlock,
           context: contextBlock,
+          conversation,
+          ci,
           investigation,
           impact,
           related: relatedJson(related),
@@ -103,12 +121,80 @@ export function formatAlreadyReviewedJson(pr: PullRequest, reason: SkipReason): 
     pullRequest: pullRequestJson(pr),
     publication: publicationJson({ status: 'skipped', reason }),
     context: null,
+    conversation: null,
+    ci: null,
     investigation: null,
     impact: null,
     related: null,
     recheck: null,
   }
   return `${JSON.stringify(body, null, 2)}\n`
+}
+
+function conversationJson({ items, report }: Conversation) {
+  return {
+    count: report.items,
+    omitted: report.omitted,
+    resolved: report.resolved,
+    bots: report.bots,
+    truncated: report.truncated,
+    budget: { limit: CONVERSATION_BUDGET_BYTES, used: report.bytes },
+    items: items.map(conversationItemJson),
+  }
+}
+
+function conversationItemJson(item: ConversationItem) {
+  const { kind, at, author, role } = item
+  const bytes = conversationItemBytes(item)
+  switch (item.kind) {
+    case 'comment':
+      return { kind, at, author, role, bytes }
+    case 'review':
+      return { kind, at, author, role, state: item.state, bytes }
+    case 'thread':
+      return {
+        kind,
+        at,
+        author,
+        role,
+        file: item.file,
+        line: item.line,
+        resolved: item.resolved,
+        outdated: item.outdated,
+        replies: item.replies?.length ?? 0,
+        omittedReplies: item.omittedReplies ?? 0,
+        bytes,
+      }
+  }
+}
+
+function ciJson({ checks, summary, report, warnings }: Ci) {
+  return {
+    state: summary.state,
+    total: summary.total,
+    failing: summary.failing,
+    pending: summary.pending,
+    checks: checks.map(checkJson),
+    annotations: {
+      sent: report.annotations,
+      omitted: report.omittedAnnotations,
+      limit: CI_MAX_ANNOTATIONS,
+    },
+    logs: { sent: report.logs, omitted: report.omittedLogs, limit: CI_LOG_TOTAL_BYTES },
+    truncated: report.truncated,
+    bytes: report.bytes,
+    warnings: warnings ?? [],
+  }
+}
+
+function checkJson({ name, state, conclusion, annotations, log }: CiCheck) {
+  return {
+    name,
+    state,
+    conclusion: conclusion ?? null,
+    annotations: annotations?.length ?? 0,
+    logBytes: log === undefined ? null : byteLength(log),
+  }
 }
 
 function relatedJson(report: RelatedReport | null) {

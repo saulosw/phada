@@ -5,6 +5,7 @@ import type { HistoryStatus, RunRecord, StatusJob } from '../store/history-store
 import type { JobRecord, PauseState } from '../watch/types.js'
 import { errorMessage } from '../app/error-message.js'
 import { formatSkipMessage } from './format-publication.js'
+import { nameList } from './name-list.js'
 import { shortSha } from './review-text.js'
 import { toTerminalText } from './terminal-text.js'
 import { formatCount, formatLocalTime } from './units.js'
@@ -21,6 +22,9 @@ export type WatchEventView =
   | { kind: 'queued'; job: JobRecord }
   | { kind: 'superseded'; job: JobRecord }
   | { kind: 'started'; job: JobRecord }
+  | { kind: 'waiting'; job: JobRecord }
+  | { kind: 'ciFailing'; job: JobRecord }
+  | { kind: 'ciCleared'; job: JobRecord }
   | { kind: 'finished'; job: JobRecord; run: ReviewRun }
   | { kind: 'retry'; job: JobRecord; at: string; error: unknown }
   | { kind: 'paused'; pause: PauseState }
@@ -50,6 +54,12 @@ function eventText(event: WatchEventView): string {
       return `${ref(event.job)}: a newer commit replaces ${shortSha(event.job.headSha)}.`
     case 'started':
       return `Reviewing ${ref(event.job)} at ${shortSha(event.job.headSha)}…`
+    case 'waiting':
+      return `${ref(event.job)} at ${shortSha(event.job.headSha)} waits for CI until ${clock(new Date(event.job.ciDeadline ?? event.job.notBefore))} (${pendingText(event.job)}).`
+    case 'ciFailing':
+      return `${ref(event.job)} at ${shortSha(event.job.headSha)} skipped: CI failing (${nameList(event.job.ciFailing ?? [])}); checked again each cycle for 24 hours.`
+    case 'ciCleared':
+      return `${ref(event.job)} at ${shortSha(event.job.headSha)}: CI no longer failing; back in the queue.`
     case 'finished':
       return finishedText(event.job, event.run)
     case 'retry':
@@ -114,6 +124,9 @@ export function formatWatchStatus(
     return `${name}  checked ${when(repo.checkedAt)}${index}`
   })
   section(lines, 'Queue', 'empty', status.queued, (job) => {
+    if (job.status === 'waiting') {
+      return `${jobLabel(job)}  waiting for CI until ${when(job.ciDeadline ?? job.notBefore)} (${pendingText(job)})${askedFrom(job)}`
+    }
     const attempt = job.attempts === 0 ? '' : ` · attempt ${job.attempts + 1}`
     return `${jobLabel(job)}  after ${when(job.notBefore)}${attempt}${askedFrom(job)}`
   })
@@ -156,6 +169,12 @@ export function formatWatchStatusJson(
     lastRuns: status.lastRuns,
   }
   return `${JSON.stringify(body, null, 2)}\n`
+}
+
+function pendingText(job: JobRecord): string {
+  const pending = job.ciPending ?? []
+  if (pending.length === 0) return 'no checks yet'
+  return `${pending.length} pending: ${nameList(pending)}`
 }
 
 function askedFrom(job: StatusJob): string {

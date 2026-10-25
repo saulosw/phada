@@ -2,7 +2,7 @@ import type { ResolvedMcp } from '../config/mcp-servers.js'
 import type { ConfigLayer } from '../config/types.js'
 import { loadContext } from '../context/load-context.js'
 import { splitDiff } from '../context/split-diff.js'
-import type { ContextReport, ContextSources, LoadedContext } from '../context/types.js'
+import type { Ci, ContextReport, ContextSources, LoadedContext } from '../context/types.js'
 import type { PullRequest } from '../github/pull-request.js'
 import { changedLines, computeImpact } from '../graph/impact.js'
 import type { ChangedLines } from '../graph/impact.js'
@@ -26,6 +26,7 @@ import type { GitMirror } from '../repository/git-mirror.js'
 import { renderImpact } from '../review/impact-text.js'
 import { runReview } from '../review/run-review.js'
 import { recheckThreads } from '../review/recheck-threads.js'
+import type { Conversation } from '../publish/types.js'
 import type { DiffImpact, RecheckReport, RecheckThread, ReviewOutcome } from '../review/types.js'
 import { IndexStoreError } from '../store/index-store.js'
 import type { IndexStore } from '../store/index-store.js'
@@ -60,6 +61,8 @@ export interface ReviewOptions {
   verify?: boolean
   investigate?: boolean
   resolveThreads?: boolean
+  conversation?: boolean
+  ci?: boolean
   skills?: string[]
 }
 
@@ -71,6 +74,8 @@ export interface PullRequestReviewInput {
   loaded?: LoadedContext
   recheck?: readonly RecheckThread[]
   viewer?: string
+  conversation?: Conversation
+  ci?: Ci
 }
 
 export interface PullRequestReviewEvents {
@@ -114,6 +119,8 @@ export interface PullRequestReview {
   related: RelatedReport
   recheck?: RecheckReport
   passes?: PassPlan[]
+  conversation?: Conversation
+  ci?: Ci
 }
 
 export async function loadPullRequestContext(
@@ -285,6 +292,12 @@ export async function reviewPullRequest(
       )
     }
 
+    const related = kept.length === 0 ? undefined : relatedSummaries(kept, graphTools)
+    const conversation =
+      input.conversation === undefined || input.conversation.items.length === 0
+        ? undefined
+        : input.conversation.items
+    const ci = input.ci === undefined || input.ci.checks.length === 0 ? undefined : input.ci.checks
     const provider = deps.createProvider(
       investigation !== undefined && !outside && input.mcp.names.length > 0,
     )
@@ -297,6 +310,11 @@ export async function reviewPullRequest(
           review: loaded.options.review ?? {},
           nativeSkills: planned.nativeSkills,
           viewer: input.viewer ?? '',
+          ...(conversation === undefined ? {} : { conversation }),
+          ...(input.ci === undefined ? {} : { checks: input.ci.entries }),
+          ...(ci === undefined ? {} : { ci }),
+          ...(impact === undefined ? {} : { impact }),
+          ...(related === undefined ? {} : { related }),
           ...(language === undefined ? {} : { language }),
         },
         {
@@ -323,7 +341,9 @@ export async function reviewPullRequest(
         verify: options.verify ?? loaded.options.verify ?? true,
         context: loaded.context,
         ...(impact === undefined ? {} : { impact }),
-        ...(kept.length === 0 ? {} : { related: relatedSummaries(kept, graphTools) }),
+        ...(related === undefined ? {} : { related }),
+        ...(conversation === undefined ? {} : { conversation }),
+        ...(ci === undefined ? {} : { ci }),
         ...(planned.passes === undefined ? {} : { passes: planned.passes }),
       },
       {
@@ -361,6 +381,8 @@ export async function reviewPullRequest(
       related: relatedReport,
       ...(recheck === undefined ? {} : { recheck }),
       ...(planned.passes === undefined ? {} : { passes: planned.plan }),
+      ...(input.conversation === undefined ? {} : { conversation: input.conversation }),
+      ...(input.ci === undefined ? {} : { ci: input.ci }),
     }
   } finally {
     await native?.close()

@@ -81,6 +81,39 @@ describe('parseCliArgs', () => {
     expect(REVIEW_USAGE).toContain('--no-resolve')
   })
 
+  it('turns the pull request conversation off with --no-conversation', () => {
+    expect(parseCliArgs(['review', 'acme/shop#12', '--no-conversation'])).toMatchObject({
+      kind: 'review',
+      conversation: false,
+    })
+    expect(parseCliArgs(['review', 'acme/shop#12'])).not.toHaveProperty('conversation')
+    expect(REVIEW_USAGE).toContain('--no-conversation')
+  })
+
+  it('turns the reading of the checks off with --no-ci', () => {
+    expect(parseCliArgs(['review', 'acme/shop#12', '--no-ci'])).toMatchObject({
+      kind: 'review',
+      ci: false,
+    })
+    expect(parseCliArgs(['review', 'acme/shop#12'])).not.toHaveProperty('ci')
+    expect(REVIEW_USAGE).toContain('--no-ci')
+  })
+
+  it('waits for the checks of the head only with --wait-ci', () => {
+    expect(parseCliArgs(['review', 'acme/shop#12', '--wait-ci'])).toMatchObject({
+      kind: 'review',
+      waitCi: true,
+    })
+    expect(parseCliArgs(['review', 'acme/shop#12'])).not.toHaveProperty('waitCi')
+    expect(REVIEW_USAGE).toContain('--wait-ci')
+  })
+
+  it('refuses to wait for checks it was told not to read', () => {
+    expect(() => parseCliArgs(['review', 'acme/shop#12', '--wait-ci', '--no-ci'])).toThrow(
+      new UsageError('--wait-ci waits for the checks that --no-ci does not read; use one of them.'),
+    )
+  })
+
   it('turns verification off with --no-verify', () => {
     expect(parseCliArgs(['review', 'acme/shop#12', '--no-verify'])).toMatchObject({
       verify: false,

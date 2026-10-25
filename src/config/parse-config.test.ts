@@ -2,6 +2,35 @@ import { describe, expect, it } from 'vitest'
 import { parseConfigText } from './parse-config.js'
 
 describe('parseConfigText', () => {
+  it('reads the ci options and refuses an unknown one', () => {
+    expect(parseConfigText('ci:\n  read: false\n  checks: [test, "lint-*"]\n')).toEqual({
+      ok: true,
+      config: { ci: { read: false, checks: ['test', 'lint-*'] } },
+    })
+    expect(parseConfigText('ci:\n  reed: false\n').ok).toBe(false)
+  })
+
+  it('reads ci.wait as a duration, 0s included', () => {
+    expect(parseConfigText('ci:\n  wait: 20m\n')).toEqual({
+      ok: true,
+      config: { ci: { wait: '20m' } },
+    })
+    expect(parseConfigText('ci:\n  wait: 0s\n')).toEqual({
+      ok: true,
+      config: { ci: { wait: '0s' } },
+    })
+    expect(parseConfigText('ci:\n  wait: soon\n').ok).toBe(false)
+  })
+
+  it('reads ci.onFailure as review or skip', () => {
+    expect(parseConfigText('ci:\n  onFailure: skip\n')).toEqual({
+      ok: true,
+      config: { ci: { onFailure: 'skip' } },
+    })
+    expect(parseConfigText('ci:\n  onFailure: review\n').ok).toBe(true)
+    expect(parseConfigText('ci:\n  onFailure: block\n').ok).toBe(false)
+  })
+
   it('reads every key', () => {
     const text = [
       'provider: codex',

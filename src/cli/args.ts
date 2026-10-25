@@ -72,6 +72,9 @@ export type CliCommand =
       verify?: boolean
       investigate?: boolean
       resolveThreads?: boolean
+      conversation?: boolean
+      ci?: boolean
+      waitCi?: boolean
       skills?: string[]
       dryRun: boolean
       force: boolean
@@ -163,6 +166,13 @@ Options:
   --investigate         Let the AI read the repository, even if your config turns it off
   --no-resolve          Do not recheck Phada's comments from previous commits, nor
                         resolve the ones whose problem was fixed
+  --no-conversation     Do not send the comments, reviews and threads of the pull
+                        request to the AI
+  --no-ci               Do not read the checks of the head: no CI for the AI, no CI
+                        line in the review
+  --wait-ci             Before reviewing, wait for the pending checks of the head up
+                        to ci.wait (default: 15m) since the command started, even
+                        when one fails; no check after 2 minutes reviews at once
   --skill <name>        Review with this skill installed for your AI CLI (plugin:skill
                         for a skill of a plugin; phada is the built-in reviewer);
                         repeat it for several passes; replaces review.skills of the config
@@ -242,7 +252,7 @@ export const PROMPT_USAGE = `Usage: phada prompt <owner/repo#N | pull request UR
 Shows the prompt a review would send to the AI, without calling it: for each
 review pass (each skill), the instructions with where each part comes from (the
 built-in reviewer, review.prompt, a skill, the rules) and the size of the data
-blocks (pull request, docs, diff).
+blocks (pull request, docs, conversation, CI, diff).
 
 Options:
   --default          Show the built-in prompt, without a pull request or a token
@@ -392,6 +402,11 @@ function parseReviewArgs(argv: readonly string[]): CliCommand {
   }
   const investigate =
     values.investigate === true ? true : values['no-investigate'] === true ? false : undefined
+  if (values['wait-ci'] === true && values['no-ci'] === true) {
+    throw new UsageError(
+      '--wait-ci waits for the checks that --no-ci does not read; use one of them.',
+    )
+  }
   const skills = parseSkills(values.skill)
 
   return {
@@ -405,6 +420,9 @@ function parseReviewArgs(argv: readonly string[]): CliCommand {
     ...(verify === undefined ? {} : { verify }),
     ...(investigate === undefined ? {} : { investigate }),
     ...(values['no-resolve'] === true ? { resolveThreads: false } : {}),
+    ...(values['no-conversation'] === true ? { conversation: false } : {}),
+    ...(values['no-ci'] === true ? { ci: false } : {}),
+    ...(values['wait-ci'] === true ? { waitCi: true } : {}),
     ...(skills === undefined ? {} : { skills }),
     dryRun: values['dry-run'],
     force: values.force,
@@ -423,6 +441,9 @@ const REVIEW_OPTIONS = {
   investigate: { type: 'boolean' },
   'no-investigate': { type: 'boolean' },
   'no-resolve': { type: 'boolean' },
+  'no-conversation': { type: 'boolean' },
+  'no-ci': { type: 'boolean' },
+  'wait-ci': { type: 'boolean' },
   skill: { type: 'string', multiple: true },
   'dry-run': { type: 'boolean', default: false },
   force: { type: 'boolean', default: false },

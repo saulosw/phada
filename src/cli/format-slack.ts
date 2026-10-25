@@ -1,5 +1,7 @@
 import type { SlackEmojis, SlackReply } from '../config/watch-settings.js'
+import { CI_FAILING } from '../watch/ci-revisit.js'
 import type { ReviewedFinding, ReviewEvent } from './review-event.js'
+import { nameList } from './name-list.js'
 import { shortSha } from './review-text.js'
 import { toTerminalText } from './terminal-text.js'
 import { formatCount } from './units.js'
@@ -38,7 +40,12 @@ export function slackReplies(event: ReviewEvent, reply: SlackReply, emojis: Slac
     return [event.error === undefined ? header : `${header}\n${escape(event.error)}`]
   }
   if (event.event === 'review.skipped') {
-    const why = event.reason === undefined ? undefined : SKIP_REASONS[event.reason]
+    const why =
+      event.reason === CI_FAILING
+        ? ciFailingText(event)
+        : event.reason === undefined
+          ? undefined
+          : SKIP_REASONS[event.reason]
     return [`${header}\n${why ?? `Not reviewed (${escape(event.reason ?? 'no reason')}).`}`]
   }
   if (reply === 'link' || review === undefined) return [header]
@@ -66,6 +73,14 @@ function headerText(event: ReviewEvent, emojis: SlackEmojis): string {
   const url = event.publication?.url
   if (url !== undefined) parts.push(`<${url}|review on GitHub>`)
   return parts.join(' · ')
+}
+
+function ciFailingText(event: ReviewEvent): string {
+  const failing = (event.ci?.checks ?? [])
+    .filter(({ state }) => state === 'failing')
+    .map(({ name }) => name)
+  if (failing.length === 0) return 'CI failing. It is reviewed once the checks pass.'
+  return `CI failing: ${nameList(failing, escape)}. It is reviewed once these checks pass.`
 }
 
 function countsLine(review: ReviewView): string {

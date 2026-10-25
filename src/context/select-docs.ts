@@ -2,6 +2,7 @@ import { posix } from 'node:path'
 import { escapeGlob } from '../config/merge-config.js'
 import type { DeclaredFile } from '../config/merge-config.js'
 import type { DocFormat } from './doc-scope.js'
+import { byteLength } from './byte-cut.js'
 import { matcher } from './ignore.js'
 
 export type DocCategory = 'declared' | 'module' | 'agents' | 'contributing' | 'other'
@@ -47,10 +48,6 @@ const GLOB_CHARS = /[*?[\]{}!]/
 
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
-
-export function byteLength(text: string): number {
-  return encoder.encode(text).length
-}
 
 export function fitDoc(size: number, remaining: number): Fit {
   if (size <= DOC_LIMIT_BYTES) return size <= remaining ? 'whole' : 'omitted'

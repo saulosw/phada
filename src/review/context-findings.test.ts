@@ -26,6 +26,14 @@ describe('withKnownReferences', () => {
     ])
   })
 
+  it('keeps a failing CI check as a source, but not a check that passed or does not exist', () => {
+    const finding = findingFixture({ sources: ['ci:test', 'ci:build', 'ci:made-up'] })
+
+    const [kept] = withKnownReferences([finding], undefined, DIFF_PATHS, undefined, ['test'])
+
+    expect(kept?.sources).toEqual(['ci:test'])
+  })
+
   it(`keeps at most ${MAX_SOURCES} sources`, () => {
     const sources = Array.from({ length: 8 }, (_unused, index) => `src/shop.ts:${index + 1}`)
 

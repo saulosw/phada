@@ -7,6 +7,49 @@ output can change between minor versions.
 
 ## Unreleased
 
+## 0.9.0 - 2026-10-25
+
+### Added
+
+- The review and the verifier get the conversation of the pull request: its general comments,
+  reviews and review threads with their replies and the role of each author, without Phada's own
+  comments, as untrusted data within 16 KB (each body cut at 2 KB). The AI does not raise again
+  what a thread still open already raised or a reply dismissed, weighs what the author explains,
+  and reports instructions aimed at reviewers or AI tools. `conversation: false` or
+  `--no-conversation` turns it off.
+- The review and the verifier get the checks of the head: check runs and commit statuses, and for
+  each failing one its title, summary, annotations (50 in total) and the end of the failed step of
+  its GitHub Actions log (12 KB in total), as untrusted data. A failure caused by the diff becomes
+  a finding that cites the check; failures unrelated to the diff and pending checks are not
+  reported. `ci.checks` picks the checks that count; `ci.read: false` or `--no-ci` turns them off.
+- A CI line under the score of the published review (`CI: 2 of 7 checks failing (test, lint)`),
+  and `Conversation:` and `CI:` lines in the terminal.
+- `--dry-run` sections and `conversation` and `ci` blocks in the JSON with what was sent, left
+  out and cut, and the warnings.
+- `phada watch` waits for the pending checks of a commit before reviewing it, for at most
+  `ci.wait` (default `15m`, `0s` turns it off), and lists the jobs waiting for CI in
+  `phada watch --status`.
+- `ci.onFailure: skip` makes the watch skip a commit whose checks fail (`ci-failing`), read them
+  again for 24 hours and review it once they pass; a request for that commit reads them again at
+  once. Slack answers with the failing checks.
+- `phada review --wait-ci` waits for the pending checks of the head within `ci.wait`, with a live
+  counter, and then reviews.
+- `ci` in the review events, with the CI state and the checks that count.
+- A native skill finds the conversation, the checks and the impact of the change in
+  `.git/conversation.jsonl`, `.git/ci.md` and `.git/impact.md`, and `gh pr checks` answers from
+  the checks Phada read.
+- `phada prompt` shows the conversation and CI blocks with their sizes.
+- A token without the permission to read check runs, commit statuses or job logs gets a warning
+  that names it, and the review goes on without that part.
+
+### Changed
+
+- A fine-grained token needs **Checks**, **Commit statuses** and **Actions** read access for the
+  review to get the CI checks; a classic token with `repo` already has it.
+- When a prompt with the conversation or the checks does not fit an Ollama model, the error
+  suggests `--no-conversation` or `--no-ci`.
+- The history moves to version 4; older Phada versions refuse the updated file.
+
 ## 0.8.0 - 2026-10-24
 
 ### Added

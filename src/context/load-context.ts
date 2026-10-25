@@ -8,8 +8,8 @@ import { docScope, scopeMatcher } from './doc-scope.js'
 import type { DocFormat } from './doc-scope.js'
 import { applyIgnore, DEFAULT_IGNORE, matcher } from './ignore.js'
 import { phadaDirs, phadaFiles } from './phada-paths.js'
+import { byteLength } from './byte-cut.js'
 import {
-  byteLength,
   DOC_LIMIT_BYTES,
   DOCS_BUDGET_BYTES,
   fitDoc,
@@ -68,6 +68,8 @@ export async function loadContext(input: {
       ...(merged.verify === undefined ? {} : { verify: merged.verify }),
       ...(merged.investigate === undefined ? {} : { investigate: merged.investigate }),
       ...(merged.resolveThreads === undefined ? {} : { resolveThreads: merged.resolveThreads }),
+      ...(merged.conversation === undefined ? {} : { conversation: merged.conversation }),
+      ci: merged.ci,
       ...(merged.review.prompt === undefined && merged.review.skills === undefined
         ? {}
         : { review: merged.review }),

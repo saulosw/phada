@@ -1,8 +1,15 @@
 import { defaultPromptView, inspectPrompt } from '../app/inspect-prompt.js'
+import { readCi } from '../app/read-ci.js'
+import { readConversation } from '../app/read-conversation.js'
 import type { LocalFileSystem } from '../config/local-files.js'
 import { resolveProvider } from '../config/merge-config.js'
 import { loadUserLayers } from '../config/user-config.js'
 import { loadContext } from '../context/load-context.js'
+import type {
+  FetchReviewStateOptions,
+  PullComment,
+  PullRequestReviewState,
+} from '../github/pull-request-reviews.js'
 import type { FetchPullRequestOptions, PullRequest } from '../github/pull-request.js'
 import type { CliCommand } from './args.js'
 import { contextSourcesAt } from './context-sources.js'
@@ -11,15 +18,19 @@ import { MissingGitHubTokenError } from './errors.js'
 import { formatPromptJson, formatPromptText } from './format-prompt.js'
 import type { TextOutput } from './progress.js'
 import { providerRunsSkills } from './provider-choice.js'
+import { ciReaders } from './review-wiring.js'
+import type { CiReaderDeps } from './review-wiring.js'
 import { diskSkillCatalog } from './skill-catalog.js'
 
 export type PromptCommand = Extract<CliCommand, { kind: 'prompt' }>
 
-export interface PromptCommandDeps extends ContextReaders {
+export interface PromptCommandDeps extends ContextReaders, CiReaderDeps {
   env: NodeJS.ProcessEnv
   files: LocalFileSystem
   stdout: TextOutput
   fetchPullRequest: (options: FetchPullRequestOptions) => Promise<PullRequest>
+  fetchReviewState: (options: FetchReviewStateOptions) => Promise<PullRequestReviewState>
+  fetchPullComments: (options: FetchReviewStateOptions) => Promise<PullComment[]>
 }
 
 export async function runPrompt(command: PromptCommand, deps: PromptCommandDeps): Promise<void> {
@@ -50,9 +61,27 @@ export async function runPrompt(command: PromptCommand, deps: PromptCommandDeps)
     userLayers,
     sources,
   })
+  const warnings: string[] = []
+  const warn = (message: string) => warnings.push(message)
+  const target = { ...ref, token }
+  const conversation =
+    (loaded.options.conversation ?? true)
+      ? await readConversation(
+          await deps.fetchReviewState(target),
+          pullRequest.author,
+          () => deps.fetchPullComments(target),
+          warn,
+        )
+      : undefined
+  const ci = loaded.options.ci.read
+    ? await readCi(ciReaders(deps, target), pullRequest.headSha, loaded.options.ci.checks, warn)
+    : undefined
   const view = await inspectPrompt({
     pullRequest,
     loaded,
+    ...(conversation === undefined ? {} : { conversation }),
+    ...(ci === undefined ? {} : { ci }),
+    warnings,
     ...(command.skills === undefined ? {} : { cliSkills: command.skills }),
     investigate: loaded.options.investigate ?? true,
     native: providerRunsSkills(resolveProvider({}, userLayers).provider),

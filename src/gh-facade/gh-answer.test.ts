@@ -335,3 +335,153 @@ describe('answerGh', () => {
     expect(answer.stderr).toBe('phada: GitHub answered: HTTP 404 for repos/acme/shop/issues/3\n')
   })
 })
+
+describe('answerGh pr checks', () => {
+  const CHECKS: GhPullData['checks'] = [
+    {
+      name: 'lint',
+      state: 'SUCCESS',
+      link: 'https://github.com/acme/shop/actions/runs/1/job/2',
+      description: 'No problems',
+      workflow: '',
+      startedAt: '2026-10-20T10:00:00Z',
+      completedAt: '2026-10-20T10:01:30Z',
+    },
+    {
+      name: 'test',
+      state: 'FAILURE',
+      link: 'https://github.com/acme/shop/actions/runs/1/job/3',
+      description: 'Tests failed',
+      workflow: '',
+      startedAt: '2026-10-20T10:00:00Z',
+      completedAt: '2026-10-20T11:00:05Z',
+    },
+    { name: 'ci/deploy', state: 'PENDING', link: '', description: 'Waiting', workflow: '' },
+    {
+      name: 'e2e',
+      state: 'CANCELLED',
+      link: 'https://ci.example/e2e',
+      description: '',
+      workflow: '',
+    },
+    { name: 'docs', state: 'SKIPPED', link: '', description: '', workflow: '' },
+  ]
+  const withChecks = (checks: GhPullData['checks']) => (line: string) =>
+    answerGh(parseGhCommand(line.split(' '), { files: {} }), { ...DATA, checks }, github().read)
+
+  it('prints the checks tab-separated like gh, failing first, and fails like gh', async () => {
+    const { answer } = await withChecks(CHECKS)('pr checks')
+
+    expect(answer.stdout).toBe(
+      [
+        'test\tfail\t1h0m5s\thttps://github.com/acme/shop/actions/runs/1/job/3\tTests failed',
+        'ci/deploy\tpending\t0\t\tWaiting',
+        'docs\tskipping\t0\t\t',
+        'e2e\tfail\t0\thttps://ci.example/e2e\t',
+        'lint\tpass\t1m30s\thttps://github.com/acme/shop/actions/runs/1/job/2\tNo problems',
+        '',
+      ].join('\n'),
+    )
+    expect(answer.exitCode).toBe(1)
+  })
+
+  it('exits 8 when checks are pending and none fails, and 0 when all pass', async () => {
+    const pending = await withChecks(CHECKS.filter(({ state }) => state === 'PENDING'))('pr checks')
+    const passing = await withChecks(CHECKS.filter(({ state }) => state === 'SUCCESS'))('pr checks')
+
+    expect(pending.answer.exitCode).toBe(8)
+    expect(passing.answer.exitCode).toBe(0)
+  })
+
+  it('answers --json with the fields asked and --jq', async () => {
+    const { answer } = await withChecks(CHECKS.slice(0, 1))(
+      'pr checks --json name,state,bucket,link,description,workflow,startedAt,completedAt',
+    )
+    const pending = await withChecks(CHECKS.slice(2, 3))(
+      'pr checks 12 --json name,bucket,startedAt',
+    )
+    const names = await withChecks(CHECKS)('pr checks --json name,bucket --jq .[].bucket')
+
+    expect(JSON.parse(answer.stdout)).toEqual([
+      {
+        name: 'lint',
+        state: 'SUCCESS',
+        bucket: 'pass',
+        link: 'https://github.com/acme/shop/actions/runs/1/job/2',
+        description: 'No problems',
+        workflow: '',
+        startedAt: '2026-10-20T10:00:00Z',
+        completedAt: '2026-10-20T10:01:30Z',
+      },
+    ])
+    expect(answer.exitCode).toBe(0)
+    expect(JSON.parse(pending.answer.stdout)).toEqual([
+      { name: 'ci/deploy', bucket: 'pending', startedAt: '0001-01-01T00:00:00Z' },
+    ])
+    expect(names.answer.stdout).toBe('pass\nfail\npending\ncancel\nskipping\n')
+  })
+
+  it('refuses an unknown JSON field and lists the ones it has', async () => {
+    const { answer } = await withChecks(CHECKS)('pr checks --json name,conclusion')
+
+    expect(answer.exitCode).toBe(1)
+    expect(answer.stderr).toContain('Unknown JSON field: "conclusion"')
+    expect(answer.stderr).toContain('  bucket')
+  })
+
+  it('answers --watch at once and --required with every check', async () => {
+    const plain = await withChecks(CHECKS)('pr checks')
+    const watch = await withChecks(CHECKS)('pr checks --watch --fail-fast --interval 5')
+    const required = await withChecks(CHECKS)('pr checks --required')
+
+    expect(watch.answer).toEqual(plain.answer)
+    expect(required.answer).toEqual(plain.answer)
+  })
+
+  it('refuses --watch with --json like gh', async () => {
+    const { answer } = await withChecks(CHECKS)('pr checks --watch --json name')
+
+    expect(answer).toEqual({
+      stdout: '',
+      stderr: 'cannot use `--watch` with `--json` flag\n',
+      exitCode: 1,
+    })
+  })
+
+  it('says no checks were reported on the branch like gh, also with --json', async () => {
+    const plain = await withChecks([])('pr checks')
+    const json = await withChecks([])('pr checks --json name')
+
+    expect(plain.answer).toEqual({
+      stdout: '',
+      stderr: "no checks reported on the 'feat/spend' branch\n",
+      exitCode: 1,
+    })
+    expect(json.answer).toEqual(plain.answer)
+  })
+
+  it('says Phada did not read the checks when the review did not', async () => {
+    const { answer } = await withChecks(undefined)('pr checks')
+
+    expect(answer.exitCode).toBe(1)
+    expect(answer.stderr).toContain('Phada did not read the checks')
+  })
+
+  it('answers only for this pull request and never asks GitHub', async () => {
+    const { read, calls } = github()
+    const other = await answerGh(
+      parseGhCommand(['pr', 'checks', '13'], { files: {} }),
+      { ...DATA, checks: CHECKS },
+      read,
+    )
+    await answerGh(
+      parseGhCommand(['pr', 'checks'], { files: {} }),
+      { ...DATA, checks: CHECKS },
+      read,
+    )
+
+    expect(other.answer.exitCode).toBe(1)
+    expect(other.answer.stderr).toContain('only pull request acme/shop#12')
+    expect(calls).toEqual([])
+  })
+})

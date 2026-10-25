@@ -6,9 +6,18 @@ import { checkMcpNames } from './mcp-names.js'
 import type { CheckedNames, NameCheck } from './mcp-names.js'
 import type { FeedbackRefreshDeps } from '../app/feedback.js'
 import type { PullRequestReviewDeps } from '../app/review-pull-request.js'
+import type { CiReaders } from '../app/read-ci.js'
+import type { CheckAnnotation, CheckRun } from '../github/check-runs.js'
+import type { CommitStatus } from '../github/commit-statuses.js'
+import { JobLogUnavailableError } from '../github/job-log.js'
+import type { JobLog } from '../github/job-log.js'
 import type { PublicationResult, RenderedReview, ReviewRun } from '../app/review-and-publish.js'
 import { repositoryCache } from '../config/cache-paths.js'
-import { GitHubRateLimitError, PullRequestNotFoundError } from '../github/errors.js'
+import {
+  GitHubPermissionError,
+  GitHubRateLimitError,
+  PullRequestNotFoundError,
+} from '../github/errors.js'
 import { splitRepoName } from '../github/pull-request-ref.js'
 import type {
   FetchReviewStateOptions,
@@ -31,6 +40,7 @@ import type { ContextReaders } from './context-sources.js'
 import type { TextOutput } from './progress.js'
 import type { ProviderOptions } from './provider-choice.js'
 import type { SkipReason } from '../publish/types.js'
+import type { CiSummary } from '../context/types.js'
 import type { PublicationPlan } from '../publish/types.js'
 import type { ReviewResult } from '../review/types.js'
 import { contextSourcesAt } from './context-sources.js'
@@ -56,7 +66,7 @@ import type { RepositoryReaderOptions } from '../github/read-repository.js'
 import type { ReadGitHub } from '../gh-facade/types.js'
 import { toTerminalText } from './terminal-text.js'
 
-export interface ReviewWiringDeps extends ContextReaders {
+export interface ReviewWiringDeps extends ContextReaders, CiReaderDeps {
   env: NodeJS.ProcessEnv
   version: string
   files: LocalFileSystem
@@ -73,7 +83,30 @@ export interface ReviewWiringDeps extends ContextReaders {
   checkMcpNames?: NameCheck
 }
 
+export interface CiReaderDeps {
+  fetchCheckRuns: (options: RepositoryFilesOptions & { sha: string }) => Promise<CheckRun[]>
+  fetchCommitStatuses: (
+    options: RepositoryFilesOptions & { sha: string },
+  ) => Promise<CommitStatus[]>
+  fetchCheckAnnotations: (
+    options: RepositoryFilesOptions & { checkRunId: number },
+  ) => Promise<CheckAnnotation[]>
+  fetchJobLog: (options: RepositoryFilesOptions & { jobId: number }) => Promise<JobLog>
+}
+
 export type PublishTarget = PullRequestRef & { token: string }
+
+export function ciReaders(deps: CiReaderDeps, { owner, repo, token }: PublishTarget): CiReaders {
+  const repository = { owner, repo, token }
+  return {
+    checkRuns: (sha) => deps.fetchCheckRuns({ ...repository, sha }),
+    statuses: (sha) => deps.fetchCommitStatuses({ ...repository, sha }),
+    annotations: (checkRunId) => deps.fetchCheckAnnotations({ ...repository, checkRunId }),
+    jobLog: (jobId) => deps.fetchJobLog({ ...repository, jobId }),
+    permissionDenied: (error) => error instanceof GitHubPermissionError,
+    logUnavailable: (error) => error instanceof JobLogUnavailableError,
+  }
+}
 export type Choice = { provider: string; model?: string; mcpNames?: CheckedNames }
 
 const PROGRESS_LABELS: Readonly<Record<ReviewPass, string>> = {
@@ -107,8 +140,12 @@ export function feedbackRefreshDeps(
 }
 
 export const renderReview = {
-  review: (result: ReviewResult, plan: PublicationPlan, language?: string): RenderedReview =>
-    formatGitHubReview(result, plan, undefined, messagesFor(language)),
+  review: (
+    result: ReviewResult,
+    plan: PublicationPlan,
+    language?: string,
+    ci?: CiSummary,
+  ): RenderedReview => formatGitHubReview(result, plan, undefined, messagesFor(language), ci),
   ignoredOnly: (
     headSha: string,
     ignored: readonly string[],
@@ -206,6 +243,10 @@ export function reviewRunJson(
   if (run.status === 'skipped') return formatAlreadyReviewedJson(pullRequest, run.reason)
   const { reviewed } = run
   const context = reviewed.context.report
+  const blocks = {
+    ...(reviewed.conversation === undefined ? {} : { conversation: reviewed.conversation }),
+    ...(reviewed.ci === undefined ? {} : { ci: reviewed.ci }),
+  }
   if (run.status === 'nothing') {
     const note = run.rendered
     const publication =
@@ -222,6 +263,7 @@ export function reviewRunJson(
       null,
       reviewed.recheck ?? null,
       fixFor,
+      blocks,
     )
   }
   const { plan, rendered } = run
@@ -245,6 +287,7 @@ export function reviewRunJson(
     related,
     reviewed.recheck ?? null,
     fixFor,
+    blocks,
   )
 }
 

@@ -5,6 +5,7 @@ import type { SlackChannelSettings, SlackSettings } from '../config/watch-settin
 import { pullRequestLinks } from '../slack/pull-links.js'
 import type { SlackWebApi } from '../slack/web-api.js'
 import type { HistoryStore } from '../store/history-store.js'
+import type { JobRecord } from '../watch/types.js'
 import { refusalText } from './format-request.js'
 import { slackReplies } from './format-slack.js'
 import { eventOfJob } from './review-event.js'
@@ -88,11 +89,29 @@ export function slackPort(deps: SlackPortDeps): SlackPort {
         if (place === undefined) continue
         await safely(async () => {
           await api.removeReaction(place.channel, place.ts, settings.emojis.queued)
+          if (event.verdict !== 'skipped' && !otherSkipped(deps.history, place, event.job)) {
+            await api.removeReaction(place.channel, place.ts, settings.emojis.skipped)
+          }
           await answer(place, event, channelOf(place.channel))
         })
       }
     },
   }
+}
+
+function otherSkipped(
+  history: HistoryStore,
+  place: SlackPlace,
+  job: Pick<JobRecord, 'repo' | 'number'>,
+): boolean {
+  const latest = new Map<string, JobRecord>()
+  for (const { jobId } of history.requestsWith('slack', { channel: place.channel, ts: place.ts })) {
+    const other = history.job(jobId)
+    if (other === undefined || (other.repo === job.repo && other.number === job.number)) continue
+    const key = `${other.repo}#${other.number}`
+    if ((latest.get(key)?.id ?? 0) < other.id) latest.set(key, other)
+  }
+  return [...latest.values()].some(({ status }) => status === 'skipped')
 }
 
 function placeOf(event: Record<string, unknown>): SlackPlace | undefined {

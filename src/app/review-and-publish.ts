@@ -3,17 +3,23 @@ import type { ConfigLayer } from '../config/types.js'
 import type { ComparedFile } from '../github/compare-commits.js'
 import type { ReviewComment } from '../github/create-review.js'
 import type { PullRequestRef } from '../github/pull-request-ref.js'
-import type { PullRequestReviewState } from '../github/pull-request-reviews.js'
+import type { PullComment, PullRequestReviewState } from '../github/pull-request-reviews.js'
 import type { PullRequest } from '../github/pull-request.js'
 import { decideRun } from '../publish/decide-run.js'
 import { resolvedMarker } from '../publish/markers.js'
 import { planPublication } from '../publish/plan-publication.js'
 import { threadsToRecheck, withChanges } from '../publish/recheck-candidates.js'
 import type { Comparisons } from '../publish/recheck-candidates.js'
-import type { PublicationPlan, SkipReason } from '../publish/types.js'
+import type { Conversation, PublicationPlan, SkipReason } from '../publish/types.js'
+import type { Ci, CiSummary } from '../context/types.js'
 import { diffFingerprint } from '../review/diff-fingerprint.js'
 import type { RecheckThread, RecheckVerdict, ReviewResult } from '../review/types.js'
 import { errorMessage } from './error-message.js'
+import { readCi } from './read-ci.js'
+import { readConversation } from './read-conversation.js'
+import type { CiReaders } from './read-ci.js'
+import { waitForCi } from './wait-for-ci.js'
+import type { CiWaited, CiWaiting, WaitClock } from './wait-for-ci.js'
 import { loadPullRequestContext, reviewPullRequest } from './review-pull-request.js'
 import type {
   PullRequestReview,
@@ -69,6 +75,7 @@ export interface ReviewAndPublishInput {
   dryRun: boolean
   publish: boolean
   acceptDraft?: boolean
+  waitCi?: { since: string }
   options: ReviewOptions
   userLayers: readonly ConfigLayer[]
   mcp: ResolvedMcp
@@ -79,14 +86,25 @@ export interface ReviewAndPublishEvents {
   reviewed(review: PullRequestReview, pullRequest: PullRequest): void
   publishing(): void
   warning(message: string): void
+  conversationRead?(conversation: Conversation): void
+  ciRead?(ci: Ci): void
+  ciWaiting?(wait: CiWaiting): void
+  ciWaited?(wait: CiWaited): void
 }
 
 export interface ReviewAndPublishDeps {
   fetchPullRequest(ref: PullRequestRef): Promise<PullRequest>
   fetchReviewState(ref: PullRequestRef): Promise<PullRequestReviewState>
+  fetchPullComments(ref: PullRequestRef): Promise<PullComment[]>
+  ci: CiReaders
   reviewDeps(pullRequest: PullRequest): PullRequestReviewDeps
   render: {
-    review(result: ReviewResult, plan: PublicationPlan, language?: string): RenderedReview
+    review(
+      result: ReviewResult,
+      plan: PublicationPlan,
+      language?: string,
+      ci?: CiSummary,
+    ): RenderedReview
     ignoredOnly(
       headSha: string,
       ignored: readonly string[],
@@ -99,6 +117,7 @@ export interface ReviewAndPublishDeps {
   compare(pullRequest: PullRequest, base: string): Promise<ComparedFile[]>
   replyAndResolve(threadId: string, body: string): Promise<void>
   checkHead?(pullRequest: PullRequest): Promise<HeadCheck>
+  clock?: WaitClock
   events: ReviewAndPublishEvents
 }
 
@@ -139,10 +158,53 @@ export async function reviewAndPublish(
     return { status: 'skipped', pullRequest, reason: decision.reason, reviewState: state }
   }
 
+  const readsCi = input.options.ci ?? loaded.options.ci.read
+  if (input.waitCi !== undefined) {
+    const { waitMs } = loaded.options.ci
+    if (!readsCi) {
+      deps.events.warning('--wait-ci has nothing to wait for: ci.read is false in the config')
+    } else if (waitMs > 0 && deps.clock !== undefined) {
+      await waitForCi(
+        {
+          sha: pullRequest.headSha,
+          checks: loaded.options.ci.checks,
+          waitMs,
+          since: input.waitCi.since,
+        },
+        deps.ci,
+        deps.clock,
+        deps.events,
+      )
+    }
+  }
+
   const resolve = input.options.resolveThreads ?? loaded.options.resolveThreads ?? true
   const recheck = resolve ? await threadsWithChanges(state, pullRequest, deps) : []
+  const conversation =
+    (input.options.conversation ?? loaded.options.conversation ?? true)
+      ? await readConversation(
+          state,
+          pullRequest.author,
+          () => deps.fetchPullComments(input.ref),
+          (message) => deps.events.warning(message),
+        )
+      : undefined
+  const ci: Ci | undefined = readsCi
+    ? await readCi(deps.ci, pullRequest.headSha, loaded.options.ci.checks, (message) =>
+        deps.events.warning(message),
+      )
+    : undefined
+  if (conversation !== undefined) deps.events.conversationRead?.(conversation)
+  if (ci !== undefined) deps.events.ciRead?.(ci)
   const reviewed = await reviewPullRequest(
-    { ...review, loaded, recheck, viewer: state.viewer },
+    {
+      ...review,
+      loaded,
+      recheck,
+      viewer: state.viewer,
+      ...(conversation === undefined ? {} : { conversation }),
+      ...(ci === undefined ? {} : { ci }),
+    },
     reviewDeps,
   )
   const fixed = (reviewed.recheck?.verdicts ?? []).filter(({ verdict }) => verdict === 'fixed')
@@ -171,7 +233,7 @@ export async function reviewAndPublish(
 
   const fixedIds = new Set(fixed.map(({ threadId }) => threadId))
   const plan = planPublication(outcome.result.findings, state, fixedIds)
-  const rendered = deps.render.review(outcome.result, plan, reviewed.language)
+  const rendered = deps.render.review(outcome.result, plan, reviewed.language, ci?.summary)
   deps.events.reviewed(reviewed, pullRequest)
   return {
     status: 'reviewed',

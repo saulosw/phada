@@ -1,6 +1,11 @@
 import { CONFIDENCE_FLOOR } from '../../review/select-findings.js'
+import { joinNames } from '../name-list.js'
 import { formatCount } from '../units.js'
-import type { Messages } from './messages.js'
+import type { CiNames, Messages } from './messages.js'
+
+function ciNames({ count, shown }: CiNames): string {
+  return `(${joinNames(shown, count)})`
+}
 
 export const english: Messages = {
   scoreLabels: {
@@ -21,6 +26,7 @@ export const english: Messages = {
   leftOut: 'Left out of the review',
   rule: 'rule',
   skill: 'skill',
+  ciCheck: 'CI check',
   summary: 'Summary',
   files: 'Files',
   fileColumns: ['File', 'Change', 'Findings'],
@@ -78,5 +84,14 @@ export const english: Messages = {
         ? `1 comment from previous reviews is fixed in ${sha}.`
         : `${count} comments from previous reviews are fixed in ${sha}.`,
     resolvedReply: (sha, reason) => `Fixed in \`${sha}\`: ${reason}`,
+    ci: (state, total, failing, pending) => {
+      const checks = formatCount(total, 'check')
+      if (state === 'passing')
+        return total === 1 ? 'CI: 1 check passing' : `CI: all ${checks} passing`
+      if (state === 'pending')
+        return `CI: ${pending.count} of ${checks} pending ${ciNames(pending)}`
+      const waiting = pending.count === 0 ? '' : ` · ${pending.count} pending`
+      return `CI: ${failing.count} of ${checks} failing ${ciNames(failing)}${waiting}`
+    },
   },
 }

@@ -53,6 +53,7 @@ describe('reviewEvent', () => {
       job: JOB_JSON,
       requests: [{ source: 'slack', publish: 'none', data: { channel: 'C1', ts: '1.2' } }],
       verdict: 'blocking',
+      ci: null,
       publication: { status: 'not-published' },
       review: { schemaVersion: 1, status: 'reviewed', verdict: 'blocking' },
     })
@@ -74,8 +75,58 @@ describe('reviewEvent', () => {
       job: JOB_JSON,
       requests: [],
       verdict: null,
+      ci: null,
       publication: null,
     })
+  })
+
+  it('has the CI the watch read before the review started', () => {
+    const ci = {
+      state: 'failing' as const,
+      checks: [
+        { name: 'test', state: 'failing' as const },
+        { name: 'e2e', state: 'pending' as const },
+      ],
+    }
+    const running = { ...JOB, status: 'running' as const }
+
+    expect(reviewEvent({ kind: 'started', job: running, requests: [], ci }, undefined).ci).toEqual(
+      ci,
+    )
+  })
+
+  it('has the CI state and the checks that count, once the review read them', () => {
+    const ci = {
+      state: 'failing',
+      total: 2,
+      failing: ['test'],
+      pending: [],
+      checks: [
+        { name: 'test', state: 'failing', conclusion: 'failure', annotations: 1, logBytes: 4 },
+        { name: 'build', state: 'passing', conclusion: null, annotations: 0, logBytes: null },
+      ],
+    }
+    const read = { ...RUN, resultJson: JSON.stringify({ schemaVersion: 1, ci }) }
+    const nothing = { ...RUN, status: 'nothing' as const, resultJson: JSON.stringify({ ci }) }
+    const expected = {
+      state: 'failing',
+      checks: [
+        { name: 'test', state: 'failing' },
+        { name: 'build', state: 'passing' },
+      ],
+    }
+
+    expect(reviewEvent({ kind: 'finished', job: JOB, requests: [] }, read).ci).toEqual(expected)
+    expect(
+      reviewEvent({ kind: 'skipped', job: JOB, requests: [], reason: 'nothing' }, nothing).ci,
+    ).toEqual(expected)
+    expect(
+      reviewEvent(
+        { kind: 'finished', job: JOB, requests: [] },
+        { ...RUN, resultJson: JSON.stringify({ ci: null }) },
+      ).ci,
+    ).toBeNull()
+    expect(reviewEvent({ kind: 'failed', job: JOB, requests: [] }, undefined).ci).toBeNull()
   })
 
   it('says why a review was skipped', () => {
@@ -115,6 +166,31 @@ describe('storedEvent', () => {
       reason: 'superseded',
     })
     expect(storedEvent({ ...JOB, status: 'failed' }, [], undefined)?.event).toBe('review.failed')
+  })
+
+  it('has the reason and the checks that count of a commit skipped for failing CI', () => {
+    const skipped = { ...JOB, status: 'skipped' as const, reason: 'ci-failing' }
+    const checks = [
+      { name: 'build', state: 'passing' },
+      { name: 'test', state: 'failing' },
+    ]
+    const run = {
+      ...RUN,
+      status: 'skipped' as const,
+      aiCalled: false,
+      verdict: 'skipped' as const,
+      reason: 'ci-failing',
+      resultJson: JSON.stringify({
+        ci: { state: 'failing', failing: ['test'], pending: [], checks },
+      }),
+    }
+    expect(storedEvent(skipped, [SLACK], run)).toMatchObject({
+      event: 'review.skipped',
+      verdict: 'skipped',
+      reason: 'ci-failing',
+      ci: { state: 'failing', checks },
+      publication: { status: 'skipped' },
+    })
   })
 
   it('is undefined while the job waits or runs', () => {

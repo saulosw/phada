@@ -11,6 +11,17 @@ export interface GhPullData {
   headSha: string
   diff: string
   viewer: string
+  checks?: GhCheck[]
+}
+
+export interface GhCheck {
+  name: string
+  state: string
+  link: string
+  description: string
+  workflow: string
+  startedAt?: string
+  completedAt?: string
 }
 
 export type ReadGitHub = (
@@ -41,6 +52,7 @@ interface Listing {
 export type GhCommand =
   | ({ kind: 'pr-view'; target?: string; comments: boolean } & Listing)
   | { kind: 'pr-diff'; target?: string; repo?: string; nameOnly: boolean }
+  | ({ kind: 'pr-checks'; target?: string; watch: boolean } & Listing)
   | ({
       kind: 'pr-list'
       state?: string

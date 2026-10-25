@@ -163,3 +163,16 @@ export class ReviewRejectedError extends GitHubError {
     this.details = details
   }
 }
+
+export class GitHubPermissionError extends GitHubError {
+  override readonly name = 'GitHubPermissionError'
+  readonly permission: string
+  readonly apiMessage?: string
+
+  constructor(what: string, permission: string, apiMessage?: string) {
+    const summary = `GitHub denied reading ${what} (HTTP 403): the token needs the ${permission} permission.`
+    super(apiMessage === undefined ? summary : `${summary} GitHub says: ${apiMessage}`)
+    this.permission = permission
+    this.apiMessage = apiMessage
+  }
+}

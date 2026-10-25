@@ -4,6 +4,12 @@ const SHARED_OPTIONS = `# Review options. Flags given on the command line win.
 # verify: true                 # check every finding with a second call to the AI
 # investigate: true            # let the AI read the rest of the repository at the head
 # resolveThreads: true         # recheck Phada's earlier comments and resolve the fixed ones
+# conversation: true           # send the comments, reviews and threads of the pull request
+# ci:
+#   read: true                 # read the checks of the head: CI for the AI and the CI line
+#   wait: 15m                  # how long the watch waits for pending checks (0s: no wait)
+#   onFailure: review          # failing checks: review anyway, or skip until they pass
+#   checks: [test, "lint/*"]   # the checks that count, by name or glob (default: all)
 `
 
 const RULES = `# Rules the review enforces. Each one is sent to the AI as an instruction.

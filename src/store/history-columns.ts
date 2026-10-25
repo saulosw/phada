@@ -59,6 +59,11 @@ export const JOB_TABLE: HistoryTable = {
     reason: 'reason',
     errorKind: 'error_kind',
     error: 'error',
+    ciDeadline: 'ci_deadline',
+    ciPending: 'ci_pending',
+    ciFailing: 'ci_failing',
+    ciCheckedAt: 'ci_checked_at',
+    ciSince: 'ci_since',
     createdAt: 'created_at',
     startedAt: 'started_at',
     finishedAt: 'finished_at',
@@ -167,7 +172,7 @@ const NUMBERS = new Set([
   'commentsLastId',
 ])
 const BOOLEANS = new Set(['eligible', 'aiCalled', 'outdated'])
-const JSON_FIELDS = new Set(['data'])
+const JSON_FIELDS = new Set(['data', 'ciPending', 'ciFailing'])
 const LOWERCASE = new Set(['repo'])
 
 export class UnknownHistoryFieldError extends Error {

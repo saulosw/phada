@@ -27,6 +27,11 @@ const CLIENT_TIMEOUT_CODES: ReadonlySet<string> = new Set([
   'UND_ERR_BODY_TIMEOUT',
 ])
 
+const OPTIONAL_BLOCKS = [
+  { pattern: /^<<<PHADA_CONVERSATION_/m, name: 'conversation', flag: '--no-conversation' },
+  { pattern: /^<<<PHADA_CI_/m, name: 'CI', flag: '--no-ci' },
+]
+
 const OllamaShow = z.object({
   capabilities: z.array(z.string()).optional(),
   model_info: z.record(z.string(), z.unknown()).optional(),
@@ -86,7 +91,7 @@ export class OllamaProvider implements ReviewProvider {
       throw new ProviderError(
         PROVIDER_ID,
         'prompt-too-large',
-        `The review needs about ${needed} tokens but ${this.#model} holds ${contextLength}. Use a model with a larger context window (see "ollama show ${this.#model}") or a :cloud model.`,
+        `The review needs about ${needed} tokens but ${this.#model} holds ${contextLength}. Use a model with a larger context window (see "ollama show ${this.#model}") or a :cloud model${blocksHint(prompt.data)}.`,
       )
     }
 
@@ -385,4 +390,12 @@ function parseJson(text: string): unknown {
 
 function detail(text: string): string {
   return redactSecrets(text).trim().slice(0, MAX_DETAIL_LENGTH)
+}
+
+function blocksHint(data: string): string {
+  const present = OPTIONAL_BLOCKS.filter(({ pattern }) => pattern.test(data))
+  if (present.length === 0) return ''
+  const names = present.map(({ name }) => name).join(' and ')
+  const flags = present.map(({ flag }) => flag).join(' and ')
+  return `, or leave out the ${names} block${present.length === 1 ? '' : 's'} with ${flags}`
 }

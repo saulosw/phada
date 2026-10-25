@@ -16,12 +16,16 @@
               "id": "PRR_kwDOQNCyRM8AAAABRNso_Q",
               "body": "Captured review.\n\n<!-- phada:review sha=f41a2c3280de0d54ab06d79fa18e93e576e511e6 findings=1 -->",
               "author": {
-                "login": "saulosw"
+                "login": "saulosw",
+                "__typename": "User"
               },
               "url": "https://github.com/saulosw/phada-dev-web/pull/11#pullrequestreview-5444118781",
               "commit": {
                 "oid": "f41a2c3280de0d54ab06d79fa18e93e576e511e6"
-              }
+              },
+              "state": "COMMENTED",
+              "createdAt": "2026-10-08T00:58:40Z",
+              "authorAssociation": "OWNER"
             }
           ]
         }

@@ -3,11 +3,19 @@ import type { McpServerInfo, Toolbox } from '../investigation/toolbox.js'
 import { annotateDiff } from './diff-lines.js'
 import {
   block,
+  CI,
+  CI_RULES,
+  ciText,
   CONFIDENCE_SCALE,
   CONTEXT_DOCS,
+  CONVERSATION,
+  CONVERSATION_RULES,
+  conversationText,
   DIFF_LINE_NUMBERS,
   diffScope,
   docsBlock,
+  hasCi,
+  hasConversation,
   hasImpact,
   hasRelated,
   IMPACT,
@@ -84,7 +92,7 @@ export interface PromptPart {
 
 export type InstructionOptions = Pick<
   ReviewRequest,
-  'language' | 'verify' | 'context' | 'impact' | 'related'
+  'language' | 'verify' | 'context' | 'impact' | 'related' | 'conversation' | 'ci'
 > & { toolNames?: readonly string[]; mcpServers?: readonly McpServerInfo[] }
 
 const PHADA = 'phada'
@@ -126,16 +134,30 @@ export interface DataBlock {
 export function reviewDataBlocks({
   pullRequest,
   context,
-}: Pick<ReviewRequest, 'pullRequest' | 'context'>): DataBlock[] {
+  conversation,
+  ci,
+}: Pick<ReviewRequest, 'pullRequest' | 'context' | 'conversation' | 'ci'>): DataBlock[] {
   const docs = context?.docs ?? []
   return [
     { name: 'PHADA_PR', content: pullRequestDetails(pullRequest, context?.ignored) },
     ...(docs.length === 0 ? [] : [{ name: 'PHADA_DOCS', content: docsBlock(docs) }]),
+    ...(hasConversation(conversation)
+      ? [{ name: 'PHADA_CONVERSATION', content: conversationText(conversation) }]
+      : []),
+    ...(hasCi(ci) ? [{ name: 'PHADA_CI', content: ciText(ci) }] : []),
     { name: 'PHADA_DIFF', content: annotateDiff(pullRequest.diff) },
   ]
 }
 
-const BLOCK_ORDER = ['PHADA_PR', 'PHADA_DOCS', 'PHADA_RELATED', 'PHADA_IMPACT', 'PHADA_DIFF']
+const BLOCK_ORDER = [
+  'PHADA_PR',
+  'PHADA_DOCS',
+  'PHADA_CONVERSATION',
+  'PHADA_CI',
+  'PHADA_RELATED',
+  'PHADA_IMPACT',
+  'PHADA_DIFF',
+]
 
 function byBlockOrder(a: string, b: string): number {
   const rank = (text: string) => BLOCK_ORDER.findIndex((name) => text.startsWith(`<<<${name}_`))
@@ -143,7 +165,17 @@ function byBlockOrder(a: string, b: string): number {
 }
 
 export function reviewInstructionParts(
-  { language, verify, context, impact, related, toolNames, mcpServers }: InstructionOptions,
+  {
+    language,
+    verify,
+    context,
+    impact,
+    related,
+    conversation,
+    ci,
+    toolNames,
+    mcpServers,
+  }: InstructionOptions,
   pass?: SkillPass,
 ): PromptPart[] {
   const floor = verify === true ? VERIFY_CANDIDATE_FLOOR : CONFIDENCE_FLOOR
@@ -167,6 +199,10 @@ export function reviewInstructionParts(
       text: rulesSection(rules),
     },
     phada('context', (context?.docs.length ?? 0) > 0 ? CONTEXT_DOCS : ''),
+    phada('context', hasConversation(conversation) ? CONVERSATION : ''),
+    phada('contract', hasConversation(conversation) ? CONVERSATION_RULES : ''),
+    phada('context', hasCi(ci) ? CI : ''),
+    phada('contract', hasCi(ci) ? CI_RULES : ''),
     phada('context', hasRelated(related) ? RELATED : ''),
     phada('context', hasImpact(impact) ? IMPACT : ''),
     phada('contract', `${CONFIDENCE_SCALE}\nReport every candidate rated ${floor} or higher.`),

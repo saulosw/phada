@@ -260,7 +260,12 @@ describe('loadContext', () => {
 
     const loaded = await loadContext({ diff: DIFF, baseSha: SHA, userLayers: [], sources })
 
-    expect(loaded.options).toEqual({ language: 'pt-BR', verify: true, investigate: false })
+    expect(loaded.options).toEqual({
+      language: 'pt-BR',
+      verify: true,
+      investigate: false,
+      ci: { read: true, waitMs: 900_000, onFailure: 'review' },
+    })
   })
 
   it('passes the related repositories and privateOnPublic on', async () => {

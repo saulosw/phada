@@ -200,7 +200,7 @@ describe('slackPort', () => {
     history.close()
   })
 
-  it('swaps the queued mark for the verdict and replies in the format of the channel when the job ends', async () => {
+  it('swaps the queued and skipped marks for the verdict and replies in the format of the channel when the job ends', async () => {
     const history = await fresh()
     const { port, calls } = setup(history)
     const job = slackJob(history, { status: 'done', publish: 'none' }, 'C2')
@@ -222,10 +222,80 @@ describe('slackPort', () => {
 
     expect(calls).toEqual([
       '-hourglass_flowing_sand C2 100.1',
+      '-eyes C2 100.1',
       '+speech_balloon C2 100.1',
       expect.stringContaining(`<https://github.com/acme/shop/blob/${A}/a.ts#L2|a.ts:2> Name`),
     ])
-    expect(calls[2]).toMatch(/^post C2 100\.1 :speech_balloon: \*Comments\*/)
+    expect(calls[3]).toMatch(/^post C2 100\.1 :speech_balloon: \*Comments\*/)
+    history.close()
+  })
+
+  it('keeps the skipped mark while another pull request of the message is still skipped', async () => {
+    const history = await fresh()
+    const { port, calls } = setup(history)
+    slackJob(history, { status: 'skipped', reason: 'closed-or-draft', finishedAt: FINISHED })
+    const job = slackJob(history, { number: 8, status: 'done', ciSince: STARTED })
+    const finished = run({ jobId: job.id, number: 8, status: 'published', verdict: 'clean' })
+
+    await port.onJobEvent(
+      reviewEvent({ kind: 'finished', job, requests: history.requests([job.id]) }, finished),
+    )
+
+    expect(calls.slice(0, 2)).toEqual([
+      '-hourglass_flowing_sand C1 100.1',
+      '+white_check_mark C1 100.1',
+    ])
+    history.close()
+  })
+
+  it('takes the skipped mark off once the pull request skipped for failing CI is reviewed', async () => {
+    const history = await fresh()
+    const { port, calls } = setup(history)
+    slackJob(history, { number: 8, status: 'done', finishedAt: FINISHED })
+    const job = slackJob(history, { status: 'done', ciSince: STARTED })
+    const finished = run({ jobId: job.id, status: 'published', verdict: 'clean' })
+
+    await port.onJobEvent(
+      reviewEvent({ kind: 'finished', job, requests: history.requests([job.id]) }, finished),
+    )
+
+    expect(calls.slice(0, 3)).toEqual([
+      '-hourglass_flowing_sand C1 100.1',
+      '-eyes C1 100.1',
+      '+white_check_mark C1 100.1',
+    ])
+    history.close()
+  })
+
+  it('marks a commit skipped for failing CI and names the checks that fail in the thread', async () => {
+    const history = await fresh()
+    const { port, calls } = setup(history)
+    const job = slackJob(history, { status: 'skipped', reason: 'ci-failing' })
+    const checks = [
+      { name: 'build', state: 'passing' },
+      { name: 'test', state: 'failing' },
+      { name: 'lint', state: 'failing' },
+    ]
+    const skipped = run({
+      status: 'skipped',
+      aiCalled: false,
+      verdict: 'skipped',
+      reason: 'ci-failing',
+      resultJson: JSON.stringify({ ci: { state: 'failing', checks } }),
+    })
+
+    await port.onJobEvent(
+      reviewEvent(
+        { kind: 'skipped', job, requests: history.requests([job.id]), reason: 'ci-failing' },
+        skipped,
+      ),
+    )
+
+    expect(calls).toEqual([
+      '-hourglass_flowing_sand C1 100.1',
+      '+eyes C1 100.1',
+      'post C1 100.1 :eyes: *Skipped* · <https://github.com/acme/shop/pull/7|acme/shop#7> at `aaaaaaa`\nCI failing: test, lint. It is reviewed once these checks pass.',
+    ])
     history.close()
   })
 

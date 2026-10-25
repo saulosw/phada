@@ -58,12 +58,23 @@ export interface ReviewSettings {
   timeoutMs?: number
 }
 
+export interface CiSettings {
+  read: boolean
+  waitMs: number
+  onFailure: 'review' | 'skip'
+  checks?: string[]
+}
+
+export const DEFAULT_CI: Readonly<CiSettings> = { read: true, waitMs: 900_000, onFailure: 'review' }
+
 export interface EffectiveConfig {
   language?: string
   minConfidence?: number
   verify?: boolean
   investigate?: boolean
   resolveThreads?: boolean
+  conversation?: boolean
+  ci: CiSettings
   contextDefaults: boolean
   rules: ResolvedRule[]
   disabledRules: ReadonlySet<string>
@@ -84,7 +95,15 @@ export interface ProviderChoice {
 
 const DEFAULT_PROVIDER = 'claude'
 const OPTION_PRECEDENCE: readonly LayerKind[] = ['user-repo', 'repo-root', 'user']
-const OPTIONS = ['language', 'minConfidence', 'verify', 'investigate', 'resolveThreads'] as const
+const OPTIONS = [
+  'language',
+  'minConfidence',
+  'verify',
+  'investigate',
+  'resolveThreads',
+  'conversation',
+  'ci',
+] as const
 const USER_ONLY = [
   'provider',
   'model',
@@ -117,12 +136,24 @@ export function mergeConfig(layers: readonly ConfigLayer[]): EffectiveConfig {
   const verify = firstSet((config) => config.verify)
   const investigate = firstSet((config) => config.investigate)
   const resolveThreads = firstSet((config) => config.resolveThreads)
+  const conversation = firstSet((config) => config.conversation)
+  const ciRead = firstSet((config) => config.ci?.read)
+  const ciWait = firstSet((config) => config.ci?.wait)
+  const ciOnFailure = firstSet((config) => config.ci?.onFailure)
+  const ciChecks = firstSet((config) => config.ci?.checks)
   const merged: EffectiveConfig = {
     ...(language === undefined ? {} : { language }),
     ...(minConfidence === undefined ? {} : { minConfidence }),
     ...(verify === undefined ? {} : { verify }),
     ...(investigate === undefined ? {} : { investigate }),
     ...(resolveThreads === undefined ? {} : { resolveThreads }),
+    ...(conversation === undefined ? {} : { conversation }),
+    ci: {
+      read: ciRead ?? DEFAULT_CI.read,
+      waitMs: ciWait === undefined ? DEFAULT_CI.waitMs : durationMs(ciWait),
+      onFailure: ciOnFailure ?? DEFAULT_CI.onFailure,
+      ...(ciChecks === undefined ? {} : { checks: ciChecks }),
+    },
     contextDefaults: firstSet((config) => config.context?.defaults) ?? true,
     rules: [],
     disabledRules: new Set(

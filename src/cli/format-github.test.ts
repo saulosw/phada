@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { findingFixture } from '../../test/support/finding.js'
 import { parseReviewMarker } from '../publish/markers.js'
 import type { PublicationPlan } from '../publish/types.js'
+import type { CiSummary } from '../context/types.js'
 import type { FileChange, Finding, ReviewResult } from '../review/types.js'
 import {
   formatGitHubPreview,
@@ -120,6 +121,89 @@ describe('formatGitHubReview body', () => {
         MARKER,
       ].join('\n'),
     )
+  })
+
+  it('writes the CI summary right below the score, without changing the verdict', () => {
+    const ci: CiSummary = {
+      state: 'failing',
+      total: 7,
+      failing: ['test', 'lint'],
+      pending: ['e2e'],
+    }
+
+    const lines = formatGitHubReview(RESULT, PLAN, undefined, messagesFor('en'), ci).body.split(
+      '\n',
+    )
+
+    expect(lines.slice(0, 5)).toEqual([
+      '## 🦋 Phada review: 3/5 (implementation issues)',
+      '',
+      'CI: 2 of 7 checks failing (test, lint) · 1 pending',
+      '',
+      '2 P1 findings (shop.ts:3, shop.ts:20)',
+    ])
+  })
+
+  it.each<[CiSummary, string, string]>([
+    [
+      { state: 'failing', total: 1, failing: ['test'], pending: [] },
+      'CI: 1 of 1 check failing (test)',
+      'CI: 1 de 1 check falhando (test)',
+    ],
+    [
+      { state: 'pending', total: 3, failing: [], pending: ['e2e', 'deploy'] },
+      'CI: 2 of 3 checks pending (e2e, deploy)',
+      'CI: 2 de 3 checks pendentes (e2e, deploy)',
+    ],
+    [
+      { state: 'passing', total: 4, failing: [], pending: [] },
+      'CI: all 4 checks passing',
+      'CI: todos os 4 checks passando',
+    ],
+    [
+      { state: 'passing', total: 1, failing: [], pending: [] },
+      'CI: 1 check passing',
+      'CI: 1 check passando',
+    ],
+    [
+      { state: 'failing', total: 9, failing: ['a', 'b', 'c', 'd', 'e', 'f', 'g'], pending: ['h'] },
+      'CI: 7 of 9 checks failing (a, b, c, d, e, 2 more) · 1 pending',
+      'CI: 7 de 9 checks falhando (a, b, c, d, e, 2 a mais) · 1 pendente',
+    ],
+  ])('writes the CI line of %j in English and Portuguese', (ci, english, portuguese) => {
+    expect(formatGitHubReview(RESULT, PLAN, undefined, messagesFor('en'), ci).body).toContain(
+      `\n\n${english}\n\n`,
+    )
+    expect(formatGitHubReview(RESULT, PLAN, undefined, messagesFor('pt'), ci).body).toContain(
+      `\n\n${portuguese}\n\n`,
+    )
+  })
+
+  it('escapes the names of the checks, which their authors chose', () => {
+    const ci: CiSummary = { state: 'failing', total: 1, failing: ['<b>@team</b>'], pending: [] }
+
+    const body = formatGitHubReview(RESULT, PLAN, undefined, messagesFor('en'), ci).body
+
+    expect(body).toContain('CI: 1 of 1 check failing (\\<b>@\u200bteam\\</b>)')
+  })
+
+  it('writes nothing about CI without checks that count', () => {
+    const none: CiSummary = { state: 'none', total: 0, failing: [], pending: [] }
+
+    expect(formatGitHubReview(RESULT, PLAN, undefined, messagesFor('en'), none).body).toBe(
+      formatGitHubReview(RESULT, PLAN).body,
+    )
+  })
+
+  it('writes the CI line below the heading of the short note too', () => {
+    const ci: CiSummary = { state: 'pending', total: 2, failing: [], pending: ['e2e'] }
+
+    const body = formatGitHubReview(RESULT, plan([], [OPEN]), undefined, messagesFor('en'), ci).body
+
+    expect(body.split('\n\n').slice(0, 2)).toEqual([
+      '## 🦋 Phada review: no new findings',
+      'CI: 1 of 2 checks pending (e2e)',
+    ])
   })
 
   it('names the files left out of the review', () => {

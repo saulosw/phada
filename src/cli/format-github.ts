@@ -2,6 +2,7 @@ import type { ReviewComment } from '../github/create-review.js'
 import { redactSecrets } from '../providers/redact-secrets.js'
 import { FINDING_MARKER, reviewMarker } from '../publish/markers.js'
 import type { PublicationPlan } from '../publish/types.js'
+import type { CiSummary } from '../context/types.js'
 import { scoreFocus } from '../review/score.js'
 import { normalize } from '../review/suggestions.js'
 import type { FileChange, Finding, ReviewResult, Severity } from '../review/types.js'
@@ -9,6 +10,7 @@ import { findingReferences, leftOutLine } from './finding-references.js'
 import { english } from './i18n/en.js'
 import type { Messages } from './i18n/messages.js'
 import { codeFence, githubBlock, githubCell, githubLine } from './markdown-text.js'
+import { firstNames } from './name-list.js'
 import { modelLabel, shortSha } from './review-text.js'
 
 export const GITHUB_BODY_LIMIT = 65_536
@@ -38,12 +40,14 @@ export function formatGitHubReview(
   plan: PublicationPlan,
   limit = GITHUB_BODY_LIMIT,
   messages: Messages = english,
+  ci?: CiSummary,
 ): GitHubReview {
+  const ciText = ci === undefined ? '' : ciLine(ci, messages)
   if (plan.comments.length === 0 && plan.stillOpen.length > 0) {
-    return redacted({ body: onlyStillOpenBody(result, plan, messages), comments: [] })
+    return redacted({ body: onlyStillOpenBody(result, plan, messages, ciText), comments: [] })
   }
   return redacted({
-    body: reviewBody(result, plan, limit, messages),
+    body: reviewBody(result, plan, limit, messages, ciText),
     comments: plan.comments.map((finding) => findingComment(finding, limit, messages)),
   })
 }
@@ -97,10 +101,12 @@ function onlyStillOpenBody(
   result: ReviewResult,
   plan: PublicationPlan,
   messages: Messages,
+  ci: string,
 ): string {
   const sha = shortSha(result.target.headSha)
   return [
     `## ${messages.github.heading}: ${messages.github.onlyStillOpenTitle}`,
+    ci,
     messages.github.onlyStillOpen(plan.openThreads, sha),
     fixedLine(result, plan, messages),
     `---\n<sub>${footer(result, githubLine(modelLabel(result)), messages)}</sub>`,
@@ -115,6 +121,7 @@ function reviewBody(
   plan: PublicationPlan,
   limit: number,
   messages: Messages,
+  ci: string,
 ): string {
   const parts: BodyParts = {
     reason: messages.scoreReason(scoreFocus(result.findings)),
@@ -132,7 +139,7 @@ function reviewBody(
     worthChecking: [...result.worthChecking],
     worthCheckingOmitted: result.worthCheckingOmitted,
   }
-  const render = () => renderBody(result, plan, parts, messages)
+  const render = () => renderBody(result, plan, parts, messages, ci)
   if (render().length > limit && parts.files !== '') {
     parts.files = messages.github.filesTruncated(result.files.length)
   }
@@ -148,11 +155,13 @@ function renderBody(
   plan: PublicationPlan,
   parts: BodyParts,
   messages: Messages,
+  ci: string,
 ): string {
   const { score } = result
   const summary = githubBlock(parts.summary)
   return [
     `## ${messages.github.heading}: ${score.value}/5 (${messages.scoreLabels[score.value]})`,
+    ci,
     capitalize(githubBlock(parts.reason)),
     summary === '' ? '' : `### ${messages.summary}\n\n${summary}`,
     parts.skillBodies,
@@ -173,6 +182,15 @@ function renderBody(
   ]
     .filter((section) => section !== '')
     .join('\n\n')
+}
+
+function ciLine({ state, total, failing, pending }: CiSummary, messages: Messages): string {
+  if (state === 'none') return ''
+  const names = (list: readonly string[]) => ({
+    count: list.length,
+    shown: firstNames(list, githubLine),
+  })
+  return messages.github.ci(state, total, names(failing), names(pending))
 }
 
 function fixedLine(result: ReviewResult, plan: PublicationPlan, messages: Messages): string {

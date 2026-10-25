@@ -1,0 +1,36 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "comments": {
+          "pageInfo": {
+            "hasNextPage": false,
+            "endCursor": "Y3Vyc29yOnYyOpHOqieEMQ=="
+          },
+          "nodes": [
+            {
+              "id": "IC_kwDOQNCyRM7cQ1aa",
+              "body": "The retry is temporary, it goes away in the next pull request.",
+              "createdAt": "2026-10-07T21:03:11Z",
+              "authorAssociation": "OWNER",
+              "author": {
+                "login": "saulosw",
+                "__typename": "User"
+              }
+            },
+            {
+              "id": "IC_kwDOQNCyRM7cQ1bb",
+              "body": "Coverage dropped by 0.4%.",
+              "createdAt": "2026-10-07T21:05:42Z",
+              "authorAssociation": "NONE",
+              "author": {
+                "login": "codecov",
+                "__typename": "Bot"
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

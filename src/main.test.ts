@@ -16,7 +16,11 @@ import { formatAlreadyReviewedJson } from './cli/format-json.js'
 import type { ComparedFile, CompareOptions } from './github/compare-commits.js'
 import type { CreateReviewOptions, CreatedReview } from './github/create-review.js'
 import type { ReplyAndResolveOptions } from './github/resolve-thread.js'
-import { PullRequestNotFoundError, ReviewPermissionError } from './github/errors.js'
+import {
+  GitHubPermissionError,
+  PullRequestNotFoundError,
+  ReviewPermissionError,
+} from './github/errors.js'
 import type {
   FetchReviewStateOptions,
   PullRequestReviewState,
@@ -86,6 +90,8 @@ interface Harness {
   fetches: FetchPullRequestOptions[]
   mcpChecks: [string, string[]][]
   stateFetches: FetchReviewStateOptions[]
+  commentFetches: FetchReviewStateOptions[]
+  ciFetches: string[]
   posts: CreateReviewOptions[]
   comparisons: CompareOptions[]
   replies: ReplyAndResolveOptions[]
@@ -175,6 +181,8 @@ function harness(
     hookWarning?: (event: ReviewEvent) => string | undefined
     slackMessages?: Record<string, unknown>[]
     comments?: MainDeps['listIssueComments']
+    pullComments?: MainDeps['fetchPullComments']
+    checkRuns?: MainDeps['fetchCheckRuns']
   } = {},
 ): Harness {
   const checkouts: (GitMirrorOptions & { sha: string; keepAs: string })[] = []
@@ -201,6 +209,8 @@ function harness(
   const fetches: FetchPullRequestOptions[] = []
   const mcpChecks: [string, string[]][] = []
   const stateFetches: FetchReviewStateOptions[] = []
+  const commentFetches: FetchReviewStateOptions[] = []
+  const ciFetches: string[] = []
   const posts: CreateReviewOptions[] = []
   const comparisons: CompareOptions[] = []
   const replies: ReplyAndResolveOptions[] = []
@@ -231,6 +241,21 @@ function harness(
       stateFetches.push(options)
       return overrides.reviewState?.() ?? Promise.resolve(EMPTY_STATE)
     },
+    fetchPullComments: (options) => {
+      commentFetches.push(options)
+      return overrides.pullComments?.(options) ?? Promise.resolve([])
+    },
+    fetchCheckRuns: (options) => {
+      const { owner, repo, token, sha } = options
+      ciFetches.push(`runs ${owner}/${repo} ${sha} ${token === TOKEN ? 'token' : 'other'}`)
+      return overrides.checkRuns?.(options) ?? Promise.resolve([])
+    },
+    fetchCommitStatuses: ({ owner, repo, sha }) => {
+      ciFetches.push(`statuses ${owner}/${repo} ${sha}`)
+      return Promise.resolve([])
+    },
+    fetchCheckAnnotations: () => Promise.resolve([]),
+    fetchJobLog: () => Promise.reject(new Error('no job log in this test')),
     createReview: (options) => {
       events.push('post')
       posts.push(options)
@@ -392,6 +417,8 @@ function harness(
     fetches,
     mcpChecks,
     stateFetches,
+    commentFetches,
+    ciFetches,
     posts,
     comparisons,
     replies,
@@ -880,6 +907,136 @@ describe('run publishing', () => {
     await run(REVIEW, h.deps)
 
     expect(h.stateFetches).toEqual([{ owner: 'acme', repo: 'shop', number: 12, token: TOKEN }])
+  })
+
+  it('reads the pull request comments with the token, unless --no-conversation', async () => {
+    const h = harness()
+    const off = harness()
+
+    await run(REVIEW, h.deps)
+    await run([...REVIEW, '--no-conversation'], off.deps)
+
+    expect(h.commentFetches).toEqual([{ owner: 'acme', repo: 'shop', number: 12, token: TOKEN }])
+    expect(off.commentFetches).toEqual([])
+  })
+
+  it('reads the checks of the head with the token, unless --no-ci', async () => {
+    const h = harness()
+    const off = harness()
+    const sha = pullRequestFixture().headSha
+
+    await run(REVIEW, h.deps)
+    await run([...REVIEW, '--no-ci'], off.deps)
+
+    expect(h.ciFetches).toEqual([`runs acme/shop ${sha} token`, `statuses acme/shop ${sha}`])
+    expect(off.ciFetches).toEqual([])
+  })
+
+  it('shows the conversation and the CI on stderr, in the dry run and in the JSON', async () => {
+    const conversation = {
+      pullComments: async () => [
+        {
+          id: 'c1',
+          author: 'alice',
+          bot: false,
+          association: 'MEMBER',
+          createdAt: '2026-10-20T10:00:00Z',
+          body: 'Please keep the old endpoint.',
+        },
+        {
+          id: 'c2',
+          author: 'ci-bot',
+          bot: true,
+          association: 'NONE',
+          createdAt: '2026-10-20T11:00:00Z',
+          body: 'Coverage dropped.',
+        },
+      ],
+      checkRuns: async () => [
+        {
+          id: 7,
+          name: 'test',
+          status: 'completed',
+          conclusion: 'failure',
+          title: '1 failed',
+          summary: null,
+          url: null,
+          app: 'other',
+          startedAt: null,
+          completedAt: null,
+        },
+        {
+          id: 8,
+          name: 'e2e',
+          status: 'in_progress',
+          conclusion: null,
+          title: null,
+          summary: null,
+          url: null,
+          app: 'other',
+          startedAt: null,
+          completedAt: null,
+        },
+        {
+          id: 9,
+          name: 'build',
+          status: 'completed',
+          conclusion: 'success',
+          title: null,
+          summary: null,
+          url: null,
+          app: 'other',
+          startedAt: null,
+          completedAt: null,
+        },
+      ],
+    }
+    const markdown = harness(conversation)
+    const json = harness(conversation)
+    const off = harness(conversation)
+
+    await run(['review', 'acme/shop#12', '--dry-run'], markdown.deps)
+    await run(['review', 'acme/shop#12', '--dry-run', '--format', 'json'], json.deps)
+    await run(
+      ['review', 'acme/shop#12', '--dry-run', '--format', 'json', '--no-conversation', '--no-ci'],
+      off.deps,
+    )
+
+    expect(markdown.stderr()).toContain(
+      'Conversation: 2 comments (1 bot)\nCI: 3 checks, 1 failing (test), 1 pending\n',
+    )
+    expect(markdown.stdout()).toContain(
+      '## Conversation sent to the AI\n\n- comment by alice (member), 2026-10-20 10:00\n- comment by ci-bot (bot), 2026-10-20 11:00\n',
+    )
+    expect(markdown.stdout()).toContain(
+      '## CI sent to the AI\n\n- test: failing (failure)\n- e2e: pending\n- build: passing\n',
+    )
+    expect(JSON.parse(json.stdout())).toMatchObject({
+      conversation: {
+        items: [
+          { kind: 'comment', author: 'alice', role: 'member' },
+          { kind: 'comment', author: 'ci-bot', role: 'bot' },
+        ],
+        count: 2,
+        omitted: 0,
+        bots: 1,
+      },
+      ci: {
+        state: 'failing',
+        total: 3,
+        failing: ['test'],
+        pending: ['e2e'],
+        checks: [
+          { name: 'test', state: 'failing', conclusion: 'failure' },
+          { name: 'e2e', state: 'pending' },
+          { name: 'build', state: 'passing' },
+        ],
+        warnings: [],
+      },
+    })
+    expect(JSON.parse(off.stdout())).toMatchObject({ conversation: null, ci: null })
+    expect(off.stderr()).not.toContain('Conversation:')
+    expect(off.stderr()).not.toContain('CI:')
   })
 
   it('skips before the provider when the same commit has open Phada threads', async () => {
@@ -1870,7 +2027,7 @@ describe('run history', () => {
 })
 
 describe('phada enqueue', () => {
-  const WATCH_CONFIG = 'verify: false\nwatch:\n  repos: [acme/shop]\n'
+  const WATCH_CONFIG = 'verify: false\nci:\n  wait: 0s\nwatch:\n  repos: [acme/shop]\n'
   const withConfig = (text = WATCH_CONFIG) => memoryFiles({ '/cfg/config.yml': text })
 
   it('queues a review of a watched pull request and says no watch is running', async () => {
@@ -2088,7 +2245,7 @@ describe('phada mcp', () => {
 })
 
 describe('phada watch', () => {
-  const WATCH_CONFIG = 'verify: false\nwatch:\n  repos: [acme/shop]\n'
+  const WATCH_CONFIG = 'verify: false\nci:\n  wait: 0s\nwatch:\n  repos: [acme/shop]\n'
   const OPEN_PULL = {
     number: 12,
     headSha: HEAD_SHA,
@@ -2250,6 +2407,7 @@ describe('phada watch', () => {
       expect(h.slack.calls).toEqual([
         '+hourglass_flowing_sand',
         '-hourglass_flowing_sand',
+        '-eyes',
         '+x',
         expect.stringMatching(/^post C1 100\.1 :x: \*Blocking findings\* · /),
         'closed',
@@ -2361,7 +2519,7 @@ describe('phada watch', () => {
   it('keeps the review in the history only with publish: false', async () => {
     const h = harness({
       files: withConfig(
-        'verify: false\nwatch:\n  repos:\n    - repo: acme/shop\n      publish: false\n',
+        'verify: false\nci:\n  wait: 0s\nwatch:\n  repos:\n    - repo: acme/shop\n      publish: false\n',
       ),
       listPulls: listed,
     })
@@ -2423,6 +2581,46 @@ describe('phada watch', () => {
 
     expect(await run(['watch', '--backfill'], h.deps)).toBe(1)
     expect(h.stderr()).toContain('phada: Claude Code is not logged in.')
+  })
+
+  it('waits for the pending checks of the head with the default ci.wait, read from the repository config', async () => {
+    const h = harness({
+      files: withConfig('verify: false\nwatch:\n  repos: [acme/shop]\n'),
+      repoFiles: { '.phada/config.yml': 'ci:\n  wait: 10m\n' },
+      listPulls: listed,
+      checkRuns: async () => [
+        {
+          id: 7,
+          name: 'test',
+          status: 'in_progress',
+          conclusion: null,
+          title: null,
+          summary: null,
+          url: null,
+          app: 'github-actions',
+          startedAt: null,
+          completedAt: null,
+        },
+      ],
+    })
+
+    expect(await run(['watch', '--once', '--backfill'], h.deps)).toBe(0)
+    expect(h.posts).toHaveLength(0)
+    expect(h.stderr()).toMatch(
+      /acme\/shop#12 at a1b2c3d waits for CI until \d\d:\d\d \(1 pending: test\)\./,
+    )
+    expect(h.stderr()).not.toContain('Reviewing')
+
+    expect(await run(['watch', '--status', '--format', 'json'], h.deps)).toBe(0)
+    expect(JSON.parse(h.stdout()).queue).toEqual([
+      expect.objectContaining({
+        number: 12,
+        status: 'waiting',
+        reason: 'ci-pending',
+        ciDeadline: '2026-10-18T12:10:00.000Z',
+        ciPending: ['test'],
+      }),
+    ])
   })
 
   it('prints the status from the history', async () => {
@@ -2553,6 +2751,75 @@ describe('run prompt', () => {
 
     expect(await run(['prompt', 'acme/shop#12'], h.deps)).toBe(1)
   })
+
+  it('lists the conversation and CI blocks with their sizes, and their rules, as a review sends them', async () => {
+    const overrides = {
+      pullComments: async () => [
+        {
+          id: 'c1',
+          author: 'alice',
+          bot: false,
+          association: 'MEMBER',
+          createdAt: '2026-10-20T10:00:00Z',
+          body: 'Please keep the old endpoint.',
+        },
+      ],
+      checkRuns: async () => [
+        {
+          id: 7,
+          name: 'test',
+          status: 'completed',
+          conclusion: 'failure',
+          title: '1 failed',
+          summary: null,
+          url: null,
+          app: 'other',
+          startedAt: null,
+          completedAt: null,
+        },
+      ],
+    }
+    const text = harness(overrides)
+    const json = harness(overrides)
+    const off = harness({
+      ...overrides,
+      repoFiles: { '.phada/config.yml': 'conversation: false\nci:\n  read: false\n' },
+    })
+
+    expect(await run(['prompt', 'acme/shop#12'], text.deps)).toBe(0)
+    await run(['prompt', 'acme/shop#12', '--format', 'json'], json.deps)
+    await run(['prompt', 'acme/shop#12'], off.deps)
+
+    expect(text.stdout()).toMatch(/ {2}PHADA_CONVERSATION {2}\d+ B\n/)
+    expect(text.stdout()).toMatch(/ {2}PHADA_CI {12}\d+ B\n/)
+    expect(text.stdout()).toContain('The PHADA_CONVERSATION block')
+    expect(text.stdout()).toContain('The PHADA_CI block')
+    const view = JSON.parse(json.stdout()) as {
+      passes: { data: { name: string; bytes: number }[] }[]
+    }
+    expect(view.passes[0]?.data.map(({ name }) => name)).toEqual([
+      'PHADA_PR',
+      'PHADA_CONVERSATION',
+      'PHADA_CI',
+      'PHADA_DIFF',
+    ])
+    expect(off.stdout()).not.toContain('PHADA_CONVERSATION')
+    expect(off.stdout()).not.toContain('PHADA_CI')
+    expect(off.commentFetches).toEqual([])
+    expect(off.ciFetches).toEqual([])
+    expect(text.prompts).toHaveLength(0)
+  })
+
+  it('shows the CI permission a token lacks as a warning of the prompt', async () => {
+    const h = harness({
+      checkRuns: () => Promise.reject(new GitHubPermissionError('the check runs', 'checks:read')),
+    })
+
+    expect(await run(['prompt', 'acme/shop#12'], h.deps)).toBe(0)
+    expect(h.stdout()).toContain(
+      'Warning: CI check runs were not read: GitHub denied reading the check runs (HTTP 403): the token needs the checks:read permission.',
+    )
+  })
 })
 
 describe('run review when no skill applies', () => {
@@ -2665,5 +2932,159 @@ describe('run review and Ctrl-C', () => {
     await run(['review', 'acme/shop#12', '--no-verify'], h.deps)
 
     expect(h.aborts).toEqual([130])
+  })
+})
+
+describe('run review --wait-ci', () => {
+  const testRun = (status: 'in_progress' | 'completed', conclusion: string | null = null) => ({
+    id: 7,
+    name: 'test',
+    status,
+    conclusion,
+    title: null,
+    summary: null,
+    url: null,
+    app: 'other',
+    startedAt: null,
+    completedAt: null,
+  })
+
+  it('waits for the pending checks, reading them each minute, and reviews once they pass', async () => {
+    let reads = 0
+    const h = harness({
+      checkRuns: async () => {
+        reads += 1
+        return [reads <= 2 ? testRun('in_progress') : testRun('completed', 'success')]
+      },
+    })
+
+    expect(await run(['review', 'acme/shop#12', '--dry-run', '--wait-ci'], h.deps)).toBe(0)
+
+    expect(reads).toBe(4)
+    expect(h.stderr()).toMatch(/Waiting for CI until \d\d:\d\d \(1 pending: test\)…\n/)
+    expect(h.stderr()).toContain('Waited 2m00s for CI.\nCI: 1 check, all passing\n')
+    expect(h.prompts[0]?.data).toContain('{"name":"test","state":"passing"}')
+  })
+
+  it('reviews at once when no check appears in 2 minutes', async () => {
+    let reads = 0
+    const h = harness({
+      checkRuns: async () => {
+        reads += 1
+        return []
+      },
+    })
+
+    await run(['review', 'acme/shop#12', '--dry-run', '--wait-ci'], h.deps)
+
+    expect(reads).toBe(3)
+    expect(h.stderr()).toMatch(/Waiting for CI until \d\d:\d\d \(no checks yet\)…\n/)
+    expect(h.stderr()).toContain('Waited 2m00s for CI. No checks appeared.\n')
+    expect(h.prompts).not.toHaveLength(0)
+  })
+
+  it('reviews at the ci.wait deadline, counted from the start of the command, with the checks still pending', async () => {
+    const h = harness({
+      repoFiles: { '.phada/config.yml': 'ci:\n  wait: 5m\n' },
+      checkRuns: async () => [testRun('in_progress')],
+    })
+
+    await run(['review', 'acme/shop#12', '--dry-run', '--wait-ci'], h.deps)
+
+    expect(h.stderr()).toContain(
+      'Waited 5m00s for CI. Still pending: test.\nCI: 1 check, 1 pending\n',
+    )
+    expect(h.prompts[0]?.data).toContain('{"name":"test","state":"pending"}')
+  })
+
+  it('waits for the checks still pending when one fails, and reviews once they end', async () => {
+    let reads = 0
+    const h = harness({
+      checkRuns: async () => {
+        reads += 1
+        const e2e = { ...testRun('in_progress'), id: 8, name: 'e2e' }
+        return [
+          testRun('completed', 'failure'),
+          reads <= 2 ? e2e : { ...e2e, status: 'completed' as const, conclusion: 'success' },
+        ]
+      },
+    })
+
+    await run(['review', 'acme/shop#12', '--dry-run', '--wait-ci'], h.deps)
+
+    expect(reads).toBe(4)
+    expect(h.stderr()).toMatch(/Waiting for CI until \d\d:\d\d \(1 pending: e2e\)…\n/)
+    expect(h.stderr()).toContain('Waited 2m00s for CI.\nCI: 2 checks, 1 failing (test)\n')
+    expect(h.prompts).not.toHaveLength(0)
+  })
+
+  it('reviews a failing CI at once when no check is pending', async () => {
+    let reads = 0
+    const h = harness({
+      checkRuns: async () => {
+        reads += 1
+        return [testRun('completed', 'failure')]
+      },
+    })
+
+    await run(['review', 'acme/shop#12', '--dry-run', '--wait-ci'], h.deps)
+
+    expect(reads).toBe(2)
+    expect(h.stderr()).not.toContain('Waiting for CI')
+    expect(h.stderr()).toContain('CI: 1 check, 1 failing (test)\n')
+  })
+
+  it('does not wait with ci.wait: 0s, and warns that there is nothing to wait for with ci.read: false', async () => {
+    const zero = harness({
+      files: memoryFiles({ '/cfg/config.yml': 'ci:\n  wait: 0s\n' }),
+      checkRuns: async () => [testRun('in_progress')],
+    })
+    const off = harness({
+      repoFiles: { '.phada/config.yml': 'ci:\n  read: false\n' },
+      checkRuns: async () => [testRun('in_progress')],
+    })
+
+    await run(['review', 'acme/shop#12', '--dry-run', '--wait-ci'], zero.deps)
+    await run(['review', 'acme/shop#12', '--dry-run', '--wait-ci'], off.deps)
+
+    expect(zero.ciFetches.filter((fetch) => fetch.startsWith('runs'))).toHaveLength(1)
+    expect(zero.stderr()).not.toContain('Waiting for CI')
+    expect(off.ciFetches).toEqual([])
+    expect(off.stderr()).toContain(
+      'Warning: --wait-ci has nothing to wait for: ci.read is false in the config\n',
+    )
+  })
+
+  it('stops waiting and reviews when the checks can no longer be read', async () => {
+    let reads = 0
+    const h = harness({
+      checkRuns: async () => {
+        reads += 1
+        if (reads === 2) throw new Error('GitHub is down')
+        return [testRun('in_progress')]
+      },
+    })
+
+    await run(['review', 'acme/shop#12', '--dry-run', '--wait-ci'], h.deps)
+
+    expect(h.stderr()).toContain(
+      'Waited 1m00s for CI. Still pending: test.\nWarning: CI check runs were not read: GitHub is down; reviewing without waiting for CI\n',
+    )
+    expect(h.prompts).not.toHaveLength(0)
+  })
+
+  it('does not wait without --wait-ci', async () => {
+    let reads = 0
+    const h = harness({
+      checkRuns: async () => {
+        reads += 1
+        return [testRun('in_progress')]
+      },
+    })
+
+    await run(['review', 'acme/shop#12', '--dry-run'], h.deps)
+
+    expect(reads).toBe(1)
+    expect(h.stderr()).not.toContain('Waiting for CI')
   })
 })

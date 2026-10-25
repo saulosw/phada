@@ -1,6 +1,7 @@
 export interface HistoryMigration {
   version: number
   sql: string
+  rebuildsTables?: boolean
 }
 
 export const HISTORY_MIGRATIONS: readonly HistoryMigration[] = [
@@ -133,6 +134,43 @@ alter table run add column request_source text
 alter table watched_repo add column comments_since text;
 alter table watched_repo add column comments_etag text;
 alter table watched_repo add column comments_last_id integer;
+`,
+  },
+  {
+    version: 4,
+    rebuildsTables: true,
+    sql: `
+create table job_rebuilt (
+  id integer primary key,
+  repo text not null,
+  number integer not null,
+  head_sha text not null,
+  status text not null
+    check (status in ('queued', 'waiting', 'running', 'done', 'failed', 'skipped', 'superseded')),
+  attempts integer not null default 0,
+  not_before text not null,
+  reason text,
+  error_kind text,
+  error text,
+  created_at text not null,
+  started_at text,
+  finished_at text,
+  publish text check (publish in ('pr', 'none')),
+  ci_deadline text,
+  ci_pending text,
+  ci_failing text,
+  ci_checked_at text,
+  ci_since text
+);
+insert into job_rebuilt (id, repo, number, head_sha, status, attempts, not_before, reason,
+  error_kind, error, created_at, started_at, finished_at, publish)
+  select id, repo, number, head_sha, status, attempts, not_before, reason, error_kind, error,
+    created_at, started_at, finished_at, publish from job;
+drop table job;
+alter table job_rebuilt rename to job;
+create index job_by_status on job (status, not_before);
+create index job_by_commit on job (repo, number, head_sha);
+create index job_by_created on job (created_at);
 `,
   },
 ]

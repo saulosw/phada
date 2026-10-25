@@ -1,6 +1,6 @@
-import type { DeclaredRepository, ReviewSettings } from '../config/merge-config.js'
+import type { CiSettings, DeclaredRepository, ReviewSettings } from '../config/merge-config.js'
 import type { RepositoryTree } from '../github/repository-files.js'
-import type { ReviewContext } from '../review/types.js'
+import type { CiCheck, CiCheckState, ReviewContext } from '../review/types.js'
 import type { DocCategory } from './select-docs.js'
 
 export interface ConfigFileReport {
@@ -55,6 +55,8 @@ export interface ContextOptions {
   verify?: boolean
   investigate?: boolean
   resolveThreads?: boolean
+  conversation?: boolean
+  ci: CiSettings
   review?: ReviewSettings
 }
 
@@ -66,4 +68,45 @@ export interface LoadedContext {
   repos: DeclaredRepository[]
   privateOnPublic: boolean
   report: ContextReport
+}
+
+export type CiState = 'none' | 'pending' | 'passing' | 'failing'
+
+export interface CiEntry {
+  name: string
+  kind: 'check-run' | 'status'
+  id?: number
+  actions: boolean
+  state: CiCheckState
+  status?: string
+  conclusion?: string
+  title?: string
+  summary?: string
+  url?: string
+  startedAt?: string
+  completedAt?: string
+}
+
+export interface CiSummary {
+  state: CiState
+  total: number
+  failing: string[]
+  pending: string[]
+}
+
+export interface CiReport {
+  annotations: number
+  omittedAnnotations: number
+  logs: number
+  omittedLogs: number
+  truncated: number
+  bytes: number
+}
+
+export interface Ci {
+  entries: CiEntry[]
+  checks: CiCheck[]
+  summary: CiSummary
+  report: CiReport
+  warnings?: string[]
 }

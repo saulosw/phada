@@ -15,6 +15,7 @@ const EVENT: ReviewEvent = {
   job: { id: 1, repo: 'acme/shop', number: 12, headSha: 'a', url: 'https://x' },
   requests: [],
   verdict: 'clean',
+  ci: null,
   publication: null,
 }
 const settings = (commands: HookSettings['commands'], timeoutMs = 5_000): HookSettings => ({

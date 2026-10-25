@@ -12,9 +12,10 @@ import type { CommentListing, IssueComment } from '../github/issue-comments.js'
 import type { FailureKind, JobRecord, RequestRecord } from '../watch/types.js'
 import type { WhenInput } from './submit-request.js'
 import { submitRequest } from './submit-request.js'
+import { CiReadError } from './read-ci.js'
 import type { ReviewRun } from './review-and-publish.js'
 import { watchRepositories } from './watch-repositories.js'
-import type { WatchDeps } from './watch-repositories.js'
+import type { PullCi, WatchDeps } from './watch-repositories.js'
 
 const dir = mkdtempSync(join(tmpdir(), 'phada-watch-'))
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
@@ -80,6 +81,7 @@ interface Script {
   whenRefusal?: string
   comments?: (since: string) => CommentListing
   baselineAt?: string
+  ci?: (job: JobRecord, now: number) => PullCi | undefined
 }
 
 async function setup(script: Script, history?: HistoryStore) {
@@ -99,6 +101,7 @@ async function setup(script: Script, history?: HistoryStore) {
   const events: string[] = []
   const recorded: string[] = []
   const indexed: number[] = []
+  const ciReads: string[] = []
   const deps: WatchDeps = {
     history: store,
     listPulls: async () => {
@@ -142,8 +145,18 @@ async function setup(script: Script, history?: HistoryStore) {
       asked.push([...requests])
       return script.runJob?.(job, now) ?? published(job)
     },
+    ...(script.ci === undefined
+      ? {}
+      : {
+          readCi: async (job: JobRecord) => {
+            ciReads.push(`#${job.number} @${(now - START) / MIN}`)
+            return script.ci?.(job, now - START)
+          },
+        }),
     recordRun: (job, outcome) => {
-      recorded.push(`${job.number}:${'run' in outcome ? outcome.run.status : outcome.kind}`)
+      recorded.push(
+        `${job.number}:${'run' in outcome ? outcome.run.status : 'kind' in outcome ? outcome.kind : `ci-failing ${outcome.skippedForCi.summary.failing.join(',')}`}`,
+      )
     },
     refreshIndex: async (_repo, budgetMs) => {
       indexed.push(budgetMs)
@@ -174,7 +187,16 @@ async function setup(script: Script, history?: HistoryStore) {
       queued: (job) => events.push(`queued #${job.number} ${job.headSha.slice(0, 1)}`),
       superseded: (job) => events.push(`superseded #${job.number}`),
       started: (job) => events.push(`started #${job.number} @${(now - START) / MIN}`),
+      waiting: (job) =>
+        events.push(
+          `waiting #${job.number} @${(now - START) / MIN} until ${(Date.parse(job.ciDeadline ?? '') - START) / MIN} [${(job.ciPending ?? []).join(',')}]`,
+        ),
       finished: (job) => events.push(`finished #${job.number}`),
+      ciFailing: (job) =>
+        events.push(
+          `ci-failing #${job.number} @${(now - START) / MIN} [${(job.ciFailing ?? []).join(',')}]`,
+        ),
+      ciCleared: (job) => events.push(`ci-cleared #${job.number} @${(now - START) / MIN}`),
       retry: (job, at) => events.push(`retry #${job.number} @${(Date.parse(at) - START) / MIN}`),
       paused: (pause) => events.push(`paused until ${(Date.parse(pause.until) - START) / MIN}`),
       failed: (job) => events.push(`failed #${job.number}`),
@@ -199,6 +221,7 @@ async function setup(script: Script, history?: HistoryStore) {
     events,
     recorded,
     indexed,
+    ciReads,
     now: () => now - START,
   }
 }
@@ -901,6 +924,456 @@ describe('watchRepositories', () => {
 
       expect(await watchRepositories(input({ once: true }), h.deps)).toEqual({ reason: 'once' })
       expect(h.events).toContain('warning could not refresh the feedback (disk full)')
+    })
+  })
+
+  describe('waiting for CI', () => {
+    const newPull = (cycle: number) => ({
+      status: 'ok' as const,
+      pulls: cycle === 1 ? [] : [pull(3)],
+    })
+    const summary = (
+      state: 'none' | 'pending' | 'passing' | 'failing',
+      pending: string[] = [],
+    ): PullCi => ({
+      waitMs: 15 * MIN,
+      onFailure: 'review',
+      summary: { state, pending, failing: [] },
+      checks: pending.map((name) => ({ name, state: 'pending' })),
+    })
+
+    it('waits for pending checks without starting the job, reads them each minute and reviews once they pass', async () => {
+      const h = await setup({
+        listings: newPull,
+        ci: (_job, now) => (now < 11 * MIN ? summary('pending', ['test']) : summary('passing')),
+        stopWhen: ({ ran }) => ran.length === 1,
+      })
+
+      await watchRepositories(input(), h.deps)
+
+      expect(h.events).toEqual([
+        'baseline acme/shop 0',
+        'queued #3 a',
+        'waiting #3 @8 until 20 [test]',
+        'started #3 @11',
+        'finished #3',
+      ])
+      expect(h.ciReads).toEqual(['#3 @8', '#3 @9', '#3 @10', '#3 @11'])
+      expect(h.notified).toEqual(['started #3 [watch]', 'finished #3 [watch]'])
+      expect(h.recorded).toEqual(['3:reviewed'])
+      expect(h.ran[0]?.reason).toBeUndefined()
+      expect(h.store.jobs({ status: ['done'] })).toHaveLength(1)
+    })
+
+    it('reviews at the deadline with the checks still pending', async () => {
+      const h = await setup({
+        listings: newPull,
+        ci: () => summary('pending', ['e2e']),
+        stopWhen: ({ ran }) => ran.length === 1,
+      })
+
+      await watchRepositories(input(), h.deps)
+
+      expect(h.events).toContain('started #3 @20')
+      expect(h.ciReads).toHaveLength(13)
+      expect(h.ran[0]?.ciPending).toEqual(['e2e'])
+      expect(h.store.jobs({ status: ['done'] })[0]?.ciPending).toEqual(['e2e'])
+    })
+
+    it('reviews the other jobs while one waits for CI', async () => {
+      const h = await setup({
+        listings: (cycle) => ({ status: 'ok', pulls: cycle === 1 ? [] : [pull(3), pull(4)] }),
+        ci: (job) => (job.number === 3 ? summary('pending', ['test']) : summary('passing')),
+        stopWhen: ({ ran }) => ran.length === 1,
+      })
+
+      await watchRepositories(input(), h.deps)
+
+      expect(h.ran.map(({ number }) => number)).toEqual([4])
+      expect(h.store.jobs({ status: ['waiting'] })).toEqual([
+        expect.objectContaining({ number: 3, reason: 'ci-pending', ciPending: ['test'] }),
+      ])
+    })
+
+    it('waits 2 minutes for checks to appear on a commit it just saw, then reviews without CI', async () => {
+      const h = await setup({
+        listings: () => ({ status: 'ok', pulls: [pull(3)] }),
+        baselineAt: BASELINE,
+        ci: () => summary('none'),
+        stopWhen: ({ ran }) => ran.length === 1,
+      })
+      await submitRequest(
+        { repo: 'acme/shop', number: 3, source: 'slack', publish: 'none' },
+        h.deps.submit,
+      )
+
+      await watchRepositories(input(), h.deps)
+
+      expect(h.events).toEqual(['waiting #3 @0 until 2 []', 'started #3 @2', 'finished #3'])
+    })
+
+    it('tells the CI it read when the job starts, and nothing when it read none', async () => {
+      const startedCi = async (ci: Script['ci']) => {
+        const h = await setup({ listings: newPull, ci, stopWhen: ({ ran }) => ran.length === 1 })
+        const seen: unknown[] = []
+        const notify = h.deps.notify
+        h.deps.notify = async (event) => {
+          if (event.kind === 'started') seen.push(event.ci)
+          await notify(event)
+        }
+        await watchRepositories(input(), h.deps)
+        return seen
+      }
+      const failing: PullCi = {
+        waitMs: 0,
+        onFailure: 'review',
+        summary: { state: 'failing', pending: [], failing: ['test'] },
+        checks: [
+          { name: 'test', state: 'failing' },
+          { name: 'build', state: 'passing' },
+        ],
+      }
+
+      expect(await startedCi(() => failing)).toEqual([
+        {
+          state: 'failing',
+          checks: [
+            { name: 'test', state: 'failing' },
+            { name: 'build', state: 'passing' },
+          ],
+        },
+      ])
+      expect(await startedCi(() => undefined)).toEqual([undefined])
+      expect(
+        await startedCi(() => {
+          throw new Error('checks:read is missing')
+        }),
+      ).toEqual([undefined])
+    })
+
+    it('warns with what was not read when the checks cannot be read', async () => {
+      const h = await setup({
+        listings: newPull,
+        ci: () => {
+          throw new CiReadError([
+            'CI check runs were not read: HTTP 403',
+            'Commit statuses were not read: HTTP 502',
+          ])
+        },
+        stopWhen: ({ ran }) => ran.length === 1,
+      })
+
+      await watchRepositories(input(), h.deps)
+
+      expect(h.events).toContain(
+        'warning acme/shop#3: CI check runs were not read: HTTP 403; Commit statuses were not read: HTTP 502; reviewing without waiting for CI',
+      )
+      expect(h.events).toContain('started #3 @8')
+    })
+
+    it('does not wait when the CI settings turn the wait off', async () => {
+      const h = await setup({
+        listings: newPull,
+        ci: () => undefined,
+        stopWhen: ({ ran }) => ran.length === 1,
+      })
+
+      await watchRepositories(input(), h.deps)
+
+      expect(h.events).toContain('started #3 @8')
+    })
+
+    it('reviews without waiting when the checks cannot be read', async () => {
+      const h = await setup({
+        listings: newPull,
+        ci: () => {
+          throw new Error('checks:read is missing')
+        },
+        stopWhen: ({ ran }) => ran.length === 1,
+      })
+
+      await watchRepositories(input(), h.deps)
+
+      expect(h.events).toContain(
+        'warning acme/shop#3: the checks were not read (checks:read is missing); reviewing without waiting for CI',
+      )
+      expect(h.events).toContain('started #3 @8')
+    })
+  })
+  describe('skipping a commit whose CI fails', () => {
+    const at = (minutes: number) => new Date(START + minutes * MIN).toISOString()
+    const newPull = (cycle: number) => ({
+      status: 'ok' as const,
+      pulls: cycle === 1 ? [] : [pull(3)],
+    })
+    const ci = (
+      state: 'pending' | 'passing' | 'failing',
+      names: string[] = [],
+      onFailure: 'review' | 'skip' = 'skip',
+    ): PullCi => ({
+      waitMs: 15 * MIN,
+      onFailure,
+      summary: {
+        state,
+        pending: state === 'pending' ? names : [],
+        failing: state === 'failing' ? names : [],
+      },
+      checks: names.map((name) => ({ name, state: state === 'passing' ? 'passing' : state })),
+    })
+    const skippedForCi = (store: HistoryStore, number: number, finishedAt: string): number => {
+      store.savePull({
+        repo: 'acme/shop',
+        number,
+        headSha: A,
+        headSeenAt: finishedAt,
+        eligible: true,
+        state: 'open',
+      })
+      const id = store.addJob({
+        repo: 'acme/shop',
+        number,
+        headSha: A,
+        status: 'skipped',
+        reason: 'ci-failing',
+        attempts: 0,
+        notBefore: finishedAt,
+        publish: 'pr',
+        createdAt: finishedAt,
+        finishedAt,
+        ciFailing: ['test'],
+      })
+      store.addRequest({ jobId: id, source: 'watch', publish: 'pr', createdAt: finishedAt })
+      return id
+    }
+
+    it('skips a job whose checks fail with onFailure skip, records the run and tells why', async () => {
+      const h = await setup({
+        listings: newPull,
+        ci: () => ci('failing', ['test', 'lint']),
+        stopWhen: ({ now }) => now >= 9 * MIN,
+      })
+
+      await watchRepositories(input(), h.deps)
+
+      expect(h.ran).toEqual([])
+      expect(h.events).toEqual([
+        'baseline acme/shop 0',
+        'queued #3 a',
+        'ci-failing #3 @8 [test,lint]',
+      ])
+      expect(h.recorded).toEqual(['3:ci-failing test,lint'])
+      expect(h.notified).toEqual(['skipped #3 ci-failing [watch]'])
+      expect(h.store.jobs({})).toEqual([
+        expect.objectContaining({
+          number: 3,
+          status: 'skipped',
+          reason: 'ci-failing',
+          ciFailing: ['test', 'lint'],
+          finishedAt: at(8),
+        }),
+      ])
+    })
+
+    it('reviews a failing commit with onFailure review', async () => {
+      const h = await setup({
+        listings: newPull,
+        ci: () => ci('failing', ['test'], 'review'),
+        stopWhen: ({ ran }) => ran.length === 1,
+      })
+
+      await watchRepositories(input(), h.deps)
+
+      expect(h.events).toContain('started #3 @8')
+      expect(h.recorded).toEqual(['3:reviewed'])
+    })
+
+    it('waits for the pending checks of a failing commit with onFailure review', async () => {
+      const failingWith = (pending: string[]): PullCi => ({
+        waitMs: 15 * MIN,
+        onFailure: 'review',
+        summary: { state: 'failing', pending, failing: ['test'] },
+        checks: [
+          { name: 'test', state: 'failing' },
+          ...pending.map((name) => ({ name, state: 'pending' as const })),
+        ],
+      })
+      const h = await setup({
+        listings: newPull,
+        ci: (_job, now) => failingWith(now < 10 * MIN ? ['e2e'] : []),
+        stopWhen: ({ ran }) => ran.length === 1,
+      })
+
+      await watchRepositories(input(), h.deps)
+
+      expect(h.events).toEqual([
+        'baseline acme/shop 0',
+        'queued #3 a',
+        'waiting #3 @8 until 20 [e2e]',
+        'started #3 @10',
+        'finished #3',
+      ])
+      expect(h.ran[0]?.ciPending).toBeUndefined()
+    })
+
+    it('reads the checks again each discovery cycle and queues the same job once they no longer fail', async () => {
+      const h = await setup({
+        listings: newPull,
+        ci: (_job, now) =>
+          now < 10 * MIN
+            ? ci('failing', ['test'])
+            : now < 12 * MIN
+              ? ci('pending', ['test'])
+              : ci('passing', ['test']),
+        stopWhen: ({ ran }) => ran.length === 1,
+      })
+
+      await watchRepositories(input(), h.deps)
+
+      expect(h.events).toEqual([
+        'baseline acme/shop 0',
+        'queued #3 a',
+        'ci-failing #3 @8 [test]',
+        'ci-cleared #3 @10',
+        'waiting #3 @10 until 25 [test]',
+        'started #3 @12',
+        'finished #3',
+      ])
+      expect(h.ciReads).toEqual(['#3 @8', '#3 @10', '#3 @10', '#3 @11', '#3 @12'])
+      expect(h.notified).toEqual([
+        'skipped #3 ci-failing [watch]',
+        'started #3 [watch]',
+        'finished #3 [watch]',
+      ])
+      expect(h.store.jobs({})).toEqual([
+        expect.objectContaining({ id: 1, status: 'done', ciSince: at(10) }),
+      ])
+      expect(h.store.job(1)?.ciFailing).toBeUndefined()
+    })
+
+    it('stops reading the checks of a skipped commit 24 hours after the skip', async () => {
+      const h = await setup({
+        listings: () => ({ status: 'ok', pulls: [pull(3)] }),
+        baselineAt: BASELINE,
+        ci: () => ci('failing', ['test']),
+        stopWhen: ({ now }) => now >= 20 * MIN,
+      })
+      const id = skippedForCi(h.store, 3, new Date(START - 24 * 60 * MIN + 10 * MIN).toISOString())
+
+      await watchRepositories(input(), h.deps)
+
+      expect(h.ciReads).toEqual(['#3 @0', '#3 @5'])
+      expect(h.store.job(id)).toMatchObject({ status: 'skipped', ciCheckedAt: at(5) })
+      expect(h.notified).toEqual([])
+    })
+
+    it('reads at most 10 skipped commits per cycle, the ones read longest ago first', async () => {
+      const numbers = Array.from({ length: 12 }, (_, index) => index + 1)
+      const h = await setup({
+        listings: () => ({ status: 'ok', pulls: numbers.map((number) => pull(number)) }),
+        baselineAt: BASELINE,
+        ci: () => ci('failing', ['test']),
+        stopWhen: ({ now }) => now >= 6 * MIN,
+      })
+      for (const number of numbers) skippedForCi(h.store, number, at(-60 + number))
+
+      await watchRepositories(input(), h.deps)
+
+      expect(h.ciReads).toEqual([
+        ...numbers.slice(0, 10).map((number) => `#${number} @0`),
+        ...[11, 12, 1, 2, 3, 4, 5, 6, 7, 8].map((number) => `#${number} @5`),
+      ])
+    })
+
+    it('stops reading the checks of a skipped commit once the pull request has a new commit', async () => {
+      const h = await setup({
+        listings: () => ({ status: 'ok', pulls: [pull(3, B)] }),
+        baselineAt: BASELINE,
+        ci: (job) => (job.headSha === A ? ci('passing') : ci('failing', ['lint'])),
+        stopWhen: ({ now }) => now >= 4 * MIN,
+      })
+      const id = skippedForCi(h.store, 3, at(-30))
+
+      await watchRepositories(input(), h.deps)
+
+      expect(h.ciReads).toEqual(['#3 @3'])
+      expect(h.store.job(id)).toMatchObject({ status: 'skipped', reason: 'ci-failing' })
+      expect(h.store.jobs({ status: ['skipped'] })).toHaveLength(2)
+    })
+
+    it('moves the requests of a commit skipped for CI to the new commit', async () => {
+      const h = await setup({
+        listings: () => ({ status: 'ok', pulls: [pull(3, B)] }),
+        readPull: () => ({ headSha: B }),
+        baselineAt: BASELINE,
+        ci: (job) => (job.headSha === A ? ci('failing', ['test']) : ci('passing', ['test'])),
+        stopWhen: ({ ran }) => ran.length === 1,
+      })
+      const id = skippedForCi(h.store, 3, at(-30))
+      h.store.addRequest({ jobId: id, source: 'mcp', publish: 'none', createdAt: at(-30) })
+
+      await watchRepositories(input(), h.deps)
+
+      expect(h.ran.map((job) => job.headSha)).toEqual([B])
+      expect(h.asked[0]?.map(({ source }) => source).sort()).toEqual(['mcp', 'watch'])
+      expect(h.notified).toEqual(['started #3 [watch,mcp]', 'finished #3 [watch,mcp]'])
+      expect(h.store.job(id)).toMatchObject({ status: 'skipped', reason: 'ci-failing' })
+    })
+
+    it('reads the checks of a requested commit on a draft again and reviews it once they pass', async () => {
+      const h = await setup({
+        listings: () => ({ status: 'ok', pulls: [pull(3, A, { draft: true })] }),
+        baselineAt: BASELINE,
+        ci: (_job, now) => (now < 5 * MIN ? ci('failing', ['test']) : ci('passing', ['test'])),
+        stopWhen: ({ ran }) => ran.length === 1,
+      })
+      const id = skippedForCi(h.store, 3, at(-30))
+      h.store.savePull({ ...h.store.pulls('acme/shop')[0]!, eligible: false })
+      h.store.addRequest({ jobId: id, source: 'slack', publish: 'none', createdAt: at(-30) })
+
+      await watchRepositories(input(), h.deps)
+
+      expect(h.ciReads.slice(0, 2)).toEqual(['#3 @0', '#3 @5'])
+      expect(h.events).toContain('ci-cleared #3 @5')
+      expect(h.ran.map((job) => job.id)).toEqual([id])
+    })
+
+    it('moves the requests of a commit skipped for CI on a draft to its new commit', async () => {
+      const h = await setup({
+        listings: () => ({ status: 'ok', pulls: [pull(3, B, { draft: true })] }),
+        readPull: () => ({ headSha: B }),
+        baselineAt: BASELINE,
+        ci: () => ci('passing', ['test']),
+        stopWhen: ({ ran }) => ran.length === 1,
+      })
+      const id = skippedForCi(h.store, 3, at(-30))
+      h.store.savePull({ ...h.store.pulls('acme/shop')[0]!, eligible: false })
+      h.store.addRequest({ jobId: id, source: 'slack', publish: 'none', createdAt: at(-30) })
+
+      await watchRepositories(input(), h.deps)
+
+      expect(h.ran.map((job) => job.headSha)).toEqual([B])
+      expect(h.asked[0]?.map(({ source }) => source)).toEqual(['slack'])
+    })
+
+    it('reads the checks of a skipped commit again for a new request and answers only that request while they still fail', async () => {
+      const h = await setup({
+        listings: () => ({ status: 'ok', pulls: [pull(3)] }),
+        baselineAt: BASELINE,
+        ci: () => ci('failing', ['test']),
+        stopWhen: ({ now }) => now >= 1 * MIN,
+      })
+      const id = skippedForCi(h.store, 3, at(-30))
+      const result = await submitRequest(
+        { repo: 'acme/shop', number: 3, source: 'mcp', publish: 'none' },
+        h.deps.submit,
+      )
+
+      await watchRepositories(input(), h.deps)
+
+      expect(result).toMatchObject({ status: 'joined', job: { id, status: 'queued' } })
+      expect(h.ciReads).toEqual(['#3 @0'])
+      expect(h.notified).toEqual(['skipped #3 ci-failing [mcp]'])
+      expect(h.store.job(id)).toMatchObject({ status: 'skipped', reason: 'ci-failing' })
     })
   })
 })

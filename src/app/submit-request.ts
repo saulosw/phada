@@ -1,5 +1,6 @@
 import type { WatchSettings } from '../config/watch-settings.js'
 import type { HistoryStore } from '../store/history-store.js'
+import { requeueForCi } from '../watch/ci-revisit.js'
 import { RATE_WINDOW_MS } from '../watch/next-job.js'
 import type { PullFacts } from '../watch/pull-facts.js'
 import { decideRequest } from '../watch/request-policy.js'
@@ -95,6 +96,7 @@ export async function submitRequest(
     if (existing === undefined) throw new Error(`job ${decision.jobId} is not in the queue`)
     const changes: Partial<JobRecord> = {
       ...(decision.readyNow && existing.notBefore > now ? { notBefore: now } : {}),
+      ...(decision.requeue === true ? requeueForCi(now) : {}),
       ...(input.publish === 'pr' && existing.publish === 'none' ? { publish: 'pr' } : {}),
     }
     history.updateJob(existing.id, changes)

@@ -135,6 +135,7 @@ export interface HistoryStore {
   jobCreationTimesSince(iso: string): string[]
   addRequest(request: Omit<RequestRecord, 'id'>): number
   requests(jobIds: readonly number[]): RequestRecord[]
+  requestsWith(source: RequestSource, data: Readonly<Record<string, string>>): RequestRecord[]
   transaction<T>(work: () => T): T
   addRun(run: RunRecord): number
   runOfJob(jobId: number): RunRecord | undefined
@@ -224,9 +225,13 @@ function migrate(db: DatabaseSync, path: string, migrations: readonly HistoryMig
   if (current > known) throw new HistoryVersionError(path, current, known)
   for (const migration of migrations) {
     if (migration.version <= current) continue
+    if (migration.rebuildsTables === true) db.exec('pragma foreign_keys = off')
     db.exec('begin immediate')
     try {
       db.exec(migration.sql)
+      if (db.prepare('pragma foreign_key_check').all().length > 0) {
+        throw new Error('a row points to a missing one')
+      }
       db.exec(`pragma user_version = ${migration.version}`)
       db.exec('commit')
     } catch (error) {
@@ -234,6 +239,8 @@ function migrate(db: DatabaseSync, path: string, migrations: readonly HistoryMig
       throw new HistoryStoreError(
         `Cannot update ${path} to history version ${migration.version}: ${(error as Error).message}`,
       )
+    } finally {
+      if (migration.rebuildsTables === true) db.exec('pragma foreign_keys = on')
     }
   }
 }
@@ -346,6 +353,16 @@ class SqliteHistoryStore implements HistoryStore {
       .map((row) => fromRow<RequestRecord>(row, REQUEST_TABLE))
   }
 
+  requestsWith(source: RequestSource, data: Readonly<Record<string, string>>): RequestRecord[] {
+    const entries = Object.entries(data)
+    if (entries.some(([key]) => !/^\w+$/.test(key))) throw new RangeError('invalid data key')
+    const matches = entries.map(([key]) => ` and json_extract(data, '$.${key}') = ?`).join('')
+    return this.#db
+      .prepare(`select * from review_request where source = ?${matches} order by id`)
+      .all(source, ...entries.map(([, value]) => value))
+      .map((row) => fromRow<RequestRecord>(row, REQUEST_TABLE))
+  }
+
   transaction<T>(work: () => T): T {
     return transaction(this.#db, work)
   }
@@ -409,7 +426,7 @@ class SqliteHistoryStore implements HistoryStore {
         .prepare('select * from watched_repo order by repo')
         .all()
         .map((row) => fromRow<RepoRecord>(row, REPO_TABLE)),
-      queued: this.#withSources(this.jobs({ status: ['queued'] })),
+      queued: this.#withSources(this.jobs({ status: ['queued', 'waiting'] })),
       running: this.#withSources(this.jobs({ status: ['running'] })),
       failed,
       lastRuns,

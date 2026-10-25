@@ -94,7 +94,75 @@ describe('openHistoryStore migrations', () => {
     expect(store.jobs({})).toEqual([{ ...JOB, id }])
     expect(store.requests([id])).toEqual([])
     store.close()
-    expect(userVersion(path)).toBe(3)
+    expect(userVersion(path)).toBe(HISTORY_MIGRATIONS.length)
+  })
+
+  it('migrates a version 3 file without losing its jobs, requests and runs, and lets a job wait for CI or skip it for failing CI', async () => {
+    const path = fresh()
+    const v3 = await openHistoryStore(path, { migrations: HISTORY_MIGRATIONS.slice(0, 3) })
+    const done = v3.addJob({ ...JOB, status: 'done', publish: 'pr', finishedAt: JOB.notBefore })
+    const queued = v3.addJob({ ...JOB, number: 4, publish: 'none' })
+    const request = { jobId: queued, source: 'slack' as const, publish: 'none' as const }
+    const requestId = v3.addRequest({ ...request, data: { ts: '1' }, createdAt: JOB.createdAt })
+    v3.addRun({ ...RUN, jobId: done })
+    v3.close()
+
+    const store = await openHistoryStore(path)
+    expect(store.jobs({})).toEqual([
+      { ...JOB, id: done, status: 'done', publish: 'pr', finishedAt: JOB.notBefore },
+      { ...JOB, id: queued, number: 4, publish: 'none' },
+    ])
+    expect(store.requests([queued])).toEqual([
+      { ...request, id: requestId, data: { ts: '1' }, createdAt: JOB.createdAt },
+    ])
+    expect(store.runOfJob(done)).toMatchObject({ jobId: done, url: RUN.url })
+    store.updateJob(queued, {
+      status: 'waiting',
+      reason: 'ci-pending',
+      ciDeadline: '2026-10-18T12:15:00.000Z',
+      ciPending: ['test', 'build'],
+    })
+    expect(store.jobs({ status: ['waiting'] })).toEqual([
+      {
+        ...JOB,
+        id: queued,
+        number: 4,
+        publish: 'none',
+        status: 'waiting',
+        reason: 'ci-pending',
+        ciDeadline: '2026-10-18T12:15:00.000Z',
+        ciPending: ['test', 'build'],
+      },
+    ])
+    const skipped = {
+      status: 'skipped' as const,
+      reason: 'ci-failing',
+      finishedAt: '2026-10-18T12:20:00.000Z',
+      ciFailing: ['test', 'lint'],
+      ciCheckedAt: '2026-10-18T12:25:00.000Z',
+    }
+    store.updateJob(queued, skipped)
+    expect(store.job(queued)).toMatchObject(skipped)
+    store.updateJob(queued, {
+      status: 'queued',
+      reason: undefined,
+      finishedAt: undefined,
+      ciDeadline: undefined,
+      ciFailing: undefined,
+      ciCheckedAt: undefined,
+      ciPending: undefined,
+      ciSince: '2026-10-18T12:30:00.000Z',
+    })
+    expect(store.job(queued)).toEqual({
+      ...JOB,
+      id: queued,
+      number: 4,
+      publish: 'none',
+      ciSince: '2026-10-18T12:30:00.000Z',
+    })
+    expect(store.addJob(JOB)).toBe(queued + 1)
+    store.close()
+    expect(userVersion(path)).toBe(HISTORY_MIGRATIONS.length)
   })
 
   it('refuses a file written by a newer version and leaves it as it is', async () => {
@@ -184,6 +252,23 @@ describe('HistoryStore records', () => {
     ])
     expect(store.requests([first, second]).map(({ source }) => source)).toEqual(['slack', 'watch'])
     expect(store.requests([])).toEqual([])
+    store.close()
+  })
+
+  it('finds the requests of a source whose data has the given values', async () => {
+    const store = await openHistoryStore(fresh())
+    const id = store.addJob(JOB)
+    const at = '2026-10-18T12:00:00.000Z'
+    const add = (source: 'slack' | 'mcp', data: Record<string, string>) =>
+      store.addRequest({ jobId: id, source, publish: 'none', data, createdAt: at })
+    const first = add('slack', { channel: 'C1', ts: '1.2', thread: '1.0' })
+    add('slack', { channel: 'C2', ts: '1.2' })
+    add('mcp', { channel: 'C1', ts: '1.2' })
+    store.addRequest({ jobId: id, source: 'slack', publish: 'none', createdAt: at })
+
+    expect(store.requestsWith('slack', { channel: 'C1', ts: '1.2' }).map((r) => r.id)).toEqual([
+      first,
+    ])
     store.close()
   })
 
@@ -314,6 +399,7 @@ describe('HistoryStore records', () => {
     const store = await openHistoryStore(fresh())
     store.saveRepo({ repo: 'acme/shop', checkedAt: '2026-10-18T12:00:00.000Z' })
     store.addJob(JOB)
+    store.addJob({ ...JOB, number: 4, status: 'waiting', notBefore: '2026-10-18T12:01:00.000Z' })
     store.addJob({ ...JOB, number: 5, status: 'running' })
     store.addJob({ ...JOB, number: 6, status: 'failed', error: 'boom', errorKind: 'definitive' })
     store.addRun({
@@ -326,7 +412,7 @@ describe('HistoryStore records', () => {
     const status = store.status()
 
     expect(status.repos).toEqual([{ repo: 'acme/shop', checkedAt: '2026-10-18T12:00:00.000Z' }])
-    expect(status.queued.map((job) => job.number)).toEqual([3])
+    expect(status.queued.map((job) => job.number)).toEqual([4, 3])
     expect(status.running.map((job) => job.number)).toEqual([5])
     expect(status.failed.map((job) => job.error)).toEqual(['boom'])
     const { resultJson: _json, ...withoutJson } = RUN

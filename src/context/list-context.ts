@@ -15,7 +15,8 @@ import {
   userConfigFiles,
 } from './load-context.js'
 import type { DocContent, PlannedDoc } from './load-context.js'
-import { byteLength, DOCS_BUDGET_BYTES, repositoryDocCandidates } from './select-docs.js'
+import { byteLength } from './byte-cut.js'
+import { DOCS_BUDGET_BYTES, repositoryDocCandidates } from './select-docs.js'
 import type { ContextReport, ContextSources, DocReport, RuleReport } from './types.js'
 
 const FOLDER_INSTRUCTIONS = new Set(['agents.md', 'claude.md', 'gemini.md'])

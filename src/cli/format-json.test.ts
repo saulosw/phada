@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { contextReportFixture } from '../../test/support/context-report.js'
 import { findingFixture } from '../../test/support/finding.js'
 import { pullRequestFixture } from '../../test/support/pull-request.js'
+import type { Conversation } from '../publish/types.js'
+import type { Ci } from '../context/types.js'
 import type { ReviewResult } from '../review/types.js'
 import { formatAlreadyReviewedJson, formatReviewJson } from './format-json.js'
 
@@ -102,6 +104,8 @@ describe('formatReviewJson', () => {
       },
       publication: null,
       context: null,
+      conversation: null,
+      ci: null,
       investigation: null,
       impact: null,
       related: null,
@@ -327,6 +331,8 @@ describe('formatReviewJson', () => {
       pullRequest: PULL_REQUEST,
       publication: null,
       context: null,
+      conversation: null,
+      ci: null,
       investigation: null,
       impact: null,
       related: null,
@@ -450,6 +456,8 @@ describe('publication', () => {
       pullRequest: PULL_REQUEST,
       publication: { status: 'skipped', reason: 'nothing-found', openThreads: 0 },
       context: null,
+      conversation: null,
+      ci: null,
       investigation: null,
       impact: null,
       related: null,
@@ -577,6 +585,143 @@ describe('publication', () => {
 
     expect(output).toMatchObject({ impact })
     expect(Object.keys(output as object).slice(-3)).toEqual(['impact', 'related', 'recheck'])
+  })
+
+  it('adds the conversation and the CI sent to the AI, without the texts', () => {
+    const conversation: Conversation = {
+      items: [
+        {
+          kind: 'comment',
+          at: '2026-10-20T10:00:00Z',
+          author: 'alice',
+          role: 'member',
+          body: 'Keep the old endpoint',
+        },
+        {
+          kind: 'review',
+          at: '2026-10-20T11:00:00Z',
+          author: 'bob',
+          role: 'owner',
+          state: 'approved',
+        },
+        {
+          kind: 'thread',
+          at: '2026-10-21T09:00:00Z',
+          author: 'carol',
+          role: 'contributor',
+          file: 'src/a.ts',
+          line: null,
+          resolved: true,
+          outdated: false,
+          body: 'Why?',
+          replies: [{ at: '2026-10-21T10:00:00Z', author: 'dave', role: 'author', body: 'ok' }],
+          omittedReplies: 1,
+        },
+      ],
+      report: { items: 3, omitted: 2, resolved: 1, bots: 0, truncated: 1, bytes: 900 },
+    }
+    const ci: Ci = {
+      entries: [],
+      checks: [
+        {
+          name: 'test',
+          state: 'failing',
+          conclusion: 'failure',
+          title: '1 failed',
+          annotations: ['src/a.ts:1 failure: boom'],
+          log: 'boom',
+        },
+        { name: 'build', state: 'passing' },
+      ],
+      summary: { state: 'failing', total: 2, failing: ['test'], pending: [] },
+      report: {
+        annotations: 1,
+        omittedAnnotations: 0,
+        logs: 1,
+        omittedLogs: 0,
+        truncated: 0,
+        bytes: 300,
+      },
+      warnings: ['Commit statuses were not read: no statuses:read'],
+    }
+
+    const output = parse(
+      formatReviewJson(
+        pullRequestFixture(),
+        { status: 'reviewed', result: RESULT },
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+        undefined,
+        { conversation, ci },
+      ),
+    )
+
+    expect(output).toMatchObject({
+      conversation: {
+        count: 3,
+        omitted: 2,
+        resolved: 1,
+        bots: 0,
+        truncated: 1,
+        budget: { limit: 16_384, used: 900 },
+        items: [
+          {
+            kind: 'comment',
+            at: '2026-10-20T10:00:00Z',
+            author: 'alice',
+            role: 'member',
+            bytes: 110,
+          },
+          {
+            kind: 'review',
+            at: '2026-10-20T11:00:00Z',
+            author: 'bob',
+            role: 'owner',
+            state: 'approved',
+            bytes: 94,
+          },
+          {
+            kind: 'thread',
+            at: '2026-10-21T09:00:00Z',
+            author: 'carol',
+            role: 'contributor',
+            file: 'src/a.ts',
+            line: null,
+            resolved: true,
+            outdated: false,
+            replies: 1,
+            omittedReplies: 1,
+            bytes: 265,
+          },
+        ],
+      },
+      ci: {
+        state: 'failing',
+        total: 2,
+        failing: ['test'],
+        pending: [],
+        checks: [
+          { name: 'test', state: 'failing', conclusion: 'failure', annotations: 1, logBytes: 4 },
+          { name: 'build', state: 'passing', conclusion: null, annotations: 0, logBytes: null },
+        ],
+        annotations: { sent: 1, omitted: 0, limit: 50 },
+        logs: { sent: 1, omitted: 0, limit: 12_288 },
+        truncated: 0,
+        bytes: 300,
+        warnings: ['Commit statuses were not read: no statuses:read'],
+      },
+    })
+    expect(JSON.stringify(output)).not.toContain('Keep the old endpoint')
+    expect(Object.keys(output as object).slice(6, 10)).toEqual([
+      'context',
+      'conversation',
+      'ci',
+      'investigation',
+    ])
   })
 
   it('adds the related repositories, with null for what is missing', () => {

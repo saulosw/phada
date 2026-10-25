@@ -13,13 +13,16 @@ import type { CliCommand } from './cli/args.js'
 import { MissingGitHubTokenError } from './cli/errors.js'
 import { formatError } from './cli/format-error.js'
 import { formatGitHubPreview } from './cli/format-github.js'
+import { formatCiLine, formatCiSection } from './cli/format-ci.js'
 import { formatContextSection } from './cli/format-context.js'
+import { formatConversationLine, formatConversationSection } from './cli/format-conversation.js'
 import { formatImpactSection } from './cli/format-impact.js'
 import { formatInvestigationLine, formatInvestigationSection } from './cli/format-investigation.js'
 import { formatRelatedSection } from './cli/format-related.js'
 import { formatPassesSection, formatSkillRunLines } from './cli/format-passes.js'
 import type { BlockedFix } from './cli/format-passes.js'
 import { blockedFixer } from './cli/blocked-fix.js'
+import { ciWaitProgress } from './cli/ci-wait-progress.js'
 import type { ReviewOutcome } from './review/types.js'
 import {
   formatPublishedMessage,
@@ -36,6 +39,7 @@ import { runPrompt } from './cli/prompt-command.js'
 import { runRules } from './cli/rules-command.js'
 import { runHistory, runHistoryPrune } from './cli/history-command.js'
 import {
+  ciReaders,
   mcpNameChecker,
   pullRequestReviewDeps,
   renderReview,
@@ -156,6 +160,7 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
         force: command.force,
         dryRun: command.dryRun,
         publish: true,
+        ...(command.waitCi === true ? { waitCi: { since: startedAt } } : {}),
         options: {
           language: command.language,
           minConfidence: command.minConfidence,
@@ -164,6 +169,8 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
           ...(command.resolveThreads === undefined
             ? {}
             : { resolveThreads: command.resolveThreads }),
+          ...(command.conversation === undefined ? {} : { conversation: command.conversation }),
+          ...(command.ci === undefined ? {} : { ci: command.ci }),
           ...(command.skills === undefined ? {} : { skills: command.skills }),
         },
         userLayers,
@@ -196,9 +203,13 @@ function reviewAndPublishDeps(
   command: ReviewCommand,
 ): ReviewAndPublishDeps {
   const target = { ...command.ref, token }
+  const ciWait = ciWaitProgress(deps.stderr, deps.clock)
+  const forever = new AbortController().signal
   return {
     fetchPullRequest: (ref) => deps.fetchPullRequest({ ...ref, token }),
     fetchReviewState: (ref) => deps.fetchReviewState({ ...ref, token }),
+    fetchPullComments: (ref) => deps.fetchPullComments({ ...ref, token }),
+    ci: ciReaders(deps, target),
     reviewDeps: (pullRequest) => pullRequestReviewDeps(deps, target, choice, pullRequest),
     render: renderReview,
     createReview: (pullRequest, rendered) =>
@@ -217,13 +228,25 @@ function reviewAndPublishDeps(
         head: pullRequest.headSha,
       }),
     replyAndResolve: (threadId, body) => deps.replyAndResolve({ token, threadId, body }),
+    clock: {
+      now: () => deps.clock().toISOString(),
+      sleep: (ms) => deps.sleep(ms, forever),
+    },
     events: {
       fetched: (pullRequest) => deps.stderr.write(`${formatPullRequestSummary(pullRequest)}\n`),
       reviewed: (reviewed, pullRequest) => printReviewed(deps, command, reviewed, pullRequest),
       publishing: () => deps.stderr.write('Publishing the review…\n'),
       warning: (message) => deps.stderr.write(`Warning: ${toTerminalText(message)}\n`),
+      conversationRead: (conversation) => writeLine(deps, formatConversationLine(conversation)),
+      ciRead: (ci) => writeLine(deps, formatCiLine(ci)),
+      ciWaiting: (wait) => ciWait.waiting(wait),
+      ciWaited: (wait) => ciWait.waited(wait),
     },
   }
+}
+
+function writeLine(deps: Pick<MainDeps, 'stderr'>, line: string | undefined): void {
+  if (line !== undefined) deps.stderr.write(`${line}\n`)
 }
 
 function printReviewed(
@@ -293,7 +316,7 @@ function printRun(deps: MainDeps, command: ReviewCommand, run: ReviewRun): void 
         deps.stdout.write(
           run.status === 'nothing'
             ? formatGitHubPreview(rendered, messages)
-            : `${formatGitHubPreview(rendered, messages)}\n${formatContextSection(reviewed.context.report)}\n${formatImpactSection(reviewed.impact, reviewed.impactText)}\n${reviewed.related.status === 'none' ? '' : `${formatRelatedSection(reviewed.related)}\n`}${passesSection(run, fixFor)}${formatInvestigationSection(reviewed.investigation)}`,
+            : `${formatGitHubPreview(rendered, messages)}\n${formatContextSection(reviewed.context.report)}\n${formatConversationSection(reviewed.conversation)}\n${formatCiSection(reviewed.ci)}\n${formatImpactSection(reviewed.impact, reviewed.impactText)}\n${reviewed.related.status === 'none' ? '' : `${formatRelatedSection(reviewed.related)}\n`}${passesSection(run, fixFor)}${formatInvestigationSection(reviewed.investigation)}`,
         )
       }
       deps.stderr.write('Dry run: nothing was posted.\n')

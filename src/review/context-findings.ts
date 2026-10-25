@@ -1,6 +1,7 @@
 import type { Finding, ReviewContext, Severity } from './types.js'
 
 export const MAX_SOURCES = 5
+export const CHECK_PREFIX = 'ci:'
 
 const SEVERITY_RANK: Readonly<Record<Severity, number>> = { P0: 0, P1: 1, P2: 2 }
 const LINE_SUFFIX = /:\d+(?:-\d+)?$/
@@ -16,6 +17,7 @@ export function withKnownReferences(
   context: ReviewContext | undefined,
   diffPaths: readonly string[],
   investigated: InvestigatedReferences = { touched: [], servers: [] },
+  failingChecks: readonly string[] = [],
 ): Finding[] {
   const rules = new Set(context?.rules.map((rule) => rule.key))
   const known = new Set([
@@ -25,7 +27,9 @@ export function withKnownReferences(
     ...investigated.touched,
   ])
   const servers = new Set(investigated.servers.map(serverKey))
+  const checks = new Set(failingChecks.map((name) => `${CHECK_PREFIX}${name}`))
   const isKnown = (source: string) => {
+    if (source.startsWith(CHECK_PREFIX)) return checks.has(source)
     if (known.has(source.replace(LINE_SUFFIX, ''))) return true
     const server = SERVER_SOURCE.exec(source)?.[1]
     return server !== undefined && servers.has(serverKey(server))

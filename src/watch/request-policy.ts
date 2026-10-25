@@ -1,6 +1,7 @@
 import type { WatchedRepoSettings } from '../config/watch-settings.js'
+import { skippedForCi } from './ci-revisit.js'
 import { TRUSTED_ASSOCIATIONS } from './filters.js'
-import { RATE_WINDOW_MS } from './next-job.js'
+import { notStarted, RATE_WINDOW_MS } from './next-job.js'
 import { later } from './time.js'
 import type { PullFacts } from './pull-facts.js'
 import type { JobRecord, PublishTarget, RequestSource } from './types.js'
@@ -21,7 +22,7 @@ export interface PolicyInput {
 
 export type RequestDecision =
   | { action: 'create'; job: Omit<JobRecord, 'id'> }
-  | { action: 'join'; jobId: number; readyNow: boolean }
+  | { action: 'join'; jobId: number; readyNow: boolean; requeue?: true }
   | { action: 'ask-when' }
   | { action: 'refuse'; reason: RefusalReason; jobId?: number; until?: string; message?: string }
 
@@ -35,10 +36,14 @@ export function decideRequest(input: PolicyInput): RequestDecision {
     (job) => job.number === pull.number && job.headSha === pull.headSha,
   )
   const satisfies = (job: JobRecord) => request.publish === 'none' || publishOf(job, repo) === 'pr'
-  const queued = sameCommit.find((job) => job.status === 'queued')
-  if (queued !== undefined) return { action: 'join', jobId: queued.id, readyNow: true }
+  const waiting = sameCommit.find(notStarted)
+  if (waiting !== undefined) return { action: 'join', jobId: waiting.id, readyNow: true }
   const running = sameCommit.find((job) => job.status === 'running' && satisfies(job))
   if (running !== undefined) return { action: 'join', jobId: running.id, readyNow: false }
+  const failing = sameCommit.find(skippedForCi)
+  if (failing !== undefined) {
+    return { action: 'join', jobId: failing.id, readyNow: true, requeue: true }
+  }
   const reviewed = sameCommit.find((job) => reviewedCommit(job) && satisfies(job))
   if (reviewed !== undefined) {
     return { action: 'refuse', reason: 'already-reviewed', jobId: reviewed.id }

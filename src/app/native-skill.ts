@@ -2,27 +2,34 @@ import { join } from 'node:path'
 import type { ReviewSettings } from '../config/merge-config.js'
 import { serveGhFacade } from '../gh-facade/gh-server.js'
 import type { GhFacade } from '../gh-facade/gh-server.js'
-import type { ReadGitHub } from '../gh-facade/types.js'
+import type { GhCheck, ReadGitHub } from '../gh-facade/types.js'
 import type { PullRequest } from '../github/pull-request.js'
 import type { Toolbox } from '../investigation/toolbox.js'
 import { closeWorkDir, openWorkDir, sweepOrphanWorkDirs } from '../process/work-dirs.js'
 import type { CommandPolicy, NativeSkillRef, ReviewProvider } from '../providers/types.js'
+import type { CiEntry } from '../context/types.js'
 import type { GitMirror } from '../repository/git-mirror.js'
 import { materializeWorkTree } from '../repository/work-tree.js'
 import type { WorkTree } from '../repository/work-tree.js'
-import { nativeSkillContext } from '../review/native-context.js'
+import {
+  NATIVE_FILE_NAMES,
+  nativeSkillContext,
+  nativeSkillTexts,
+} from '../review/native-context.js'
+import type { NativeSkillData, NativeSkillFiles } from '../review/native-context.js'
 import type { NativeSkillRun, SkillPass } from '../review/types.js'
 import { TRUSTED_ASSOCIATIONS } from '../watch/filters.js'
 
 export const NATIVE_TIMEOUT_MS = 1_800_000
 export const NATIVE_MAX_TURNS = 100
 
-export interface NativeRunnerInput {
+export interface NativeRunnerInput extends NativeSkillData {
   pullRequest: PullRequest
   diff: string
   review: ReviewSettings
   nativeSkills: ReadonlyMap<string, NativeSkillRef>
   viewer: string
+  checks?: readonly CiEntry[]
   language?: string
 }
 
@@ -53,6 +60,7 @@ export async function openNativeRunner(
   let facade: GhFacade | undefined
   let tree: WorkTree
   let policy: { commands: CommandPolicy; readDirs: string[] }
+  const texts = nativeSkillTexts(input)
   try {
     tree = await materializeWorkTree(
       deps.mirror,
@@ -65,6 +73,9 @@ export async function openNativeRunner(
         number: pullRequest.number,
         commits: pullRequest.stats.commits,
         diff: input.diff,
+        files: Object.fromEntries(
+          kinds(texts).map((kind) => [NATIVE_FILE_NAMES[kind], texts[kind] ?? '']),
+        ),
       },
       { env: deps.env },
     )
@@ -83,6 +94,7 @@ export async function openNativeRunner(
         headSha: pullRequest.headSha,
         diff: input.diff,
         viewer: input.viewer,
+        ...(input.checks === undefined ? {} : { checks: input.checks.map(ghCheck) }),
       },
       readGitHub: deps.readGitHub,
       tempRoot: dir,
@@ -98,6 +110,9 @@ export async function openNativeRunner(
   }
   const gh = facade
   const workTree = tree
+  const files: NativeSkillFiles = Object.fromEntries(
+    kinds(texts).map((kind) => [kind, workTree.files[NATIVE_FILE_NAMES[kind]]]),
+  )
   let seen = 0
   return {
     runSkill: async (pass) => {
@@ -116,6 +131,7 @@ export async function openNativeRunner(
           baseRef: pullRequest.baseRef,
           mergeBase: workTree.mergeBase,
           diffFile: workTree.diffFile,
+          files,
           ...(input.language === undefined ? {} : { language: input.language }),
         }),
         cwd: workTree.dir,
@@ -180,4 +196,25 @@ async function commandPolicy(
     else readDirs.push(resolved)
   }
   return { commands: policy.commands, readDirs }
+}
+
+function kinds(files: NativeSkillFiles): (keyof NativeSkillFiles)[] {
+  const all = Object.keys(NATIVE_FILE_NAMES) as (keyof NativeSkillFiles)[]
+  return all.filter((kind) => files[kind] !== undefined)
+}
+
+function ghCheck(entry: CiEntry): GhCheck {
+  const state =
+    entry.state === 'pending'
+      ? (entry.status ?? 'pending')
+      : (entry.conclusion ?? (entry.state === 'failing' ? 'failure' : 'success'))
+  return {
+    name: entry.name,
+    state: state.toUpperCase(),
+    link: entry.url ?? '',
+    description: entry.title ?? '',
+    workflow: '',
+    ...(entry.startedAt === undefined ? {} : { startedAt: entry.startedAt }),
+    ...(entry.completedAt === undefined ? {} : { completedAt: entry.completedAt }),
+  }
 }
