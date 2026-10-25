@@ -69,7 +69,7 @@ export function reviewEvent(event: JobEvent, run: RunRecord | undefined): Review
       ...(data === undefined ? {} : { data }),
     })),
     verdict: verdictOf(kind, run),
-    ci: ended ? ciOf(run) : null,
+    ci: ended ? ciOf(run) : startedCi(event),
     ...(event.reason === undefined ? {} : { reason: event.reason }),
     publication:
       ended && run !== undefined
@@ -86,6 +86,11 @@ function ciOf(run: RunRecord | undefined): EventCi | null {
   if (run?.resultJson === undefined) return null
   const { ci } = JSON.parse(run.resultJson) as StoredCi
   if (ci === undefined || ci === null) return null
+  return { state: ci.state, checks: ci.checks.map(({ name, state }) => ({ name, state })) }
+}
+
+function startedCi({ ci }: JobEvent): EventCi | null {
+  if (ci === undefined) return null
   return { state: ci.state, checks: ci.checks.map(({ name, state }) => ({ name, state })) }
 }
 

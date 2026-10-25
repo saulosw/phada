@@ -2,7 +2,7 @@ import type { WatchedRepoSettings, WatchSettings } from '../config/watch-setting
 import type { CommentListing } from '../github/issue-comments.js'
 import type { OpenPull, PullListing } from '../github/list-pull-requests.js'
 import type { BranchHead } from '../github/repository.js'
-import type { CiSummary } from '../context/types.js'
+import type { CiState, CiSummary } from '../context/types.js'
 import type { CiCheckState } from '../review/types.js'
 import type { DuePull, HistoryStore } from '../store/history-store.js'
 import { listedPullFacts } from '../watch/pull-facts.js'
@@ -46,6 +46,11 @@ export interface PullCi {
   checks: readonly { name: string; state: CiCheckState }[]
 }
 
+export interface JobCi {
+  state: CiState
+  checks: readonly { name: string; state: CiCheckState }[]
+}
+
 export type RunOutcome = { run: ReviewRun } | { error: unknown; kind: FailureKind } | { ci: PullCi }
 
 export interface WatchEvents {
@@ -74,6 +79,7 @@ export interface JobEvent {
   job: JobRecord
   requests: readonly RequestRecord[]
   reason?: string
+  ci?: JobCi
 }
 
 export interface WatchDeps {
@@ -136,9 +142,9 @@ export async function watchRepositories(input: WatchInput, deps: WatchDeps): Pro
         deps.events.limited(watchRunsLastHour.length, next.waitUntil)
     }
     if ('job' in next) {
-      const start = await passCiGate(next.job, deps)
-      if (start === undefined) continue
-      const exit = await runJob(next.job, settings, deps, start)
+      const passed = await passCiGate(next.job, deps)
+      if (passed === undefined) continue
+      const exit = await runJob(next.job, settings, deps, passed)
       if (exit !== undefined) return exit
       continue
     }
@@ -322,12 +328,17 @@ function apply(
 
 type JobStart = Partial<Pick<JobRecord, 'reason' | 'ciPending'>>
 
-async function passCiGate(job: JobRecord, deps: WatchDeps): Promise<JobStart | undefined> {
+interface GatePassed {
+  start: JobStart
+  ci?: JobCi
+}
+
+async function passCiGate(job: JobRecord, deps: WatchDeps): Promise<GatePassed | undefined> {
   const start: JobStart = {
     ...(job.reason === CI_PENDING ? { reason: undefined } : {}),
     ...(job.ciPending === undefined ? {} : { ciPending: undefined }),
   }
-  if (deps.readCi === undefined) return start
+  if (deps.readCi === undefined) return { start }
   let ci: PullCi | undefined
   try {
     ci = await deps.readCi(job)
@@ -335,9 +346,9 @@ async function passCiGate(job: JobRecord, deps: WatchDeps): Promise<JobStart | u
     deps.events.warning(
       `${job.repo}#${job.number}: the checks were not read (${errorMessage(error)}); reviewing without waiting for CI`,
     )
-    return start
+    return { start }
   }
-  if (ci === undefined) return start
+  if (ci === undefined) return { start }
   const now = iso(deps)
   const gate = gateOf(job, ci, now)
   if (gate.action === 'skip') {
@@ -345,9 +356,14 @@ async function passCiGate(job: JobRecord, deps: WatchDeps): Promise<JobStart | u
     return undefined
   }
   if (gate.action !== 'wait') {
-    return gate.action === 'review' && gate.pending !== undefined
-      ? { ...start, ciPending: gate.pending }
-      : start
+    const read: JobCi = {
+      state: ci.summary.state,
+      checks: ci.checks.map(({ name, state }) => ({ name, state })),
+    }
+    return {
+      start: gate.pending === undefined ? start : { ...start, ciPending: gate.pending },
+      ci: read,
+    }
   }
   const waiting = {
     status: 'waiting' as const,
@@ -404,7 +420,7 @@ async function runJob(
   job: JobRecord,
   settings: WatchSettings,
   deps: WatchDeps,
-  start: JobStart,
+  { start, ci }: GatePassed,
 ): Promise<WatchExit | undefined> {
   const { history, events } = deps
   const startedAt = iso(deps)
@@ -412,7 +428,12 @@ async function runJob(
   const running = { ...job, ...start, status: 'running' as const, startedAt }
   const requests = history.requests([job.id])
   events.started(running)
-  await deps.notify({ kind: 'started', job: running, requests })
+  await deps.notify({
+    kind: 'started',
+    job: running,
+    requests,
+    ...(ci === undefined ? {} : { ci }),
+  })
   let run: ReviewRun
   try {
     run = await deps.runJob(running, requests)

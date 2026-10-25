@@ -80,6 +80,21 @@ describe('reviewEvent', () => {
     })
   })
 
+  it('has the CI the watch read before the review started', () => {
+    const ci = {
+      state: 'failing' as const,
+      checks: [
+        { name: 'test', state: 'failing' as const },
+        { name: 'e2e', state: 'pending' as const },
+      ],
+    }
+    const running = { ...JOB, status: 'running' as const }
+
+    expect(reviewEvent({ kind: 'started', job: running, requests: [], ci }, undefined).ci).toEqual(
+      ci,
+    )
+  })
+
   it('has the CI state and the checks that count, once the review read them', () => {
     const ci = {
       state: 'failing',

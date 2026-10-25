@@ -1011,6 +1011,45 @@ describe('watchRepositories', () => {
       expect(h.events).toEqual(['waiting #3 @0 until 2 []', 'started #3 @2', 'finished #3'])
     })
 
+    it('tells the CI it read when the job starts, and nothing when it read none', async () => {
+      const startedCi = async (ci: Script['ci']) => {
+        const h = await setup({ listings: newPull, ci, stopWhen: ({ ran }) => ran.length === 1 })
+        const seen: unknown[] = []
+        const notify = h.deps.notify
+        h.deps.notify = async (event) => {
+          if (event.kind === 'started') seen.push(event.ci)
+          await notify(event)
+        }
+        await watchRepositories(input(), h.deps)
+        return seen
+      }
+      const failing: PullCi = {
+        waitMs: 0,
+        onFailure: 'review',
+        summary: { state: 'failing', pending: [], failing: ['test'] },
+        checks: [
+          { name: 'test', state: 'failing' },
+          { name: 'build', state: 'passing' },
+        ],
+      }
+
+      expect(await startedCi(() => failing)).toEqual([
+        {
+          state: 'failing',
+          checks: [
+            { name: 'test', state: 'failing' },
+            { name: 'build', state: 'passing' },
+          ],
+        },
+      ])
+      expect(await startedCi(() => undefined)).toEqual([undefined])
+      expect(
+        await startedCi(() => {
+          throw new Error('checks:read is missing')
+        }),
+      ).toEqual([undefined])
+    })
+
     it('does not wait when the CI settings turn the wait off', async () => {
       const h = await setup({
         listings: newPull,

@@ -419,9 +419,9 @@ the event as JSON on stdin (`schemaVersion: 1`):
 brought. `review` comes with `review.finished`, `reason` with `review.skipped` (`superseded`,
 `closed`, `already-reviewed`, `ci-failing`, …) and `error` with `review.failed`, which is only
 sent once the job gave up. `ci` is the state of the [checks](#the-checks) (`none`, `pending`,
-`passing` or `failing`) and each check that counts, once the review or the watch read them;
-`null` in `review.started` and when the checks were not read. A hook that fails or runs out of
-time is reported in the watch and never stops it.
+`passing` or `failing`) and each check that counts, once the review or the watch read them (in
+`review.started`, as the watch read them before starting the review); `null` when the checks were
+not read. A hook that fails or runs out of time is reported in the watch and never stops it.
 
 The **verdict** is computed by Phada from the findings, never by the AI: `blocking` when a
 finding is P0 or P1, `comments` when there are only P2 findings or findings worth checking,
