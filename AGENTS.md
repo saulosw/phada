@@ -340,8 +340,7 @@ src/
                          #   relations), rules.tsx (a repository → the lens and who set it, the
                          #   user's rules at once, .phada/ and docs of the default branch on open
                          #   and on r; p and a number → the loaded rules of that pull request and
-                         #   its prompt: each pass, its data blocks and instructions),
-                         #   placeholder.tsx
+                         #   its prompt: each pass, its data blocks and instructions)
     setting-lines.tsx    #   settingLines(), settingValue(): config settings as key, value and
                          #   origin rows
     units.ts             #   durationText(), bytesText()

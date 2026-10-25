@@ -36,7 +36,6 @@ export interface UiMessages {
   palette: { title: string; empty: string }
   tooSmall(columns: number, rows: number): string
   tooSmallHint: string
-  placeholder: string
   home: HomeMessages
   loading: string
   failed(message: string): string

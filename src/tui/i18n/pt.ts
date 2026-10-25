@@ -30,7 +30,6 @@ export const portuguese: UiMessages = {
   tooSmall: (columns, rows) =>
     `O terminal tem ${columns}×${rows}. O Phada precisa de pelo menos 80×24: aumente a janela.`,
   tooSmallHint: 'q sair',
-  placeholder: 'Esta tela ainda não está pronta.',
   home: {
     tagline: 'Revise pull requests com a IA que você já usa.',
     labels: { github: 'GitHub', ai: 'IA', watch: 'Watch', queue: 'Fila', graph: 'Grafo' },
