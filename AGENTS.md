@@ -31,13 +31,15 @@ talks to GitHub itself.
 src/
   bin.ts                 # entry point of the `phada` command: reads the package version, drops the
                          #   SQLite ExperimentalWarning (suppressSqliteWarning), calls run() with
-                         #   the gh token reader (ghTokenReader)
+                         #   the gh token reader (ghTokenReader) and the signals (SIGINT, SIGTERM)
+                         #   named to the handler
   main.ts                # run(argv, deps): CLI flow — flags, token, user config, provider choice,
                          #   then reviewAndPublish(), printing and saving the run in the history;
-                         #   createProvider()
+                         #   no command → runApp(); createProvider()
   architecture.test.ts   # allowed imports of src/review/, src/publish/, src/watch/, src/context/,
                          #   src/investigation/, src/repository/, src/repo-map/, src/store/,
-                         #   src/graph/, src/app/, src/skills/, src/gh-facade/ and src/slack/
+                         #   src/graph/, src/app/, src/skills/, src/gh-facade/, src/slack/ and
+                         #   src/tui/ (.ts and .tsx)
   app/                   # use cases any caller can run (CLI today), with injected readers
     review-pull-request.ts # reviewPullRequest(): repository context → mirror → index of the head
                          #   (60 s budget) → related repositories → graph and impact of the diff
@@ -125,9 +127,15 @@ src/
                          #   --skill, --format text|json), `watch` (--once,
                          #   --backfill, --status) and `history` (--since, --limit, --stats,
                          #   --refresh, prune --older-than), `enqueue` (--publish, --format) and
-                         #   `mcp` commands, --help, --version; USAGE, REVIEW_USAGE, INIT_USAGE,
+                         #   `mcp` commands, --help, --version, no command (the app, --debug);
+                         #   USAGE, REVIEW_USAGE, INIT_USAGE,
                          #   INDEX_USAGE, RULES_USAGE, PROMPT_USAGE, WATCH_USAGE, ENQUEUE_USAGE,
                          #   MCP_USAGE, HISTORY_USAGE
+    app-command.ts       #   runApp(): the app when stdin and stdout are TTYs (else the missing
+                         #   command error), the language of the user config (an invalid config
+                         #   kept as configError), src/tui/ loaded by import() only here
+                         #   (loadApp), setInterval as the scheduler; quit 0, interrupted 130,
+                         #   terminated 143, a failure thrown for formatError()
     init.ts              #   runInit(): .phada/ in the repository, or the user's own config
     init-templates.ts    #   the commented files phada init writes
     index-command.ts     #   runIndex(): token, cache folder, mirror, progress, the map's report
@@ -234,6 +242,42 @@ src/
     terminal-text.ts     #   toTerminalText(): strips control and bidi characters from external text
     units.ts             #   duration, tokens, bytes, counts
     name-list.ts         #   nameList(), firstNames(), joinNames(): the first 5 names and "N more"
+  tui/                   # the app `phada` opens in a terminal (Ink + React), data in, frames out
+    open-app.tsx         #   openApp(deps, host): renders <App> on the alternate screen (render
+                         #   injected), Ctrl-C handled by the app, SIGINT/SIGTERM through
+                         #   host.onSignal → unmount → AppResult (quit, interrupted, terminated,
+                         #   failed with the error)
+    app.tsx              #   App: theme, catalog, working signal and error boundary around the
+                         #   shell — tabs, the active screen, footer, ? help, / palette, Esc
+                         #   (a screen's back first), q, 1–9, ←/→, Tab, Ctrl-C; the size warning
+                         #   below 80×24
+    app-context.ts       #   AppDeps (version, cwd, home, env, scheduler, language, configError),
+                         #   Scheduler, KeyHint; useAppDeps(), useTheme(), useMessages(),
+                         #   useWorking(), useIsWorking(), useScreenKeys(), useBack(),
+                         #   useScreenInput()
+    screens.ts           #   ScreenDefinition (id, title from the catalog, Screen) and SCREENS,
+                         #   in tab order
+    screens/             #   one file per screen: home.tsx (the box with the mascot, version and
+                         #   folder under ~; shortenHome()), placeholder.tsx
+    data-hooks.ts        #   usePolled() (local data, at once and every 2 s on the scheduler),
+                         #   useLoaded() (slow data, on open and on r); DataState
+    data-view.tsx        #   DataView: loading, the error in one line, or the value
+    tab-bar.tsx          #   TabBar (+ tab-layout.ts: layoutTabs(): full › short › a window with
+                         #   ‹ ›)
+    footer.tsx           #   Footer (+ key-hints.ts: fitHints(): the keys that fit, then "? more")
+    help.tsx             #   Help: the screen's keys and the global ones
+    palette.tsx          #   Palette: screens filtered by name (the catalog's and English, without
+                         #   accents), ↑/↓, Enter, Esc; matchEntries()
+    mascot.tsx           #   Mascot: the two frames, flapping on the scheduler while working
+    terminal-size.ts     #   SizeSource, outputSize() (columns, rows, 'resize'), useTerminalSize(),
+                         #   MIN_SIZE, isTooSmall()
+    theme.ts             #   colorLevel(env) (NO_COLOR › FORCE_COLOR › TERM=dumb › COLORTERM ›
+                         #   256color › 16); resolveTheme(): the Violeta tokens as hex, the nearest
+                         #   xterm-256 color, a named 16 color or none
+    error-boundary.tsx   #   ErrorBoundary: a render error → onError, nothing drawn
+    i18n/                #   interface text per language: messages.ts (UiMessages, ScreenId,
+                         #   uiMessagesFor()), en.ts, pt.ts, es.ts; unknown languages fall back to
+                         #   English
   config/                # the config files: .phada/ in the repository and the user's own
     schema.ts            #   Zod schema of config.yml (ci: read, wait, onFailure, checks);
                          #   LANGUAGE_TAG
@@ -528,7 +572,8 @@ test/fixtures/github/    # trimmed GitHub API responses (REST and GraphQL) and a
 test/support/            # shared test helpers (fake fetch, fixtures for pull requests, findings, …)
 ```
 
-Tests live next to the code they test (`*.test.ts`).
+Tests live next to the code they test (`*.test.ts`, `*.test.tsx` for the app's frames with
+`ink-testing-library`).
 
 ## Dependency rule
 
@@ -565,6 +610,12 @@ else; requests and replies are wired in `src/cli/slack-port.ts`, which only uses
 `submitRequest()` and the review events. `src/gh-facade/` never imports the GitHub client: reads go through the `ReadGitHub` function it
 is given, and writes are only captured. `src/app/native-skill.ts` runs a native skill with the
 work tree, the gh facade and the work folders, and never sees the token.
+`src/tui/` draws the app with `ink` and `react` and imports, from outside the folder, only types
+of `src/app/` and `src/config/` and the pure helpers it names (`src/app/error-message.ts`); it never
+imports `src/github/`, a concrete provider or `src/cli/`, never touches `process` or `console` and
+never starts a timer: the streams, the signals, the environment and the scheduler come in through
+`openApp()`, which `src/cli/app-command.ts` loads with `import()` so the other commands never
+load React.
 `src/architecture.test.ts` enforces the allowed imports of these folders and forbids
 `process`/`console` inside them (`console` only, in `src/investigation/`). `src/repo-map/` parses
 text it is given (`web-tree-sitter`, reading only its grammars) and `src/store/` only talks to
