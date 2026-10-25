@@ -2,6 +2,7 @@ import { useInput } from 'ink'
 import type { Key } from 'ink'
 import { createContext, useContext, useEffect, useRef } from 'react'
 import type { HistoryFilter, ListedRun, ReviewDetail } from '../app/read-history.js'
+import type { GitHubAccess } from '../app/read-home.js'
 import type { Learnings } from '../app/read-learnings.js'
 import type { ProviderReport, ProviderSetup } from '../app/read-provider.js'
 import type { QueueView } from '../app/read-queue.js'
@@ -33,6 +34,7 @@ export interface AppDeps {
   readProviderSetup(): Promise<ProviderSetup>
   readProviders(): Promise<ProviderReport>
   readLearnings(): Promise<Learnings>
+  readGitHub(): Promise<GitHubAccess>
 }
 
 export interface KeyHint {

@@ -27,8 +27,11 @@ function deps(
     holder?: number
     observed?: AppCommandDeps['observed']
     during?: (deps: AppDeps) => Promise<void>
+    ghToken?: string
   } = {},
 ) {
+  const ghCalls: string[][] = []
+  const userTokens: string[] = []
   const opened: { deps: AppDeps; host: AppHost }[] = []
   const historyPaths: string[] = []
   const files = memoryFiles({
@@ -73,9 +76,19 @@ function deps(
       ollama: async () => ({ provider: 'ollama', baseUrl: null, server: { state: 'stopped' } }),
     },
     ...(options.observed === undefined ? {} : { observed: options.observed }),
+    runGh: async (_command, args) => {
+      ghCalls.push([...args])
+      return options.ghToken === undefined
+        ? { stdout: '', stderr: 'not logged in', exitCode: 1 }
+        : { stdout: `${options.ghToken}\n`, stderr: '', exitCode: 0 }
+    },
+    fetchUser: async ({ token }) => {
+      userTokens.push(token)
+      return { login: 'ana' }
+    },
   }
   app.env.PHADA_DATA_HOME = '/data'
-  return { app, opened, files, historyPaths }
+  return { app, opened, files, historyPaths, ghCalls, userTokens }
 }
 
 const MISSING = new UsageError('Missing the command, e.g. phada review owner/repo#123.')
@@ -229,6 +242,56 @@ describe('runApp', () => {
     })
     await runApp(app)
     expect(historyPaths).toEqual([])
+  })
+})
+
+describe('the GitHub reader', () => {
+  it('names where the token comes from and reads its owner, never handing over the token', async () => {
+    const seen: unknown[] = []
+    const { app, userTokens, ghCalls } = deps({
+      env: { GH_TOKEN: 'ghp_env' },
+      during: async (appDeps) => {
+        seen.push(await appDeps.readGitHub())
+      },
+    })
+    await runApp(app)
+    expect(seen).toEqual([{ source: 'GH_TOKEN', account: { state: 'found', login: 'ana' } }])
+    expect(JSON.stringify(seen)).not.toContain('ghp_env')
+    expect(userTokens).toEqual(['ghp_env'])
+    expect(ghCalls).toEqual([])
+  })
+
+  it('asks gh again on each read, so a login made meanwhile is seen', async () => {
+    const seen: unknown[] = []
+    const { app, ghCalls, userTokens } = deps({
+      ghToken: 'gho_login',
+      during: async (appDeps) => {
+        seen.push(await appDeps.readGitHub())
+        seen.push(await appDeps.readGitHub())
+      },
+    })
+    await runApp(app)
+    expect(seen).toEqual([
+      { source: 'gh', account: { state: 'found', login: 'ana' } },
+      { source: 'gh', account: { state: 'found', login: 'ana' } },
+    ])
+    expect(ghCalls.map((args) => args.slice(0, 2))).toEqual([
+      ['auth', 'token'],
+      ['auth', 'token'],
+    ])
+    expect(userTokens).toEqual(['gho_login', 'gho_login'])
+  })
+
+  it('has no source without a token in the environment or gh', async () => {
+    const seen: unknown[] = []
+    const { app, userTokens } = deps({
+      during: async (appDeps) => {
+        seen.push(await appDeps.readGitHub())
+      },
+    })
+    await runApp(app)
+    expect(seen).toEqual([{ source: null }])
+    expect(userTokens).toEqual([])
   })
 })
 

@@ -158,6 +158,7 @@ export function fakeAppDeps(scheduler: Scheduler, overrides: Partial<AppDeps> = 
       providers: [],
     }),
     readLearnings: async () => ({ recorded: false, repos: [] }),
+    readGitHub: async () => ({ source: null }),
     ...overrides,
   }
 }

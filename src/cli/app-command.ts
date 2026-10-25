@@ -27,10 +27,15 @@ import { checkOllamaStatus } from '../providers/ollama-status.js'
 import { openExistingHistoryStore } from '../store/history-store.js'
 import type { HistoryStore } from '../store/history-store.js'
 import { readObservedEdges } from '../store/observed-store.js'
+import { fetchAuthenticatedUser } from '../github/user.js'
+import type { FetchUserOptions, GitHubUser } from '../github/user.js'
 import type { AppDeps, AppResult, openApp, Scheduler } from '../tui/open-app.js'
 import { appHistory } from './app-history.js'
 import type { AppHistory } from './app-history.js'
 import { UsageError } from './errors.js'
+import { readGitHubAccess } from './github-access.js'
+import { ghTokenReader } from './github-token.js'
+import type { RunGh } from './github-token.js'
 import type { TextOutput } from './progress.js'
 import { SLACK_APP_TOKEN, SLACK_BOT_TOKEN } from './review-event-sinks.js'
 
@@ -55,6 +60,8 @@ export interface AppCommandDeps {
     list(cacheDir: string): Promise<string[]>
     read: typeof readObservedEdges
   }
+  runGh?: RunGh
+  fetchUser?: (options: FetchUserOptions) => Promise<GitHubUser>
 }
 
 const EXIT_CODES: Readonly<Record<Exclude<AppResult['kind'], 'failed'>, number>> = {
@@ -130,6 +137,12 @@ async function appDeps(deps: AppCommandDeps, history: AppHistory, lock: string):
         observedRepos: () =>
           (deps.observed?.list ?? observedRepositories)(phadaCacheDir(deps.env, deps.home)),
         readObserved: (repo) => observedOf(deps, repo),
+      }),
+    readGitHub: () =>
+      readGitHubAccess({
+        env: deps.env,
+        ghToken: ghTokenReader(deps.env, deps.runGh),
+        fetchUser: deps.fetchUser ?? fetchAuthenticatedUser,
       }),
   }
   try {
