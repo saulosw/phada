@@ -8,7 +8,7 @@ import { dataFiles } from './config/data-paths.js'
 import type { ConfigLayer } from './config/types.js'
 import { historyEnabled } from './config/watch-settings.js'
 import type { PullRequestReview } from './app/review-pull-request.js'
-import { runApp } from './cli/app-command.js'
+import { assertAppTerminal, runApp } from './cli/app-command.js'
 import type { AppCommandDeps } from './cli/app-command.js'
 import { parseCliArgs } from './cli/args.js'
 import type { CliCommand } from './cli/args.js'
@@ -108,8 +108,12 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
       deps.stderr.write(`${lines.join('\n')}\n`)
       return 0
     }
+    if (command.kind === 'app') {
+      assertAppTerminal(command, deps)
+      debug = command.debug
+      return await runApp(deps)
+    }
     debug = command.debug
-    if (command.kind === 'app') return await runApp(deps)
     if (command.kind === 'index') {
       await runIndex(command, deps)
       return 0

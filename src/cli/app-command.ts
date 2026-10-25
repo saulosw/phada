@@ -73,6 +73,8 @@ const EXIT_CODES: Readonly<Record<Exclude<AppResult['kind'], 'failed'>, number>>
   terminated: 143,
 }
 
+const MISSING_COMMAND = 'Missing the command, e.g. phada review owner/repo#123.'
+
 const COLOR_VARIABLES = ['NO_COLOR', 'FORCE_COLOR', 'TERM', 'COLORTERM'] as const
 
 const INTERVALS: Scheduler = {
@@ -82,10 +84,18 @@ const INTERVALS: Scheduler = {
   },
 }
 
+export function assertAppTerminal(
+  command: { debug: boolean },
+  { stdin, stdout }: Pick<AppCommandDeps, 'stdin' | 'stdout'>,
+): void {
+  if (isTerminalInput(stdin) && isTerminalOutput(stdout)) return
+  throw new UsageError(command.debug ? "Unknown option '--debug'." : MISSING_COMMAND)
+}
+
 export async function runApp(deps: AppCommandDeps): Promise<number> {
   const { stdin, stdout } = deps
   if (!isTerminalInput(stdin) || !isTerminalOutput(stdout)) {
-    throw new UsageError('Missing the command, e.g. phada review owner/repo#123.')
+    throw new UsageError(MISSING_COMMAND)
   }
   const { openApp } = await (deps.loadApp ?? (() => import('../tui/open-app.js')))()
   const files = dataFiles(deps.env, deps.home)

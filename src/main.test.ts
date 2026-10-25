@@ -504,6 +504,14 @@ describe('run', () => {
     expect(h.stdout()).toBe('')
   })
 
+  it('refuses --debug alone without a terminal as before the app, without details', async () => {
+    const h = harness()
+
+    expect(await run(['--debug'], h.deps)).toBe(2)
+    expect(h.stderr()).toBe("phada: Unknown option '--debug'. Run with --help for usage.\n")
+    expect(h.stdout()).toBe('')
+  })
+
   it('opens the app with no command in a terminal and exits with its code', async () => {
     const h = harness()
     const opened: string[] = []
