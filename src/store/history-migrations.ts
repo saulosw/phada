@@ -157,7 +157,10 @@ create table job_rebuilt (
   finished_at text,
   publish text check (publish in ('pr', 'none')),
   ci_deadline text,
-  ci_pending text
+  ci_pending text,
+  ci_failing text,
+  ci_checked_at text,
+  ci_since text
 );
 insert into job_rebuilt (id, repo, number, head_sha, status, attempts, not_before, reason,
   error_kind, error, created_at, started_at, finished_at, publish)
@@ -168,14 +171,6 @@ alter table job_rebuilt rename to job;
 create index job_by_status on job (status, not_before);
 create index job_by_commit on job (repo, number, head_sha);
 create index job_by_created on job (created_at);
-`,
-  },
-  {
-    version: 5,
-    sql: `
-alter table job add column ci_failing text;
-alter table job add column ci_checked_at text;
-alter table job add column ci_since text;
 `,
   },
 ]

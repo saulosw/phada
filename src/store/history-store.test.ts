@@ -97,7 +97,7 @@ describe('openHistoryStore migrations', () => {
     expect(userVersion(path)).toBe(HISTORY_MIGRATIONS.length)
   })
 
-  it('migrates a version 3 file without losing its jobs, requests and runs, and lets a job wait for CI', async () => {
+  it('migrates a version 3 file without losing its jobs, requests and runs, and lets a job wait for CI or skip it for failing CI', async () => {
     const path = fresh()
     const v3 = await openHistoryStore(path, { migrations: HISTORY_MIGRATIONS.slice(0, 3) })
     const done = v3.addJob({ ...JOB, status: 'done', publish: 'pr', finishedAt: JOB.notBefore })
@@ -134,18 +134,6 @@ describe('openHistoryStore migrations', () => {
         ciPending: ['test', 'build'],
       },
     ])
-    expect(store.addJob(JOB)).toBe(queued + 1)
-    store.close()
-    expect(userVersion(path)).toBe(HISTORY_MIGRATIONS.length)
-  })
-
-  it('migrates a version 4 file and keeps the failing checks of a job skipped for CI until it is queued again', async () => {
-    const path = fresh()
-    const v4 = await openHistoryStore(path, { migrations: HISTORY_MIGRATIONS.slice(0, 4) })
-    const id = v4.addJob({ ...JOB, status: 'waiting', reason: 'ci-pending', ciPending: ['e2e'] })
-    v4.close()
-
-    const store = await openHistoryStore(path)
     const skipped = {
       status: 'skipped' as const,
       reason: 'ci-failing',
@@ -153,18 +141,26 @@ describe('openHistoryStore migrations', () => {
       ciFailing: ['test', 'lint'],
       ciCheckedAt: '2026-10-18T12:25:00.000Z',
     }
-    store.updateJob(id, skipped)
-    expect(store.job(id)).toEqual({ ...JOB, id, ...skipped, ciPending: ['e2e'] })
-    store.updateJob(id, {
+    store.updateJob(queued, skipped)
+    expect(store.job(queued)).toMatchObject(skipped)
+    store.updateJob(queued, {
       status: 'queued',
       reason: undefined,
       finishedAt: undefined,
+      ciDeadline: undefined,
       ciFailing: undefined,
       ciCheckedAt: undefined,
       ciPending: undefined,
       ciSince: '2026-10-18T12:30:00.000Z',
     })
-    expect(store.job(id)).toEqual({ ...JOB, id, ciSince: '2026-10-18T12:30:00.000Z' })
+    expect(store.job(queued)).toEqual({
+      ...JOB,
+      id: queued,
+      number: 4,
+      publish: 'none',
+      ciSince: '2026-10-18T12:30:00.000Z',
+    })
+    expect(store.addJob(JOB)).toBe(queued + 1)
     store.close()
     expect(userVersion(path)).toBe(HISTORY_MIGRATIONS.length)
   })
