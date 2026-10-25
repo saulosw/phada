@@ -1,0 +1,61 @@
+#!/usr/bin/env node
+import { appendFileSync } from 'node:fs'
+
+const env = process.env
+const argv = process.argv.slice(2)
+const mode = env.FAKE_STATUS_MODE ?? 'logged_in'
+
+if (env.FAKE_STATUS_CAPTURE) {
+  const captured = { argv, GITHUB_TOKEN: env.GITHUB_TOKEN, GH_TOKEN: env.GH_TOKEN }
+  appendFileSync(env.FAKE_STATUS_CAPTURE, `${JSON.stringify(captured)}\n`)
+}
+
+const status = (loggedIn, authMethod) =>
+  JSON.stringify({
+    loggedIn,
+    ...(authMethod === undefined ? {} : { authMethod }),
+    apiProvider: 'firstParty',
+    email: 'person@example.com',
+    orgName: 'Example Org',
+  })
+
+if (argv[0] === '--version') {
+  if (mode === 'hang') await new Promise((resolve) => setTimeout(resolve, 60_000))
+  else if (mode === 'odd_output') process.stdout.write('claude, the latest one\n')
+  else process.stdout.write('2.1.310 (Claude Code)\n')
+  process.exit(0)
+}
+
+if (argv[0] !== 'auth' || argv[1] !== 'status') {
+  process.stderr.write(`fake-claude-status: unexpected arguments ${argv.join(' ')}\n`)
+  process.exit(64)
+}
+
+switch (mode) {
+  case 'logged_in':
+    process.stdout.write(`${status(true, 'claude.ai')}\n`)
+    break
+  case 'api_key':
+    process.stdout.write(`${status(true, 'api_key')}\n`)
+    break
+  case 'odd_method':
+    process.stdout.write(`${status(true, 'person@example.com has a key')}\n`)
+    break
+  case 'logged_out':
+    process.stdout.write(`${status(false)}\n`)
+    process.exit(1)
+    break
+  case 'odd_output':
+    process.stdout.write('You are logged in, probably.\n')
+    break
+  case 'crash':
+    process.stderr.write('Error: something broke\n')
+    process.exit(2)
+    break
+  case 'hang':
+    await new Promise((resolve) => setTimeout(resolve, 60_000))
+    break
+  default:
+    process.stderr.write(`fake-claude-status: unknown FAKE_STATUS_MODE "${mode}"\n`)
+    process.exit(64)
+}
