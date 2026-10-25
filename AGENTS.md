@@ -252,7 +252,7 @@ src/
                          #   passing, failing or pending; ciSummary(): the CI state (none, pending,
                          #   passing, failing) and the names of the failing and pending checks
     ci-log.ts            #   failedStepLog(): an Actions job log → its failed step, without
-                         #   timestamps or colors, the final 8 KB
+                         #   timestamps or colors, the final 8 KB; a cut counted on a CutCount
     ci.ts                #   buildCi(): the checks for the AI (failing › pending › passing) with
                          #   title, summary, annotations (failure and warning, 50 in total) and
                          #   the failed step of the log (12 KB in total), the entries as read, the

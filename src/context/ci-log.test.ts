@@ -13,7 +13,7 @@ function stamped(...lines: string[]): string {
 
 describe('failedStepLog', () => {
   it('keeps the step that failed, from its ##[group]Run line to the error, without timestamps or colors', () => {
-    const cut = failedStepLog(JOB_LOG)
+    const cut = failedStepLog(JOB_LOG, { truncated: 0 })
     const lines = cut.split('\n')
 
     expect(lines[0]).toBe('##[group]Run go mod tidy -diff')
@@ -41,7 +41,7 @@ describe('failedStepLog', () => {
       'Post job cleanup.',
     )
 
-    expect(failedStepLog(log)).toBe(
+    expect(failedStepLog(log, { truncated: 0 })).toBe(
       [
         '##[group]Run npm test',
         'FAIL src/a.test.ts',
@@ -54,25 +54,31 @@ describe('failedStepLog', () => {
   })
 
   it('keeps the whole log when no line is an error, and starts at the top without a step', () => {
-    expect(failedStepLog(stamped('one', 'two'))).toBe('one\ntwo')
-    expect(failedStepLog(stamped('setup', '##[error]boom', 'after'))).toBe('setup\n##[error]boom')
+    expect(failedStepLog(stamped('one', 'two'), { truncated: 0 })).toBe('one\ntwo')
+    expect(failedStepLog(stamped('setup', '##[error]boom', 'after'), { truncated: 0 })).toBe(
+      'setup\n##[error]boom',
+    )
   })
 
   it('keeps only the final bytes of a long cut, from a whole line, saying how much it cut', () => {
-    const cut = failedStepLog(JOB_LOG, 300)
+    const cuts = { truncated: 0 }
+    const cut = failedStepLog(JOB_LOG, cuts, { maxBytes: 300 })
     const [marker = '', ...rest] = cut.split('\n')
     const kept = rest.join('\n')
 
     expect(marker).toMatch(/^\[truncated by Phada: last \d+ of \d+ bytes\]$/)
     expect(new TextEncoder().encode(kept).length).toBeLessThanOrEqual(300)
     expect(kept.endsWith('##[error]Process completed with exit code 1.')).toBe(true)
-    expect(failedStepLog(JOB_LOG)).toContain(`\n${rest[0] ?? ''}\n`)
+    expect(cuts.truncated).toBe(1)
+    const whole = { truncated: 0 }
+    expect(failedStepLog(JOB_LOG, whole)).toContain(`\n${rest[0] ?? ''}\n`)
+    expect(whole.truncated).toBe(0)
   })
 
   it('drops the line cut in half at the start of a tail read with a range', () => {
     const log = `ad-of-a-line\n${stamped('##[group]Run make', '##[error]failed')}`
 
-    expect(failedStepLog(log, undefined, { partial: true })).toBe(
+    expect(failedStepLog(log, { truncated: 0 }, { partial: true })).toBe(
       '##[group]Run make\n##[error]failed',
     )
   })

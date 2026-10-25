@@ -13,7 +13,6 @@ export const CI_SUMMARY_BYTES = 2 * 1024
 export const CI_ANNOTATION_BYTES = 1024
 const CI_LOG_MIN_BYTES = 256
 const KEPT_LEVELS: ReadonlySet<string> = new Set(['failure', 'warning'])
-const TRUNCATED = '[truncated by Phada:'
 const STATE_ORDER = ['failing', 'pending', 'passing'] as const
 
 export interface CiDetails {
@@ -92,10 +91,10 @@ function cutLogs(entries: readonly CiEntry[], logs: ReadonlyMap<number, JobLog>)
       result.omitted++
       continue
     }
-    const text = failedStepLog(log.text, Math.min(CI_LOG_JOB_BYTES, result.left), {
+    const text = failedStepLog(log.text, result, {
+      maxBytes: Math.min(CI_LOG_JOB_BYTES, result.left),
       partial: log.partial,
     })
-    if (text.startsWith(TRUNCATED)) result.truncated++
     result.cuts.set(id, text)
     result.left -= byteLength(text)
   }

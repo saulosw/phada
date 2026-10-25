@@ -1,4 +1,5 @@
 import { byteLength } from './byte-cut.js'
+import type { CutCount } from './byte-cut.js'
 
 export const CI_LOG_JOB_BYTES = 8 * 1024
 
@@ -12,8 +13,8 @@ const decoder = new TextDecoder()
 
 export function failedStepLog(
   log: string,
-  maxBytes: number = CI_LOG_JOB_BYTES,
-  { partial = false }: { partial?: boolean } = {},
+  cuts: CutCount,
+  { maxBytes = CI_LOG_JOB_BYTES, partial = false }: { maxBytes?: number; partial?: boolean } = {},
 ): string {
   const lines = log
     .replace(/^\uFEFF/, '')
@@ -22,15 +23,16 @@ export function failedStepLog(
     .map((line) => line.replace(TIMESTAMP, '').replace(ANSI, ''))
   while (lines.at(-1) === '') lines.pop()
   const firstError = lines.findIndex((line) => line.startsWith(ERROR))
-  if (firstError === -1) return tail(lines.join('\n'), maxBytes)
+  if (firstError === -1) return tail(lines.join('\n'), maxBytes, cuts)
   const lastError = lines.findLastIndex((line) => line.startsWith(ERROR))
   const start = lines.slice(0, firstError).findLastIndex((line) => line.startsWith(STEP))
-  return tail(lines.slice(Math.max(start, 0), lastError + 1).join('\n'), maxBytes)
+  return tail(lines.slice(Math.max(start, 0), lastError + 1).join('\n'), maxBytes, cuts)
 }
 
-function tail(text: string, maxBytes: number): string {
+function tail(text: string, maxBytes: number, cuts: CutCount): string {
   const bytes = encoder.encode(text)
   if (bytes.length <= maxBytes) return text
+  cuts.truncated++
   const end = decoder.decode(bytes.slice(bytes.length - maxBytes))
   const newline = end.indexOf('\n')
   const kept = newline === -1 ? end.replace(/^\uFFFD/, '') : end.slice(newline + 1)
