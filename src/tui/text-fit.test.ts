@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { fit, oneLine, wrapText } from './text-fit.js'
+import { fit, namesText, oneLine, wrapText } from './text-fit.js'
 
 describe('oneLine', () => {
   it('strips control and bidi characters and keeps the text on one line', () => {
     expect(oneLine('Fix\u001B[31m the\n\tcart\u202E  total ')).toBe('Fix[31m the cart total')
+  })
+})
+
+describe('namesText', () => {
+  it('joins the first names on one line each and counts the rest', () => {
+    expect(namesText(['llama3', 'qwen\n2.5\u202E', 'phi'], 2)).toBe('llama3, qwen 2.5 +1')
+    expect(namesText(['test', 'lint'], 3)).toBe('test, lint')
   })
 })
 

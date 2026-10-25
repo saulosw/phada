@@ -9,7 +9,7 @@ import type { UiMessages } from '../i18n/messages.js'
 import { ScrollText } from '../scroll-list.js'
 import { textWidth } from '../tab-layout.js'
 import type { Theme } from '../theme.js'
-import { fit, oneLine, wrapText } from '../text-fit.js'
+import { fit, namesText, oneLine, wrapText } from '../text-fit.js'
 import { shortenHome } from './home.js'
 
 export const PROVIDER_NAMES: Readonly<Record<ReportedProvider['provider'], string>> = {
@@ -112,7 +112,7 @@ function providerLines(checked: DataState<ProviderReport>, draw: Draw): ReactNod
           : [
               <Text color={colors.dim}>
                 {'    '}
-                {m.models(models.length, names(models))}
+                {m.models(models.length, namesText(models, MODELS_SHOWN))}
               </Text>,
             ]),
         ...(status.next === null
@@ -197,11 +197,6 @@ function stateIcon(status: ReportedProvider, { colors }: Theme): ReactNode {
 
 function modelsOf(status: ReportedProvider): string[] {
   return status.provider === 'ollama' && status.server.state === 'running'
-    ? status.server.models.map(oneLine)
+    ? status.server.models
     : []
-}
-
-function names(values: readonly string[]): string {
-  const shown = values.slice(0, MODELS_SHOWN).join(', ')
-  return values.length > MODELS_SHOWN ? `${shown} +${values.length - MODELS_SHOWN}` : shown
 }

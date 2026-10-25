@@ -56,3 +56,12 @@ function originColor(origin: SettingOrigin, { colors }: Theme): string | undefin
   if (origin === 'global') return colors.info
   return colors.dim
 }
+
+export function indented(lines: readonly ReactNode[]): ReactNode[] {
+  return lines.map((line) => (
+    <Text>
+      {INDENT}
+      {line}
+    </Text>
+  ))
+}

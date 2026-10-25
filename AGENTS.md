@@ -329,7 +329,7 @@ src/
                          #   open and on r; shortenHome()), queue.tsx (the watch from the lock
                          #   and the history, its jobs by kind → a job with its requests;
                          #   queueRows()), reviews.tsx (the history with a text filter → one
-                         #   review with findings, publication, CI and feedback),
+                         #   review with findings, publication, CI and feedback; verdictColor()),
                          #   repositories.tsx (each repository with its origins, index and last
                          #   review → its watch filters, index, user config with origins, rules,
                          #   related repositories and last reviews), automation.tsx (one page:
@@ -342,7 +342,7 @@ src/
                          #   and on r; p and a number → the loaded rules of that pull request and
                          #   its prompt: each pass, its data blocks and instructions)
     setting-lines.tsx    #   settingLines(), settingValue(): config settings as key, value and
-                         #   origin rows
+                         #   origin rows; indented()
     units.ts             #   durationText(), bytesText()
     data-hooks.ts        #   usePolled() (local data, at once, every 2 s on the scheduler and when
                          #   its key changes), useLoaded() (slow data, on open and on r); DataState
@@ -354,8 +354,9 @@ src/
     text-field.tsx       #   useTextField() (every key while focused, Enter applies, Esc leaves;
                          #   a write of several keys taken in order; switched after the key that
                          #   asked), TextFieldLine
-    text-fit.ts          #   oneLine() (toTerminalText on one line), fit() (pad or cut with …, at
-                         #   the end or the start), wrapText()
+    text-fit.ts          #   oneLine() (toTerminalText on one line), namesText() (the first names
+                         #   and "+N"), fit() (pad or cut with …, at the end or the start),
+                         #   wrapText()
     labeled-lines.tsx    #   labeledLines(): label and value rows of a detail, values wrapped
     relative-time.ts     #   relativeTime() ("2m ago", "in ~4m" for an estimate), absoluteTime();
                          #   TimeMessages

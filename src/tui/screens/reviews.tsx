@@ -5,6 +5,7 @@ import type {
   FeedbackFinding,
   ListedRun,
   ReviewDetail,
+  RunRecord,
   StoredFinding,
 } from '../../app/read-history.js'
 import {
@@ -449,8 +450,11 @@ function place(file: string, line: number | undefined): string {
   return oneLine(line === undefined ? file : `${file}:${line}`)
 }
 
-export function verdictColor(run: ListedRun, { colors }: Theme): string | undefined {
-  const verdict = run.verdict ?? (run.status === 'failed' ? 'failed' : undefined)
+export function verdictColor(
+  run: Pick<RunRecord, 'verdict' | 'status'> | null,
+  { colors }: Theme,
+): string | undefined {
+  const verdict = run?.verdict ?? (run?.status === 'failed' ? 'failed' : undefined)
   if (verdict === 'clean') return colors.ok
   if (verdict === 'comments') return colors.warn
   if (verdict === 'blocking' || verdict === 'failed') return colors.error

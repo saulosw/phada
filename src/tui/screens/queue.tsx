@@ -18,7 +18,7 @@ import { absoluteTime, relativeTime } from '../relative-time.js'
 import { ScrollList, ScrollText, useSelection } from '../scroll-list.js'
 import { textWidth } from '../tab-layout.js'
 import type { Theme } from '../theme.js'
-import { fit, oneLine } from '../text-fit.js'
+import { fit, namesText, oneLine } from '../text-fit.js'
 
 interface QueueRow {
   kind: QueueRowKind
@@ -201,10 +201,14 @@ function rowDetail({ kind, entry }: QueueRow, now: Date, messages: UiMessages): 
   if (kind === 'waiting') {
     parts.push(m.ciUntil(when(job.ciDeadline ?? job.notBefore)))
     const pending = job.ciPending ?? []
-    parts.push(pending.length === 0 ? m.noChecks : m.pending(pending.length, names(pending)))
+    parts.push(
+      pending.length === 0
+        ? m.noChecks
+        : m.pending(pending.length, namesText(pending, NAMES_SHOWN)),
+    )
   }
   if (kind === 'skipped') {
-    parts.push(m.failing(names(job.ciFailing ?? [])))
+    parts.push(m.failing(namesText(job.ciFailing ?? [], NAMES_SHOWN)))
     if (job.ciCheckedAt !== undefined) parts.push(m.checked(when(job.ciCheckedAt)))
   }
   if (kind === 'failed') {
@@ -313,11 +317,6 @@ function errorText(job: QueueJob['job']): string | undefined {
   if (message === undefined) return undefined
   const text = oneLine(message)
   return job.errorKind === undefined ? text : `${job.errorKind}: ${text}`
-}
-
-function names(values: readonly string[]): string {
-  const shown = values.slice(0, NAMES_SHOWN).map(oneLine).join(', ')
-  return values.length > NAMES_SHOWN ? `${shown} +${values.length - NAMES_SHOWN}` : shown
 }
 
 function jobRef(entry: QueueJob): string {

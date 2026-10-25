@@ -11,7 +11,6 @@ import type { AppDeps, Scheduler } from './app-context.js'
 import { SCREENS } from './screens.js'
 import type { ScreenDefinition } from './screens.js'
 import { FLAP_MS, Mascot, MASCOT_FRAMES } from './mascot.js'
-import { HomeScreen } from './screens/home.js'
 import type { SizeSource, TerminalSize } from './terminal-size.js'
 
 const ESC = '\u001B'

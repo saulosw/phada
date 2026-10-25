@@ -4,6 +4,11 @@ export function oneLine(text: string): string {
   return toTerminalText(text.replace(/\s+/g, ' ')).trim()
 }
 
+export function namesText(values: readonly string[], shown: number): string {
+  const names = values.slice(0, shown).map(oneLine).join(', ')
+  return values.length > shown ? `${names} +${values.length - shown}` : names
+}
+
 export function fit(text: string, width: number, cut: 'end' | 'start' = 'end'): string {
   if (width <= 0) return ''
   const characters = [...text]

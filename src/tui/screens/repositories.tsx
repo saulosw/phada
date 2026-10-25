@@ -24,12 +24,13 @@ import type { UiMessages } from '../i18n/messages.js'
 import { labeledLines } from '../labeled-lines.js'
 import { absoluteTime, relativeTime } from '../relative-time.js'
 import { ScrollList, ScrollText, useSelection } from '../scroll-list.js'
-import { settingLines } from '../setting-lines.js'
+import { indented, settingLines } from '../setting-lines.js'
 import { textWidth } from '../tab-layout.js'
 import type { Theme } from '../theme.js'
 import { fit, oneLine, wrapText } from '../text-fit.js'
 import { bytesText } from '../units.js'
 import { shortenHome } from './home.js'
+import { verdictColor } from './reviews.js'
 
 const GAP = '  '
 const MIN_NAME_WIDTH = 16
@@ -421,15 +422,6 @@ export function ruleLines(
   ))
 }
 
-function indented(lines: ReactNode[]): ReactNode[] {
-  return lines.map((line) => (
-    <Text>
-      {'  '}
-      {line}
-    </Text>
-  ))
-}
-
 function originsText(origins: readonly RepositoryOrigin[], messages: UiMessages): string {
   return origins.map((origin) => messages.repositories.origins[origin]).join(', ')
 }
@@ -442,12 +434,4 @@ function verdictText(run: RunRecord, messages: UiMessages): string {
   return run.verdict === undefined
     ? messages.reviews.statuses[run.status]
     : messages.reviews.verdicts[run.verdict]
-}
-
-function verdictColor(run: RunRecord | null, { colors }: Theme): string | undefined {
-  const verdict = run?.verdict ?? (run?.status === 'failed' ? 'failed' : undefined)
-  if (verdict === 'clean') return colors.ok
-  if (verdict === 'comments') return colors.warn
-  if (verdict === 'blocking' || verdict === 'failed') return colors.error
-  return colors.dim
 }

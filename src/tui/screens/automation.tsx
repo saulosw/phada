@@ -7,7 +7,7 @@ import { DataView } from '../data-view.js'
 import type { UiMessages } from '../i18n/messages.js'
 import { labeledLines } from '../labeled-lines.js'
 import { ScrollText } from '../scroll-list.js'
-import { settingLines } from '../setting-lines.js'
+import { indented, settingLines } from '../setting-lines.js'
 import { textWidth } from '../tab-layout.js'
 import type { Theme } from '../theme.js'
 import { fit, oneLine, wrapText } from '../text-fit.js'
@@ -193,15 +193,6 @@ function pairLines(
       <Text color={colors.soft}>{fit(oneLine(label), labelWidth)}</Text>
       {GAP}
       {fit(oneLine(value), valueWidth)}
-    </Text>
-  ))
-}
-
-function indented(lines: ReactNode[]): ReactNode[] {
-  return lines.map((line) => (
-    <Text>
-      {'  '}
-      {line}
     </Text>
   ))
 }
