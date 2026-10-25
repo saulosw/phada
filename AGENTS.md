@@ -208,7 +208,8 @@ src/
   github/                # GitHub REST and GraphQL
     pull-request-ref.ts  #   parse/format "owner/repo#N" or a pull request URL; splitRepoName()
     errors.ts            #   GitHubError and typed errors
-    request.ts           #   method, body, headers, timeout, status → error, token redaction
+    request.ts           #   method, body, headers, timeout, status → error, token redaction;
+                         #   ensureReadable(): a 403 names the permission the token lacks
     json-fields.ts       #   typed reads of fields in GitHub answers
     graphql.ts           #   sendGraphQL(): errors in an HTTP 200 become GitHubGraphQLError
     pull-request.ts      #   fetchPullRequest(), fetchPullRequestMetadata(), fetchPullRequestHead()
@@ -228,6 +229,12 @@ src/
                          #   addCommentReaction()
     read-repository.ts   #   repositoryReader(): GET reads of one repository (and search/issues)
                          #   for the gh facade
+    check-runs.ts        #   fetchCheckRuns(): the check runs of a commit, paginated;
+                         #   fetchCheckAnnotations(): the annotations of a check run
+    commit-statuses.ts   #   fetchCommitStatuses(): the statuses of a commit (none when the
+                         #   combined status counts zero)
+    job-log.ts           #   fetchJobLog(): the end of an Actions job log, the redirect followed
+                         #   without the token, the last 512 KB by Range, 10 MB at most
   gh-facade/             # the gh a native skill runs: answered by Phada, writes captured
     gh-command.ts        #   parseGhCommand(), filesToRead(): gh argv → command
     gh-jq.ts             #   applyJq(): --jq with paths only

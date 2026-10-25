@@ -6,6 +6,7 @@ export interface FakeCall {
   url: string
   /** Only recorded when the request sets it, so GET-only callers see the original shape. */
   method?: string
+  redirect?: string
   /** Lower-cased header names, as seen on the wire. */
   headers: Record<string, string>
   body?: string
@@ -37,6 +38,7 @@ export function createFakeFetch(
     const call: FakeCall = {
       url,
       ...(init?.method === undefined ? {} : { method: init.method }),
+      ...(init?.redirect === undefined ? {} : { redirect: init.redirect }),
       headers,
       ...(typeof init?.body === 'string' ? { body: init.body } : {}),
     }
