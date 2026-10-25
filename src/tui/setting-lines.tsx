@@ -19,13 +19,15 @@ export function settingLines(
   const origins = Object.values(messages.settings.origins)
   const keyWidth = Math.max(0, ...settings.map(({ key }) => textWidth(key)))
   const originWidth = Math.max(...origins.map(textWidth))
-  const valueWidth = Math.max(columns - INDENT.length - keyWidth - originWidth - GAP.length * 2, 1)
-  return settings.map((setting) => (
+  const values = settings.map((setting) => settingValue(setting, messages))
+  const room = columns - INDENT.length - keyWidth - originWidth - GAP.length * 2
+  const valueWidth = Math.max(Math.min(room, Math.max(0, ...values.map(textWidth))), 1)
+  return settings.map((setting, index) => (
     <Text>
       {INDENT}
       <Text color={theme.colors.soft}>{fit(setting.key, keyWidth)}</Text>
       {GAP}
-      {fit(settingValue(setting, messages), valueWidth)}
+      {fit(values[index] ?? '', valueWidth)}
       {GAP}
       <Text color={originColor(setting.origin, theme)} bold={setting.origin === 'repository'}>
         {messages.settings.origins[setting.origin]}
