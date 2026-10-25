@@ -94,7 +94,9 @@ src/
                          #   the checks of the CI gate not read, with the warnings
     read-rules.ts        #   readRules(): the context of a pull request (at its base) or of the
                          #   default branch without a review — report, ignore and the reviewer
-                         #   lens — or empty; GitHub reads injected (RulesReaders)
+                         #   lens — or empty; GitHub reads injected (RulesReaders); localRules():
+                         #   the lens and the rules of the user config alone; NoGitHubToken,
+                         #   BranchRules, PullRequestRules (the rules with the prompt) for the app
     read-queue.ts        #   readQueue(): the watch from the lock holder and the history — repos
                          #   with their last cycle, the next one estimated while a watch runs,
                          #   queued, waiting for CI, running, skipped for failing CI and failed
@@ -173,7 +175,11 @@ src/
                          #   readProviders (the status checkers of src/providers/, injectable),
                          #   readLearnings (the observed files of the cache, read only),
                          #   readGitHub (readGitHubAccess() with gh asked again on each read;
-                         #   runGh and fetchUser injectable)
+                         #   runGh and fetchUser injectable); rulesReaders() of app-rules.ts
+    app-rules.ts         #   rulesReaders(): readLocalRules (the user config), readRepositoryRules
+                         #   (the default branch) and readPullRequestRules (readRules at the base
+                         #   and pullRequestPrompt(), the pull request and the repository files
+                         #   read once) with the token of readGitHubToken(), no-token without one
     app-history.ts       #   appHistory(): the history for the app, opened once when its file
                          #   exists (looked for again while missing, never created), a newer or
                          #   unreadable file thrown on each read
@@ -183,7 +189,9 @@ src/
     rules-command.ts     #   runRules(): token, user config, readRules() for a pull request or
                          #   the default branch, printed as text or JSON
     prompt-command.ts    #   runPrompt(): the built-in prompt, or the prompt of a pull request
-                         #   with its conversation and checks (as the config turns them on)
+                         #   with its conversation and checks (as the config turns them on);
+                         #   pullRequestPrompt(): that prompt for a fetched pull request (also
+                         #   the app's)
     format-prompt.ts     #   formatPromptText(), formatPromptJson() (schemaVersion 1)
     skill-catalog.ts     #   diskSkillCatalog(): the installed skills, listed once, found by name;
                          #   claude:<name> for a skill built into Claude Code
@@ -297,7 +305,8 @@ src/
     app-context.ts       #   AppDeps (version, cwd, home, env, scheduler, language, configError,
                          #   now, readQueue, readReviews, readReviewDetail, readRepositories,
                          #   readRepository, readAutomation, readProviderSetup, readProviders,
-                         #   readLearnings, readGitHub), Scheduler, KeyHint;
+                         #   readLearnings, readGitHub, readLocalRules, readRepositoryRules,
+                         #   readPullRequestRules), Scheduler, KeyHint;
                          #   useAppDeps(), useTheme(), useMessages(), useWorking(),
                          #   useIsWorking(), useScreenKeys(), useBack(), useScreenInput() (quiet
                          #   while a text field is focused), useScreenSize()
@@ -318,7 +327,11 @@ src/
                          #   choice and its origin, each AI checked on open and on r with its next
                          #   step, the MCP servers; PROVIDER_NAMES), learnings.tsx (each
                          #   repository's relations and feedback → its feedback per rule and its
-                         #   relations), placeholder.tsx
+                         #   relations), rules.tsx (a repository → the lens and who set it, the
+                         #   user's rules at once, .phada/ and docs of the default branch on open
+                         #   and on r; p and a number → the loaded rules of that pull request and
+                         #   its prompt: each pass, its data blocks and instructions),
+                         #   placeholder.tsx
     setting-lines.tsx    #   settingLines(), settingValue(): config settings as key, value and
                          #   origin rows
     units.ts             #   durationText(), bytesText()

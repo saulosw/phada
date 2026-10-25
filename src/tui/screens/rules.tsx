@@ -573,12 +573,12 @@ function passLines(pass: PromptPassView, index: number, draw: Draw): ReactNode[]
     </Text>,
     ...pass.parts.flatMap((part) => [
       <Text color={colors.dim}>
-        {'      '}
+        {'    '}
         {`── ${part.section} · ${oneLine(part.origin)}`}
       </Text>,
-      ...wrapText(part.text, width - 6).map((line) => (
+      ...wrapText(part.text, width - 4).map((line) => (
         <Text>
-          {'      '}
+          {'    '}
           {line}
         </Text>
       )),
