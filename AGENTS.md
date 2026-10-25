@@ -88,10 +88,21 @@ src/
                          #   (CiReaders.permissionDenied) stops that kind of read; the logs that
                          #   are gone (CiReaders.logUnavailable) give one warning; CiReadError:
                          #   the checks of the CI gate not read, with the warnings
-    inspect-context.ts   #   inspectPullRequestContext(), inspectRepositoryContext(): the context
-                         #   without a review
+    read-rules.ts        #   readRules(): the context of a pull request (at its base) or of the
+                         #   default branch without a review — report, ignore and the reviewer
+                         #   lens — or empty; GitHub reads injected (RulesReaders)
+    read-queue.ts        #   readQueue(): the watch from the lock holder and the history — repos
+                         #   with their last cycle, the next one estimated while a watch runs,
+                         #   queued, waiting for CI, running, skipped for failing CI and failed
+                         #   jobs with their requests, pause, reviews of the last hour
+    read-history.ts      #   readReviews(), readFindings() (destination and marks of each),
+                         #   readFeedbackStats() (feedbackStats() per repository, ruleStats() per
+                         #   rule), readReviewDetail(): one run with what its stored JSON keeps
+                         #   (score, summary, findings, publication, CI) and the feedback of each
+                         #   published finding; no history file reads as empty
     review-passes.ts     #   buildPasses(): review.prompt, review.skills or --skill → one SkillPass
-                         #   per skill (paths matched here), SkillCatalog, PassPlan
+                         #   per skill (paths matched here), SkillCatalog, PassPlan;
+                         #   configuredLens(): the lens a config sets (built-in, prompt, skills)
     inspect-prompt.ts    #   inspectPrompt(), defaultPromptView(): the prompt of each pass and the
                          #   size of its data blocks (with the conversation and CI read), without
                          #   the AI
@@ -120,7 +131,7 @@ src/
     init.ts              #   runInit(): .phada/ in the repository, or the user's own config
     init-templates.ts    #   the commented files phada init writes
     index-command.ts     #   runIndex(): token, cache folder, mirror, progress, the map's report
-    rules-command.ts     #   runRules(): token, user config, the context of a pull request or of
+    rules-command.ts     #   runRules(): token, user config, readRules() for a pull request or
                          #   the default branch, printed as text or JSON
     prompt-command.ts    #   runPrompt(): the built-in prompt, or the prompt of a pull request
                          #   with its conversation and checks (as the config turns them on)
@@ -165,10 +176,10 @@ src/
     watch-stop.ts        #   createStopControl(): Ctrl-C once (finish the review) or twice (abort);
                          #   trackRunningJob(): which job a second Ctrl-C puts back
     watch-events.ts      #   printWatchEvents(): the watch events as terminal lines
-    watch-status.ts      #   watchStatusText(): --status in text or JSON
-    history-command.ts   #   runHistory() (list, stats, --refresh), runHistoryPrune()
-    format-history.ts    #   formatHistoryText/Json(), feedbackStats(), formatStatsText/Json()
-                         #   (schemaVersion 1)
+    watch-status.ts      #   watchStatusText(): readQueue() as --status in text or JSON
+    history-command.ts   #   runHistory() (list, stats, --refresh) over the history use cases,
+                         #   runHistoryPrune(); the history opened only when its file exists
+    format-history.ts    #   formatHistoryText/Json(), formatStatsText/Json() (schemaVersion 1)
     format-watch.ts      #   formatWatchEvent(), formatWatchStatus(), formatWatchStatusJson(); a
                          #   job waiting for CI with its deadline and pending checks, skipped
                          #   for failing CI or back in the queue
@@ -255,7 +266,8 @@ src/
                          #   alwaysApply, description and excludeAgent
     load-context.ts      #   loadContext(): config files, rules in scope, ignore, docs in scope →
                          #   ReviewContext + report
-    list-context.ts      #   listContext(): every .phada/ folder, rule and candidate doc of a branch
+    list-context.ts      #   listContext(): every .phada/ folder, rule and candidate doc of a branch,
+                         #   and its review settings
     ci-state.ts          #   ciEntries(): check runs (the latest run of each name) and commit
                          #   statuses → the checks that count,
                          #   passing, failing or pending; ciSummary(): the CI state (none, pending,
@@ -434,8 +446,10 @@ src/
     observed-store.ts    #   openObservedStore(): relations learned from reviews (own schema)
     history-store.ts     #   openHistoryStore(): the review history, never rebuilt; watched
                          #   repositories and pull requests, jobs and their review requests, runs
-                         #   with their verdict, pause, runs(), prune(); requestsWith(): the
-                         #   requests of a source whose data has some values (a Slack message)
+                         #   with their verdict, pause, runs(), run(), prune(); requestsWith(): the
+                         #   requests of a source whose data has some values (a Slack message);
+                         #   openExistingHistoryStore(): missing, open, newer or unreadable as
+                         #   data, never creating the file
     history-feedback.ts  #   published findings, observations and their signals (observed and
                          #   cleared), feedbackDue()
     history-columns.ts   #   the history tables (columns, keys) and their insert/upsert/update
