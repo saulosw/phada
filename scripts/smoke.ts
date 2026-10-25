@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 interface PackResult {
   filename: string
@@ -29,6 +30,7 @@ try {
   for (const file of [
     'dist/bin.js',
     'dist/investigation/mcp/mcp-bridge.js',
+    'dist/tui/open-app.js',
     'README.md',
     'LICENSE',
     ...GRAMMARS,
@@ -76,6 +78,27 @@ try {
       noToken.stderr.startsWith('phada: No GitHub token found.') &&
       noToken.stderr.includes('gh auth login'),
     `phada review without a token: exit ${noToken.status}, ${noToken.stderr}`,
+  )
+  const noCommand = spawnSync(phada, [], { encoding: 'utf8', timeout: TIMEOUT_MS })
+  check(
+    noCommand.status === 2 &&
+      noCommand.stderr ===
+        'phada: Missing the command, e.g. phada review owner/repo#123. Run with --help for usage.\n',
+    `phada with no command outside a terminal: exit ${noCommand.status}, ${noCommand.stderr}`,
+  )
+  const appEntry = join(dir, 'node_modules', 'phada', 'dist', 'tui', 'open-app.js')
+  const tui = spawnSync(
+    process.execPath,
+    [
+      '--input-type=module',
+      '-e',
+      `const { openApp } = await import(${JSON.stringify(pathToFileURL(appEntry).href)}); process.stdout.write(typeof openApp)`,
+    ],
+    { encoding: 'utf8', timeout: TIMEOUT_MS },
+  )
+  check(
+    tui.status === 0 && tui.stdout === 'function',
+    `the app entry from the package: exit ${tui.status}, ${tui.stdout}${tui.stderr}`,
   )
   const queue = spawnSync(phada, ['mcp'], {
     encoding: 'utf8',
