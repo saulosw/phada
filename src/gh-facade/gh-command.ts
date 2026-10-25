@@ -47,6 +47,10 @@ const SPECS: Record<string, FlagSpec> = {
     values: { ...REPO, '--color': 'color' },
     bools: { '--name-only': 'name-only', '--patch': 'patch' },
   },
+  'pr checks': {
+    values: { ...REPO, ...JSON_FLAGS, '-i': 'interval', '--interval': 'interval' },
+    bools: { '--watch': 'watch', '--required': 'required', '--fail-fast': 'fail-fast' },
+  },
   'pr list': { values: LIST, bools: { '-d': 'draft', '--draft': 'draft' } },
   'pr comment': { values: { ...REPO, ...BODY }, bools: {} },
   'pr review': {
@@ -129,6 +133,13 @@ export function parseGhCommand(argv: readonly string[], input: GhCommandInput): 
         ...optional('target', target),
         ...optional('repo', one('repo')),
         nameOnly: flags.bools.has('name-only'),
+      }
+    case 'pr checks':
+      return {
+        kind: 'pr-checks',
+        ...optional('target', target),
+        ...listing,
+        watch: flags.bools.has('watch'),
       }
     case 'pr list':
     case 'issue list':

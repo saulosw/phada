@@ -170,6 +170,7 @@ const GH_FACADE: Boundary = {
   expected: [
     'gh-answer.ts',
     'gh-bridge.ts',
+    'gh-checks.ts',
     'gh-command.ts',
     'gh-jq.ts',
     'gh-server.ts',
