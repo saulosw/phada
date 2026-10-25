@@ -1,5 +1,6 @@
 import { isAbsolute, join } from 'node:path'
 import { ConfigError } from './errors.js'
+import { userLayerLabel } from './layer-label.js'
 import type { LocalFileSystem } from './local-files.js'
 import { parseConfigText } from './parse-config.js'
 import type { ConfigLayer, LayerKind } from './types.js'
@@ -33,13 +34,8 @@ export async function loadUserLayers(options: {
 }): Promise<ConfigLayer[]> {
   const { env, home, owner, repo, files } = options
   const layers = await Promise.all([
-    loadLayer(files, 'user', userConfigDir(env, home), ''),
-    loadLayer(
-      files,
-      'user-repo',
-      userRepoDir(env, home, owner, repo),
-      `repos/${owner.toLowerCase()}/${repo.toLowerCase()}/`,
-    ),
+    loadLayer(files, 'user', userConfigDir(env, home)),
+    loadLayer(files, 'user-repo', userRepoDir(env, home, owner, repo), { owner, repo }),
   ])
   return layers.filter((layer) => layer !== undefined)
 }
@@ -49,7 +45,7 @@ export async function loadTopLevelUserLayers(options: {
   home: string
   files: LocalFileSystem
 }): Promise<ConfigLayer[]> {
-  const layer = await loadLayer(options.files, 'user', userConfigDir(options.env, options.home), '')
+  const layer = await loadLayer(options.files, 'user', userConfigDir(options.env, options.home))
   return layer === undefined ? [] : [layer]
 }
 
@@ -57,7 +53,7 @@ async function loadLayer(
   files: LocalFileSystem,
   kind: LayerKind,
   dir: string,
-  labelPrefix: string,
+  repo?: { owner: string; repo: string },
 ): Promise<ConfigLayer | undefined> {
   const configPath = join(dir, 'config.yml')
   const [configText, rulesText] = await Promise.all([
@@ -71,7 +67,7 @@ async function loadLayer(
   return {
     kind,
     dir: '',
-    configLabel: `user:${labelPrefix}config.yml`,
+    configLabel: userLayerLabel('config.yml', repo),
     config: {
       ...config,
       ...(review === undefined
@@ -93,7 +89,7 @@ async function loadLayer(
     },
     ...(rulesText === null
       ? {}
-      : { rulesMarkdown: { label: `user:${labelPrefix}rules.md`, text: rulesText } }),
+      : { rulesMarkdown: { label: userLayerLabel('rules.md', repo), text: rulesText } }),
   }
 }
 
