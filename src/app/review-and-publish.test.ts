@@ -172,6 +172,7 @@ function setup(
       return []
     },
     ci: {
+      permissionDenied: () => false,
       checkRuns: async (sha) => {
         calls.ciReads.push(`runs ${sha}`)
         return []
@@ -886,6 +887,7 @@ describe('reviewAndPublish with the checks of the head', () => {
       calls.ciReads.push(`log ${id}`)
       return { text: JOB_LOG, partial: false }
     },
+    permissionDenied: (error) => error instanceof GitHubPermissionError,
     ...overrides,
   })
   const ciOf = (prompt: ReviewPrompt | undefined): unknown[] => {
@@ -1187,6 +1189,7 @@ describe('reviewAndPublish with a native skill', () => {
         },
       ],
       ci: {
+        permissionDenied: () => false,
         checkRuns: async () => [
           {
             id: 7,

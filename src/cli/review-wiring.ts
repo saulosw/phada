@@ -12,7 +12,11 @@ import type { CommitStatus } from '../github/commit-statuses.js'
 import type { JobLog } from '../github/job-log.js'
 import type { PublicationResult, RenderedReview, ReviewRun } from '../app/review-and-publish.js'
 import { repositoryCache } from '../config/cache-paths.js'
-import { GitHubRateLimitError, PullRequestNotFoundError } from '../github/errors.js'
+import {
+  GitHubPermissionError,
+  GitHubRateLimitError,
+  PullRequestNotFoundError,
+} from '../github/errors.js'
 import { splitRepoName } from '../github/pull-request-ref.js'
 import type {
   FetchReviewStateOptions,
@@ -98,6 +102,7 @@ export function ciReaders(deps: CiReaderDeps, { owner, repo, token }: PublishTar
     statuses: (sha) => deps.fetchCommitStatuses({ ...repository, sha }),
     annotations: (checkRunId) => deps.fetchCheckAnnotations({ ...repository, checkRunId }),
     jobLog: (jobId) => deps.fetchJobLog({ ...repository, jobId }),
+    permissionDenied: (error) => error instanceof GitHubPermissionError,
   }
 }
 export type Choice = { provider: string; model?: string; mcpNames?: CheckedNames }

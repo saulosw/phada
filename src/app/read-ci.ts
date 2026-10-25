@@ -12,6 +12,7 @@ export interface CiReaders {
   statuses(sha: string): Promise<CommitStatus[]>
   annotations(checkRunId: number): Promise<CheckAnnotation[]>
   jobLog(jobId: number): Promise<JobLog>
+  permissionDenied(error: unknown): boolean
 }
 
 export type Warn = (message: string) => void
@@ -79,7 +80,7 @@ async function readAnnotations(
       annotations.set(id, read)
       kept += read.filter(keepsAnnotation).length
     } catch (error) {
-      if (isPermissionError(error)) {
+      if (readers.permissionDenied(error)) {
         warn(`Check annotations were not read: ${errorMessage(error)}`)
         break
       }
@@ -101,7 +102,7 @@ async function readLogs(
     try {
       logs.set(id, await readers.jobLog(id))
     } catch (error) {
-      if (isPermissionError(error)) {
+      if (readers.permissionDenied(error)) {
         warn(`Job logs were not read: ${errorMessage(error)}`)
         break
       }
@@ -109,8 +110,4 @@ async function readLogs(
     }
   }
   return logs
-}
-
-function isPermissionError(error: unknown): boolean {
-  return error instanceof Error && 'permission' in error
 }
