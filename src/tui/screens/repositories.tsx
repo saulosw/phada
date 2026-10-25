@@ -63,12 +63,12 @@ export function RepositoriesScreen() {
   if (open !== undefined) return <RepositoryDetailView repo={open} />
   return (
     <DataView state={state}>
-      {(list) => <RepositoryListView list={list} index={selection.index} />}
+      {(list) => <RepositoryListView list={list} selected={selection.index} />}
     </DataView>
   )
 }
 
-function RepositoryListView({ list, index }: { list: RepositoryList; index: number }) {
+function RepositoryListView({ list, selected }: { list: RepositoryList; selected: number }) {
   const messages = useMessages()
   const theme = useTheme()
   const { colors } = theme
@@ -80,38 +80,45 @@ function RepositoryListView({ list, index }: { list: RepositoryList; index: numb
     entry,
     name: oneLine(entry.repo),
     origins: originsText(entry.origins, messages),
-    index: entry.index.file === null ? m.noIndex : bytesText(entry.index.file.bytes),
+    indexText: entry.index.file === null ? m.noIndex : bytesText(entry.index.file.bytes),
     last: entry.lastReview === null ? '–' : lastReviewText(entry.lastReview, time, messages),
   }))
   const width = (header: string, values: readonly string[]) =>
     Math.max(textWidth(header), ...values.map(textWidth))
-  const columns = {
-    origins: width(
-      m.columns.origin,
-      rows.map(({ origins }) => origins),
-    ),
-    index: width(
-      m.columns.index,
-      rows.map(({ index: text }) => text),
-    ),
-    last: width(
-      m.columns.last,
-      rows.map(({ last }) => last),
-    ),
-  }
-  const fixed = 2 + columns.origins + columns.index + columns.last + GAP.length * 3
+  const fullOrigins = width(
+    m.columns.origin,
+    rows.map(({ origins }) => origins),
+  )
+  const index = width(
+    m.columns.index,
+    rows.map(({ indexText }) => indexText),
+  )
+  const last = width(
+    m.columns.last,
+    rows.map(({ last: text }) => text),
+  )
+  const room = Math.max(size.columns - 2 - index - last - GAP.length * 3, 0)
+  const leastOrigins = Math.min(
+    fullOrigins,
+    Math.max(textWidth(m.columns.origin), ...Object.values(m.origins).map(textWidth)),
+  )
   const nameWidth = Math.min(
     width(
       m.columns.repo,
       rows.map(({ name }) => name),
     ),
-    Math.max(size.columns - fixed, MIN_NAME_WIDTH),
+    Math.max(room - leastOrigins, MIN_NAME_WIDTH),
   )
-  const line = (cells: { name: string; origins: string; index: string; last: string }) =>
+  const columns = {
+    origins: Math.max(Math.min(fullOrigins, room - nameWidth), 0),
+    index,
+    last,
+  }
+  const line = (cells: { name: string; origins: string; indexText: string; last: string }) =>
     [
       fit(cells.name, nameWidth, 'start'),
       fit(cells.origins, columns.origins),
-      fit(cells.index, columns.index),
+      fit(cells.indexText, columns.index),
       cells.last,
     ].join(GAP)
   const watched = list.repositories.filter(({ origins }) => origins.includes('watched')).length
@@ -139,13 +146,13 @@ function RepositoryListView({ list, index }: { list: RepositoryList; index: numb
             {line({
               name: m.columns.repo,
               origins: m.columns.origin,
-              index: m.columns.index,
+              indexText: m.columns.index,
               last: m.columns.last,
             })}
           </Text>
           <ScrollList
             items={rows}
-            index={index}
+            index={selected}
             rows={Math.max(size.rows - head.length - 1, 1)}
             keyOf={({ entry }) => repoKey(entry)}
             renderItem={(row) => (
@@ -155,7 +162,7 @@ function RepositoryListView({ list, index }: { list: RepositoryList; index: numb
                 {fit(row.origins, columns.origins)}
                 {GAP}
                 <Text color={row.entry.index.file === null ? colors.dim : undefined}>
-                  {fit(row.index, columns.index)}
+                  {fit(row.indexText, columns.index)}
                 </Text>
                 {GAP}
                 <Text color={verdictColor(row.entry.lastReview, theme)}>{row.last}</Text>

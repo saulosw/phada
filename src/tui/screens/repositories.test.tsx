@@ -142,11 +142,9 @@ describe('RepositoriesScreen', () => {
 
     const frame = view.frame()
     expect(frame).toContain('3 repositories · 2 watched')
-    expect(frame).toMatch(
-      /acme\/shop\s+watched, own config, history\s+12\.3 MB\s+comments · 2h ago/,
-    )
+    expect(frame).toMatch(/acme\/shop\s+watched, …\s+12\.3 MB\s+comments · 2h ago/)
     expect(frame).toMatch(/acme\/api\s+watched\s+none/)
-    expect(frame).toMatch(/…\S*monolith-service/)
+    expect(frame).toMatch(/…\S*\/legacy-monolith-service/)
     expect(frame).toContain('blocking · 3d ago')
     expectFits(frame, { columns: 80, rows: 24 })
   })
