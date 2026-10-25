@@ -248,7 +248,7 @@ describe('the palette', () => {
     expect(palette).not.toContain('Queue')
     await press(KEYS.down, KEYS.enter)
     expect(frame()).not.toContain('❯')
-    expect(frame()).toContain('This screen is not ready yet.')
+    expect(frame()).toContain('No reviews yet.')
   })
 
   it('matches the English names and ignores accents in another language', async () => {

@@ -1,3 +1,4 @@
+import type { FeedbackFinding, ListedRun, ReviewDetail } from '../../app/read-history.js'
 import type { QueueJob } from '../../app/read-queue.js'
 import type { TimeMessages } from '../relative-time.js'
 import { english } from './en.js'
@@ -46,6 +47,7 @@ export interface UiMessages {
     channel(id: string): string
   }
   queue: QueueMessages
+  reviews: ReviewsMessages
 }
 
 type RequestSource = QueueJob['requests'][number]['source']
@@ -87,6 +89,49 @@ export interface QueueMessages {
     error: string
     publish: string
     requests(count: number): string
+    gone: string
+  }
+}
+
+export type ReviewSource = ListedRun['source'] | NonNullable<ListedRun['requestSource']>
+
+export interface ReviewsMessages {
+  count(total: number): string
+  latest(shown: number): string
+  filter: string
+  columns: {
+    pr: string
+    verdict: string
+    score: string
+    findings: string
+    when: string
+    source: string
+  }
+  none: string
+  noneHint: string
+  or: string
+  noMatch(text: string): string
+  verdicts: Readonly<Record<NonNullable<ReviewDetail['verdict']>, string>>
+  statuses: Readonly<Record<ListedRun['status'], string>>
+  sources: Readonly<Record<ReviewSource, string>>
+  ciStates: Readonly<Record<string, string>>
+  outcomes: Readonly<Record<FeedbackFinding['destination'], string>>
+  marks: Readonly<Record<FeedbackFinding['marks'][number], string>>
+  detail: {
+    score: string
+    verdict: string
+    status: string
+    reviewed: string
+    ci: string
+    failing(names: string): string
+    pending(names: string): string
+    published: string
+    comments(count: number): string
+    error: string
+    summary: string
+    findings(count: number): string
+    worthChecking(count: number): string
+    feedback(count: number): string
     gone: string
   }
 }
