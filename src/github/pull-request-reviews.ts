@@ -21,6 +21,13 @@ const PULL_STATES: Readonly<Record<string, PullState>> = {
   CLOSED: 'closed',
   MERGED: 'merged',
 }
+const REVIEW_STATES: Readonly<Record<string, ReviewState>> = {
+  APPROVED: 'approved',
+  CHANGES_REQUESTED: 'changes-requested',
+  COMMENTED: 'commented',
+  DISMISSED: 'dismissed',
+  PENDING: 'pending',
+}
 
 const REVIEWS_QUERY = `query($owner: String!, $repo: String!, $number: Int!, $after: String) {
   viewer { login }
@@ -29,7 +36,16 @@ const REVIEWS_QUERY = `query($owner: String!, $repo: String!, $number: Int!, $af
       state
       reviews(first: 100, after: $after) {
         pageInfo { hasNextPage endCursor }
-        nodes { id body author { login } url commit { oid } }
+        nodes {
+          id
+          body
+          state
+          createdAt
+          authorAssociation
+          author { login __typename }
+          url
+          commit { oid }
+        }
       }
     }
   }
@@ -48,19 +64,38 @@ const THREADS_QUERY = `query($owner: String!, $repo: String!, $number: Int!, $af
           line
           comments(first: 1) {
             nodes {
+              id
               url
               body
-              author { login }
+              createdAt
+              authorAssociation
+              author { login __typename }
               pullRequestReview { id }
               reactionGroups { content reactors { totalCount } }
             }
           }
-          replies: comments(last: 20) { nodes { body author { login __typename } } }
+          replies: comments(last: 20) {
+            totalCount
+            nodes { id body createdAt authorAssociation author { login __typename } }
+          }
         }
       }
     }
   }
 }`
+
+const COMMENTS_QUERY = `query($owner: String!, $repo: String!, $number: Int!, $after: String) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $number) {
+      comments(first: 100, after: $after) {
+        pageInfo { hasNextPage endCursor }
+        nodes { id body createdAt authorAssociation author { login __typename } }
+      }
+    }
+  }
+}`
+
+export type ReviewState = 'approved' | 'changes-requested' | 'commented' | 'dismissed' | 'pending'
 
 export interface PublishedReview {
   id: string
@@ -68,12 +103,28 @@ export interface PublishedReview {
   body: string
   commitSha: string | null
   url?: string
+  state?: ReviewState
+  createdAt?: string
+  association?: string
+  bot?: boolean
 }
 
 export interface ThreadComment {
   author: string
   body: string
   bot: boolean
+  id?: string
+  createdAt?: string
+  association?: string
+}
+
+export interface PullComment {
+  id: string
+  author: string
+  bot: boolean
+  association: string
+  createdAt: string
+  body: string
 }
 
 export interface ReviewThread {
@@ -88,6 +139,11 @@ export interface ReviewThread {
   reviewId: string | null
   negativeReactions: number
   replies: ThreadComment[]
+  commentId?: string
+  createdAt?: string
+  association?: string
+  bot?: boolean
+  comments?: number
 }
 
 export type PullState = 'open' | 'closed' | 'merged'
@@ -113,14 +169,7 @@ interface Page {
 export async function fetchReviewState(
   options: FetchReviewStateOptions,
 ): Promise<PullRequestReviewState> {
-  const { owner, repo, number } = options
-  const ref = formatPullRequestRef({ owner, repo, number })
-  const ctx: GitHubRequestContext = {
-    token: options.token,
-    fetch: options.fetch ?? globalThis.fetch,
-    timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-  }
-  const variables = { owner, repo, number }
+  const { ctx, ref, variables } = requestOf(options)
   const reviewPages = await fetchPages(ctx, ref, REVIEWS_QUERY, variables, 'reviews')
   const threadPages = await fetchPages(ctx, ref, THREADS_QUERY, variables, 'reviewThreads')
   return {
@@ -128,6 +177,34 @@ export async function fetchReviewState(
     pullState: pullStateOf(reviewPages[0]?.data),
     reviews: reviewPages.flatMap(({ nodes }) => nodes.map(toReview)),
     threads: threadPages.flatMap(({ nodes }) => nodes.map(toThread)),
+  }
+}
+
+export async function fetchPullComments(options: FetchReviewStateOptions): Promise<PullComment[]> {
+  const { ctx, ref, variables } = requestOf(options)
+  const pages = await fetchPages(ctx, ref, COMMENTS_QUERY, variables, 'comments')
+  return pages.flatMap(({ nodes }) =>
+    nodes.map((node) => ({
+      id: stringField(node, 'id'),
+      ...authorOf(node, 'author'),
+      association: stringField(node, 'authorAssociation'),
+      createdAt: stringField(node, 'createdAt'),
+      body: stringField(node, 'body'),
+    })),
+  )
+}
+
+function requestOf(options: FetchReviewStateOptions) {
+  const { owner, repo, number } = options
+  const ctx: GitHubRequestContext = {
+    token: options.token,
+    fetch: options.fetch ?? globalThis.fetch,
+    timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+  }
+  return {
+    ctx,
+    ref: formatPullRequestRef({ owner, repo, number }),
+    variables: { owner, repo, number },
   }
 }
 
@@ -176,12 +253,19 @@ function nextCursor(root: unknown, connection: string): string | null {
 }
 
 function toReview(node: unknown): PublishedReview {
+  const state = REVIEW_STATES[stringField(node, 'state')]
+  if (state === undefined) throw invalidPayload('review.state')
+  const { author, bot } = authorOf(node, 'author')
   return {
     id: stringField(node, 'id'),
-    author: login(node, 'author'),
+    author,
     body: stringField(node, 'body'),
     commitSha: field(node, 'commit') === null ? null : stringField(node, 'commit.oid'),
     ...(typeof field(node, 'url') === 'string' ? { url: stringField(node, 'url') } : {}),
+    state,
+    createdAt: stringField(node, 'createdAt'),
+    association: stringField(node, 'authorAssociation'),
+    bot,
   }
 }
 
@@ -208,10 +292,29 @@ function toThread(node: unknown): ReviewThread {
         : stringField(comment, 'pullRequestReview.id'),
     negativeReactions: comment === undefined ? 0 : negativeReactions(comment),
     replies: arrayField(node, 'replies.nodes').map((reply) => ({
-      author: login(reply, 'author'),
+      id: stringField(reply, 'id'),
+      ...authorOf(reply, 'author'),
       body: stringField(reply, 'body'),
-      bot: field(reply, 'author') !== null && stringField(reply, 'author.__typename') === 'Bot',
+      createdAt: stringField(reply, 'createdAt'),
+      association: stringField(reply, 'authorAssociation'),
     })),
+    ...(comment === undefined
+      ? {}
+      : {
+          commentId: stringField(comment, 'id'),
+          createdAt: stringField(comment, 'createdAt'),
+          association: stringField(comment, 'authorAssociation'),
+          bot: authorOf(comment, 'author').bot,
+        }),
+    comments: numberField(node, 'replies.totalCount'),
+  }
+}
+
+function authorOf(node: unknown, path: string): { author: string; bot: boolean } {
+  if (field(node, path) === null) return { author: '', bot: false }
+  return {
+    author: stringField(node, `${path}.login`),
+    bot: stringField(node, `${path}.__typename`) === 'Bot',
   }
 }
 

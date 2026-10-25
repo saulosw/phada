@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { createFakeFetch } from '../../test/support/fake-fetch.js'
 import type { FakeCall, FakeResponse } from '../../test/support/fake-fetch.js'
 import { GitHubRequestError, PullRequestNotFoundError } from './errors.js'
-import { fetchReviewState } from './pull-request-reviews.js'
+import { fetchPullComments, fetchReviewState } from './pull-request-reviews.js'
 
 const TOKEN = 'ghp_SECRET_test_token'
 const HEAD_SHA = 'f41a2c3280de0d54ab06d79fa18e93e576e511e6'
@@ -72,6 +72,10 @@ describe('fetchReviewState', () => {
           body: `Captured review.\n\n<!-- phada:review sha=${HEAD_SHA} findings=1 -->`,
           commitSha: HEAD_SHA,
           url: 'https://github.com/saulosw/phada-dev-web/pull/11#pullrequestreview-5444118781',
+          state: 'commented',
+          createdAt: '2026-10-08T00:58:40Z',
+          association: 'OWNER',
+          bot: false,
         },
       ],
       threads: [
@@ -86,13 +90,28 @@ describe('fetchReviewState', () => {
           body: "**P0** · Any user can spend another user's crystals · confidence 95\n\nThe user id comes from the request body.\n\n<!-- phada:finding -->",
           reviewId: REVIEW_ID,
           negativeReactions: 0,
+          commentId: 'PRRC_kwDOQNCyRM6PqA01',
+          createdAt: '2026-10-08T00:58:40Z',
+          association: 'OWNER',
+          bot: false,
+          comments: 2,
           replies: [
             {
+              id: 'PRRC_kwDOQNCyRM6PqA01',
               author: 'saulosw',
               body: "**P0** · Any user can spend another user's crystals · confidence 95\n\nThe user id comes from the request body.\n\n<!-- phada:finding -->",
               bot: false,
+              createdAt: '2026-10-08T00:58:40Z',
+              association: 'OWNER',
             },
-            { author: 'octocat', body: 'Still happens on main.', bot: false },
+            {
+              id: 'PRRC_kwDOQNCyRM6PqB77',
+              author: 'octocat',
+              body: 'Still happens on main.',
+              bot: false,
+              createdAt: '2026-10-08T09:12:03Z',
+              association: 'NONE',
+            },
           ],
         },
       ],
@@ -148,8 +167,20 @@ describe('fetchReviewState', () => {
     const threads = withPage(fixture('graphql-threads.json'), 'reviewThreads', (root) => {
       const [thread] = root.nodes as Json[]
       ;(thread!.replies as Json).nodes = [
-        { body: 'Deployed.', author: { login: 'ci-bot', __typename: 'Bot' } },
-        { body: 'Gone.', author: null },
+        {
+          id: 'C1',
+          body: 'Deployed.',
+          createdAt: '2026-10-08T01:00:00Z',
+          authorAssociation: 'NONE',
+          author: { login: 'ci-bot', __typename: 'Bot' },
+        },
+        {
+          id: 'C2',
+          body: 'Gone.',
+          createdAt: '2026-10-08T02:00:00Z',
+          authorAssociation: 'NONE',
+          author: null,
+        },
       ]
     })
     const { fetch } = fakeGitHub([ok(fixture('graphql-reviews.json'))], [ok(threads)])
@@ -157,9 +188,52 @@ describe('fetchReviewState', () => {
     const [thread] = (await fetchWith(fetch)).threads
 
     expect(thread?.replies).toEqual([
-      { author: 'ci-bot', body: 'Deployed.', bot: true },
-      { author: '', body: 'Gone.', bot: false },
+      {
+        id: 'C1',
+        author: 'ci-bot',
+        body: 'Deployed.',
+        bot: true,
+        createdAt: '2026-10-08T01:00:00Z',
+        association: 'NONE',
+      },
+      {
+        id: 'C2',
+        author: '',
+        body: 'Gone.',
+        bot: false,
+        createdAt: '2026-10-08T02:00:00Z',
+        association: 'NONE',
+      },
     ])
+  })
+
+  it.each([
+    ['APPROVED', 'approved'],
+    ['CHANGES_REQUESTED', 'changes-requested'],
+    ['DISMISSED', 'dismissed'],
+    ['PENDING', 'pending'],
+  ])('reads a %s review and a review written by a bot', async (state, expected) => {
+    const reviews = withPage(fixture('graphql-reviews.json'), 'reviews', (root) => {
+      const [review] = root.nodes as Json[]
+      review!.state = state
+      review!.author = { login: 'lint-app', __typename: 'Bot' }
+    })
+    const { fetch } = fakeGitHub([ok(reviews)], [ok(fixture('graphql-threads.json'))])
+
+    const [review] = (await fetchWith(fetch)).reviews
+
+    expect(review).toMatchObject({ state: expected, author: 'lint-app', bot: true })
+  })
+
+  it('rejects a review with an unknown state', async () => {
+    const reviews = withPage(fixture('graphql-reviews.json'), 'reviews', (root) => {
+      ;(root.nodes as Json[])[0]!.state = 'LGTM'
+    })
+    const { fetch } = fakeGitHub([ok(reviews)], [ok(fixture('graphql-threads.json'))])
+
+    expect(((await failureOf(fetchWith(fetch))) as Error).message).toBe(
+      'Unexpected GitHub response: missing or invalid "review.state"',
+    )
   })
 
   it('asks for the thread id, its first comment and its last 20 replies', async () => {
@@ -173,7 +247,7 @@ describe('fetchReviewState', () => {
     const query = String(JSON.parse(calls[1]?.body ?? '{}').query)
     expect(query).toContain('id\n')
     expect(query).toContain('comments(first: 1)')
-    expect(query).toContain('replies: comments(last: 20)')
+    expect(query).toContain('replies: comments(last: 20) {\n            totalCount')
   })
 
   it('sends the owner, repo and number as variables', async () => {
@@ -233,7 +307,7 @@ describe('fetchReviewState', () => {
   it('reads a thread without comments as one without author, body or review', async () => {
     const threads = withPage(fixture('graphql-threads.json'), 'reviewThreads', (root) => {
       ;(root.nodes as Json[])[0]!.comments = { nodes: [] }
-      ;(root.nodes as Json[])[0]!.replies = { nodes: [] }
+      ;(root.nodes as Json[])[0]!.replies = { totalCount: 0, nodes: [] }
     })
     const { fetch } = fakeGitHub([ok(fixture('graphql-reviews.json'))], [ok(threads)])
 
@@ -297,5 +371,65 @@ describe('fetchReviewState', () => {
     const error = await failureOf(fetchWith(fetch))
 
     expect((error as Error).message).toBe('Unexpected GitHub response: missing or invalid "line"')
+  })
+})
+
+describe('fetchPullComments', () => {
+  const comments = (pages: FakeResponse[]) => createFakeFetch({ comments: pages }, () => 'comments')
+  const read = (fetch: typeof globalThis.fetch) =>
+    fetchPullComments({ owner: 'saulosw', repo: 'phada-dev-web', number: 11, token: TOKEN, fetch })
+
+  it('reads the general comments of the pull request with their author and date', async () => {
+    const { fetch, calls } = comments([ok(fixture('graphql-comments.json'))])
+
+    expect(await read(fetch)).toEqual([
+      {
+        id: 'IC_kwDOQNCyRM7cQ1aa',
+        author: 'saulosw',
+        bot: false,
+        association: 'OWNER',
+        createdAt: '2026-10-07T21:03:11Z',
+        body: 'The retry is temporary, it goes away in the next pull request.',
+      },
+      {
+        id: 'IC_kwDOQNCyRM7cQ1bb',
+        author: 'codecov',
+        bot: true,
+        association: 'NONE',
+        createdAt: '2026-10-07T21:05:42Z',
+        body: 'Coverage dropped by 0.4%.',
+      },
+    ])
+    expect(variablesOf(calls[0])).toEqual({
+      owner: 'saulosw',
+      repo: 'phada-dev-web',
+      number: 11,
+      after: null,
+    })
+  })
+
+  it('follows the cursor and reads a deleted author as an empty login', async () => {
+    const first = withPage(fixture('graphql-comments.json'), 'comments', (root) => {
+      root.pageInfo = { hasNextPage: true, endCursor: 'C1' }
+    })
+    const second = withPage(fixture('graphql-comments.json'), 'comments', (root) => {
+      root.nodes = [{ ...(root.nodes as Json[])[0]!, id: 'IC_last', author: null }]
+    })
+    const { fetch, calls } = comments([ok(first), ok(second)])
+
+    const all = await read(fetch)
+
+    expect(all.map(({ id, author }) => [id, author])).toEqual([
+      ['IC_kwDOQNCyRM7cQ1aa', 'saulosw'],
+      ['IC_kwDOQNCyRM7cQ1bb', 'codecov'],
+      ['IC_last', ''],
+    ])
+    expect(calls.map((call) => variablesOf(call).after)).toEqual([null, 'C1'])
+  })
+
+  it('throws PullRequestNotFoundError for NOT_FOUND', async () => {
+    const { fetch } = comments([ok(fixture('graphql-not-found.json'))])
+
+    expect(await failureOf(read(fetch))).toBeInstanceOf(PullRequestNotFoundError)
   })
 })

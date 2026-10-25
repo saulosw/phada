@@ -20,7 +20,8 @@
                     "url": "https://github.com/saulosw/phada-dev-web/pull/11#discussion_r2410000001",
                     "body": "**P0** · Any user can spend another user's crystals · confidence 95\n\nThe user id comes from the request body.\n\n<!-- phada:finding -->",
                     "author": {
-                      "login": "saulosw"
+                      "login": "saulosw",
+                      "__typename": "User"
                     },
                     "pullRequestReview": {
                       "id": "PRR_kwDOQNCyRM8AAAABRNso_Q"
@@ -38,25 +39,35 @@
                           "totalCount": 0
                         }
                       }
-                    ]
+                    ],
+                    "id": "PRRC_kwDOQNCyRM6PqA01",
+                    "createdAt": "2026-10-08T00:58:40Z",
+                    "authorAssociation": "OWNER"
                   }
                 ]
               },
               "replies": {
+                "totalCount": 2,
                 "nodes": [
                   {
                     "body": "**P0** · Any user can spend another user's crystals · confidence 95\n\nThe user id comes from the request body.\n\n<!-- phada:finding -->",
                     "author": {
                       "login": "saulosw",
                       "__typename": "User"
-                    }
+                    },
+                    "id": "PRRC_kwDOQNCyRM6PqA01",
+                    "createdAt": "2026-10-08T00:58:40Z",
+                    "authorAssociation": "OWNER"
                   },
                   {
                     "body": "Still happens on main.",
                     "author": {
                       "login": "octocat",
                       "__typename": "User"
-                    }
+                    },
+                    "id": "PRRC_kwDOQNCyRM6PqB77",
+                    "createdAt": "2026-10-08T09:12:03Z",
+                    "authorAssociation": "NONE"
                   }
                 ]
               }
