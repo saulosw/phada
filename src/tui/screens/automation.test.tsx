@@ -124,14 +124,16 @@ describe('AutomationScreen', () => {
 
     const frame = view.frame()
     expect(frame).toContain('Create your own config with phada init --global')
-    expect(flat(frame)).toContain(`Off. Add watch.repos to ${CONFIG_FILE}, then run phada watch.`)
+    expect(flat(frame)).toContain(
+      `Off. Add watch.repos to ~/.config/phada/config.yml, then run phada watch.`,
+    )
     expect(frame).toMatch(/ci\.wait\s+15m\s+default/)
 
     await view.press(KEYS.end)
     const end = view.frame()
     expect(end).toMatch(/○ phada enqueue\s+needs watch/)
     expect(end).toMatch(/○ Slack\s+off/)
-    expect(flat(end)).toContain(`None. Add hooks to ${CONFIG_FILE}`)
+    expect(flat(end)).toContain(`None. Add hooks to ~/.config/phada/config.yml`)
     expect(end).toContain('None: every pull request that passes the filters is reviewed.')
   })
 

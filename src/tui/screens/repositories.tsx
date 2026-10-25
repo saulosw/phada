@@ -28,6 +28,7 @@ import { textWidth } from '../tab-layout.js'
 import type { Theme } from '../theme.js'
 import { fit, oneLine, wrapText } from '../text-fit.js'
 import { bytesText } from '../units.js'
+import { shortenHome } from './home.js'
 
 const GAP = '  '
 const MIN_NAME_WIDTH = 16
@@ -169,6 +170,7 @@ function RepositoryListView({ list, index }: { list: RepositoryList; index: numb
 
 function EmptyRepositories({ list }: { list: RepositoryList }) {
   const messages = useMessages()
+  const { home } = useAppDeps()
   const { colors } = useTheme()
   const command = (text: string) => (
     <Text bold color={colors.accent}>
@@ -190,7 +192,7 @@ function EmptyRepositories({ list }: { list: RepositoryList }) {
     <Box flexDirection="column" marginTop={1}>
       <Text>{m.nothingWatched}</Text>
       <Text color={colors.dim}>
-        {m.nothingWatchedHint(oneLine(list.configFile))} {command('phada watch')}
+        {m.nothingWatchedHint(oneLine(shortenHome(list.configFile, home)))} {command('phada watch')}
       </Text>
       <Text color={colors.dim}>
         {m.then} {command('phada review owner/repo#N')}
@@ -209,7 +211,7 @@ function RepositoryDetailLines({ detail }: { detail: RepositoryDetail }) {
   const messages = useMessages()
   const theme = useTheme()
   const { colors } = theme
-  const { now } = useAppDeps()
+  const { now, home } = useAppDeps()
   const size = useScreenSize()
   const d = messages.repositories.detail
   const time = now()
@@ -226,8 +228,11 @@ function RepositoryDetailLines({ detail }: { detail: RepositoryDetail }) {
       {oneLine(detail.repo)}
       <Text color={colors.soft}>{origins}</Text>
     </Text>,
-    ...section(d.watch, watchLines(detail, messages, colors.soft, size.columns)),
-    ...section(d.index, indexLines(detail.repo, detail.index, time, messages, theme, size.columns)),
+    ...section(d.watch, watchLines(detail, home, messages, colors.soft, size.columns)),
+    ...section(
+      d.index,
+      indexLines(detail.repo, detail.index, home, time, messages, theme, size.columns),
+    ),
     ...section(
       d.config,
       detail.config.status === 'invalid'
@@ -282,6 +287,7 @@ function RepositoryDetailLines({ detail }: { detail: RepositoryDetail }) {
 
 function watchLines(
   detail: RepositoryDetail,
+  home: string,
   messages: UiMessages,
   labelColor: string | undefined,
   columns: number,
@@ -289,9 +295,9 @@ function watchLines(
   const d = messages.repositories.detail
   const { watch } = detail
   if (watch === null) {
-    return wrapText(d.notWatched(oneLine(detail.configFile)), columns - 2).map((line) => (
-      <Text>{`  ${line}`}</Text>
-    ))
+    return wrapText(d.notWatched(oneLine(shortenHome(detail.configFile, home))), columns - 2).map(
+      (line) => <Text>{`  ${line}`}</Text>,
+    )
   }
   const names = (values: readonly string[] | undefined) =>
     values === undefined || values.length === 0 ? undefined : values.map(oneLine).join(', ')
@@ -314,6 +320,7 @@ function watchLines(
 function indexLines(
   repo: string,
   index: RepositoryIndex,
+  home: string,
   now: Date,
   messages: UiMessages,
   { colors }: Theme,
@@ -345,7 +352,7 @@ function indexLines(
   return indented(
     labeledLines(
       [
-        [d.file, `${oneLine(index.file.path)} · ${bytesText(index.file.bytes)}`],
+        [d.file, `${oneLine(shortenHome(index.file.path, home))} · ${bytesText(index.file.bytes)}`],
         [d.commit, commit],
       ],
       columns - 2,

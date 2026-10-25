@@ -171,6 +171,7 @@ describe('RepositoriesScreen', () => {
     expect(frame).toMatch(/Publish\s+not published/)
     expect(frame).toMatch(/Authors\s+ana, bruno/)
     expect(frame).toMatch(/When\s+\.\/gate\.sh/)
+    expect(frame).toMatch(/File\s+~\/\.cache\/phada\/index\/acme\/shop\.sqlite · 12\.3 MB/)
     expect(frame).toMatch(/Commit\s+f00dbab · checked 30m ago/)
     expect(frame).toMatch(/provider\s+codex\s+global/)
     expect(frame).toMatch(/model\s+the AI CLI's own\s+default/)
@@ -212,7 +213,7 @@ describe('RepositoriesScreen', () => {
     expect(frame).toContain(
       'Invalid config: Invalid config /cfg/config.yml: verify: expected boolean',
     )
-    expect(frame).toContain(`Not watched. Add it to watch.repos in ${CONFIG_FILE}.`)
+    expect(frame).toContain(`Not watched. Add it to watch.repos in ~/.config/phada/config.yml.`)
   })
 
   it('points a fresh machine to phada init --global', async () => {
@@ -229,7 +230,7 @@ describe('RepositoriesScreen', () => {
     await waitFor(() => view.frame().includes('No repository yet'))
 
     const frame = view.frame()
-    expect(frame).toContain(`Add watch.repos to ${CONFIG_FILE}, then run phada watch`)
+    expect(frame).toContain(`Add watch.repos to ~/.config/phada/config.yml, then run phada watch`)
     expect(frame).toContain('phada review owner/repo#N')
   })
 

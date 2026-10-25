@@ -12,6 +12,7 @@ import { textWidth } from '../tab-layout.js'
 import type { Theme } from '../theme.js'
 import { fit, oneLine, wrapText } from '../text-fit.js'
 import { durationText } from '../units.js'
+import { shortenHome } from './home.js'
 
 const GAP = '  '
 const SLACK_BOT_TOKEN = 'PHADA_SLACK_BOT_TOKEN'
@@ -27,6 +28,7 @@ export function AutomationScreen() {
 
 function AutomationLines({ view }: { view: AutomationView }) {
   const messages = useMessages()
+  const { home } = useAppDeps()
   const theme = useTheme()
   const { colors } = theme
   const size = useScreenSize()
@@ -44,7 +46,7 @@ function AutomationLines({ view }: { view: AutomationView }) {
       {text}
     </Text>
   )
-  const file = oneLine(view.configFile)
+  const file = oneLine(shortenHome(view.configFile, home))
   const head: ReactNode[] = [
     ...(view.configError === null
       ? []
