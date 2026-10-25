@@ -1,6 +1,5 @@
 import { destinationOf } from '../publish/feedback.js'
 import type { Destination, SignalKind } from '../publish/feedback.js'
-import type { Verdict } from '../review/verdict.js'
 import type {
   FindingFilter,
   FindingRecord,
@@ -64,7 +63,7 @@ export interface StoredCi {
 export interface ReviewDetail {
   run: RunRecord
   pullRequest: { url: string; title: string | null }
-  verdict: Verdict | null
+  verdict: NonNullable<RunRecord['verdict']> | null
   score: { value: number; reason: string | null } | null
   summary: string | null
   findings: StoredFinding[]
