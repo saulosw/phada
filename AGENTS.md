@@ -143,7 +143,8 @@ src/
     format-request.ts    #   refusalText(), formatSubmitText/Json(), jobJson()
     review-event.ts      #   reviewEvent(), storedEvent(), eventOfJob(): a job event → the event JSON
                          #   (schemaVersion 1) of hooks, Slack and wait_for_job, with the CI state
-                         #   and the checks that count once the review read them
+                         #   and the checks that count once the review (or, on review.started,
+                         #   the CI gate of the watch) read them
     run-shell.ts         #   runShell(), shellFailure(): a command of the user through sh, with its
                          #   own process group and a deadline
     run-hook.ts          #   runHook(): the hook of an event, its failure as a warning
@@ -211,7 +212,8 @@ src/
     terminal-text.ts     #   toTerminalText(): strips control and bidi characters from external text
     units.ts             #   duration, tokens, bytes, counts
   config/                # the config files: .phada/ in the repository and the user's own
-    schema.ts            #   Zod schema of config.yml (ci: read, wait, checks); LANGUAGE_TAG
+    schema.ts            #   Zod schema of config.yml (ci: read, wait, onFailure, checks);
+                         #   LANGUAGE_TAG
     parse-config.ts      #   parseConfigText(): YAML → config or an error naming the key
     merge-config.ts      #   mergeConfig(): layers → options, rules, files, ignore with origins (pure),
                          #   the ci settings with DEFAULT_CI (read, 15 min wait, onFailure: review)
@@ -425,7 +427,8 @@ src/
     next-job.ts          #   pickNext(): the next ready job, queued or waiting for CI, or until
                          #   when to wait (pause, limit); NOT_STARTED, notStarted()
     ci-gate.ts           #   ciGate(): CI state, ci.wait, onFailure, when Phada saw the commit and
-                         #   now → review (with the checks still pending), wait (until, deadline)
+                         #   now → review (with the checks still pending), wait (until, deadline;
+                         #   also while a check fails and others run, unless onFailure: skip)
                          #   or skip; 2 min for checks to appear, read again each minute;
                          #   CI_PENDING
     ci-revisit.ts        #   ciRevisits(): the ci-failing jobs to read again (24 h, head still
