@@ -18,7 +18,24 @@ export function ciEntries(
   statuses: readonly CommitStatus[],
   counts: (name: string) => boolean,
 ): CiEntry[] {
-  return [...runs.map(runEntry), ...statuses.map(statusEntry)].filter(({ name }) => counts(name))
+  return [...latestRuns(runs).map(runEntry), ...statuses.map(statusEntry)].filter(({ name }) =>
+    counts(name),
+  )
+}
+
+function latestRuns(runs: readonly CheckRun[]): CheckRun[] {
+  const latest = new Map<string, CheckRun>()
+  for (const run of runs) {
+    const kept = latest.get(run.name)
+    if (kept === undefined || later(run, kept)) latest.set(run.name, run)
+  }
+  return runs.filter((run) => latest.get(run.name) === run)
+}
+
+function later(run: CheckRun, than: CheckRun): boolean {
+  const started = run.startedAt ?? ''
+  const keptStarted = than.startedAt ?? ''
+  return started === keptStarted ? run.id > than.id : started > keptStarted
 }
 
 export function ciSummary(entries: readonly CiEntry[]): CiSummary {

@@ -26,6 +26,23 @@ function status(context: string, state: string): CommitStatus {
 }
 
 describe('ciEntries', () => {
+  it('keeps the latest run of a check that ran in more than one check suite', () => {
+    const entries = ciEntries(
+      [
+        run('test', { id: 10, conclusion: 'failure', startedAt: '2026-10-07T03:12:31Z' }),
+        run('test', { id: 11, conclusion: 'success', startedAt: '2026-10-07T03:12:33Z' }),
+        run('lint', { id: 12 }),
+      ],
+      [],
+      ALL,
+    )
+
+    expect(entries.map(({ name, id, state }) => [name, id, state])).toEqual([
+      ['test', 11, 'passing'],
+      ['lint', 12, 'passing'],
+    ])
+  })
+
   it('turns check runs and commit statuses into checks that pass, fail or are pending', () => {
     const entries = ciEntries(
       [

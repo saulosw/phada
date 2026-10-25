@@ -84,7 +84,8 @@ src/
                          #   (ci.checks: names or globs); readCi(): + the annotations and job logs
                          #   of the failing ones → buildCi(); each failure a warning (kept on
                          #   the Ci), a permission the readers say GitHub denied
-                         #   (CiReaders.permissionDenied) stops that kind of read
+                         #   (CiReaders.permissionDenied) stops that kind of read; the logs that
+                         #   are gone (CiReaders.logUnavailable) give one warning
     inspect-context.ts   #   inspectPullRequestContext(), inspectRepositoryContext(): the context
                          #   without a review
     review-passes.ts     #   buildPasses(): review.prompt, review.skills or --skill → one SkillPass
@@ -241,7 +242,8 @@ src/
     load-context.ts      #   loadContext(): config files, rules in scope, ignore, docs in scope →
                          #   ReviewContext + report
     list-context.ts      #   listContext(): every .phada/ folder, rule and candidate doc of a branch
-    ci-state.ts          #   ciEntries(): check runs and commit statuses → the checks that count,
+    ci-state.ts          #   ciEntries(): check runs (the latest run of each name) and commit
+                         #   statuses → the checks that count,
                          #   passing, failing or pending; ciSummary(): the CI state (none, pending,
                          #   passing, failing) and the names of the failing and pending checks
     ci-log.ts            #   failedStepLog(): an Actions job log → its failed step, without
