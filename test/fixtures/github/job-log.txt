@@ -1,0 +1,77 @@
+﻿2026-10-21T09:10:37.8931002Z Current runner version: '2.337.0'
+2026-10-21T09:10:37.8956729Z ##[group]Runner Image Provisioner
+2026-10-21T09:10:37.8957773Z Hosted Compute Agent
+2026-10-21T09:10:37.8958446Z Version: 20261012.601
+2026-10-21T09:10:37.8959430Z Commit: f3dc54e1fb89da6852db922499a0233137369e1d
+2026-10-21T09:10:37.8960306Z Build Date: 2026-10-12T17:48:21Z
+2026-10-21T09:10:37.8961086Z Worker ID: {2547f33e-fb47-4c87-bc31-65ff7022e771}
+2026-10-21T09:10:37.8961918Z Region: eastus
+2026-10-21T09:10:37.8962534Z Cloud: Azure
+2026-10-21T09:10:37.8963127Z ##[endgroup]
+2026-10-21T09:10:37.8965306Z ##[group]Operating System
+2026-10-21T09:10:37.8966073Z Ubuntu
+2026-10-21T09:10:37.8966757Z 24.04.5
+2026-10-21T09:10:37.8967339Z LTS
+2026-10-21T09:10:37.8967908Z ##[endgroup]
+2026-10-21T09:10:37.8968632Z ##[group]Runner Image
+2026-10-21T09:10:37.8969845Z Image: ubuntu-24.04
+2026-10-21T09:10:37.8970570Z Version: 20261012.334.1
+2026-10-21T09:10:37.8971933Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261012.334/images/ubuntu/Ubuntu2404-Readme.md
+2026-10-21T09:10:37.8973707Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261012.334
+2026-10-21T09:10:38.8669688Z ##[group]Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+2026-10-21T09:10:38.8671214Z with:
+2026-10-21T09:10:38.8671734Z   repository: cli/cli
+2026-10-21T09:10:38.8681131Z   token: ***
+2026-10-21T09:10:38.8681684Z   ssh-strict: true
+2026-10-21T09:10:38.8682219Z   ssh-user: git
+2026-10-21T09:10:40.2297602Z 
+2026-10-21T09:10:40.2299118Z HEAD is now at ac2b66e Merge 07c63c05e44d151560e29ca0f16b4d573057e128 into 1531837d8578fecd64eb8050d44a3665d85f9219
+2026-10-21T09:10:40.2304323Z ##[endgroup]
+2026-10-21T09:10:40.2307822Z [command]/usr/bin/git log -1 --format=%H
+2026-10-21T09:10:40.2309991Z ac2b66e6a4d143761752fd5061064891e3ac8a4e
+2026-10-21T09:10:40.2622018Z ##[group]Run actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e
+2026-10-21T09:10:40.2623142Z with:
+2026-10-21T09:10:40.2623970Z   go-version-file: go.mod
+2026-10-21T09:10:40.2624844Z   check-latest: false
+2026-10-21T09:10:40.2628412Z   token: ***
+2026-10-21T09:10:40.2629414Z   cache: true
+2026-10-21T09:10:40.2630235Z ##[endgroup]
+2026-10-21T09:10:40.3784893Z Setup go version spec 1.27.3
+2026-10-21T09:10:50.2305547Z 
+2026-10-21T09:10:50.2306200Z ##[endgroup]
+2026-10-21T09:10:50.2501024Z ##[group]Run go mod tidy -diff
+2026-10-21T09:10:50.2501430Z [36;1mgo mod tidy -diff[0m
+2026-10-21T09:10:50.2501691Z [36;1mgo fix -diff ./...[0m
+2026-10-21T09:10:50.2906640Z shell: /usr/bin/bash -e {0}
+2026-10-21T09:10:50.2907133Z env:
+2026-10-21T09:10:50.2907424Z   GOTOOLCHAIN: local
+2026-10-21T09:10:50.2907735Z ##[endgroup]
+2026-10-21T09:10:50.3868005Z go: downloading github.com/cli/go-gh/v2 v2.17.0
+2026-10-21T09:10:50.3869052Z go: downloading github.com/shurcooL/githubv4 v0.0.0-20240727222349-48295856cce7
+2026-10-21T09:10:50.3884795Z go: downloading golang.org/x/sync v0.24.0
+2026-10-21T09:10:50.4350041Z go: downloading github.com/MakeNowJust/heredoc v1.0.0
+2026-10-21T09:10:50.4446250Z go: downloading github.com/cli/go-internal v0.0.0-20241025142207-6c48bcd5ce24
+2026-10-21T09:10:50.4480911Z go: downloading github.com/stretchr/testify v1.12.1
+2026-10-21T09:10:50.4507130Z go: downloading golang.org/x/crypto v0.58.0
+2026-10-21T09:10:50.4960668Z go: downloading github.com/cli/safeexec v1.0.1
+2026-10-21T09:10:57.8069462Z --- current/go.sum
+2026-10-21T09:10:57.8070420Z +++ tidy/go.sum
+2026-10-21T09:10:57.8070995Z @@ -144,8 +144,6 @@
+2026-10-21T09:10:57.8071952Z  github.com/cli/go-gh/v2 v2.17.0/go.mod h1:bc2VCe0OUSOuhDz5HeQrA7RAtc/d3PtyGogBXHbcp1o=
+2026-10-21T09:10:57.8095885Z  github.com/cli/go-internal v0.0.0-20241025142207-6c48bcd5ce24 h1:QDrhR4JA2n3ij9YQN0u5ZeuvRIIvsUGmf5yPlTS0w8E=
+2026-10-21T09:10:57.8097220Z  github.com/cli/go-internal v0.0.0-20241025142207-6c48bcd5ce24/go.mod h1:rr9GNING0onuVw8MnracQHn7PcchnFlP882Y0II2KZk=
+2026-10-21T09:10:57.8097978Z -github.com/cli/oauth v1.2.2 h1:/qG/wok8jzu66tx7q+duGOIp4DT5P/ACXrdc33UoNUQ=
+2026-10-21T09:10:57.8098602Z -github.com/cli/oauth v1.2.2/go.mod h1:qd/FX8ZBD6n1sVNQO3aIdRxeu5LGw9WhKnYhIIoC2A4=
+2026-10-21T09:10:57.8099867Z  github.com/cli/oauth v1.2.3-0.20260914234613-cde372eeffd4 h1:Cp3FHONVUKS7aA8y0MORVvisv70Z1TVtap4C1Fqgy/s=
+2026-10-21T09:10:57.8101302Z  github.com/cli/oauth v1.2.3-0.20260914234613-cde372eeffd4/go.mod h1:h0lVJ2xkpgc0WGjM6KHPKb0T2D+YUfsz3GbRTPandyg=
+2026-10-21T09:10:57.8102282Z  github.com/cli/safeexec v1.0.1 h1:e/C79PbXF4yYTN/wauC4tviMxEV13BwljGj0N9j+N00=
+2026-10-21T09:10:57.8102624Z 
+2026-10-21T09:10:57.8115491Z ##[error]Process completed with exit code 1.
+2026-10-21T09:10:57.8263080Z Post job cleanup.
+2026-10-21T09:10:57.9154067Z [command]/usr/bin/git version
+2026-10-21T09:10:57.9194031Z git version 2.55.0
+2026-10-21T09:10:57.9231088Z Temporarily overriding HOME='/home/runner/work/_temp/9940470c-8415-4e7a-b555-ae7f754b6534' before making global git config changes
+2026-10-21T09:10:57.9232519Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-21T09:10:57.9237530Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/cli/cli
+2026-10-21T09:10:57.9270956Z Removing SSH command configuration
+2026-10-21T09:10:57.9277060Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand

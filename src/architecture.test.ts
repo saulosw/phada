@@ -27,6 +27,9 @@ const PUBLISH: Boundary = {
     '../review/types.js',
     '../github/pull-request-reviews.js',
     '../github/compare-commits.js',
+    '../github/check-runs.js',
+    '../github/commit-statuses.js',
+    '../github/job-log.js',
   ]),
   expected: [
     'decide-run.ts',

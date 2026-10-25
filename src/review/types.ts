@@ -129,6 +129,18 @@ export type ConversationItem =
       omittedReplies?: number
     }
 
+export type CiCheckState = 'passing' | 'failing' | 'pending'
+
+export interface CiCheck {
+  name: string
+  state: CiCheckState
+  conclusion?: string
+  title?: string
+  summary?: string
+  annotations?: string[]
+  log?: string
+}
+
 export interface ReviewRequest {
   pullRequest: PullRequest
   language?: string
@@ -138,6 +150,7 @@ export interface ReviewRequest {
   impact?: DiffImpact
   related?: RelatedSummary[]
   conversation?: ConversationItem[]
+  ci?: CiCheck[]
   passes?: SkillPass[]
 }
 

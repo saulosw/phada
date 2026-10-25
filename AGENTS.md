@@ -318,10 +318,20 @@ src/
                          #   with the role of each author, without Phada's own (people's replies
                          #   to them kept), bodies cut at 2 KB, 16 KB in total (resolved ›
                          #   outdated › oldest left out first) and the report
+    ci-state.ts          #   ciEntries(): check runs and commit statuses → the checks that count,
+                         #   passing, failing or pending; ciSummary(): the CI state (none, pending,
+                         #   passing, failing) and the names of the failing and pending checks
+    ci-log.ts            #   failedStepLog(): an Actions job log → its failed step, without
+                         #   timestamps or colors, the final 8 KB
+    ci.ts                #   buildCi(): the checks for the AI (failing › pending › passing) with
+                         #   title, summary, annotations (failure and warning, 50 in total) and
+                         #   the failed step of the log (12 KB in total), the summary and the
+                         #   report; ciLogsLeft()
     plan-publication.ts  #   planPublication(): new comments vs findings still open in a thread vs
                          #   findings whose thread a person resolved vs findings of a thread found
                          #   fixed in this run
-    types.ts             #   PublicationPlan, RunDecision, SkipReason, Conversation(Report)
+    types.ts             #   PublicationPlan, RunDecision, SkipReason, Conversation(Report), Ci,
+                         #   CiEntry, CiSummary, CiReport
   repository/            # the repository through git objects, in a persistent mirror
     checkout.ts          #   Checkout (read, grep, list, history), CheckoutError
     git-checkout.ts      #   GitCheckout: one commit of the mirror (log, blame); the git environment
@@ -419,7 +429,8 @@ environment. `src/context/` reads nothing itself: `loadContext()` gets the reade
 repository and of the local disk as data, and its only value imports from outside the folder are
 `picomatch`, `node:path` and the pure config helpers (`parse-config.ts`, `merge-config.ts`).
 `src/publish/` imports only types from outside the folder (`src/review/types.ts`,
-`src/github/pull-request-reviews.ts`, `src/github/compare-commits.ts`). `src/store/` stores the
+`src/github/pull-request-reviews.ts`, `src/github/compare-commits.ts` and the check runs,
+commit statuses and job log of `src/github/`). `src/store/` stores the
 feedback records of `src/publish/feedback.ts` as types only. `src/watch/` imports only types from outside the folder
 (the watch settings, the listed and fetched pull requests and the issue comments) and never reads the clock: `now` comes in as
 data. Its records (`src/watch/types.ts`) are the watch's own; `src/store/` stores them.
