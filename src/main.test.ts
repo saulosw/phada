@@ -2933,3 +2933,137 @@ describe('run review and Ctrl-C', () => {
     expect(h.aborts).toEqual([130])
   })
 })
+
+describe('run review --wait-ci', () => {
+  const testRun = (status: 'in_progress' | 'completed', conclusion: string | null = null) => ({
+    id: 7,
+    name: 'test',
+    status,
+    conclusion,
+    title: null,
+    summary: null,
+    url: null,
+    app: 'other',
+    startedAt: null,
+    completedAt: null,
+  })
+
+  it('waits for the pending checks, reading them each minute, and reviews once they pass', async () => {
+    let reads = 0
+    const h = harness({
+      checkRuns: async () => {
+        reads += 1
+        return [reads <= 2 ? testRun('in_progress') : testRun('completed', 'success')]
+      },
+    })
+
+    expect(await run(['review', 'acme/shop#12', '--dry-run', '--wait-ci'], h.deps)).toBe(0)
+
+    expect(reads).toBe(4)
+    expect(h.stderr()).toMatch(/Waiting for CI until \d\d:\d\d \(1 pending: test\)…\n/)
+    expect(h.stderr()).toContain('Waited 2m00s for CI.\nCI: 1 check, all passing\n')
+    expect(h.prompts[0]?.data).toContain('{"name":"test","state":"passing"}')
+  })
+
+  it('reviews at once when no check appears in 2 minutes', async () => {
+    let reads = 0
+    const h = harness({
+      checkRuns: async () => {
+        reads += 1
+        return []
+      },
+    })
+
+    await run(['review', 'acme/shop#12', '--dry-run', '--wait-ci'], h.deps)
+
+    expect(reads).toBe(3)
+    expect(h.stderr()).toMatch(/Waiting for CI until \d\d:\d\d \(no checks yet\)…\n/)
+    expect(h.stderr()).toContain('Waited 2m00s for CI. No checks appeared.\n')
+    expect(h.prompts).not.toHaveLength(0)
+  })
+
+  it('reviews at the ci.wait deadline, counted from the start of the command, with the checks still pending', async () => {
+    const h = harness({
+      repoFiles: { '.phada/config.yml': 'ci:\n  wait: 5m\n' },
+      checkRuns: async () => [testRun('in_progress')],
+    })
+
+    await run(['review', 'acme/shop#12', '--dry-run', '--wait-ci'], h.deps)
+
+    expect(h.stderr()).toContain(
+      'Waited 5m00s for CI. Still pending: test.\nCI: 1 check, 1 pending\n',
+    )
+    expect(h.prompts[0]?.data).toContain('{"name":"test","state":"pending"}')
+  })
+
+  it('reviews a failing CI at once, without waiting for the checks still pending', async () => {
+    let reads = 0
+    const h = harness({
+      checkRuns: async () => {
+        reads += 1
+        return [testRun('completed', 'failure'), { ...testRun('in_progress'), id: 8, name: 'e2e' }]
+      },
+    })
+
+    await run(['review', 'acme/shop#12', '--dry-run', '--wait-ci'], h.deps)
+
+    expect(reads).toBe(2)
+    expect(h.stderr()).not.toContain('Waiting for CI')
+    expect(h.stderr()).toContain('CI: 2 checks, 1 failing (test), 1 pending\n')
+    expect(h.prompts).not.toHaveLength(0)
+  })
+
+  it('does not wait with ci.wait: 0s, and warns that there is nothing to wait for with ci.read: false', async () => {
+    const zero = harness({
+      files: memoryFiles({ '/cfg/config.yml': 'ci:\n  wait: 0s\n' }),
+      checkRuns: async () => [testRun('in_progress')],
+    })
+    const off = harness({
+      repoFiles: { '.phada/config.yml': 'ci:\n  read: false\n' },
+      checkRuns: async () => [testRun('in_progress')],
+    })
+
+    await run(['review', 'acme/shop#12', '--dry-run', '--wait-ci'], zero.deps)
+    await run(['review', 'acme/shop#12', '--dry-run', '--wait-ci'], off.deps)
+
+    expect(zero.ciFetches.filter((fetch) => fetch.startsWith('runs'))).toHaveLength(1)
+    expect(zero.stderr()).not.toContain('Waiting for CI')
+    expect(off.ciFetches).toEqual([])
+    expect(off.stderr()).toContain(
+      'Warning: --wait-ci has nothing to wait for: ci.read is false in the config\n',
+    )
+  })
+
+  it('stops waiting and reviews when the checks can no longer be read', async () => {
+    let reads = 0
+    const h = harness({
+      checkRuns: async () => {
+        reads += 1
+        if (reads === 2) throw new Error('GitHub is down')
+        return [testRun('in_progress')]
+      },
+    })
+
+    await run(['review', 'acme/shop#12', '--dry-run', '--wait-ci'], h.deps)
+
+    expect(h.stderr()).toContain(
+      'Waited 1m00s for CI. Still pending: test.\nWarning: CI check runs were not read: GitHub is down; reviewing without waiting for CI\n',
+    )
+    expect(h.prompts).not.toHaveLength(0)
+  })
+
+  it('does not wait without --wait-ci', async () => {
+    let reads = 0
+    const h = harness({
+      checkRuns: async () => {
+        reads += 1
+        return [testRun('in_progress')]
+      },
+    })
+
+    await run(['review', 'acme/shop#12', '--dry-run'], h.deps)
+
+    expect(reads).toBe(1)
+    expect(h.stderr()).not.toContain('Waiting for CI')
+  })
+})

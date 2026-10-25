@@ -74,6 +74,7 @@ export type CliCommand =
       resolveThreads?: boolean
       conversation?: boolean
       ci?: boolean
+      waitCi?: boolean
       skills?: string[]
       dryRun: boolean
       force: boolean
@@ -169,6 +170,9 @@ Options:
                         request to the AI
   --no-ci               Do not read the checks of the head: no CI for the AI, no CI
                         line in the review
+  --wait-ci             Before reviewing, wait for the pending checks of the head up
+                        to ci.wait (default: 15m) since the command started; a
+                        failing check, or no check after 2 minutes, reviews at once
   --skill <name>        Review with this skill installed for your AI CLI (plugin:skill
                         for a skill of a plugin; phada is the built-in reviewer);
                         repeat it for several passes; replaces review.skills of the config
@@ -398,6 +402,11 @@ function parseReviewArgs(argv: readonly string[]): CliCommand {
   }
   const investigate =
     values.investigate === true ? true : values['no-investigate'] === true ? false : undefined
+  if (values['wait-ci'] === true && values['no-ci'] === true) {
+    throw new UsageError(
+      '--wait-ci waits for the checks that --no-ci does not read; use one of them.',
+    )
+  }
   const skills = parseSkills(values.skill)
 
   return {
@@ -413,6 +422,7 @@ function parseReviewArgs(argv: readonly string[]): CliCommand {
     ...(values['no-resolve'] === true ? { resolveThreads: false } : {}),
     ...(values['no-conversation'] === true ? { conversation: false } : {}),
     ...(values['no-ci'] === true ? { ci: false } : {}),
+    ...(values['wait-ci'] === true ? { waitCi: true } : {}),
     ...(skills === undefined ? {} : { skills }),
     dryRun: values['dry-run'],
     force: values.force,
@@ -433,6 +443,7 @@ const REVIEW_OPTIONS = {
   'no-resolve': { type: 'boolean' },
   'no-conversation': { type: 'boolean' },
   'no-ci': { type: 'boolean' },
+  'wait-ci': { type: 'boolean' },
   skill: { type: 'string', multiple: true },
   'dry-run': { type: 'boolean', default: false },
   force: { type: 'boolean', default: false },

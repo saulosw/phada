@@ -14,13 +14,13 @@ export function formatCiLine({ summary }: Ci): string | undefined {
   if (summary.state === 'none') return undefined
   const { total, failing, pending } = summary
   const parts = [
-    ...(failing.length > 0 ? [`${failing.length} failing (${names(failing)})`] : []),
+    ...(failing.length > 0 ? [`${failing.length} failing (${checkNames(failing)})`] : []),
     ...(pending.length > 0 ? [`${pending.length} pending`] : []),
   ]
   return `CI: ${formatCount(total, 'check')}, ${parts.length === 0 ? 'all passing' : parts.join(', ')}`
 }
 
-function names(list: readonly string[]): string {
+export function checkNames(list: readonly string[]): string {
   const shown = list.slice(0, MAX_NAMES).map(toTerminalText)
   const more = list.length - shown.length
   return [...shown, ...(more > 0 ? [`${more} more`] : [])].join(', ')
