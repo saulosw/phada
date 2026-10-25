@@ -1,4 +1,4 @@
-import { mkdir, rm } from 'node:fs/promises'
+import { access, mkdir, rm } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { DatabaseSync, SQLInputValue } from 'node:sqlite'
 import { IndexStoreError, isNotADatabase } from './index-store.js'
@@ -78,6 +78,30 @@ export async function openObservedStore(
   return new SqliteObservedStore(recreated, true, now)
 }
 
+export async function readObservedEdges(
+  path: string,
+  options: Pick<OpenObservedStoreOptions, 'loadSqlite'> = {},
+): Promise<ObservedEdge[] | 'missing' | 'unreadable'> {
+  const exists = await access(path).then(
+    () => true,
+    () => false,
+  )
+  if (!exists) return 'missing'
+  let db: DatabaseSync | undefined
+  try {
+    const sqlite = await (options.loadSqlite ?? (() => import('node:sqlite')))()
+    db = new sqlite.DatabaseSync(path, { readOnly: true })
+    db.exec('pragma busy_timeout = 5000')
+    const version = db.prepare("select value from meta where key = 'schema_version'").get()?.value
+    if (version !== String(OBSERVED_SCHEMA_VERSION)) return 'unreadable'
+    return db.prepare('select * from observed_edge order by id').all().map(edgeOf)
+  } catch {
+    return 'unreadable'
+  } finally {
+    db?.close()
+  }
+}
+
 function open(sqlite: Sqlite, path: string): DatabaseSync | 'rebuild' {
   let db: DatabaseSync
   try {
@@ -122,17 +146,7 @@ class SqliteObservedStore implements ObservedStore {
   }
 
   all(): ObservedEdge[] {
-    return this.#db
-      .prepare('select * from observed_edge order by id')
-      .all()
-      .map((row) => ({
-        id: Number(row.id),
-        from: endpoint(row, 'from'),
-        to: endpoint(row, 'to'),
-        pullRequest: Number(row.pull_request),
-        commit: String(row.commit_sha),
-        createdAt: String(row.created_at),
-      }))
+    return this.#db.prepare('select * from observed_edge order by id').all().map(edgeOf)
   }
 
   add(edges: readonly ObservedEdge[]): number {
@@ -156,6 +170,17 @@ class SqliteObservedStore implements ObservedStore {
 
   close(): void {
     this.#db.close()
+  }
+}
+
+function edgeOf(row: Record<string, SQLInputValue>): ObservedEdge {
+  return {
+    id: Number(row.id),
+    from: endpoint(row, 'from'),
+    to: endpoint(row, 'to'),
+    pullRequest: Number(row.pull_request),
+    commit: String(row.commit_sha),
+    createdAt: String(row.created_at),
   }
 }
 

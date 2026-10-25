@@ -1,6 +1,8 @@
 import { lstat, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 
+const OBSERVED_FILE = '.sqlite'
+
 export function phadaCacheDir(env: NodeJS.ProcessEnv, home: string): string {
   const explicit = env.PHADA_CACHE_HOME?.trim()
   if (explicit) return explicit
@@ -28,6 +30,21 @@ export function repositoryCache(
     index: indexFile(cache, owner, repo),
     observed: join(cache, 'observed', owner.toLowerCase(), `${repo.toLowerCase()}.sqlite`),
   }
+}
+
+export async function observedRepositories(cacheDir: string): Promise<string[]> {
+  const root = join(cacheDir, 'observed')
+  const owners = await readdir(root, { withFileTypes: true }).catch(() => [])
+  const repos = await Promise.all(
+    owners
+      .filter((owner) => owner.isDirectory())
+      .map(async (owner) =>
+        (await readdir(join(root, owner.name), { withFileTypes: true }).catch(() => []))
+          .filter((file) => file.isFile() && file.name.endsWith(OBSERVED_FILE))
+          .map((file) => `${owner.name}/${file.name.slice(0, -OBSERVED_FILE.length)}`),
+      ),
+  )
+  return repos.flat().sort()
 }
 
 export async function pathSize(path: string): Promise<number> {
