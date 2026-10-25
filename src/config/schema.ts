@@ -299,6 +299,7 @@ export const ConfigFileSchema = z.strictObject({
     .strictObject({
       read: z.boolean().optional(),
       wait: Duration.optional(),
+      onFailure: z.enum(['review', 'skip']).optional(),
       checks: z.array(z.string().trim().min(1)).optional(),
     })
     .optional(),

@@ -8,6 +8,7 @@ const SHARED_OPTIONS = `# Review options. Flags given on the command line win.
 # ci:
 #   read: true                 # read the checks of the head: CI for the AI and the CI line
 #   wait: 15m                  # how long the watch waits for pending checks (0s: no wait)
+#   onFailure: review          # failing checks: review anyway, or skip until they pass
 #   checks: [test, "lint/*"]   # the checks that count, by name or glob (default: all)
 `
 

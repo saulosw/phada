@@ -325,6 +325,10 @@ describe('investigation options', () => {
       waitMs: 0,
     })
     expect(mergeConfig([user({ ci: { wait: '30m' } })]).ci).toEqual({ waitMs: 1_800_000 })
+    expect(
+      mergeConfig([user({ ci: { onFailure: 'skip' } }), root({ ci: { onFailure: 'review' } })]).ci,
+    ).toEqual({ onFailure: 'review' })
+    expect(mergeConfig([user({ ci: { onFailure: 'skip' } })]).ci).toEqual({ onFailure: 'skip' })
   })
 
   it('ignores ci in a subfolder with a warning', () => {

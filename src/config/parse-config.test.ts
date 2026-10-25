@@ -22,6 +22,15 @@ describe('parseConfigText', () => {
     expect(parseConfigText('ci:\n  wait: soon\n').ok).toBe(false)
   })
 
+  it('reads ci.onFailure as review or skip', () => {
+    expect(parseConfigText('ci:\n  onFailure: skip\n')).toEqual({
+      ok: true,
+      config: { ci: { onFailure: 'skip' } },
+    })
+    expect(parseConfigText('ci:\n  onFailure: review\n').ok).toBe(true)
+    expect(parseConfigText('ci:\n  onFailure: block\n').ok).toBe(false)
+  })
+
   it('reads every key', () => {
     const text = [
       'provider: codex',

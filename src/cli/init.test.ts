@@ -135,11 +135,11 @@ describe('config templates with the conversation and CI', () => {
       const lines = template.split('\n')
       const start = lines.findIndex((line) => line.startsWith('# conversation:'))
       const block = lines
-        .slice(start, start + 5)
+        .slice(start, start + 6)
         .map((line) => line.replace(/^# ?/, '').replace(/\s+#.*$/, ''))
         .join('\n')
       expect(block).toBe(
-        'conversation: true\nci:\n  read: true\n  wait: 15m\n  checks: [test, "lint/*"]',
+        'conversation: true\nci:\n  read: true\n  wait: 15m\n  onFailure: review\n  checks: [test, "lint/*"]',
       )
       expect(parseConfigText(block)).toMatchObject({ ok: true })
     },
