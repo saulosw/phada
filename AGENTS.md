@@ -178,6 +178,8 @@ src/
                          #   shared by review, watch and prompt
     history-run.ts       #   historyRun(), watchRun(): a run, a failure or a ci-failing skip →
                          #   the history record
+    stored-ci.ts         #   ciSkipJson(), storedCi(): the CI of a run in its stored JSON, written
+                         #   for a ci-failing skip and read back (validated) for the events
     format-rules.ts      #   formatRulesText(), formatRulesJson() (schemaVersion 1)
     context-sources.ts   #   contextSourcesAt(): the repository at a commit and the local files
     format-index.ts      #   formatIndexText(), formatIndexJson() (schemaVersion 1)

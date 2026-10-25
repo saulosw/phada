@@ -1,10 +1,10 @@
 import type { JobEvent } from '../app/watch-repositories.js'
 import type { ReviewEventName } from '../config/schema.js'
-import type { CiState } from '../context/types.js'
-import type { CiCheckState } from '../review/types.js'
 import type { Verdict } from '../review/verdict.js'
 import type { HistoryStore, RunRecord, RunStatus } from '../store/history-store.js'
 import type { JobRecord, PublishTarget, RequestRecord, RequestSource } from '../watch/types.js'
+import { storedCi } from './stored-ci.js'
+import type { EventCi } from './stored-ci.js'
 
 const SCHEMA_VERSION = 1
 
@@ -25,15 +25,6 @@ export interface ReviewDocument {
     findings?: ReviewedFinding[]
     worthChecking?: ReviewedFinding[]
   }
-}
-
-export interface EventCi {
-  state: CiState
-  checks: { name: string; state: CiCheckState }[]
-}
-
-interface StoredCi {
-  ci?: EventCi | null
 }
 
 export interface ReviewEvent {
@@ -69,7 +60,7 @@ export function reviewEvent(event: JobEvent, run: RunRecord | undefined): Review
       ...(data === undefined ? {} : { data }),
     })),
     verdict: verdictOf(kind, run),
-    ci: ended ? ciOf(run) : startedCi(event),
+    ci: ended ? storedCi(run?.resultJson) : startedCi(event),
     ...(event.reason === undefined ? {} : { reason: event.reason }),
     publication:
       ended && run !== undefined
@@ -80,13 +71,6 @@ export function reviewEvent(event: JobEvent, run: RunRecord | undefined): Review
       : {}),
     ...(error === undefined ? {} : { error }),
   }
-}
-
-function ciOf(run: RunRecord | undefined): EventCi | null {
-  if (run?.resultJson === undefined) return null
-  const { ci } = JSON.parse(run.resultJson) as StoredCi
-  if (ci === undefined || ci === null) return null
-  return { state: ci.state, checks: ci.checks.map(({ name, state }) => ({ name, state })) }
 }
 
 function startedCi({ ci }: JobEvent): EventCi | null {

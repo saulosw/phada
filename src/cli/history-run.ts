@@ -9,6 +9,7 @@ import type { RunRecord, RunStatus } from '../store/history-store.js'
 import { CI_FAILING } from '../watch/ci-revisit.js'
 import type { FailureKind, JobRecord, RequestRecord, RequestSource } from '../watch/types.js'
 import { errorSummary } from './format-error.js'
+import { ciSkipJson } from './stored-ci.js'
 
 export interface RunMeta {
   source: 'watch' | 'manual'
@@ -114,7 +115,6 @@ export function watchRun(
 }
 
 function ciFailingRun(job: JobRecord, ci: PullCi, meta: RunMeta): RunRecord {
-  const { state, failing, pending } = ci.summary
   return {
     jobId: job.id,
     source: meta.source,
@@ -128,7 +128,7 @@ function ciFailingRun(job: JobRecord, ci: PullCi, meta: RunMeta): RunRecord {
     aiCalled: false,
     reason: job.reason ?? CI_FAILING,
     verdict: 'skipped',
-    resultJson: JSON.stringify({ ci: { state, failing, pending, checks: ci.checks } }),
+    resultJson: ciSkipJson(ci),
   }
 }
 
