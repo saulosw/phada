@@ -241,6 +241,7 @@ const APP: Boundary = {
     '../config/parse-config.js',
     '../config/watch-settings.js',
     '../config/duration.js',
+    '../config/schema.js',
     '../context/ignore.js',
     '../graph/impact.js',
     '../graph/linked-graph.js',

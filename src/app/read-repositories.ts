@@ -146,7 +146,7 @@ export async function readRepository(
       'layers' in layers && merged !== undefined
         ? {
             status: 'read',
-            settings: settingsOf(layers.layers),
+            settings: userSettings(layers.layers),
             rules: merged.rules.map(({ key, text, origin }) => ({
               key,
               text,
@@ -218,7 +218,7 @@ function originOfLabel(label: string): SettingOrigin {
 
 type Read = (config: ConfigFile) => unknown
 
-function settingsOf(layers: readonly ConfigLayer[]): ConfigSetting[] {
+export function userSettings(layers: readonly ConfigLayer[]): ConfigSetting[] {
   const ordered: [ConfigLayer | undefined, SettingOrigin][] = [
     [layers.find((layer) => layer.kind === 'user-repo'), 'repository'],
     [layers.find((layer) => layer.kind === 'user'), 'global'],
