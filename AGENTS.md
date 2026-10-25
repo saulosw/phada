@@ -104,6 +104,16 @@ src/
                          #   rule), readReviewDetail(): one run with what its stored JSON keeps
                          #   (score, summary, findings, publication, CI) and the feedback of each
                          #   published finding; no history file reads as empty
+    read-repositories.ts #   readRepositories(): watch.repos ∪ the user's repos/<owner>/<repo>/
+                         #   folders ∪ the history, each with its origins, index file and last
+                         #   review; readRepository(): the user config with the origin of each
+                         #   value (userSettings()), the watch filters, the index, the related
+                         #   repositories declared and the last reviews; an invalid config as a
+                         #   message
+    read-automation.ts   #   readAutomation(): the watch, the CI wait, the request sources (Slack
+                         #   with its channels and whether its tokens are set), the hooks and
+                         #   the when commands of the top-level user config; an invalid config as
+                         #   a message
     review-passes.ts     #   buildPasses(): review.prompt, review.skills or --skill → one SkillPass
                          #   per skill (paths matched here), SkillCatalog, PassPlan;
                          #   configuredLens(): the lens a config sets (built-in, prompt, skills)
@@ -139,7 +149,10 @@ src/
                          #   (loadApp), setInterval as the scheduler; quit 0, interrupted 130,
                          #   terminated 143, a failure thrown for formatError(); the readers of
                          #   the screens (readQueue with the lock holder and the watch settings,
-                         #   readReviews, readReviewDetail) over appHistory(), closed on exit
+                         #   readReviews, readReviewDetail) over appHistory(), closed on exit;
+                         #   readRepositories, readRepository (the user config folder, the index
+                         #   file in the cache) and readAutomation (the Slack tokens only as set
+                         #   or missing)
     app-history.ts       #   appHistory(): the history for the app, opened once when its file
                          #   exists (looked for again while missing, never created), a newer or
                          #   unreadable file thrown on each read
@@ -258,7 +271,8 @@ src/
                          #   (a screen's back first), q, 1–9, ←/→, Tab, Ctrl-C; the size warning
                          #   below 80×24
     app-context.ts       #   AppDeps (version, cwd, home, env, scheduler, language, configError,
-                         #   now, readQueue, readReviews, readReviewDetail), Scheduler, KeyHint;
+                         #   now, readQueue, readReviews, readReviewDetail, readRepositories,
+                         #   readRepository, readAutomation), Scheduler, KeyHint;
                          #   useAppDeps(), useTheme(), useMessages(), useWorking(),
                          #   useIsWorking(), useScreenKeys(), useBack(), useScreenInput() (quiet
                          #   while a text field is focused), useScreenSize()
@@ -268,7 +282,14 @@ src/
                          #   folder under ~; shortenHome()), queue.tsx (the watch from the lock
                          #   and the history, its jobs by kind → a job with its requests;
                          #   queueRows()), reviews.tsx (the history with a text filter → one
-                         #   review with findings, publication, CI and feedback), placeholder.tsx
+                         #   review with findings, publication, CI and feedback),
+                         #   repositories.tsx (each repository with its origins, index and last
+                         #   review → its watch filters, index, user config with origins, rules,
+                         #   related repositories and last reviews), automation.tsx (one page:
+                         #   watch, CI wait, request sources, hooks, when), placeholder.tsx
+    setting-lines.tsx    #   settingLines(), settingValue(): config settings as key, value and
+                         #   origin rows
+    units.ts             #   durationText(), bytesText()
     data-hooks.ts        #   usePolled() (local data, at once, every 2 s on the scheduler and when
                          #   its key changes), useLoaded() (slow data, on open and on r); DataState
     data-view.tsx        #   DataView: loading, the error in one line, or the value
@@ -308,7 +329,8 @@ src/
     mcp-servers.ts       #   userMcp(), resolveMcp(): MCP server names and declared servers, with
                          #   ${VAR} expanded from the environment
     user-config.ts       #   the user's folder (PHADA_CONFIG_HOME › XDG › ~/.config/phada),
-                         #   loadUserLayers(), loadTopLevelUserLayers()
+                         #   loadUserLayers(), loadTopLevelUserLayers(); listUserRepoConfigs():
+                         #   the repos/<owner>/<repo>/ folders with a config.yml or rules.md
     local-files.ts       #   LocalFileSystem and its node:fs implementation
     cache-paths.ts       #   the cache folder (PHADA_CACHE_HOME › XDG › ~/.cache/phada),
                          #   repositoryCache(): mirror, index and observed paths; pathSize()
