@@ -125,7 +125,8 @@ Options:
 
 Environment:
   GITHUB_TOKEN         GitHub token used to read the pull request
-  GH_TOKEN             Used when GITHUB_TOKEN is not set`
+  GH_TOKEN             Used when GITHUB_TOKEN is not set; with neither, Phada
+                       uses the token of your gh login (gh auth login)`
 
 export const MCP_USAGE = `Usage: phada mcp
 
@@ -141,7 +142,8 @@ Options:
 
 Environment:
   GITHUB_TOKEN         GitHub token used to read the pull requests asked for
-  GH_TOKEN             Used when GITHUB_TOKEN is not set`
+  GH_TOKEN             Used when GITHUB_TOKEN is not set; with neither, Phada
+                       uses the token of your gh login (gh auth login)`
 
 export const REVIEW_USAGE = `Usage: phada review <owner/repo#N | pull request URL> [options]
 
@@ -187,9 +189,9 @@ Config:
 
 Environment:
   GITHUB_TOKEN          GitHub token that can read the pull request and the
-                        repository contents and write reviews, e.g.
-                        export GITHUB_TOKEN=$(gh auth token)
-  GH_TOKEN              Used when GITHUB_TOKEN is not set
+                        repository contents and write reviews
+  GH_TOKEN              Used when GITHUB_TOKEN is not set; with neither, Phada
+                        uses the token of your gh login (gh auth login)
   OLLAMA_HOST           Ollama address (default: 127.0.0.1:11434)
   PHADA_CONFIG_HOME     Folder of your own config (default: ~/.config/phada)`
 
@@ -223,7 +225,8 @@ Options:
 
 Environment:
   GITHUB_TOKEN       GitHub token that can read the repository contents
-  GH_TOKEN           Used when GITHUB_TOKEN is not set
+  GH_TOKEN           Used when GITHUB_TOKEN is not set; with neither, Phada
+                     uses the token of your gh login (gh auth login)
   PHADA_CACHE_HOME   Folder of the mirror and the index (default: ~/.cache/phada)`
 
 export const RULES_USAGE = `Usage: phada rules <owner/repo[#N] | pull request URL> [options]
@@ -243,7 +246,8 @@ Options:
 
 Environment:
   GITHUB_TOKEN       GitHub token that can read the repository contents
-  GH_TOKEN           Used when GITHUB_TOKEN is not set
+  GH_TOKEN           Used when GITHUB_TOKEN is not set; with neither, Phada
+                     uses the token of your gh login (gh auth login)
   PHADA_CONFIG_HOME  Folder of your own config (default: ~/.config/phada)`
 
 export const PROMPT_USAGE = `Usage: phada prompt <owner/repo#N | pull request URL> [options]
@@ -265,7 +269,8 @@ Options:
 Environment:
   GITHUB_TOKEN       GitHub token that can read the pull request and the
                      repository contents
-  GH_TOKEN           Used when GITHUB_TOKEN is not set
+  GH_TOKEN           Used when GITHUB_TOKEN is not set; with neither, Phada
+                     uses the token of your gh login (gh auth login)
   PHADA_CONFIG_HOME  Folder of your own config (default: ~/.config/phada)`
 
 export const WATCH_USAGE = `Usage: phada watch [options]
@@ -304,7 +309,8 @@ Config (in ~/.config/phada/config.yml):
 Environment:
   GITHUB_TOKEN       GitHub token that can read the pull requests and the
                      repository contents and write reviews
-  GH_TOKEN           Used when GITHUB_TOKEN is not set
+  GH_TOKEN           Used when GITHUB_TOKEN is not set; with neither, Phada
+                     uses the token of your gh login (gh auth login)
   PHADA_CONFIG_HOME  Folder of your own config (default: ~/.config/phada)
   PHADA_DATA_HOME    Folder of the history (default: ~/.local/share/phada)
   PHADA_CACHE_HOME   Folder of the mirrors and indexes (default: ~/.cache/phada)`
@@ -331,7 +337,8 @@ Options:
 
 Environment:
   GITHUB_TOKEN         GitHub token for --refresh
-  GH_TOKEN             Used when GITHUB_TOKEN is not set
+  GH_TOKEN             Used when GITHUB_TOKEN is not set; with neither, Phada
+                       uses the token of your gh login (gh auth login)
   PHADA_DATA_HOME      Folder of the history (default: ~/.local/share/phada)`
 
 const REPOSITORY_NAME = /^([\w.-]+)\/([\w.-]+)$/
