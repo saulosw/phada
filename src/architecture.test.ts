@@ -47,8 +47,10 @@ const WATCH: Boundary = {
     '../github/list-pull-requests.js',
     '../github/issue-comments.js',
     '../github/pull-request.js',
+    '../publish/types.js',
   ]),
   expected: [
+    'ci-gate.ts',
     'failures.ts',
     'filters.ts',
     'next-job.ts',
@@ -251,6 +253,7 @@ const APP: Boundary = {
     '../review/recheck-threads.js',
     '../review/run-review.js',
     '../store/index-store.js',
+    '../watch/ci-gate.js',
     '../watch/failures.js',
     '../watch/next-job.js',
     '../watch/plan-cycle.js',

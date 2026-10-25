@@ -23,6 +23,17 @@ describe('pickNext', () => {
     expect(pickNext({ ...base, queued })).toEqual({ job: queued[1] })
   })
 
+  it('takes a job waiting for CI by when it reads the checks again', () => {
+    const waiting = { ...job(1, at(-2)), status: 'waiting' as const, reason: 'ci-pending' }
+    const queued = [job(2, at(-1)), waiting]
+
+    expect(pickNext({ ...base, queued })).toEqual({ job: waiting })
+    expect(pickNext({ ...base, queued: [{ ...waiting, notBefore: at(1) }] })).toEqual({
+      waitUntil: at(1),
+      reason: 'not-ready',
+    })
+  })
+
   it('waits for the first job that is not ready yet', () => {
     expect(pickNext({ ...base, queued: [job(1, at(5)), job(2, at(2))] })).toEqual({
       waitUntil: at(2),

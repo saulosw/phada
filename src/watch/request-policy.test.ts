@@ -116,6 +116,15 @@ describe('decideRequest', () => {
     })
   })
 
+  it('joins a job waiting for CI on the same commit and has it read the checks now', () => {
+    const waiting = job(3, { status: 'waiting', reason: 'ci-pending' })
+    expect(decideRequest(input({ jobs: [waiting] }))).toEqual({
+      action: 'join',
+      jobId: 3,
+      readyNow: true,
+    })
+  })
+
   it('joins a running job that already publishes, or when the request does not publish', () => {
     const running = job(3, { status: 'running', publish: 'pr' })
     expect(decideRequest(input({ jobs: [running] }))).toEqual({

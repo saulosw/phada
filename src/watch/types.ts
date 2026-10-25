@@ -1,4 +1,5 @@
-export type JobStatus = 'queued' | 'running' | 'done' | 'failed' | 'skipped' | 'superseded'
+export type JobStatus =
+  'queued' | 'waiting' | 'running' | 'done' | 'failed' | 'skipped' | 'superseded'
 export type RequestSource = 'watch' | 'enqueue' | 'mcp' | 'pr-command' | 'slack'
 export type PublishTarget = 'pr' | 'none'
 export type FailureKind = 'transient' | 'usage-limit' | 'rate-limit' | 'definitive' | 'fatal'
@@ -25,6 +26,8 @@ export interface JobRecord {
   reason?: string
   errorKind?: FailureKind
   error?: string
+  ciDeadline?: string
+  ciPending?: string[]
   createdAt: string
   startedAt?: string
   finishedAt?: string

@@ -1,6 +1,6 @@
 import type { WatchedRepoSettings } from '../config/watch-settings.js'
 import { TRUSTED_ASSOCIATIONS } from './filters.js'
-import { RATE_WINDOW_MS } from './next-job.js'
+import { notStarted, RATE_WINDOW_MS } from './next-job.js'
 import { later } from './time.js'
 import type { PullFacts } from './pull-facts.js'
 import type { JobRecord, PublishTarget, RequestSource } from './types.js'
@@ -35,8 +35,8 @@ export function decideRequest(input: PolicyInput): RequestDecision {
     (job) => job.number === pull.number && job.headSha === pull.headSha,
   )
   const satisfies = (job: JobRecord) => request.publish === 'none' || publishOf(job, repo) === 'pr'
-  const queued = sameCommit.find((job) => job.status === 'queued')
-  if (queued !== undefined) return { action: 'join', jobId: queued.id, readyNow: true }
+  const waiting = sameCommit.find(notStarted)
+  if (waiting !== undefined) return { action: 'join', jobId: waiting.id, readyNow: true }
   const running = sameCommit.find((job) => job.status === 'running' && satisfies(job))
   if (running !== undefined) return { action: 'join', jobId: running.id, readyNow: false }
   const reviewed = sameCommit.find((job) => reviewedCommit(job) && satisfies(job))

@@ -94,7 +94,49 @@ describe('openHistoryStore migrations', () => {
     expect(store.jobs({})).toEqual([{ ...JOB, id }])
     expect(store.requests([id])).toEqual([])
     store.close()
-    expect(userVersion(path)).toBe(3)
+    expect(userVersion(path)).toBe(HISTORY_MIGRATIONS.length)
+  })
+
+  it('migrates a version 3 file without losing its jobs, requests and runs, and lets a job wait for CI', async () => {
+    const path = fresh()
+    const v3 = await openHistoryStore(path, { migrations: HISTORY_MIGRATIONS.slice(0, 3) })
+    const done = v3.addJob({ ...JOB, status: 'done', publish: 'pr', finishedAt: JOB.notBefore })
+    const queued = v3.addJob({ ...JOB, number: 4, publish: 'none' })
+    const request = { jobId: queued, source: 'slack' as const, publish: 'none' as const }
+    const requestId = v3.addRequest({ ...request, data: { ts: '1' }, createdAt: JOB.createdAt })
+    v3.addRun({ ...RUN, jobId: done })
+    v3.close()
+
+    const store = await openHistoryStore(path)
+    expect(store.jobs({})).toEqual([
+      { ...JOB, id: done, status: 'done', publish: 'pr', finishedAt: JOB.notBefore },
+      { ...JOB, id: queued, number: 4, publish: 'none' },
+    ])
+    expect(store.requests([queued])).toEqual([
+      { ...request, id: requestId, data: { ts: '1' }, createdAt: JOB.createdAt },
+    ])
+    expect(store.runOfJob(done)).toMatchObject({ jobId: done, url: RUN.url })
+    store.updateJob(queued, {
+      status: 'waiting',
+      reason: 'ci-pending',
+      ciDeadline: '2026-10-18T12:15:00.000Z',
+      ciPending: ['test', 'build'],
+    })
+    expect(store.jobs({ status: ['waiting'] })).toEqual([
+      {
+        ...JOB,
+        id: queued,
+        number: 4,
+        publish: 'none',
+        status: 'waiting',
+        reason: 'ci-pending',
+        ciDeadline: '2026-10-18T12:15:00.000Z',
+        ciPending: ['test', 'build'],
+      },
+    ])
+    expect(store.addJob(JOB)).toBe(queued + 1)
+    store.close()
+    expect(userVersion(path)).toBe(HISTORY_MIGRATIONS.length)
   })
 
   it('refuses a file written by a newer version and leaves it as it is', async () => {
@@ -314,6 +356,7 @@ describe('HistoryStore records', () => {
     const store = await openHistoryStore(fresh())
     store.saveRepo({ repo: 'acme/shop', checkedAt: '2026-10-18T12:00:00.000Z' })
     store.addJob(JOB)
+    store.addJob({ ...JOB, number: 4, status: 'waiting', notBefore: '2026-10-18T12:01:00.000Z' })
     store.addJob({ ...JOB, number: 5, status: 'running' })
     store.addJob({ ...JOB, number: 6, status: 'failed', error: 'boom', errorKind: 'definitive' })
     store.addRun({
@@ -326,7 +369,7 @@ describe('HistoryStore records', () => {
     const status = store.status()
 
     expect(status.repos).toEqual([{ repo: 'acme/shop', checkedAt: '2026-10-18T12:00:00.000Z' }])
-    expect(status.queued.map((job) => job.number)).toEqual([3])
+    expect(status.queued.map((job) => job.number)).toEqual([4, 3])
     expect(status.running.map((job) => job.number)).toEqual([5])
     expect(status.failed.map((job) => job.error)).toEqual(['boom'])
     const { resultJson: _json, ...withoutJson } = RUN

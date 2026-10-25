@@ -164,6 +164,37 @@ describe('planCycle', () => {
     ])
   })
 
+  it('replaces a job waiting for CI on an older commit with the new one', () => {
+    const waiting = job(7, 3, { status: 'waiting', reason: 'ci-pending' })
+    const actions = planCycle(input({ pulls: [open(3, B)], stored: [stored(3)], jobs: [waiting] }))
+
+    expect(actions).toEqual([
+      { kind: 'seen', pull: { ...stored(3), headSha: B, headSeenAt: NOW } },
+      { kind: 'supersede', jobId: 7 },
+      queued(3, B, at(3)),
+    ])
+  })
+
+  it('treats a job waiting for CI as the job of its commit', () => {
+    const waiting = job(7, 3, { status: 'waiting', reason: 'ci-pending', publish: 'none' })
+    const slack: RequestRecord = {
+      id: 1,
+      jobId: 7,
+      source: 'slack',
+      publish: 'none',
+      createdAt: at(-1),
+    }
+    expect(planCycle(input({ pulls: [open(3)], stored: [stored(3)], jobs: [waiting] }))).toEqual([])
+    expect(
+      planCycle(
+        input({ pulls: [open(3)], stored: [stored(3)], jobs: [waiting], requests: [slack] }),
+      ),
+    ).toEqual([{ kind: 'join', jobId: 7 }])
+    expect(planCycle(input({ stored: [stored(3)], jobs: [waiting] }))).toEqual([
+      { kind: 'gone', pull: { ...stored(3), state: 'gone' }, jobIds: [7] },
+    ])
+  })
+
   it.each(['done', 'failed', 'running'] as const)(
     'does nothing for a commit that already has a %s job',
     (status) => {

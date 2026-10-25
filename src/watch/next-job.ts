@@ -1,7 +1,12 @@
-import type { JobRecord, PauseState } from './types.js'
+import type { JobRecord, JobStatus, PauseState } from './types.js'
 import { later } from './time.js'
 
 export const RATE_WINDOW_MS = 3_600_000
+export const NOT_STARTED: readonly JobStatus[] = ['queued', 'waiting']
+
+export function notStarted(job: Pick<JobRecord, 'status'>): boolean {
+  return NOT_STARTED.includes(job.status)
+}
 
 export interface NextJobInput {
   queued: readonly JobRecord[]

@@ -113,6 +113,7 @@ export function storedEvent(
 ): ReviewEvent | undefined {
   switch (job.status) {
     case 'queued':
+    case 'waiting':
     case 'running':
       return undefined
     case 'done':

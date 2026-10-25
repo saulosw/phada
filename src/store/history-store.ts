@@ -224,9 +224,13 @@ function migrate(db: DatabaseSync, path: string, migrations: readonly HistoryMig
   if (current > known) throw new HistoryVersionError(path, current, known)
   for (const migration of migrations) {
     if (migration.version <= current) continue
+    if (migration.rebuildsTables === true) db.exec('pragma foreign_keys = off')
     db.exec('begin immediate')
     try {
       db.exec(migration.sql)
+      if (db.prepare('pragma foreign_key_check').all().length > 0) {
+        throw new Error('a row points to a missing one')
+      }
       db.exec(`pragma user_version = ${migration.version}`)
       db.exec('commit')
     } catch (error) {
@@ -234,6 +238,8 @@ function migrate(db: DatabaseSync, path: string, migrations: readonly HistoryMig
       throw new HistoryStoreError(
         `Cannot update ${path} to history version ${migration.version}: ${(error as Error).message}`,
       )
+    } finally {
+      if (migration.rebuildsTables === true) db.exec('pragma foreign_keys = on')
     }
   }
 }
@@ -409,7 +415,7 @@ class SqliteHistoryStore implements HistoryStore {
         .prepare('select * from watched_repo order by repo')
         .all()
         .map((row) => fromRow<RepoRecord>(row, REPO_TABLE)),
-      queued: this.#withSources(this.jobs({ status: ['queued'] })),
+      queued: this.#withSources(this.jobs({ status: ['queued', 'waiting'] })),
       running: this.#withSources(this.jobs({ status: ['running'] })),
       failed,
       lastRuns,

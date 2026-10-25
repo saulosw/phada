@@ -3,6 +3,7 @@ import type { OpenPull } from '../github/list-pull-requests.js'
 import type { JobRecord, PullRecord, RequestRecord } from './types.js'
 import { later } from './time.js'
 import { eligibility } from './filters.js'
+import { notStarted } from './next-job.js'
 
 export interface CycleInput {
   repo: WatchedRepoSettings
@@ -55,7 +56,7 @@ export function planCycle(input: CycleInput): CycleAction[] {
     if (newCommit || before?.eligible !== eligible) actions.push({ kind: 'seen', pull: current })
     const jobs = input.jobs.filter((job) => job.number === pull.number)
     for (const job of jobs) {
-      if (job.status === 'queued' && job.headSha !== pull.headSha) {
+      if (notStarted(job) && job.headSha !== pull.headSha) {
         actions.push({ kind: 'supersede', jobId: job.id })
       }
     }
@@ -63,15 +64,13 @@ export function planCycle(input: CycleInput): CycleAction[] {
       (job) =>
         job.headSha === pull.headSha &&
         blocks(job) &&
-        !(repo.publish === 'pr' && job.status !== 'queued' && job.publish === 'none'),
+        !(repo.publish === 'pr' && !notStarted(job) && job.publish === 'none'),
     )
     if (!eligible || current.baselineSha === pull.headSha) continue
     if (known) {
       const asked = jobs.find(
         (job) =>
-          job.headSha === pull.headSha &&
-          job.status === 'queued' &&
-          askedElsewhere(job, input.requests),
+          job.headSha === pull.headSha && notStarted(job) && askedElsewhere(job, input.requests),
       )
       if (asked !== undefined) actions.push({ kind: 'join', jobId: asked.id })
       continue
@@ -101,7 +100,7 @@ export function planCycle(input: CycleInput): CycleAction[] {
       kind: 'gone',
       pull: { ...before, state: 'gone' },
       jobIds: input.jobs
-        .filter((job) => job.number === before.number && job.status === 'queued')
+        .filter((job) => job.number === before.number && notStarted(job))
         .map((job) => job.id),
     })
   }
