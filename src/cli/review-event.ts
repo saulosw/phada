@@ -1,5 +1,7 @@
 import type { JobEvent } from '../app/watch-repositories.js'
 import type { ReviewEventName } from '../config/schema.js'
+import type { CiState } from '../publish/types.js'
+import type { CiCheckState } from '../review/types.js'
 import type { Verdict } from '../review/verdict.js'
 import type { HistoryStore, RunRecord, RunStatus } from '../store/history-store.js'
 import type { JobRecord, PublishTarget, RequestRecord, RequestSource } from '../watch/types.js'
@@ -25,12 +27,22 @@ export interface ReviewDocument {
   }
 }
 
+export interface EventCi {
+  state: CiState
+  checks: { name: string; state: CiCheckState }[]
+}
+
+interface StoredCi {
+  ci?: EventCi | null
+}
+
 export interface ReviewEvent {
   schemaVersion: typeof SCHEMA_VERSION
   event: ReviewEventName
   job: { id: number; repo: string; number: number; headSha: string; url: string }
   requests: { source: RequestSource; publish: PublishTarget; data?: Record<string, unknown> }[]
   verdict: Verdict | null
+  ci: EventCi | null
   reason?: string
   publication: { status: RunStatus; url?: string } | null
   review?: ReviewDocument
@@ -57,6 +69,7 @@ export function reviewEvent(event: JobEvent, run: RunRecord | undefined): Review
       ...(data === undefined ? {} : { data }),
     })),
     verdict: verdictOf(kind, run),
+    ci: ended ? ciOf(run) : null,
     ...(event.reason === undefined ? {} : { reason: event.reason }),
     publication:
       ended && run !== undefined
@@ -67,6 +80,13 @@ export function reviewEvent(event: JobEvent, run: RunRecord | undefined): Review
       : {}),
     ...(error === undefined ? {} : { error }),
   }
+}
+
+function ciOf(run: RunRecord | undefined): EventCi | null {
+  if (run?.resultJson === undefined) return null
+  const { ci } = JSON.parse(run.resultJson) as StoredCi
+  if (ci === undefined || ci === null) return null
+  return { state: ci.state, checks: ci.checks.map(({ name, state }) => ({ name, state })) }
 }
 
 function verdictOf(kind: JobEvent['kind'], run: RunRecord | undefined): Verdict | null {

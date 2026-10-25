@@ -119,7 +119,8 @@ src/
                          #   destinations of the review events; the Slack tokens
     format-request.ts    #   refusalText(), formatSubmitText/Json(), jobJson()
     review-event.ts      #   reviewEvent(), storedEvent(), eventOfJob(): a job event → the event JSON
-                         #   (schemaVersion 1) of hooks, Slack and wait_for_job
+                         #   (schemaVersion 1) of hooks, Slack and wait_for_job, with the CI state
+                         #   and the checks that count once the review read them
     run-shell.ts         #   runShell(), shellFailure(): a command of the user through sh, with its
                          #   own process group and a deadline
     run-hook.ts          #   runHook(): the hook of an event, its failure as a warning
