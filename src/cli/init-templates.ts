@@ -1,5 +1,5 @@
 const SHARED_OPTIONS = `# Review options. Flags given on the command line win.
-# language: en                 # language of the review, e.g. pt-BR
+# language: en                 # language of the review, e.g. pt-BR or es
 # minConfidence: 60            # findings below this confidence go to "worth checking"
 # verify: true                 # check every finding with a second call to the AI
 # investigate: true            # let the AI read the rest of the repository at the head

@@ -155,7 +155,7 @@ Options:
   --provider <name>     AI provider: claude, codex or ollama (default: claude)
   --model <name>        Model (required for ollama; otherwise the model set in the
                         provider's own config; for claude, opus when none is set)
-  --language <tag>      Review language, e.g. pt-BR (default: English)
+  --language <tag>      Review language, e.g. pt-BR or es (default: English)
   --min-confidence <n>  Confidence cut from ${CONFIDENCE_FLOOR} to ${MAX_CONFIDENCE} (default: ${DEFAULT_MIN_CONFIDENCE}); findings
                         below it are listed as worth checking
   --format <name>       Output: markdown or json (default: markdown)

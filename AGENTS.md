@@ -211,7 +211,7 @@ src/
                          #   codeFence()
     review-text.ts       #   model label and short SHA
     i18n/                #   fixed review text per language: messages.ts (Messages, messagesFor()),
-                         #   en.ts, pt.ts; unknown languages fall back to English
+                         #   en.ts, pt.ts, es.ts; unknown languages fall back to English
     format-error.ts      #   error → one line + exit code (2 usage, 1 failure); --debug details
     progress.ts          #   withProgress(): ReviewProvider decorator with a live timer on a TTY;
                          #   indexProgress(): the "Indexing N files…" lines
