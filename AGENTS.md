@@ -225,6 +225,8 @@ src/
     phada-paths.ts       #   .phada/ folders from the root to each changed file
     split-diff.ts        #   a unified diff split by file
     ignore.ts            #   DEFAULT_IGNORE (lockfiles, minified files, source maps), applyIgnore()
+    byte-cut.ts          #   byteLength(), cutBytes(): a text cut at a number of UTF-8 bytes with
+                         #   the "[truncated by Phada: …]" line (docs, CI and conversation)
     select-docs.ts       #   docs by priority (including other tools' instruction files), the
                          #   60 KB budget, cutting a doc at 20 KB
     frontmatter.ts       #   readFrontmatter(): the front matter of an instruction file, line by line
@@ -488,7 +490,8 @@ repository and of the local disk as data, and its only value imports from outsid
 `picomatch`, `node:path` and the pure config helpers (`parse-config.ts`, `merge-config.ts`); it
 takes the check runs, commit statuses and job logs of `src/github/` as types only.
 `src/publish/` imports only types from outside the folder (`src/review/types.ts`,
-`src/github/pull-request-reviews.ts`, `src/github/compare-commits.ts`). `src/store/` stores the
+`src/github/pull-request-reviews.ts`, `src/github/compare-commits.ts`), and the byte cut of
+`src/context/byte-cut.ts`. `src/store/` stores the
 feedback records of `src/publish/feedback.ts` as types only. `src/watch/` imports only types from outside the folder
 (the watch settings, the listed and fetched pull requests, the issue comments and the CI summary) and never reads the clock: `now` comes in as
 data. Its records (`src/watch/types.ts`) are the watch's own; `src/store/` stores them.

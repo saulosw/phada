@@ -22,7 +22,7 @@ const REVIEW: Boundary = {
 }
 const PUBLISH: Boundary = {
   dir: 'publish',
-  values: new Set(),
+  values: new Set(['../context/byte-cut.js']),
   types: new Set([
     '../review/types.js',
     '../github/pull-request-reviews.js',

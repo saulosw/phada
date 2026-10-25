@@ -1,3 +1,5 @@
+import { byteLength } from './byte-cut.js'
+
 export const CI_LOG_JOB_BYTES = 8 * 1024
 
 const TIMESTAMP = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z ?/
@@ -32,5 +34,5 @@ function tail(text: string, maxBytes: number): string {
   const end = decoder.decode(bytes.slice(bytes.length - maxBytes))
   const newline = end.indexOf('\n')
   const kept = newline === -1 ? end.replace(/^\uFFFD/, '') : end.slice(newline + 1)
-  return `[truncated by Phada: last ${encoder.encode(kept).length} of ${bytes.length} bytes]\n${kept}`
+  return `[truncated by Phada: last ${byteLength(kept)} of ${bytes.length} bytes]\n${kept}`
 }

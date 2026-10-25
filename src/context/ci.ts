@@ -1,6 +1,8 @@
 import type { CheckAnnotation } from '../github/check-runs.js'
 import type { JobLog } from '../github/job-log.js'
 import type { CiCheck } from '../review/types.js'
+import { byteLength, cutBytes } from './byte-cut.js'
+import type { CutCount } from './byte-cut.js'
 import { CI_LOG_JOB_BYTES, failedStepLog } from './ci-log.js'
 import { ciSummary } from './ci-state.js'
 import type { Ci, CiEntry } from './types.js'
@@ -13,9 +15,6 @@ const CI_LOG_MIN_BYTES = 256
 const KEPT_LEVELS: ReadonlySet<string> = new Set(['failure', 'warning'])
 const TRUNCATED = '[truncated by Phada:'
 const STATE_ORDER = ['failing', 'pending', 'passing'] as const
-
-const encoder = new TextEncoder()
-const decoder = new TextDecoder()
 
 export interface CiDetails {
   annotations: ReadonlyMap<number, readonly CheckAnnotation[]>
@@ -50,10 +49,12 @@ export function buildCi(entries: readonly CiEntry[], details: CiDetails): Ci {
       name: entry.name,
       state: entry.state,
       ...(entry.conclusion === undefined ? {} : { conclusion: entry.conclusion }),
-      ...(entry.title === undefined ? {} : { title: cut(entry.title, CI_SUMMARY_BYTES, cuts) }),
+      ...(entry.title === undefined
+        ? {}
+        : { title: cutBytes(entry.title, CI_SUMMARY_BYTES, cuts) }),
       ...(entry.summary === undefined || entry.summary.trim() === ''
         ? {}
-        : { summary: cut(entry.summary, CI_SUMMARY_BYTES, cuts) }),
+        : { summary: cutBytes(entry.summary, CI_SUMMARY_BYTES, cuts) }),
       ...(shown.length === 0
         ? {}
         : { annotations: shown.map((annotation) => annotationLine(annotation, cuts)) }),
@@ -102,22 +103,10 @@ function cutLogs(entries: readonly CiEntry[], logs: ReadonlyMap<number, JobLog>)
   return result
 }
 
-function annotationLine(annotation: CheckAnnotation, cuts: { truncated: number }): string {
+function annotationLine(annotation: CheckAnnotation, cuts: CutCount): string {
   const title =
     annotation.title === null || annotation.title === annotation.message
       ? ''
       : `${annotation.title}: `
-  return `${annotation.path}:${annotation.line} ${annotation.level}: ${title}${cut(annotation.message, CI_ANNOTATION_BYTES, cuts)}`
-}
-
-function cut(text: string, maxBytes: number, cuts: { truncated: number }): string {
-  const bytes = encoder.encode(text)
-  if (bytes.length <= maxBytes) return text
-  cuts.truncated++
-  const kept = decoder.decode(bytes.slice(0, maxBytes)).replace(/�$/, '')
-  return `${kept}\n[truncated by Phada: ${byteLength(kept)} of ${bytes.length} bytes]`
-}
-
-function byteLength(text: string): number {
-  return encoder.encode(text).length
+  return `${annotation.path}:${annotation.line} ${annotation.level}: ${title}${cutBytes(annotation.message, CI_ANNOTATION_BYTES, cuts)}`
 }

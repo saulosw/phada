@@ -11,6 +11,7 @@ import type {
   ConversationReviewState,
   ConversationRole,
 } from '../review/types.js'
+import { byteLength, cutBytes } from '../context/byte-cut.js'
 import { findingTitle, hasFindingMarker, hasResolvedMarker, parseReviewMarker } from './markers.js'
 import type { Conversation } from './types.js'
 
@@ -26,9 +27,6 @@ const ROLES: Readonly<Record<string, ConversationRole>> = {
   FIRST_TIMER: 'contributor',
 }
 const ALWAYS_SHOWN: ReadonlySet<string> = new Set(['approved', 'changes-requested'])
-
-const encoder = new TextEncoder()
-const decoder = new TextDecoder()
 
 export interface ConversationInput {
   state: PullRequestReviewState
@@ -50,7 +48,7 @@ export function buildConversation({ state, comments, author }: ConversationInput
       : who.bot === true
         ? 'bot'
         : (ROLES[who.association ?? ''] ?? 'external')
-  const body = (text: string): string => cutBody(text, cuts)
+  const body = (text: string): string => cutBytes(text, CONVERSATION_BODY_BYTES, cuts)
   const own = (who: string, text: string): boolean =>
     who !== '' &&
     who === state.viewer &&
@@ -137,14 +135,6 @@ function threadItem(
   ]
 }
 
-function cutBody(text: string, cuts: { truncated: number }): string {
-  const bytes = encoder.encode(text)
-  if (bytes.length <= CONVERSATION_BODY_BYTES) return text
-  cuts.truncated++
-  const kept = decoder.decode(bytes.slice(0, CONVERSATION_BODY_BYTES)).replace(/�$/, '')
-  return `${kept}\n[truncated by Phada: ${byteLength(kept)} of ${bytes.length} bytes]`
-}
-
 function chronological(items: readonly ConversationItem[]): ConversationItem[] {
   return [...items].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0))
 }
@@ -176,8 +166,4 @@ function conversationLines(items: readonly ConversationItem[]): string {
 
 function blockBytes(items: readonly ConversationItem[]): number {
   return byteLength(conversationLines(items))
-}
-
-function byteLength(text: string): number {
-  return encoder.encode(text).length
 }
