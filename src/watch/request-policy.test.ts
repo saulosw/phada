@@ -125,6 +125,16 @@ describe('decideRequest', () => {
     })
   })
 
+  it('joins a commit skipped for failing CI and queues it again to read the checks now', () => {
+    const watched = { ...REPO, when: './team.sh' }
+    const skipped = job(3, { status: 'skipped', reason: 'ci-failing', publish: 'none' })
+    expect(
+      decideRequest(
+        input({ repo: watched, jobs: [skipped], creationTimesLastHour: [at(-10)], maxPerHour: 1 }),
+      ),
+    ).toEqual({ action: 'join', jobId: 3, readyNow: true, requeue: true })
+  })
+
   it('joins a running job that already publishes, or when the request does not publish', () => {
     const running = job(3, { status: 'running', publish: 'pr' })
     expect(decideRequest(input({ jobs: [running] }))).toEqual({

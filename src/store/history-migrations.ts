@@ -170,4 +170,12 @@ create index job_by_commit on job (repo, number, head_sha);
 create index job_by_created on job (created_at);
 `,
   },
+  {
+    version: 5,
+    sql: `
+alter table job add column ci_failing text;
+alter table job add column ci_checked_at text;
+alter table job add column ci_since text;
+`,
+  },
 ]

@@ -51,6 +51,7 @@ const WATCH: Boundary = {
   ]),
   expected: [
     'ci-gate.ts',
+    'ci-revisit.ts',
     'failures.ts',
     'filters.ts',
     'next-job.ts',
@@ -254,6 +255,7 @@ const APP: Boundary = {
     '../review/run-review.js',
     '../store/index-store.js',
     '../watch/ci-gate.js',
+    '../watch/ci-revisit.js',
     '../watch/failures.js',
     '../watch/next-job.js',
     '../watch/plan-cycle.js',

@@ -28,6 +28,9 @@ export interface JobRecord {
   error?: string
   ciDeadline?: string
   ciPending?: string[]
+  ciFailing?: string[]
+  ciCheckedAt?: string
+  ciSince?: string
   createdAt: string
   startedAt?: string
   finishedAt?: string
