@@ -1,7 +1,8 @@
 import { lstat, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 
-const OBSERVED_FILE = '.sqlite'
+const SQLITE_EXTENSION = '.sqlite'
+const OBSERVED_DIR = 'observed'
 
 export function phadaCacheDir(env: NodeJS.ProcessEnv, home: string): string {
   const explicit = env.PHADA_CACHE_HOME?.trim()
@@ -15,7 +16,16 @@ export function mirrorDir(cacheDir: string, owner: string, repo: string): string
 }
 
 export function indexFile(cacheDir: string, owner: string, repo: string): string {
-  return join(cacheDir, 'index', owner.toLowerCase(), `${repo.toLowerCase()}.sqlite`)
+  return join(cacheDir, 'index', owner.toLowerCase(), `${repo.toLowerCase()}${SQLITE_EXTENSION}`)
+}
+
+export function observedFile(cacheDir: string, owner: string, repo: string): string {
+  return join(
+    cacheDir,
+    OBSERVED_DIR,
+    owner.toLowerCase(),
+    `${repo.toLowerCase()}${SQLITE_EXTENSION}`,
+  )
 }
 
 export function repositoryCache(
@@ -28,20 +38,20 @@ export function repositoryCache(
   return {
     mirror: mirrorDir(cache, owner, repo),
     index: indexFile(cache, owner, repo),
-    observed: join(cache, 'observed', owner.toLowerCase(), `${repo.toLowerCase()}.sqlite`),
+    observed: observedFile(cache, owner, repo),
   }
 }
 
 export async function observedRepositories(cacheDir: string): Promise<string[]> {
-  const root = join(cacheDir, 'observed')
+  const root = join(cacheDir, OBSERVED_DIR)
   const owners = await readdir(root, { withFileTypes: true }).catch(() => [])
   const repos = await Promise.all(
     owners
       .filter((owner) => owner.isDirectory())
       .map(async (owner) =>
         (await readdir(join(root, owner.name), { withFileTypes: true }).catch(() => []))
-          .filter((file) => file.isFile() && file.name.endsWith(OBSERVED_FILE))
-          .map((file) => `${owner.name}/${file.name.slice(0, -OBSERVED_FILE.length)}`),
+          .filter((file) => file.isFile() && file.name.endsWith(SQLITE_EXTENSION))
+          .map((file) => `${owner.name}/${file.name.slice(0, -SQLITE_EXTENSION.length)}`),
       ),
   )
   return repos.flat().sort()

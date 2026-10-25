@@ -1,10 +1,11 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import {
   indexFile,
   mirrorDir,
+  observedFile,
   observedRepositories,
   pathSize,
   phadaCacheDir,
@@ -78,5 +79,15 @@ describe('observedRepositories', () => {
     writeFileSync(join(dir, 'observed', 'stray.sqlite'), '')
 
     expect(await observedRepositories(dir)).toEqual(['acme/shop', 'acme/web'])
+  })
+
+  it('lists the repository of each file observedFile() names', async () => {
+    const cache = join(dir, 'named')
+    const path = observedFile(cache, 'Octo', 'Api')
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, '')
+
+    expect(path).toBe(join(cache, 'observed', 'octo', 'api.sqlite'))
+    expect(await observedRepositories(cache)).toEqual(['octo/api'])
   })
 })
