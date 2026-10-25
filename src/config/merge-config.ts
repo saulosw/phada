@@ -59,11 +59,13 @@ export interface ReviewSettings {
 }
 
 export interface CiSettings {
-  read?: boolean
-  waitMs?: number
-  onFailure?: 'review' | 'skip'
+  read: boolean
+  waitMs: number
+  onFailure: 'review' | 'skip'
   checks?: string[]
 }
+
+export const DEFAULT_CI: Readonly<CiSettings> = { read: true, waitMs: 900_000, onFailure: 'review' }
 
 export interface EffectiveConfig {
   language?: string
@@ -147,9 +149,9 @@ export function mergeConfig(layers: readonly ConfigLayer[]): EffectiveConfig {
     ...(resolveThreads === undefined ? {} : { resolveThreads }),
     ...(conversation === undefined ? {} : { conversation }),
     ci: {
-      ...(ciRead === undefined ? {} : { read: ciRead }),
-      ...(ciWait === undefined ? {} : { waitMs: durationMs(ciWait) }),
-      ...(ciOnFailure === undefined ? {} : { onFailure: ciOnFailure }),
+      read: ciRead ?? DEFAULT_CI.read,
+      waitMs: ciWait === undefined ? DEFAULT_CI.waitMs : durationMs(ciWait),
+      onFailure: ciOnFailure ?? DEFAULT_CI.onFailure,
       ...(ciChecks === undefined ? {} : { checks: ciChecks }),
     },
     contextDefaults: firstSet((config) => config.context?.defaults) ?? true,

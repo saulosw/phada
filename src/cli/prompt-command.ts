@@ -73,10 +73,9 @@ export async function runPrompt(command: PromptCommand, deps: PromptCommandDeps)
           warn,
         )
       : undefined
-  const ci =
-    (loaded.options.ci?.read ?? true)
-      ? await readCi(ciReaders(deps, target), pullRequest.headSha, loaded.options.ci?.checks, warn)
-      : undefined
+  const ci = loaded.options.ci.read
+    ? await readCi(ciReaders(deps, target), pullRequest.headSha, loaded.options.ci.checks, warn)
+    : undefined
   const view = await inspectPrompt({
     pullRequest,
     loaded,

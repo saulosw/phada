@@ -10,7 +10,6 @@ import { phadaFiles } from '../context/phada-paths.js'
 import { splitRepoName } from '../github/pull-request-ref.js'
 import type { FetchPullRequestOptions, PullRequestMetadata } from '../github/pull-request.js'
 import { ciSummary } from '../context/ci-state.js'
-import { DEFAULT_CI_WAIT_MS } from '../watch/ci-gate.js'
 import type { JobRecord } from '../watch/types.js'
 import type { ContextReaders } from './context-sources.js'
 import { ciReaders } from './review-wiring.js'
@@ -37,9 +36,8 @@ export function ciGateReader(
     remembered.set(job.id, settings)
     const oldest = remembered.keys().next().value
     if (remembered.size > REMEMBERED_JOBS && oldest !== undefined) remembered.delete(oldest)
-    const waitMs = settings.waitMs ?? DEFAULT_CI_WAIT_MS
-    const onFailure = settings.onFailure ?? 'review'
-    if (settings.read === false || (waitMs === 0 && onFailure === 'review')) return undefined
+    const { waitMs, onFailure } = settings
+    if (!settings.read || (waitMs === 0 && onFailure === 'review')) return undefined
     const target = splitRepoName(job.repo)
     const warnings: string[] = []
     const entries = await readCheckEntries(

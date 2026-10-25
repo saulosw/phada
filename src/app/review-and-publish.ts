@@ -20,7 +20,6 @@ import { readConversation } from './read-conversation.js'
 import type { CiReaders } from './read-ci.js'
 import { waitForCi } from './wait-for-ci.js'
 import type { CiWaited, CiWaiting, WaitClock } from './wait-for-ci.js'
-import { DEFAULT_CI_WAIT_MS } from '../watch/ci-gate.js'
 import { loadPullRequestContext, reviewPullRequest } from './review-pull-request.js'
 import type {
   PullRequestReview,
@@ -159,16 +158,16 @@ export async function reviewAndPublish(
     return { status: 'skipped', pullRequest, reason: decision.reason, reviewState: state }
   }
 
-  const readsCi = input.options.ci ?? loaded.options.ci?.read ?? true
+  const readsCi = input.options.ci ?? loaded.options.ci.read
   if (input.waitCi !== undefined) {
-    const waitMs = loaded.options.ci?.waitMs ?? DEFAULT_CI_WAIT_MS
+    const { waitMs } = loaded.options.ci
     if (!readsCi) {
       deps.events.warning('--wait-ci has nothing to wait for: ci.read is false in the config')
     } else if (waitMs > 0 && deps.clock !== undefined) {
       await waitForCi(
         {
           sha: pullRequest.headSha,
-          checks: loaded.options.ci?.checks,
+          checks: loaded.options.ci.checks,
           waitMs,
           since: input.waitCi.since,
         },
@@ -191,7 +190,7 @@ export async function reviewAndPublish(
         )
       : undefined
   const ci: Ci | undefined = readsCi
-    ? await readCi(deps.ci, pullRequest.headSha, loaded.options.ci?.checks, (message) =>
+    ? await readCi(deps.ci, pullRequest.headSha, loaded.options.ci.checks, (message) =>
         deps.events.warning(message),
       )
     : undefined

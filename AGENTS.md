@@ -207,8 +207,9 @@ src/
   config/                # the config files: .phada/ in the repository and the user's own
     schema.ts            #   Zod schema of config.yml (ci: read, wait, checks); LANGUAGE_TAG
     parse-config.ts      #   parseConfigText(): YAML → config or an error naming the key
-    merge-config.ts      #   mergeConfig(): layers → options, rules, files, ignore with origins (pure);
-                         #   resolveProvider(): provider and model as a pair
+    merge-config.ts      #   mergeConfig(): layers → options, rules, files, ignore with origins (pure),
+                         #   the ci settings with DEFAULT_CI (read, 15 min wait, onFailure: review)
+                         #   for what no layer sets; resolveProvider(): provider and model as a pair
     mcp-servers.ts       #   userMcp(), resolveMcp(): MCP server names and declared servers, with
                          #   ${VAR} expanded from the environment
     user-config.ts       #   the user's folder (PHADA_CONFIG_HOME › XDG › ~/.config/phada),

@@ -56,7 +56,7 @@ export interface ContextOptions {
   investigate?: boolean
   resolveThreads?: boolean
   conversation?: boolean
-  ci?: CiSettings
+  ci: CiSettings
   review?: ReviewSettings
 }
 

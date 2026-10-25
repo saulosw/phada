@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { pullRequestFixture } from '../../test/support/pull-request.js'
+import { DEFAULT_CI } from '../config/merge-config.js'
 import type { LoadedContext } from '../context/types.js'
 import { SkillError } from '../skills/errors.js'
 import { defaultPromptView, inspectPrompt } from './inspect-prompt.js'
@@ -10,7 +11,7 @@ const pullRequest = pullRequestFixture()
 function loaded(overrides: Partial<LoadedContext> = {}): LoadedContext {
   return {
     diff: pullRequest.diff,
-    options: {},
+    options: { ci: DEFAULT_CI },
     context: { rules: [], docs: [], ignored: [] },
     ignore: [],
     repos: [],
@@ -100,6 +101,7 @@ describe('inspectPrompt', () => {
     const view = await inspect({
       loaded: loaded({
         options: {
+          ci: DEFAULT_CI,
           review: {
             skills: {
               entries: [{ name: 'phada' }, { name: 'sec' }, { name: 'nope' }],
@@ -152,7 +154,11 @@ describe('defaultPromptView of a default review', () => {
 
 describe('inspectPrompt with a native skill', () => {
   const withSkill = (review: LoadedContext['options']['review']) =>
-    inspect({ native: true, cliSkills: ['sec'], loaded: loaded({ options: { review } }) })
+    inspect({
+      native: true,
+      cliSkills: ['sec'],
+      loaded: loaded({ options: { ci: DEFAULT_CI, review } }),
+    })
 
   it('shows the message, the context, the command policy and the conversion', async () => {
     const view = await withSkill({
@@ -178,7 +184,9 @@ describe('inspectPrompt with a native skill', () => {
       native: true,
       cliSkills: ['sec'],
       pullRequest: { ...pullRequest, association: 'NONE', private: false },
-      loaded: loaded({ options: { review: { commands: { policy: 'all', origin: 'u' } } } }),
+      loaded: loaded({
+        options: { ci: DEFAULT_CI, review: { commands: { policy: 'all', origin: 'u' } } },
+      }),
     })
 
     expect(view.passes[0]?.native?.commands).toBe('read-only')

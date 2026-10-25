@@ -312,29 +312,37 @@ describe('investigation options', () => {
     expect(mergeConfig([user({})]).conversation).toBeUndefined()
   })
 
-  it('takes each ci option from the repository over the user', () => {
+  it('takes each ci option from the repository over the user, with the defaults for the rest', () => {
+    const defaults = { read: true, waitMs: 900_000, onFailure: 'review' }
     expect(
       mergeConfig([
         user({ ci: { read: false, checks: ['test'] } }),
         root({ ci: { checks: ['build', 'lint-*'] } }),
       ]).ci,
-    ).toEqual({ read: false, checks: ['build', 'lint-*'] })
-    expect(mergeConfig([user({ ci: { read: false } })]).ci).toEqual({ read: false })
-    expect(mergeConfig([user({})]).ci).toEqual({})
+    ).toEqual({ ...defaults, read: false, checks: ['build', 'lint-*'] })
+    expect(mergeConfig([user({ ci: { read: false } })]).ci).toEqual({ ...defaults, read: false })
+    expect(mergeConfig([user({})]).ci).toEqual(defaults)
     expect(mergeConfig([user({ ci: { wait: '30m' } }), root({ ci: { wait: '0s' } })]).ci).toEqual({
+      ...defaults,
       waitMs: 0,
     })
-    expect(mergeConfig([user({ ci: { wait: '30m' } })]).ci).toEqual({ waitMs: 1_800_000 })
+    expect(mergeConfig([user({ ci: { wait: '30m' } })]).ci).toEqual({
+      ...defaults,
+      waitMs: 1_800_000,
+    })
     expect(
       mergeConfig([user({ ci: { onFailure: 'skip' } }), root({ ci: { onFailure: 'review' } })]).ci,
-    ).toEqual({ onFailure: 'review' })
-    expect(mergeConfig([user({ ci: { onFailure: 'skip' } })]).ci).toEqual({ onFailure: 'skip' })
+    ).toEqual(defaults)
+    expect(mergeConfig([user({ ci: { onFailure: 'skip' } })]).ci).toEqual({
+      ...defaults,
+      onFailure: 'skip',
+    })
   })
 
   it('ignores ci in a subfolder with a warning', () => {
     const merged = mergeConfig([sub('src/api', { ci: { read: false } })])
 
-    expect(merged.ci).toEqual({})
+    expect(merged.ci).toEqual({ read: true, waitMs: 900_000, onFailure: 'review' })
     expect(merged.warnings).toEqual([
       'src/api/.phada/config.yml: ci is only read from the root .phada/config.yml or your own config; ignored.',
     ])
