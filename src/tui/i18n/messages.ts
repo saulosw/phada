@@ -1,5 +1,6 @@
 import type { FeedbackFinding, ListedRun, ReviewDetail } from '../../app/read-history.js'
 import type { QueueJob } from '../../app/read-queue.js'
+import type { RepositoryOrigin, SettingOrigin } from '../../app/read-repositories.js'
 import type { TimeMessages } from '../relative-time.js'
 import { english } from './en.js'
 import { spanish } from './es.js'
@@ -48,6 +49,9 @@ export interface UiMessages {
   }
   queue: QueueMessages
   reviews: ReviewsMessages
+  settings: SettingsMessages
+  repositories: RepositoriesMessages
+  automation: AutomationMessages
 }
 
 type RequestSource = QueueJob['requests'][number]['source']
@@ -134,6 +138,81 @@ export interface ReviewsMessages {
     feedback(count: number): string
     gone: string
   }
+}
+
+export interface SettingsMessages {
+  origins: Readonly<Record<SettingOrigin, string>>
+  on: string
+  off: string
+  notSet: string
+  allChecks: string
+  cliDefault: string
+  noConfig: string
+  initHint: string
+  invalid(message: string): string
+}
+
+export interface RepositoriesMessages {
+  count(total: number): string
+  watched(count: number): string
+  columns: { repo: string; origin: string; index: string; last: string }
+  origins: Readonly<Record<RepositoryOrigin, string>>
+  noIndex: string
+  nothingWatched: string
+  nothingWatchedHint(file: string): string
+  then: string
+  detail: {
+    watch: string
+    notWatched(file: string): string
+    publish: string
+    authors: string
+    labels: string
+    baseBranches: string
+    external: string
+    externalAllowed: string
+    externalRefused: string
+    when: string
+    index: string
+    file: string
+    commit: string
+    checked(when: string): string
+    noIndex: string
+    config: string
+    rules(count: number): string
+    repositoryCanChange: string
+    related: string
+    noRelated: string
+    reviews(shown: number, total: number): string
+    noReviews: string
+  }
+}
+
+export interface AutomationMessages {
+  watch: string
+  interval: string
+  settle: string
+  perHour: string
+  perHourValue(count: number): string
+  repos: string
+  watchOff(file: string): string
+  ci: string
+  ciNote: string
+  sources: string
+  prComments: string
+  enqueue: string
+  mcp: string
+  slack: string
+  needsWatch: string
+  slackChannels(count: number): string
+  slackPublish: Readonly<Record<'pr' | 'none', string>>
+  slackReply: Readonly<Record<'link' | 'summary' | 'full', string>>
+  token(name: string, set: boolean): string
+  hooks: string
+  timeout(duration: string): string
+  noHooks(file: string): string
+  when: string
+  whenAll: string
+  noWhen: string
 }
 
 const CATALOGS: Readonly<Record<string, UiMessages>> = {

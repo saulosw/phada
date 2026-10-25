@@ -3,6 +3,7 @@ import type { ScreenTitle, UiMessages } from './i18n/messages.js'
 import { HomeScreen } from './screens/home.js'
 import { PlaceholderScreen } from './screens/placeholder.js'
 import { QueueScreen } from './screens/queue.js'
+import { RepositoriesScreen } from './screens/repositories.js'
 import { ReviewsScreen } from './screens/reviews.js'
 
 export interface ScreenDefinition {
@@ -16,7 +17,7 @@ export const SCREENS: readonly ScreenDefinition[] = [
   {
     id: 'repositories',
     title: (messages) => messages.screens.repositories,
-    Screen: PlaceholderScreen,
+    Screen: RepositoriesScreen,
   },
   { id: 'rules', title: (messages) => messages.screens.rules, Screen: PlaceholderScreen },
   { id: 'reviews', title: (messages) => messages.screens.reviews, Screen: ReviewsScreen },
