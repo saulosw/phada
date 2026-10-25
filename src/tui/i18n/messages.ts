@@ -36,6 +36,7 @@ export interface UiMessages {
   loading: string
   failed(message: string): string
   time: TimeMessages
+  list: { range(first: number, last: number, total: number): string }
 }
 
 const CATALOGS: Readonly<Record<string, UiMessages>> = {

@@ -40,4 +40,5 @@ export const spanish: UiMessages = {
     ago: (span) => `hace ${span}`,
     in: (span, estimated) => `en ${estimated ? '~' : ''}${span}`,
   },
+  list: { range: (first, last, total) => `${first}–${last} de ${total}` },
 }
