@@ -3,13 +3,14 @@ import { Text } from 'ink'
 import { cleanup, render } from 'ink-testing-library'
 import { useState } from 'react'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { fakeAppDeps } from '../../test/support/tui.js'
+import { fakeAppDeps, waitFor } from '../../test/support/tui.js'
 import { App } from './app.js'
 import type { AppResult } from './app.js'
 import { useBack, useScreenInput, useScreenKeys, useWorking } from './app-context.js'
 import type { AppDeps, Scheduler } from './app-context.js'
 import { SCREENS } from './screens.js'
 import type { ScreenDefinition } from './screens.js'
+import { FLAP_MS, Mascot, MASCOT_FRAMES } from './mascot.js'
 import { HomeScreen } from './screens/home.js'
 import type { SizeSource, TerminalSize } from './terminal-size.js'
 
@@ -333,22 +334,25 @@ describe('the mascot', () => {
         const [busy, setBusy] = useState(true)
         finish = () => setBusy(false)
         useWorking(busy)
-        return <HomeScreen />
+        return <Mascot />
       },
     }
+    const open = MASCOT_FRAMES[0]?.[1]?.trim() ?? ''
+    const closed = MASCOT_FRAMES[1]?.[1]?.trim() ?? ''
     const { frame, clock } = openApp({ screens: [screen] })
-    await settle()
-    expect(frame()).toContain('▐███▙ ● ▟███▌')
-    clock.advance(450)
-    await settle()
-    expect(frame()).toContain('▐█●█▌')
-    clock.advance(450)
-    await settle()
-    expect(frame()).toContain('▐███▙ ● ▟███▌')
+    await waitFor(() => clock.active() === 1 && frame().includes(open))
+    clock.advance(FLAP_MS)
+    await waitFor(() => frame().includes(closed))
+    expect(frame()).toContain(closed)
+    clock.advance(FLAP_MS)
+    await waitFor(() => frame().includes(open))
+    expect(frame()).toContain(open)
+    clock.advance(FLAP_MS)
+    await waitFor(() => frame().includes(closed))
     finish()
-    await settle()
+    await waitFor(() => clock.active() === 0 && frame().includes(open))
     expect(clock.active()).toBe(0)
-    expect(frame()).toContain('▐███▙ ● ▟███▌')
+    expect(frame()).toContain(open)
   })
 })
 
