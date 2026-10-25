@@ -109,16 +109,19 @@ src/
     read-repositories.ts #   readRepositories(): watch.repos ∪ the user's repos/<owner>/<repo>/
                          #   folders ∪ the history, each with its origins, index file and last
                          #   review; readRepository(): the user config with the origin of each
-                         #   value (userSettings()), the watch filters, the index, the related
+                         #   value (userSettings()) and each rule with its name (userRules()),
+                         #   the watch filters, the index, the related
                          #   repositories declared and the last reviews; an invalid config as a
                          #   message
     read-automation.ts   #   readAutomation(): the watch, the CI wait, the request sources (Slack
-                         #   with its channels and whether its tokens are set), the hooks and
+                         #   with its channels and its token variables, each set or not), the
+                         #   hooks and
                          #   the when commands of the top-level user config; an invalid config as
                          #   a message
     review-passes.ts     #   buildPasses(): review.prompt, review.skills or --skill → one SkillPass
                          #   per skill (paths matched here), SkillCatalog, PassPlan;
                          #   configuredLens(): the lens a config sets (built-in, prompt, skills)
+                         #   and the layer that set it (layerOrigin())
     inspect-prompt.ts    #   inspectPrompt(), defaultPromptView(): the prompt of each pass and the
                          #   size of its data blocks (with the conversation and CI read), without
                          #   the AI
@@ -162,27 +165,33 @@ src/
                          #   USAGE, REVIEW_USAGE, INIT_USAGE,
                          #   INDEX_USAGE, RULES_USAGE, PROMPT_USAGE, WATCH_USAGE, ENQUEUE_USAGE,
                          #   MCP_USAGE, HISTORY_USAGE
-    app-command.ts       #   runApp(): the app when stdin and stdout are TTYs (else the missing
-                         #   command error), the language of the user config (an invalid config
-                         #   kept as configError), src/tui/ loaded by import() only here
+    app-command.ts       #   runApp(): the app when stdin and stdout are TTYs (assertAppTerminal():
+                         #   else the missing command error, or --debug alone refused as an
+                         #   unknown option), only the color variables of the environment, the
+                         #   language of the user config at open and readLanguage (read on each
+                         #   poll), src/tui/ loaded by import() only here
                          #   (loadApp), setInterval as the scheduler; quit 0, interrupted 130,
                          #   terminated 143, a failure thrown for formatError(); the readers of
-                         #   the screens (readQueue with the lock holder and the watch settings,
-                         #   readReviews, readReviewDetail) over appHistory(), closed on exit;
+                         #   the screens (readQueue with the lock holder and the watch settings
+                         #   read on each poll, the last good ones kept, readReviews,
+                         #   readReviewDetail) over appHistory() with the history opened
+                         #   read-only (openHistoryReader), closed on exit;
                          #   readRepositories, readRepository (the user config folder, the index
                          #   file in the cache), readAutomation (the Slack tokens only as set or
                          #   missing), readProviderSetup (the user config read each time),
                          #   readProviders (the status checkers of src/providers/, injectable),
                          #   readLearnings (the observed files of the cache, read only),
-                         #   readGitHub (readGitHubAccess() with gh asked again on each read;
-                         #   runGh and fetchUser injectable); rulesReaders() of app-rules.ts
+                         #   readGitHub (readGitHubAccess()) and rulesReaders() of app-rules.ts
+                         #   with one token reader that asks gh again on each load (runGh and
+                         #   fetchUser injectable)
     app-rules.ts         #   rulesReaders(): readLocalRules (the user config), readRepositoryRules
                          #   (the default branch) and readPullRequestRules (readRules at the base
                          #   and pullRequestPrompt(), the pull request and the repository files
-                         #   read once) with the token of readGitHubToken(), no-token without one
+                         #   read once) with the token of the reader it is given, no-token
+                         #   without one
     app-history.ts       #   appHistory(): the history for the app, opened once when its file
-                         #   exists (looked for again while missing, never created), a newer or
-                         #   unreadable file thrown on each read
+                         #   exists (looked for again while missing, never created), a newer,
+                         #   older or unreadable file thrown on each read
     init.ts              #   runInit(): .phada/ in the repository, or the user's own config
     init-templates.ts    #   the commented files phada init writes
     index-command.ts     #   runIndex(): token, cache folder, mirror, progress, the map's report
@@ -298,12 +307,13 @@ src/
                          #   injected), Ctrl-C handled by the app, SIGINT/SIGTERM through
                          #   host.onSignal → unmount → AppResult (quit, interrupted, terminated,
                          #   failed with the error)
-    app.tsx              #   App: theme, catalog, working signal and error boundary around the
+    app.tsx              #   App: theme, catalog of the language read every 2 s (the last good
+                         #   one kept), working signal and error boundary around the
                          #   shell — tabs, the active screen, footer, ? help, / palette, Esc
                          #   (a screen's back first), q, 1–9, ←/→, Tab, Ctrl-C; the size warning
                          #   below 80×24
-    app-context.ts       #   AppDeps (version, cwd, home, env, scheduler, language, configError,
-                         #   now, readQueue, readReviews, readReviewDetail, readRepositories,
+    app-context.ts       #   AppDeps (version, cwd, home, env, scheduler, language, now,
+                         #   readLanguage, readQueue, readReviews, readReviewDetail, readRepositories,
                          #   readRepository, readAutomation, readProviderSetup, readProviders,
                          #   readLearnings, readGitHub, readLocalRules, readRepositoryRules,
                          #   readPullRequestRules), Scheduler, KeyHint;
@@ -374,12 +384,17 @@ src/
     mcp-servers.ts       #   userMcp(), resolveMcp(): MCP server names and declared servers, with
                          #   ${VAR} expanded from the environment
     user-config.ts       #   the user's folder (PHADA_CONFIG_HOME › XDG › ~/.config/phada),
-                         #   loadUserLayers(), loadTopLevelUserLayers(); listUserRepoConfigs():
+                         #   userConfigFile(), loadUserLayers(), loadTopLevelUserLayers();
+                         #   listUserRepoConfigs():
                          #   the repos/<owner>/<repo>/ folders with a config.yml or rules.md
+    layer-label.ts       #   userLayerLabel(), layerOrigin(): the label of a user config file
+                         #   (user:…, user:repos/<owner>/<repo>/…) and back to global, repository
+                         #   or a file of the repository, with its name
     local-files.ts       #   LocalFileSystem and its node:fs implementation
     cache-paths.ts       #   the cache folder (PHADA_CACHE_HOME › XDG › ~/.cache/phada),
                          #   repositoryCache(): mirror, index and observed paths; pathSize();
-                         #   observedRepositories(): owner/repo of each observed file
+                         #   observedFile(); observedRepositories(): owner/repo of each observed
+                         #   file
     data-paths.ts        #   the data folder (PHADA_DATA_HOME › XDG › ~/.local/share/phada):
                          #   history.sqlite and watch.lock
     watch-settings.ts    #   resolveWatchSettings() with the defaults, historyEnabled()
@@ -584,8 +599,9 @@ src/
                          #   with their verdict, pause, runs() (with the title, by text), run(),
                          #   prune(); requestsWith(): the requests of a source whose data has
                          #   some values (a Slack message);
-                         #   openExistingHistoryStore(): missing, open, newer or unreadable as
-                         #   data, never creating the file
+                         #   readOnly: no folder, pragma or migration, an older file refused
+                         #   (HistoryOutdatedError); openExistingHistoryStore(): missing, open,
+                         #   newer, older or unreadable as data, never creating the file
     history-feedback.ts  #   published findings, observations and their signals (observed and
                          #   cleared), feedbackDue()
     history-columns.ts   #   the history tables (columns, keys) and their insert/upsert/update
