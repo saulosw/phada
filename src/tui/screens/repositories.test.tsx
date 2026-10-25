@@ -96,9 +96,10 @@ function shopDetail(): RepositoryDetail {
         },
       ],
       rules: [
-        { key: 'no-any', text: 'Avoid any in new code.', origin: 'global' },
+        { key: 'no-any', name: 'no-any', text: 'Avoid any in new code.', origin: 'global' },
         {
           key: 'user:repos/acme/shop/rules.md',
+          name: 'rules.md',
           text: 'Prefer small functions.',
           origin: 'repository',
         },

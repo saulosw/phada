@@ -238,6 +238,7 @@ const APP: Boundary = {
     '../context/split-diff.js',
     '../skills/errors.js',
     '../config/merge-config.js',
+    '../config/layer-label.js',
     '../config/mcp-servers.js',
     '../config/parse-config.js',
     '../config/watch-settings.js',

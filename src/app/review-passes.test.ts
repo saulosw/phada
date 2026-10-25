@@ -408,16 +408,26 @@ describe('configuredLens', () => {
   })
 
   it('is the own prompt, with its mode and where it comes from', () => {
-    expect(configuredLens({ prompt })).toEqual({ kind: 'prompt', prompt })
+    expect(configuredLens({ prompt })).toEqual({
+      kind: 'prompt',
+      prompt,
+      setBy: { kind: 'repository-file', name: '.phada/config.yml' },
+    })
   })
 
   it('is the skills, and the prompt only when phada is one of them', () => {
-    expect(configuredLens({ prompt, skills })).toEqual({ kind: 'skills', skills, prompt: null })
+    expect(configuredLens({ prompt, skills })).toEqual({
+      kind: 'skills',
+      skills,
+      prompt: null,
+      setBy: { kind: 'global', name: 'config.yml' },
+    })
     const withPhada = { ...skills, entries: [{ name: 'phada' }, ...skills.entries] }
     expect(configuredLens({ prompt, skills: withPhada })).toEqual({
       kind: 'skills',
       skills: withPhada,
       prompt,
+      setBy: { kind: 'global', name: 'config.yml' },
     })
   })
 })

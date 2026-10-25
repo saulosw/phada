@@ -35,7 +35,6 @@ const GAP = '  '
 const MIN_NAME_WIDTH = 16
 const SHORT_SHA = 7
 const KEY_SHARE = 0.3
-const USER_LABEL = /^user:(repos\/[^/]+\/[^/]+\/)?/
 
 const repoKey = ({ repo }: ListedRepository) => repo
 
@@ -404,7 +403,7 @@ export function ruleLines(
   { colors }: Theme,
   columns: number,
 ): ReactNode[] {
-  const keys = rules.map(({ key }) => oneLine(key.replace(USER_LABEL, '')))
+  const keys = rules.map(({ name }) => oneLine(name))
   const keyWidth = Math.min(Math.max(0, ...keys.map(textWidth)), Math.floor(columns * KEY_SHARE))
   const originWidth = Math.max(...Object.values(messages.settings.origins).map(textWidth))
   const texts = rules.map(({ text }) => oneLine(text))

@@ -6,6 +6,7 @@ import type { PromptPassView, PromptView } from '../../app/inspect-prompt.js'
 import type { ListedRepository } from '../../app/read-repositories.js'
 import type { BranchRules, LocalRules, ReadRules } from '../../app/read-rules.js'
 import type { ConfiguredLens } from '../../app/review-passes.js'
+import type { LayerOrigin } from '../../config/layer-label.js'
 import {
   useAppDeps,
   useBack,
@@ -309,7 +310,7 @@ function lensLines(
         ]
   }
   const label = ' '.repeat(textWidth(m.lens))
-  const origin = lensOrigin(lens)
+  const origin = lens.kind === 'built-in' ? undefined : lens.setBy
   const value = lensText(lens, draw)
   return [
     <Text>
@@ -344,16 +345,10 @@ function lensText(lens: ConfiguredLens, { messages, home }: Draw): string {
   return lens.prompt === null ? m.skills(names) : `${m.skills(names)} · ${promptText(lens.prompt)}`
 }
 
-function lensOrigin(lens: ConfiguredLens): string | undefined {
-  if (lens.kind === 'built-in') return undefined
-  return lens.kind === 'prompt' ? lens.prompt.origin : lens.skills.origin
-}
-
-function originText(label: string, messages: UiMessages): string {
+function originText(origin: LayerOrigin, messages: UiMessages): string {
   const m = messages.rules
-  if (label.startsWith('user:repos/')) return m.layers.repository
-  if (label.startsWith('user:')) return m.layers.global
-  return m.layers.phada(oneLine(label))
+  if (origin.kind === 'repository-file') return m.layers.phada(oneLine(origin.name))
+  return m.layers[origin.kind]
 }
 
 function userRuleLines(local: DataState<LocalRules>, draw: Draw): ReactNode[] {

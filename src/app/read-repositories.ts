@@ -1,6 +1,7 @@
 import { DEFAULT_CI, mergeConfig, resolveProvider } from '../config/merge-config.js'
 import type { ResolvedRule } from '../config/merge-config.js'
 import type { ConfigFile } from '../config/schema.js'
+import { layerOrigin } from '../config/layer-label.js'
 import type { ConfigLayer } from '../config/types.js'
 import { resolveWatchSettings } from '../config/watch-settings.js'
 import type { WatchedRepoSettings } from '../config/watch-settings.js'
@@ -63,6 +64,7 @@ export interface ConfigSetting {
 
 export interface UserRule {
   key: string
+  name: string
   text: string
   origin: SettingOrigin
 }
@@ -158,7 +160,7 @@ export async function readRepository(
       .map(({ repo: related, description, origin }) => ({
         repo: related,
         ...(description === undefined ? {} : { description }),
-        origin: originOfLabel(origin),
+        origin: settingOrigin(origin),
       }))
       .sort((a, b) => a.repo.localeCompare(b.repo)),
     reviews: state.history?.runs({ repo, limit: REVIEWS_PER_REPOSITORY }) ?? {
@@ -210,11 +212,16 @@ async function indexOf(
 }
 
 export function userRules(rules: readonly ResolvedRule[]): UserRule[] {
-  return rules.map(({ key, text, origin }) => ({ key, text, origin: originOfLabel(origin) }))
+  return rules.map(({ key, text, origin }) => ({
+    key,
+    name: layerOrigin(key).name,
+    text,
+    origin: settingOrigin(origin),
+  }))
 }
 
-function originOfLabel(label: string): SettingOrigin {
-  return label.startsWith('user:repos/') ? 'repository' : 'global'
+function settingOrigin(label: string): SettingOrigin {
+  return layerOrigin(label).kind === 'repository' ? 'repository' : 'global'
 }
 
 type Read = (config: ConfigFile) => unknown

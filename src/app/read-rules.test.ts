@@ -142,6 +142,7 @@ describe('readRules', () => {
         origin: '.phada/config.yml',
         source: 'repository',
       },
+      setBy: { kind: 'repository-file', name: '.phada/config.yml' },
     })
   })
 
@@ -164,6 +165,7 @@ describe('readRules', () => {
         source: 'local',
       },
       prompt: null,
+      setBy: { kind: 'global', name: 'config.yml' },
     })
   })
 })
@@ -200,11 +202,22 @@ describe('localRules', () => {
         origin: 'user:config.yml',
         source: 'local',
       },
+      setBy: { kind: 'global', name: 'config.yml' },
     })
     expect(read.rules).toEqual([
-      { key: 'utc', text: 'Store times in UTC.', origin: 'global' },
-      { key: 'user:repos/acme/shop/config.yml#1', text: 'Money in cents.', origin: 'repository' },
-      { key: 'user:repos/acme/shop/rules.md', text: 'No floats.', origin: 'repository' },
+      { key: 'utc', name: 'utc', text: 'Store times in UTC.', origin: 'global' },
+      {
+        key: 'user:repos/acme/shop/config.yml#1',
+        name: 'config.yml#1',
+        text: 'Money in cents.',
+        origin: 'repository',
+      },
+      {
+        key: 'user:repos/acme/shop/rules.md',
+        name: 'rules.md',
+        text: 'No floats.',
+        origin: 'repository',
+      },
     ])
   })
 })

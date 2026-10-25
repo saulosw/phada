@@ -39,9 +39,10 @@ function local(changes: Partial<LocalRules> = {}): LocalRules {
   return {
     lens: { kind: 'built-in' },
     rules: [
-      { key: 'utc', text: 'Store every time in UTC.', origin: 'global' },
+      { key: 'utc', name: 'utc', text: 'Store every time in UTC.', origin: 'global' },
       {
         key: 'user:repos/acme/shop/rules.md',
+        name: 'rules.md',
         text: 'Money is kept in cents.',
         origin: 'repository',
       },
@@ -258,6 +259,7 @@ describe('the Rules screen', () => {
                 origin: 'user:config.yml',
                 source: 'local',
               },
+              setBy: { kind: 'global', name: 'config.yml' },
             },
           }),
         readRepositoryRules: async () => ({ status: 'no-token' }),
@@ -289,6 +291,7 @@ describe('the Rules screen', () => {
                 origin: '.phada/config.yml',
                 source: 'repository',
               },
+              setBy: { kind: 'repository-file', name: '.phada/config.yml' },
             },
           }),
       },

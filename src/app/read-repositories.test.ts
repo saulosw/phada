@@ -223,7 +223,9 @@ describe('readRepository', () => {
     expect(byKey.get('ci.checks@repository')).toEqual({ kind: 'list', items: ['build'] })
     expect(byKey.get('ignore@global')).toEqual({ kind: 'list', items: ['dist/**'] })
     expect(byKey.get('ignore@repository')).toEqual({ kind: 'list', items: ['fixtures/**'] })
-    expect(detail.config.rules).toEqual([{ key: 'no-any', text: 'Avoid any.', origin: 'global' }])
+    expect(detail.config.rules).toEqual([
+      { key: 'no-any', name: 'no-any', text: 'Avoid any.', origin: 'global' },
+    ])
     expect(detail.related).toEqual([
       { repo: 'acme/api', description: 'The API it calls', origin: 'repository' },
       { repo: 'acme/lib', origin: 'global' },

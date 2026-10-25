@@ -584,10 +584,16 @@ describe('the rules readers', () => {
             origin: 'user:config.yml',
             source: 'local',
           },
+          setBy: { kind: 'global', name: 'config.yml' },
         },
         rules: [
-          { key: 'user:config.yml#1', text: 'Use UTC.', origin: 'global' },
-          { key: 'user:repos/acme/shop/rules.md', text: 'Money in cents.', origin: 'repository' },
+          { key: 'user:config.yml#1', name: 'config.yml#1', text: 'Use UTC.', origin: 'global' },
+          {
+            key: 'user:repos/acme/shop/rules.md',
+            name: 'rules.md',
+            text: 'Money in cents.',
+            origin: 'repository',
+          },
         ],
         warnings: [],
       },
