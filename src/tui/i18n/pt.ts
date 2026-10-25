@@ -251,6 +251,83 @@ export const portuguese: UiMessages = {
     whenAll: 'todos os repositórios',
     noWhen: 'Nenhum: todo pull request que passa nos filtros é revisado.',
   },
+  provider: {
+    reviewsWith: 'Revisa com',
+    model: (name) => `modelo ${name}`,
+    cliDefault: 'o modelo padrão da CLI de IA',
+    ollamaModel: 'sem modelo: defina model na sua config',
+    from: (path) => `Escolhido em ${path}`,
+    fromDefault: 'Padrão do Phada: sua config não escolhe um provider',
+    perRepo:
+      'Um repositório pode escolher o seu em repos/<owner>/<repo>/config.yml da sua pasta de config ou no .phada/config.yml dele.',
+    providers: 'Providers de IA',
+    checking: 'Verificando…',
+    chosen: 'escolhido',
+    installed: (version) => (version === null ? 'instalado' : version),
+    notInstalled: 'não instalado',
+    loggedIn: (method) => (method === null ? 'logado' : `logado (${method})`),
+    loggedOut: 'deslogado',
+    running: (version) => (version === null ? 'rodando' : `rodando ${version}`),
+    stopped: 'parado',
+    models: (count, names) => `${count} ${count === 1 ? 'modelo' : 'modelos'}: ${names}`,
+    noModels: 'sem modelos',
+    installUnknown: (problem) => `versão desconhecida: ${problem}`,
+    loginUnknown: (problem) => `login desconhecido: ${problem}`,
+    serverUnknown: (problem) => `estado desconhecido: ${problem}`,
+    problems: {
+      timeout: 'sem resposta em 5 s',
+      failed: 'a verificação falhou',
+      'unexpected-output': 'resposta não entendida',
+      'invalid-host': 'o OLLAMA_HOST não é válido',
+      'not-installed': 'não instalado',
+    },
+    steps: {
+      install: 'instale com',
+      login: 'faça login com',
+      serve: 'inicie com',
+      pull: 'baixe um modelo com',
+    },
+    mcp: (count) => `Servidores MCP (${count})`,
+    mcpNone: 'Nenhum servidor MCP na sua config: liste-os em mcp: no config.yml.',
+    mcpKinds: {
+      named: 'configurado na sua CLI de IA',
+      command: 'iniciado pelo Phada',
+      http: 'por HTTP',
+    },
+    tools: (names) => `ferramentas: ${names}`,
+  },
+  learnings: {
+    title: (repos) =>
+      `O que o Phada aprendeu com os reviews · ${repos} ${repos === 1 ? 'repositório' : 'repositórios'}`,
+    aboutRelations:
+      'Relações: código que um achado verificado ligou a um arquivo que o próprio código não liga.',
+    aboutFeedback: 'Feedback: o que aconteceu com os comentários que o Phada publicou.',
+    nothing: 'Nada aprendido ainda: o Phada aprende com os reviews que publica.',
+    noneYet: 'Nenhum comentário publicado nem relação ainda.',
+    hint: 'Revise um pull request com',
+    or: 'ou inicie',
+    relations: (count) => `${count} ${count === 1 ? 'relação' : 'relações'}`,
+    noRelations: 'sem relações',
+    unreadable: 'relações ilegíveis',
+    comments: (count) => `${count} ${count === 1 ? 'comentário' : 'comentários'}`,
+    noComments: 'sem comentários',
+    outcomes: ({ fixed, dismissed, ignored, open }) =>
+      `${fixed} ${fixed === 1 ? 'corrigido' : 'corrigidos'} · ${dismissed} ${dismissed === 1 ? 'dispensado' : 'dispensados'} · ${ignored} ${ignored === 1 ? 'ignorado' : 'ignorados'} · ${open} ${open === 1 ? 'aberto' : 'abertos'}`,
+    marks: (negative, replies) =>
+      `${negative} com reação negativa · ${replies} com resposta de uma pessoa`,
+    detail: {
+      published: 'Comentários que o Phada publicou',
+      noComments: 'Nenhum comentário publicado aqui ainda.',
+      byRule: (count) => `Por regra (${count})`,
+      noRules: 'Nenhum destes comentários veio de uma regra.',
+      relations: (count) => `Relações aprendidas (${count})`,
+      noRelations:
+        'Nenhuma ainda. O Phada as aprende de achados verificados que citam um arquivo que o código não liga, quando o repositório tem seu mapa (phada index).',
+      unreadable:
+        'O arquivo de relações não pôde ser lido: outra versão do Phada o escreveu, ou ele está danificado. O próximo review que aprender uma relação o escreve de novo.',
+      gone: 'Este repositório não tem mais nada aprendido.',
+    },
+  },
 }
 
 const number = (value: number) => value.toLocaleString('pt-BR')

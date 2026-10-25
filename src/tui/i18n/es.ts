@@ -253,6 +253,83 @@ export const spanish: UiMessages = {
     whenAll: 'todos los repositorios',
     noWhen: 'Ninguno: se revisa cada pull request que pasa los filtros.',
   },
+  provider: {
+    reviewsWith: 'Revisa con',
+    model: (name) => `modelo ${name}`,
+    cliDefault: 'el modelo predeterminado de la CLI de IA',
+    ollamaModel: 'sin modelo: define model en tu config',
+    from: (path) => `Elegido en ${path}`,
+    fromDefault: 'Predeterminado de Phada: tu config no elige un proveedor',
+    perRepo:
+      'Un repositorio puede elegir el suyo en repos/<owner>/<repo>/config.yml de tu carpeta de config o en su .phada/config.yml.',
+    providers: 'Proveedores de IA',
+    checking: 'Comprobando…',
+    chosen: 'elegido',
+    installed: (version) => (version === null ? 'instalado' : version),
+    notInstalled: 'no instalado',
+    loggedIn: (method) => (method === null ? 'con sesión' : `con sesión (${method})`),
+    loggedOut: 'sin sesión',
+    running: (version) => (version === null ? 'en marcha' : `en marcha ${version}`),
+    stopped: 'detenido',
+    models: (count, names) => `${count} ${count === 1 ? 'modelo' : 'modelos'}: ${names}`,
+    noModels: 'sin modelos',
+    installUnknown: (problem) => `versión desconocida: ${problem}`,
+    loginUnknown: (problem) => `sesión desconocida: ${problem}`,
+    serverUnknown: (problem) => `estado desconocido: ${problem}`,
+    problems: {
+      timeout: 'sin respuesta en 5 s',
+      failed: 'la comprobación falló',
+      'unexpected-output': 'respuesta no entendida',
+      'invalid-host': 'OLLAMA_HOST no es válido',
+      'not-installed': 'no instalado',
+    },
+    steps: {
+      install: 'instálalo con',
+      login: 'inicia sesión con',
+      serve: 'inícialo con',
+      pull: 'descarga un modelo con',
+    },
+    mcp: (count) => `Servidores MCP (${count})`,
+    mcpNone: 'Ningún servidor MCP en tu config: lístalos en mcp: de config.yml.',
+    mcpKinds: {
+      named: 'configurado en tu CLI de IA',
+      command: 'iniciado por Phada',
+      http: 'por HTTP',
+    },
+    tools: (names) => `herramientas: ${names}`,
+  },
+  learnings: {
+    title: (repos) =>
+      `Lo que Phada aprendió de sus revisiones · ${repos} ${repos === 1 ? 'repositorio' : 'repositorios'}`,
+    aboutRelations:
+      'Relaciones: código que un hallazgo verificado vinculó a un archivo que el propio código no enlaza.',
+    aboutFeedback: 'Feedback: lo que pasó con los comentarios que Phada publicó.',
+    nothing: 'Nada aprendido todavía: Phada aprende de las revisiones que publica.',
+    noneYet: 'Ningún comentario publicado ni relación todavía.',
+    hint: 'Revisa un pull request con',
+    or: 'o inicia',
+    relations: (count) => `${count} ${count === 1 ? 'relación' : 'relaciones'}`,
+    noRelations: 'sin relaciones',
+    unreadable: 'relaciones ilegibles',
+    comments: (count) => `${count} ${count === 1 ? 'comentario' : 'comentarios'}`,
+    noComments: 'sin comentarios',
+    outcomes: ({ fixed, dismissed, ignored, open }) =>
+      `${fixed} ${fixed === 1 ? 'corregido' : 'corregidos'} · ${dismissed} ${dismissed === 1 ? 'descartado' : 'descartados'} · ${ignored} ${ignored === 1 ? 'ignorado' : 'ignorados'} · ${open} ${open === 1 ? 'abierto' : 'abiertos'}`,
+    marks: (negative, replies) =>
+      `${negative} con reacción negativa · ${replies} con respuesta de una persona`,
+    detail: {
+      published: 'Comentarios que Phada publicó',
+      noComments: 'Ningún comentario publicado aquí todavía.',
+      byRule: (count) => `Por regla (${count})`,
+      noRules: 'Ninguno de estos comentarios vino de una regla.',
+      relations: (count) => `Relaciones aprendidas (${count})`,
+      noRelations:
+        'Ninguna todavía. Phada las aprende de hallazgos verificados que citan un archivo que el código no enlaza, cuando el repositorio tiene su mapa (phada index).',
+      unreadable:
+        'No se pudo leer el archivo de relaciones: otra versión de Phada lo escribió, o está dañado. La próxima revisión que aprenda una relación lo escribe de nuevo.',
+      gone: 'Este repositorio ya no tiene nada aprendido.',
+    },
+  },
 }
 
 const number = (value: number) => value.toLocaleString('es')

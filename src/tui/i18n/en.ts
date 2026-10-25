@@ -251,6 +251,83 @@ export const english: UiMessages = {
     whenAll: 'every repository',
     noWhen: 'None: every pull request that passes the filters is reviewed.',
   },
+  provider: {
+    reviewsWith: 'Reviews with',
+    model: (name) => `model ${name}`,
+    cliDefault: "the AI CLI's default model",
+    ollamaModel: 'no model: set model in your config',
+    from: (path) => `Chosen in ${path}`,
+    fromDefault: "Phada's default: your config does not choose a provider",
+    perRepo:
+      'A repository can choose its own in repos/<owner>/<repo>/config.yml of your config folder or in its .phada/config.yml.',
+    providers: 'AI providers',
+    checking: 'Checking…',
+    chosen: 'chosen',
+    installed: (version) => (version === null ? 'installed' : version),
+    notInstalled: 'not installed',
+    loggedIn: (method) => (method === null ? 'logged in' : `logged in (${method})`),
+    loggedOut: 'logged out',
+    running: (version) => (version === null ? 'running' : `running ${version}`),
+    stopped: 'not running',
+    models: (count, names) => `${count} ${count === 1 ? 'model' : 'models'}: ${names}`,
+    noModels: 'no models',
+    installUnknown: (problem) => `version unknown: ${problem}`,
+    loginUnknown: (problem) => `login unknown: ${problem}`,
+    serverUnknown: (problem) => `state unknown: ${problem}`,
+    problems: {
+      timeout: 'no answer in 5 s',
+      failed: 'the check failed',
+      'unexpected-output': 'answer not understood',
+      'invalid-host': 'OLLAMA_HOST is not valid',
+      'not-installed': 'not installed',
+    },
+    steps: {
+      install: 'install it with',
+      login: 'log in with',
+      serve: 'start it with',
+      pull: 'pull a model with',
+    },
+    mcp: (count) => `MCP servers (${count})`,
+    mcpNone: 'No MCP servers in your config: list them under mcp: in config.yml.',
+    mcpKinds: {
+      named: 'set up in your AI CLI',
+      command: 'started by Phada',
+      http: 'over HTTP',
+    },
+    tools: (names) => `tools: ${names}`,
+  },
+  learnings: {
+    title: (repos) =>
+      `What Phada learned from its reviews · ${repos} ${repos === 1 ? 'repository' : 'repositories'}`,
+    aboutRelations:
+      'Relations: code that a verified finding tied to a file the code itself does not link.',
+    aboutFeedback: 'Feedback: what happened to the comments Phada published.',
+    nothing: 'Nothing learned yet: Phada learns from the reviews it publishes.',
+    noneYet: 'No published comments or relations yet.',
+    hint: 'Review a pull request with',
+    or: 'or start',
+    relations: (count) => `${count} ${count === 1 ? 'relation' : 'relations'}`,
+    noRelations: 'no relations',
+    unreadable: 'relations unreadable',
+    comments: (count) => `${count} ${count === 1 ? 'comment' : 'comments'}`,
+    noComments: 'no comments',
+    outcomes: ({ fixed, dismissed, ignored, open }) =>
+      `${fixed} fixed · ${dismissed} dismissed · ${ignored} ignored · ${open} open`,
+    marks: (negative, replies) =>
+      `${negative} with a negative reaction · ${replies} with a reply from a person`,
+    detail: {
+      published: 'Comments Phada published',
+      noComments: 'No comments published here yet.',
+      byRule: (count) => `By rule (${count})`,
+      noRules: 'None of these comments came from a rule.',
+      relations: (count) => `Relations learned (${count})`,
+      noRelations:
+        'None yet. Phada learns them from verified findings that cite a file the code does not link, once the repository has its map (phada index).',
+      unreadable:
+        'The relations file could not be read: another Phada version wrote it, or it is damaged. The next review that learns a relation writes it again.',
+      gone: 'This repository has nothing learned any more.',
+    },
+  },
 }
 
 const number = (value: number) => value.toLocaleString('en-US')

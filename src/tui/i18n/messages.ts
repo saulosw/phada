@@ -1,4 +1,5 @@
 import type { FeedbackFinding, ListedRun, ReviewDetail } from '../../app/read-history.js'
+import type { McpServerKind, NextStep } from '../../app/read-provider.js'
 import type { QueueJob } from '../../app/read-queue.js'
 import type { RepositoryOrigin, SettingOrigin } from '../../app/read-repositories.js'
 import type { TimeMessages } from '../relative-time.js'
@@ -52,6 +53,8 @@ export interface UiMessages {
   settings: SettingsMessages
   repositories: RepositoriesMessages
   automation: AutomationMessages
+  provider: ProviderMessages
+  learnings: LearningsMessages
 }
 
 type RequestSource = QueueJob['requests'][number]['source']
@@ -213,6 +216,66 @@ export interface AutomationMessages {
   when: string
   whenAll: string
   noWhen: string
+}
+
+export type StatusProblemCode =
+  'timeout' | 'failed' | 'unexpected-output' | 'invalid-host' | 'not-installed'
+
+export interface ProviderMessages {
+  reviewsWith: string
+  model(name: string): string
+  cliDefault: string
+  ollamaModel: string
+  from(path: string): string
+  fromDefault: string
+  perRepo: string
+  providers: string
+  checking: string
+  chosen: string
+  installed(version: string | null): string
+  notInstalled: string
+  loggedIn(method: string | null): string
+  loggedOut: string
+  running(version: string | null): string
+  stopped: string
+  models(count: number, names: string): string
+  noModels: string
+  installUnknown(problem: string): string
+  loginUnknown(problem: string): string
+  serverUnknown(problem: string): string
+  problems: Readonly<Record<StatusProblemCode, string>>
+  steps: Readonly<Record<NextStep['kind'], string>>
+  mcp(count: number): string
+  mcpNone: string
+  mcpKinds: Readonly<Record<McpServerKind, string>>
+  tools(names: string): string
+}
+
+export interface LearningsMessages {
+  title(repos: number): string
+  aboutRelations: string
+  aboutFeedback: string
+  nothing: string
+  noneYet: string
+  hint: string
+  or: string
+  relations(count: number): string
+  noRelations: string
+  unreadable: string
+  comments(count: number): string
+  noComments: string
+  outcomes(counts: { fixed: number; dismissed: number; ignored: number; open: number }): string
+  marks(negative: number, replies: number): string
+  detail: {
+    published: string
+    noComments: string
+    byRule(count: number): string
+    noRules: string
+    relations(count: number): string
+    noRelations: string
+    unreadable: string
+    gone: string
+  }
 }
 
 const CATALOGS: Readonly<Record<string, UiMessages>> = {
