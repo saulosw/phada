@@ -1,10 +1,10 @@
 import { Text } from 'ink'
 import type { ReactNode } from 'react'
-import { errorMessage } from '../../app/error-message.js'
 import type { ProviderReport, ProviderSetup, ReportedProvider } from '../../app/read-provider.js'
 import { useAppDeps, useMessages, useScreenKeys, useScreenSize, useTheme } from '../app-context.js'
 import { useLoaded, usePolled } from '../data-hooks.js'
 import type { DataState } from '../data-hooks.js'
+import { failedText } from '../data-view.js'
 import type { UiMessages } from '../i18n/messages.js'
 import { ScrollText } from '../scroll-list.js'
 import { textWidth } from '../tab-layout.js'
@@ -55,7 +55,7 @@ function choiceLines(setup: DataState<ProviderSetup>, draw: Draw): ReactNode[] {
   const m = messages.provider
   if (setup.status === 'loading') return [<Text color={colors.dim}>{messages.loading}</Text>]
   if (setup.status === 'failed') {
-    return [<Text color={colors.error}>{messages.failed(errorMessage(setup.error))}</Text>]
+    return [<Text color={colors.error}>{failedText(messages, setup.error)}</Text>]
   }
   const { provider, model, origin } = setup.value.choice
   const modelText =
@@ -91,10 +91,7 @@ function providerLines(checked: DataState<ProviderReport>, draw: Draw): ReactNod
   const header = <Text bold>{m.providers}</Text>
   if (checked.status === 'loading') return [header, <Text color={colors.dim}>{m.checking}</Text>]
   if (checked.status === 'failed') {
-    return [
-      header,
-      <Text color={colors.error}>{messages.failed(errorMessage(checked.error))}</Text>,
-    ]
+    return [header, <Text color={colors.error}>{failedText(messages, checked.error)}</Text>]
   }
   const nameWidth = Math.max(...Object.values(PROVIDER_NAMES).map(textWidth))
   const chosenWidth = textWidth(m.chosen)

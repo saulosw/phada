@@ -230,6 +230,21 @@ describe('the Provider screen', () => {
     expect(frame()).toContain('Could not load: spawn failed')
   })
 
+  it('draws an error and the model names it read on one line, without control characters', async () => {
+    const { frame } = openProvider({
+      setup: async () => {
+        throw new Error('Invalid config:\n  provider\u001B[2J\u202Eollama')
+      },
+      providers: async () => {
+        throw new Error('spawn failed:\n\u001B]0;title\u0007done')
+      },
+    })
+    await settle()
+    expect(frame()).toContain('Could not load: Invalid config: provider[2Jollama')
+    expect(frame()).toContain('Could not load: spawn failed: ]0;titledone')
+    expect(frame()).not.toMatch(/[\u0007\u202E]|\u001B\[2J|\u001B\]/)
+  })
+
   it('fits a wide terminal', async () => {
     const size = { columns: 160, rows: 40 }
     const { frame } = openProvider({ size })

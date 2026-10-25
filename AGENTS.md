@@ -347,7 +347,8 @@ src/
     units.ts             #   durationText(), bytesText()
     data-hooks.ts        #   usePolled() (local data, at once, every 2 s on the scheduler and when
                          #   its key changes), useLoaded() (slow data, on open and on r); DataState
-    data-view.tsx        #   DataView: loading, the error in one line, or the value
+    data-view.tsx        #   DataView: loading, the error in one line, or the value; failedText():
+                         #   any error as one line without control characters
     scroll-list.tsx      #   useSelection() (↑/↓, PgUp/PgDn, Home/End, Enter; follows the selected
                          #   key when the list changes), ScrollList (the rows that fit and
                          #   "n–m of N"), ScrollText (lines that scroll); listWindow()

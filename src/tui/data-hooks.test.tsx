@@ -132,4 +132,16 @@ describe('useLoaded', () => {
     await settle()
     expect(frame()).toContain('Could not load: GitHub answered 503')
   })
+
+  it('shows a failed load on one line, without the control characters of the error', async () => {
+    const { frame } = openScreen(() => {
+      const { state } = useLoaded(() =>
+        Promise.reject(new Error('GitHub answered 503:\n  <html>\u001B[2J\u202Edown')),
+      )
+      return <DataView state={state}>{(value) => <Text>{String(value)}</Text>}</DataView>
+    })
+    await settle()
+    expect(frame()).toContain('Could not load: GitHub answered 503: <html>[2Jdown')
+    expect(frame()).not.toMatch(/[\u001B\u202E]/)
+  })
 })

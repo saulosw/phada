@@ -248,6 +248,17 @@ describe('the Home screen', () => {
     expectFits(frame(), 80)
   })
 
+  it('draws the error of a provider check on one line, without control characters', async () => {
+    const { frame } = openHome({
+      providers: async () => {
+        throw new Error('spawn failed:\n  \u001B[2J\u202Eagain')
+      },
+    })
+    await waitFor(() => frame().includes('spawn failed'))
+    expect(frame()).toMatch(/AI +✗ Claude Code · opus · Could not load: spawn failed: \[2Jagain/)
+    expect(frame()).not.toMatch(/\u202E|\u001B\[2J/)
+  })
+
   it('reads local data every 2 s and the slow parts only on open and on r', async () => {
     const { frame, clock, press, calls } = openHome()
     await waitFor(() => frame().includes('All set'))

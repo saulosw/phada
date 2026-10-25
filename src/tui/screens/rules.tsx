@@ -1,7 +1,6 @@
 import { Box, Text } from 'ink'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
-import { errorMessage } from '../../app/error-message.js'
 import type { PromptPassView, PromptView } from '../../app/inspect-prompt.js'
 import type { ListedRepository } from '../../app/read-repositories.js'
 import type { BranchRules, LocalRules, ReadRules } from '../../app/read-rules.js'
@@ -18,7 +17,7 @@ import {
 } from '../app-context.js'
 import { useLoaded, usePolled } from '../data-hooks.js'
 import type { DataState } from '../data-hooks.js'
-import { DataView } from '../data-view.js'
+import { DataView, failedText } from '../data-view.js'
 import type { UiMessages } from '../i18n/messages.js'
 import { ScrollList, ScrollText, useSelection } from '../scroll-list.js'
 import { textWidth } from '../tab-layout.js'
@@ -298,7 +297,7 @@ function lensLines(
           <Text>
             <Text color={theme.colors.soft}>{m.lens}</Text>
             {GAP}
-            <Text color={theme.colors.error}>{messages.failed(errorMessage(local.error))}</Text>
+            <Text color={theme.colors.error}>{failedText(messages, local.error)}</Text>
           </Text>,
         ]
       : [
@@ -358,7 +357,7 @@ function userRuleLines(local: DataState<LocalRules>, draw: Draw): ReactNode[] {
   if (local.status === 'failed') {
     return [
       <Text bold>{m.userRules(0)}</Text>,
-      ...note(messages.failed(errorMessage(local.error)), draw, theme.colors.error),
+      ...note(failedText(messages, local.error), draw, theme.colors.error),
     ]
   }
   const { rules, warnings } = local.value
@@ -378,7 +377,7 @@ function branchLines(state: DataState<BranchRules>, draw: Draw): ReactNode[] {
   if (state.status === 'failed') {
     return [
       <Text bold>{m.phadaFolder}</Text>,
-      ...note(messages.failed(errorMessage(state.error)), draw, theme.colors.error),
+      ...note(failedText(messages, state.error), draw, theme.colors.error),
     ]
   }
   const read = state.value

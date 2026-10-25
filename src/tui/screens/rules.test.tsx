@@ -337,6 +337,25 @@ describe('the Rules screen', () => {
     expect(attempt).toBe(2)
   })
 
+  it('draws the errors it read on one line, without control characters', async () => {
+    const rules = openRules({
+      deps: {
+        readLocalRules: async () => {
+          throw new Error('Invalid config:\n  rules\u001B[2J\u202Eutc')
+        },
+        readRepositoryRules: async () => {
+          throw new Error('GitHub answered 502:\n<html>\u202Edown')
+        },
+      },
+    })
+    await openShop(rules)
+    await waitFor(() => rules.frame().includes('502'))
+    const text = rules.frame()
+    expect(text).toContain('Could not load: Invalid config: rules[2Jutc')
+    expect(text).toContain('Could not load: GitHub answered 502: <html>down')
+    expect(text).not.toMatch(/\u202E|\u001B\[2J/)
+  })
+
   it('says how to get a token without one, still showing the local parts', async () => {
     const rules = openRules({ deps: { readRepositoryRules: async () => ({ status: 'no-token' }) } })
     await openShop(rules)

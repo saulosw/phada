@@ -11,7 +11,7 @@ import type { ReportedProvider } from '../../app/read-provider.js'
 import { useAppDeps, useMessages, useScreenKeys, useScreenSize, useTheme } from '../app-context.js'
 import { useLoaded, usePolled } from '../data-hooks.js'
 import type { DataState } from '../data-hooks.js'
-import { DataView } from '../data-view.js'
+import { DataView, failedText } from '../data-view.js'
 import type { UiMessages } from '../i18n/messages.js'
 import { Mascot } from '../mascot.js'
 import { absoluteTime, relativeTime } from '../relative-time.js'
@@ -184,7 +184,7 @@ function aiStatus({ setup, providers }: HomeSnapshot, { messages }: Draw): Statu
     return { mark: 'pending', text: `${chosen} · ${messages.home.checking}` }
   }
   if (providers.status === 'failed') {
-    return { mark: 'error', text: `${chosen} · ${messages.failed(providers.error)}` }
+    return { mark: 'error', text: `${chosen} · ${failedText(messages, providers.error)}` }
   }
   const status = providers.value.providers.find((checked) => checked.provider === provider)
   if (status === undefined) return { mark: 'pending', text: chosen }
@@ -451,7 +451,7 @@ function isReady(status: ReportedProvider): boolean {
 }
 
 function failedStatus(error: string, messages: UiMessages): Status {
-  return { mark: 'error', text: messages.failed(oneLine(error)) }
+  return { mark: 'error', text: failedText(messages, error) }
 }
 
 function pendingOrFailed<T>(fact: Fact<T>, messages: UiMessages): Status {
