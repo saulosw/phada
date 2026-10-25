@@ -39,6 +39,8 @@ export interface AppProps {
 
 type Overlay = 'none' | 'help' | 'palette'
 
+const SHELL_ROWS = 3
+
 export function App({ deps, size, onExit, screens = SCREENS }: AppProps) {
   const theme = useMemo(() => resolveTheme(colorLevel(deps.env)), [deps.env])
   const messages = useMemo(() => uiMessagesFor(deps.language), [deps.language])
@@ -85,6 +87,7 @@ function Shell({
   const [active, setActive] = useState(0)
   const [overlay, setOverlay] = useState<Overlay>('none')
   const [screenKeys, setScreenKeys] = useState<readonly KeyHint[]>([])
+  const [typing, setTyping] = useState(false)
   const back = useRef<(() => void) | undefined>(undefined)
   const titles = screens.map((screen) => screen.title(messages))
   const quit = () => onExit({ kind: 'quit' })
@@ -96,12 +99,15 @@ function Shell({
   const controls = useMemo<ScreenControls>(
     () => ({
       inputActive: overlay === 'none' && !tooSmall,
+      typing,
+      size: { columns: size.columns, rows: Math.max(size.rows - SHELL_ROWS, 0) },
       setKeys: setScreenKeys,
       setBack: (handler) => {
         back.current = handler
       },
+      setTyping,
     }),
-    [overlay, tooSmall],
+    [overlay, tooSmall, typing, size.columns, size.rows],
   )
 
   useInput((input, key) => {
@@ -110,7 +116,7 @@ function Shell({
       if (input === 'q' || key.escape) quit()
       return
     }
-    if (overlay === 'palette') return
+    if (overlay === 'palette' || typing) return
     if (overlay === 'help') {
       if (key.escape || input === '?') setOverlay('none')
       else if (input === 'q') quit()
@@ -151,7 +157,9 @@ function Shell({
         ]
       : overlay === 'help'
         ? [{ keys: 'Esc', label: messages.keys.close }]
-        : [...screenKeys, ...footerGlobals(messages)]
+        : typing
+          ? screenKeys
+          : [...screenKeys, ...footerGlobals(messages)]
 
   return (
     <Box flexDirection="column" width={size.columns} height={size.rows}>

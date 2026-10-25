@@ -1,7 +1,10 @@
 import { useInput } from 'ink'
 import type { Key } from 'ink'
 import { createContext, useContext, useEffect, useRef } from 'react'
+import type { HistoryFilter, ListedRun, ReviewDetail } from '../app/read-history.js'
+import type { QueueView } from '../app/read-queue.js'
 import type { UiMessages } from './i18n/messages.js'
+import type { TerminalSize } from './terminal-size.js'
 import type { ColorEnv, Theme } from './theme.js'
 
 export interface Scheduler {
@@ -16,6 +19,10 @@ export interface AppDeps {
   scheduler: Scheduler
   language?: string
   configError?: unknown
+  now(): Date
+  readQueue(): Promise<QueueView>
+  readReviews(filter: HistoryFilter): Promise<{ runs: ListedRun[]; total: number }>
+  readReviewDetail(id: number): Promise<ReviewDetail | undefined>
 }
 
 export interface KeyHint {
@@ -25,8 +32,11 @@ export interface KeyHint {
 
 export interface ScreenControls {
   inputActive: boolean
+  typing: boolean
+  size: TerminalSize
   setKeys(hints: readonly KeyHint[]): void
   setBack(back: (() => void) | undefined): void
+  setTyping(typing: boolean): void
 }
 
 export interface WorkingSignal {
@@ -43,8 +53,11 @@ export const WorkingContext = createContext<WorkingSignal>({
 })
 export const ScreenContext = createContext<ScreenControls>({
   inputActive: false,
+  typing: false,
+  size: { columns: 80, rows: 21 },
   setKeys: () => {},
   setBack: () => {},
+  setTyping: () => {},
 })
 
 export function useAppDeps(): AppDeps {
@@ -94,6 +107,10 @@ export function useBack(back: (() => void) | undefined): void {
 }
 
 export function useScreenInput(handler: (input: string, key: Key) => void): void {
-  const { inputActive } = useContext(ScreenContext)
-  useInput(handler, { isActive: inputActive })
+  const { inputActive, typing } = useContext(ScreenContext)
+  useInput(handler, { isActive: inputActive && !typing })
+}
+
+export function useScreenSize(): TerminalSize {
+  return useContext(ScreenContext).size
 }

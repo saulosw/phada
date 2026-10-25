@@ -1,6 +1,7 @@
 import { cleanup, render } from 'ink-testing-library'
 import { cloneElement, isValidElement } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
+import { fakeAppDeps } from '../../test/support/tui.js'
 import type { AppProps } from './app.js'
 import type { AppDeps } from './app-context.js'
 import { openApp } from './open-app.js'
@@ -9,13 +10,10 @@ import type { ScreenDefinition } from './screens.js'
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 50))
 
-const DEPS: AppDeps = {
-  version: '1.2.3',
-  cwd: '/home/ana/shop',
-  home: '/home/ana',
-  env: {},
-  scheduler: { every: () => () => {} },
-}
+const DEPS: AppDeps = fakeAppDeps(
+  { every: () => () => {} },
+  { version: '1.2.3', cwd: '/home/ana/shop', home: '/home/ana', env: {} },
+)
 
 function host(options: { screens?: readonly ScreenDefinition[] } = {}) {
   const calls: string[] = []

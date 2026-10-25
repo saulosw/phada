@@ -2,6 +2,7 @@ import { Text } from 'ink'
 import { cleanup, render } from 'ink-testing-library'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
+import { fakeAppDeps } from '../../test/support/tui.js'
 import { App } from './app.js'
 import type { AppDeps, Scheduler } from './app-context.js'
 import { usePolled, useLoaded } from './data-hooks.js'
@@ -19,7 +20,7 @@ function openScreen(Screen: () => ReactNode) {
       return () => ticks.splice(ticks.indexOf(entry), 1)
     },
   }
-  const deps: AppDeps = { version: '1.0.0', cwd: '/', home: '/h', env: {}, scheduler }
+  const deps: AppDeps = fakeAppDeps(scheduler, { version: '1.0.0', cwd: '/', home: '/h', env: {} })
   const screens: ScreenDefinition[] = [
     { id: 'data', title: () => ({ full: 'Data', short: 'Data' }), Screen },
   ]

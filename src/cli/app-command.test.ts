@@ -2,6 +2,7 @@ import { Readable } from 'node:stream'
 import { describe, expect, it } from 'vitest'
 import { memoryFiles } from '../../test/support/memory-files.js'
 import { ConfigError } from '../config/errors.js'
+import type { HistoryStore, RunRecord } from '../store/history-store.js'
 import type { AppDeps, AppHost, AppResult } from '../tui/open-app.js'
 import { runApp } from './app-command.js'
 import type { AppCommandDeps } from './app-command.js'
@@ -20,26 +21,42 @@ function deps(
     stdout?: boolean
     config?: string
     result?: AppResult
+    history?: HistoryStore
+    holder?: number
+    during?: (deps: AppDeps) => Promise<void>
   } = {},
 ) {
   const opened: { deps: AppDeps; host: AppHost }[] = []
+  const historyPaths: string[] = []
+  const files = memoryFiles(
+    options.config === undefined ? {} : { '/cfg/config.yml': options.config },
+  )
   const app: AppCommandDeps = {
     env: { PHADA_CONFIG_HOME: '/cfg', TERM: 'xterm' },
     home: '/home/ana',
     cwd: '/home/ana/shop',
     version: '1.2.3',
-    files: memoryFiles(options.config === undefined ? {} : { '/cfg/config.yml': options.config }),
+    files,
     stdin: terminal(options.stdin ?? true).stdin,
     stdout: terminal(options.stdout ?? true).stdout,
     onSignal: () => {},
     loadApp: async () => ({
       openApp: async (appDeps, host) => {
         opened.push({ deps: appDeps, host })
+        await options.during?.(appDeps)
         return options.result ?? { kind: 'quit' }
       },
     }),
+    clock: () => new Date('2026-10-25T12:00:00.000Z'),
+    lockHolder: async (path) => (path === '/data/watch.lock' ? options.holder : undefined),
+    openHistoryStore: async (path) => {
+      historyPaths.push(path)
+      if (options.history === undefined) throw new Error('no history')
+      return options.history
+    },
   }
-  return { app, opened }
+  app.env.PHADA_DATA_HOME = '/data'
+  return { app, opened, files, historyPaths }
 }
 
 const MISSING = new UsageError('Missing the command, e.g. phada review owner/repo#123.')
@@ -114,4 +131,84 @@ describe('runApp', () => {
     expect(seen).toBeGreaterThan(0)
     expect(ticks).toHaveLength(seen)
   })
+
+  it('reads the queue and the reviews from the history once its file appears, and closes it after the app', async () => {
+    const store = fakeHistory([{ ...RUN, id: 7 }])
+    const seen: unknown[] = []
+    const { app, files, historyPaths } = deps({
+      config: 'watch:\n  repos: [acme/shop]\n  maxReviewsPerHour: 4\n',
+      history: store,
+      holder: 4242,
+      during: async (appDeps) => {
+        seen.push((await appDeps.readReviews({})).total)
+        seen.push((await appDeps.readQueue()).recorded)
+        files.files.set('/data/history.sqlite', '')
+        seen.push((await appDeps.readReviews({ text: 'shop' })).runs.map((run) => run.id))
+        const queue = await appDeps.readQueue()
+        seen.push(queue.holder, queue.hourly, queue.recorded)
+        seen.push((await appDeps.readReviewDetail(7))?.pullRequest.url)
+        seen.push(appDeps.now().toISOString())
+        expect(store.closed).toBe(0)
+      },
+    })
+
+    await runApp(app)
+
+    expect(seen).toEqual([
+      0,
+      false,
+      [7],
+      { pid: 4242 },
+      { count: 0, max: 4 },
+      true,
+      'https://github.com/acme/shop/pull/3',
+      '2026-10-25T12:00:00.000Z',
+    ])
+    expect(historyPaths).toEqual(['/data/history.sqlite'])
+    expect(store.texts).toEqual(['shop'])
+    expect(store.closed).toBe(1)
+  })
+
+  it('never opens a history that does not exist', async () => {
+    const { app, historyPaths } = deps({
+      during: async (appDeps) => {
+        expect(await appDeps.readQueue()).toMatchObject({ recorded: false, holder: null })
+        expect(await appDeps.readReviewDetail(1)).toBeUndefined()
+      },
+    })
+    await runApp(app)
+    expect(historyPaths).toEqual([])
+  })
 })
+
+const RUN: RunRecord = {
+  source: 'watch',
+  repo: 'acme/shop',
+  number: 3,
+  headSha: 'a'.repeat(40),
+  startedAt: '2026-10-25T11:00:00.000Z',
+  finishedAt: '2026-10-25T11:02:00.000Z',
+  status: 'published',
+  aiCalled: true,
+}
+
+function fakeHistory(runs: RunRecord[]) {
+  const store = {
+    closed: 0,
+    texts: [] as (string | undefined)[],
+    close: () => {
+      store.closed++
+    },
+    status: () => ({ repos: [], queued: [], running: [], failed: [], lastRuns: [] }),
+    jobs: () => [],
+    requests: () => [],
+    watchRunsSince: () => [],
+    runs: (filter: { text?: string }) => {
+      store.texts.push(filter.text)
+      return { runs: filter.text === undefined ? [] : runs, total: runs.length }
+    },
+    run: (id: number) => runs.find((run) => run.id === id),
+    findings: () => [],
+  }
+  return store as typeof store & HistoryStore
+}

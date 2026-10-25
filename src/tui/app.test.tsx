@@ -3,6 +3,7 @@ import { Text } from 'ink'
 import { cleanup, render } from 'ink-testing-library'
 import { useState } from 'react'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { fakeAppDeps } from '../../test/support/tui.js'
 import { App } from './app.js'
 import type { AppResult } from './app.js'
 import { useBack, useScreenInput, useScreenKeys, useWorking } from './app-context.js'
@@ -77,14 +78,10 @@ function openApp(
   const size = fakeSize(options.size ?? { columns: 100, rows: 30 })
   const clock = fakeScheduler()
   const exits: AppResult[] = []
-  const deps: AppDeps = {
-    version: '1.2.3',
-    cwd: '/home/ana/code/shop',
-    home: '/home/ana',
+  const deps: AppDeps = fakeAppDeps(clock.scheduler, {
     env: options.env ?? { TERM: 'xterm-256color' },
-    scheduler: clock.scheduler,
     ...(options.language === undefined ? {} : { language: options.language }),
-  }
+  })
   const app = render(
     <App
       deps={deps}
