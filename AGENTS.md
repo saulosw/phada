@@ -57,8 +57,9 @@ src/
                          #   each minute, a failed read reviews at once; ci-failing skips
                          #   recorded as a run and read again each discovery cycle, the same job
                          #   queued again once they pass) with its requests,
-                         #   failures and pauses, requests moved
-                         #   to a new commit, job events (notify), the idle index and feedback
+                         #   failures and pauses, requests moved to a new commit (from a
+                         #   superseded job or a ci-failing one), job events (notify), the idle
+                         #   index and feedback
                          #   refresh (30 min per pull request, 10 per cycle); events
     submit-request.ts    #   submitRequest(): a review request of any source → the policy (and the
                          #   when command) → a new job, a joined job (a ci-failing one queued
@@ -82,7 +83,8 @@ src/
     read-ci.ts           #   readCheckEntries(): check runs and statuses → the checks that count
                          #   (ci.checks: names or globs); readCi(): + the annotations and job logs
                          #   of the failing ones → buildCi(); each failure a warning (kept on
-                         #   the Ci), a missing permission stops that kind of read
+                         #   the Ci), a permission the readers say GitHub denied
+                         #   (CiReaders.permissionDenied) stops that kind of read
     inspect-context.ts   #   inspectPullRequestContext(), inspectRepositoryContext(): the context
                          #   without a review
     review-passes.ts     #   buildPasses(): review.prompt, review.skills or --skill → one SkillPass
@@ -126,7 +128,8 @@ src/
     watch-command.ts     #   runWatch(): settings, providers checked on start, history, lock, the
                          #   watch deps, one job's review; each job event sent to the sinks
     ci-gate-reader.ts    #   ciGateReader(): the ci settings of a job (user config and the root
-                         #   .phada/config.yml at the base, read once per job) and the checks
+                         #   .phada/config.yml at the base merged with mergeLayers(), read once
+                         #   per job) and the checks
                          #   that count of its head and onFailure, for the CI gate; none with
                          #   ci.read: false, or ci.wait: 0s with onFailure: review
     enqueue-command.ts   #   runEnqueue(): a request from the command line
@@ -146,8 +149,9 @@ src/
     run-when.ts          #   whenChecker(): the when command, its refusal as a message
     queue-wake.ts        #   sleepUntilNewJob(): the watch's sleep, cut short by a new ready job
     slack-port.ts        #   slackPort(): Slack messages → requests; job events → reactions (the
-                         #   queued and skipped marks swapped for the verdict) and replies in
-                         #   the thread
+                         #   queued mark swapped for the verdict, the skipped one too unless
+                         #   another pull request of the message still ends skipped) and
+                         #   replies in the thread
     format-slack.ts      #   slackReplies(): the event as Slack text (link, summary, full, the
                          #   failing checks of a ci-failing skip), split
     watch-stop.ts        #   createStopControl(): Ctrl-C once (finish the review) or twice (abort);
@@ -191,7 +195,8 @@ src/
     finding-references.ts #  the "Based on" line: sources (a CI check named as such), rule and skill
                          #   of a finding
     format-json.ts       #   formatReviewJson(): schemaVersion 1, with the publication, context,
-                         #   conversation, ci, investigation, impact and recheck blocks
+                         #   conversation (each item without its texts, with its bytes), ci,
+                         #   investigation, impact and recheck blocks
     markdown-text.ts     #   escapes AI text: block markers; for GitHub also HTML and mentions;
                          #   codeFence()
     review-text.ts       #   model label and short SHA
@@ -371,7 +376,8 @@ src/
     conversation.ts      #   buildConversation(): comments, reviews and threads → items oldest first
                          #   with the role of each author, without Phada's own (people's replies
                          #   to them kept), bodies cut at 2 KB, 16 KB in total (resolved ›
-                         #   outdated › oldest left out first) and the report
+                         #   outdated › oldest left out first) and the report;
+                         #   conversationItemBytes()
     plan-publication.ts  #   planPublication(): new comments vs findings still open in a thread vs
                          #   findings whose thread a person resolved vs findings of a thread found
                          #   fixed in this run
@@ -403,7 +409,8 @@ src/
     observed-store.ts    #   openObservedStore(): relations learned from reviews (own schema)
     history-store.ts     #   openHistoryStore(): the review history, never rebuilt; watched
                          #   repositories and pull requests, jobs and their review requests, runs
-                         #   with their verdict, pause, runs(), prune()
+                         #   with their verdict, pause, runs(), prune(); requestsWith(): the
+                         #   requests of a source whose data has some values (a Slack message)
     history-feedback.ts  #   published findings, observations and their signals (observed and
                          #   cleared), feedbackDue()
     history-columns.ts   #   the history tables (columns, keys) and their insert/upsert/update
@@ -411,15 +418,18 @@ src/
                          #   foreign keys off; a newer file is refused
   watch/                 # pure: what the watch does, data in, decision out
     filters.ts           #   eligibility(): draft, bot, outside author, authors, labels, base
-    plan-cycle.ts        #   planCycle(): baseline, seen, enqueue, supersede, gone
+    plan-cycle.ts        #   planCycle(): baseline, seen, enqueue, supersede, move (the requests
+                         #   of a ci-failing job to a new commit), gone
     next-job.ts          #   pickNext(): the next ready job, queued or waiting for CI, or until
                          #   when to wait (pause, limit); NOT_STARTED, notStarted()
     ci-gate.ts           #   ciGate(): CI state, ci.wait, onFailure, when Phada saw the commit and
                          #   now → review (with the checks still pending), wait (until, deadline)
-                         #   or skip; 2 min for checks to appear, read again each minute
+                         #   or skip; 2 min for checks to appear, read again each minute;
+                         #   CI_PENDING
     ci-revisit.ts        #   ciRevisits(): the ci-failing jobs to read again (24 h, head still
-                         #   the pull request's, 10 per cycle, read longest ago first);
-                         #   requeueForCi()
+                         #   the pull request's, eligible or asked by a request other than the
+                         #   watch, 10 per cycle, read longest ago first); revisitsCi(),
+                         #   skippedForCi(), requeueForCi(), CI_FAILING
     failures.ts          #   afterFailure(): retries, pauses, failed, stop; rateLimitPause()
     request-policy.ts    #   decideRequest(): closed, outside author, join, already reviewed, ask the
                          #   when command, hourly limit; a ci-failing job joined and queued
