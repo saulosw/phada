@@ -74,14 +74,36 @@ describe('appHistory', () => {
       /Cannot open \/h: locked/,
     ],
   ])(
-    'throws the error of a %s file on every read without opening it again',
+    'throws the error of a %s file and looks at it again on the next read',
     async (_case, opening, message) => {
-      const { calls, open } = opener([opening])
+      const store = fakeStore()
+      const { calls, open } = opener([
+        opening,
+        () => ({ status: 'open', history: store as unknown as HistoryStore }),
+      ])
       const history = appHistory('/h', open)
 
       await expect(history.current()).rejects.toThrow(message)
-      await expect(history.current()).rejects.toThrow(message)
-      expect(calls).toHaveLength(1)
+      expect(await history.current()).toBe(store)
+      expect(await history.current()).toBe(store)
+      expect(calls).toHaveLength(2)
     },
   )
+
+  it('closes a history that opened after the app closed', async () => {
+    const store = fakeStore()
+    let finish: (() => void) | undefined
+    const open = () =>
+      new Promise<HistoryOpening>((resolve) => {
+        finish = () => resolve({ status: 'open', history: store as unknown as HistoryStore })
+      })
+    const history = appHistory('/h', open)
+
+    const reading = history.current()
+    history.close()
+    finish?.()
+
+    expect(await reading).toBeUndefined()
+    expect(store.closed).toBe(1)
+  })
 })

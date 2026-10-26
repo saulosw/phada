@@ -200,7 +200,8 @@ src/
                          #   without one
     app-history.ts       #   appHistory(): the history for the app, opened once when its file
                          #   exists (looked for again while missing, never created), a newer,
-                         #   older or unreadable file thrown on each read
+                         #   older or unreadable file thrown on each read and looked at again
+                         #   on the next
     init.ts              #   runInit(): .phada/ in the repository, or the user's own config
     init-templates.ts    #   the commented files phada init writes
     index-command.ts     #   runIndex(): token, cache folder, mirror, progress, the map's report
