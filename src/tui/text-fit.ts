@@ -45,3 +45,9 @@ function wrapParagraph(paragraph: string, width: number): string[] {
   lines.push(line)
   return lines
 }
+
+export function shortenHome(path: string, home: string): string {
+  if (home === '' || home === '/') return path
+  if (path === home) return '~'
+  return path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path
+}

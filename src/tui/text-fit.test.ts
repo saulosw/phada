@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fit, namesText, oneLine, wrapText } from './text-fit.js'
+import { fit, namesText, oneLine, shortenHome, wrapText } from './text-fit.js'
 
 describe('oneLine', () => {
   it('strips control and bidi characters and keeps the text on one line', () => {
@@ -39,5 +39,20 @@ describe('wrapText', () => {
     ])
     expect(wrapText('abcdefghij', 4)).toEqual(['abcd', 'efgh', 'ij'])
     expect(wrapText('bad\u0007 bell', 20)).toEqual(['bad bell'])
+  })
+})
+
+describe('shortenHome', () => {
+  it('writes the home folder and what is under it with ~', () => {
+    expect(shortenHome('/home/ana', '/home/ana')).toBe('~')
+    expect(shortenHome('/home/ana/.config/phada/config.yml', '/home/ana')).toBe(
+      '~/.config/phada/config.yml',
+    )
+  })
+
+  it('leaves other paths, and every path without a home, as they are', () => {
+    expect(shortenHome('/home/anabel/x', '/home/ana')).toBe('/home/anabel/x')
+    expect(shortenHome('/srv/x', '')).toBe('/srv/x')
+    expect(shortenHome('/srv/x', '/')).toBe('/srv/x')
   })
 })

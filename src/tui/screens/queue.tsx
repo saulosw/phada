@@ -18,8 +18,7 @@ import { absoluteTime, relativeTime } from '../relative-time.js'
 import { ScrollList, ScrollText, useSelection } from '../scroll-list.js'
 import { textWidth } from '../tab-layout.js'
 import type { Theme } from '../theme.js'
-import { fit, namesText, oneLine } from '../text-fit.js'
-import { shortenHome } from './home.js'
+import { fit, namesText, oneLine, shortenHome } from '../text-fit.js'
 
 interface QueueRow {
   kind: QueueRowKind

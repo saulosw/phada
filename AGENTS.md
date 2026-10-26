@@ -336,10 +336,10 @@ src/
                          #   folder under ~ cut to the width; GitHub, AI, watch, queue and graph
                          #   in one line each, the recommendation with its command and the last
                          #   reviews that fit; local facts every 2 s, GitHub and the AI checks on
-                         #   open and on r; shortenHome()), queue.tsx (the watch from the lock
+                         #   open and on r), queue.tsx (the watch from the lock
                          #   and the history, its jobs by kind → a job with its requests;
                          #   queueRows()), reviews.tsx (the history with a text filter → one
-                         #   review with findings, publication, CI and feedback; verdictColor()),
+                         #   review with findings, publication, CI and feedback),
                          #   repositories.tsx (each repository with its origins, index and last
                          #   review → its watch filters, index, user config with origins, rules,
                          #   related repositories and last reviews), automation.tsx (one page:
@@ -354,6 +354,8 @@ src/
     setting-lines.tsx    #   settingLines(), settingValue(): config settings as key, value and
                          #   origin rows; indented()
     units.ts             #   durationText(), bytesText()
+    run-text.ts          #   runKey(), verdictLabel(), verdictColor(): a run of the history as the
+                         #   screens list it
     data-hooks.ts        #   usePolled() (local data, at once, every 2 s on the scheduler and when
                          #   its key changes), useLoaded(key) (slow data through the load cache:
                          #   the last value at once, loaded again on open after 30 s and on r);
@@ -371,7 +373,7 @@ src/
                          #   asked; emptyOnFocus opens it empty), TextFieldLine
     text-fit.ts          #   oneLine() (toTerminalText on one line), namesText() (the first names
                          #   and "+N"), fit() (pad or cut with …, at the end or the start),
-                         #   wrapText()
+                         #   wrapText(), shortenHome() (a path under ~)
     labeled-lines.tsx    #   labeledLines(): label and value rows of a detail, values wrapped
     relative-time.ts     #   relativeTime() ("2m ago", "in ~4m" for an estimate), absoluteTime();
                          #   TimeMessages

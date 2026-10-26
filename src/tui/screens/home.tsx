@@ -5,7 +5,6 @@ import { recentFailures } from '../../app/home-recommendation.js'
 import type { Recommendation } from '../../app/home-recommendation.js'
 import { HOME_REVIEWS, homeSnapshot, readHomeLocal } from '../../app/read-home.js'
 import type { Fact, HomeSnapshot } from '../../app/read-home.js'
-import type { ListedRun } from '../../app/read-history.js'
 import { nextStep } from '../../app/read-provider.js'
 import type { ReportedProvider } from '../../app/read-provider.js'
 import { useAppDeps, useMessages, useScreenKeys, useScreenSize, useTheme } from '../app-context.js'
@@ -17,9 +16,9 @@ import { Mascot } from '../mascot.js'
 import { absoluteTime, relativeTime } from '../relative-time.js'
 import { textWidth } from '../tab-layout.js'
 import type { Theme } from '../theme.js'
-import { fit, oneLine } from '../text-fit.js'
+import { runKey, verdictColor, verdictLabel } from '../run-text.js'
+import { fit, oneLine, shortenHome } from '../text-fit.js'
 import { PROVIDER_NAMES } from './provider.js'
-import { verdictColor, verdictLabel } from './reviews.js'
 
 const BOX_CHROME = 22
 const BOX_ROWS = 6
@@ -42,12 +41,6 @@ interface Draw {
   home: string
   now: Date
   width: number
-}
-
-export function shortenHome(path: string, home: string): string {
-  if (home === '' || home === '/') return path
-  if (path === home) return '~'
-  return path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path
 }
 
 export function HomeScreen() {
@@ -465,10 +458,6 @@ function pendingOrFailed<T>(fact: Fact<T>, messages: UiMessages): Status {
 function factOf<T>(state: DataState<T>): Fact<T> {
   if (state.status === 'failed') return { status: 'failed', error: errorMessage(state.error) }
   return state
-}
-
-function runKey(run: ListedRun): string {
-  return String(run.id ?? `${run.repo}#${run.number}@${run.startedAt}`)
 }
 
 function cut(text: string, width: number, side: 'end' | 'start'): string {

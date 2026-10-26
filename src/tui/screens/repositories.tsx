@@ -23,14 +23,13 @@ import { DataView } from '../data-view.js'
 import type { UiMessages } from '../i18n/messages.js'
 import { labeledLines } from '../labeled-lines.js'
 import { absoluteTime, relativeTime } from '../relative-time.js'
+import { verdictColor, verdictLabel } from '../run-text.js'
 import { ScrollList, ScrollText, useSelection } from '../scroll-list.js'
 import { indented, settingLines } from '../setting-lines.js'
 import { textWidth } from '../tab-layout.js'
 import type { Theme } from '../theme.js'
-import { fit, oneLine, wrapText } from '../text-fit.js'
+import { fit, oneLine, shortenHome, wrapText } from '../text-fit.js'
 import { bytesText } from '../units.js'
-import { shortenHome } from './home.js'
-import { verdictColor } from './reviews.js'
 
 const GAP = '  '
 const MIN_NAME_WIDTH = 16
@@ -371,7 +370,7 @@ function reviewLines(
   const cells = runs.map((run) => ({
     run,
     number: `#${run.number}`,
-    verdict: verdictText(run, messages),
+    verdict: verdictLabel(run, messages),
     score: run.score === undefined ? '–' : `${run.score}/5`,
     when: relativeTime(run.startedAt, now, messages.time),
   }))
@@ -427,11 +426,5 @@ function originsText(origins: readonly RepositoryOrigin[], messages: UiMessages)
 }
 
 function lastReviewText(run: RunRecord, now: Date, messages: UiMessages): string {
-  return `${verdictText(run, messages)} · ${relativeTime(run.startedAt, now, messages.time)}`
-}
-
-function verdictText(run: RunRecord, messages: UiMessages): string {
-  return run.verdict === undefined
-    ? messages.reviews.statuses[run.status]
-    : messages.reviews.verdicts[run.verdict]
+  return `${verdictLabel(run, messages)} · ${relativeTime(run.startedAt, now, messages.time)}`
 }

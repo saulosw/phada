@@ -5,7 +5,6 @@ import type {
   FeedbackFinding,
   ListedRun,
   ReviewDetail,
-  RunRecord,
   StoredFinding,
 } from '../../app/read-history.js'
 import {
@@ -22,6 +21,7 @@ import { DataView } from '../data-view.js'
 import type { ReviewSource, UiMessages } from '../i18n/messages.js'
 import { labeledLines } from '../labeled-lines.js'
 import { absoluteTime, relativeTime } from '../relative-time.js'
+import { runKey, verdictColor, verdictLabel } from '../run-text.js'
 import { ScrollList, ScrollText, useSelection } from '../scroll-list.js'
 import { textWidth } from '../tab-layout.js'
 import { TextFieldLine, useTextField } from '../text-field.js'
@@ -33,8 +33,6 @@ const MIN_REF_WIDTH = 12
 const REF_SHARE = 0.45
 const PLACE_SHARE = 0.4
 const GAP = '  '
-
-const runKey = (run: ListedRun) => String(run.id ?? `${run.repo}#${run.number}@${run.startedAt}`)
 
 export function ReviewsScreen() {
   const { readReviews } = useAppDeps()
@@ -432,12 +430,6 @@ function statusLabel(status: string, messages: UiMessages): string {
   return statuses[status] ?? oneLine(status)
 }
 
-export function verdictLabel(run: ListedRun, messages: UiMessages): string {
-  return run.verdict === undefined
-    ? messages.reviews.statuses[run.status]
-    : messages.reviews.verdicts[run.verdict]
-}
-
 function sourceOf(run: ListedRun): ReviewSource {
   return run.requestSource ?? run.source
 }
@@ -448,17 +440,6 @@ function placeWidth(places: readonly string[], columns: number): number {
 
 function place(file: string, line: number | undefined): string {
   return oneLine(line === undefined ? file : `${file}:${line}`)
-}
-
-export function verdictColor(
-  run: Pick<RunRecord, 'verdict' | 'status'> | null,
-  { colors }: Theme,
-): string | undefined {
-  const verdict = run?.verdict ?? (run?.status === 'failed' ? 'failed' : undefined)
-  if (verdict === 'clean') return colors.ok
-  if (verdict === 'comments') return colors.warn
-  if (verdict === 'blocking' || verdict === 'failed') return colors.error
-  return colors.dim
 }
 
 function severityColor(severity: string | null, { colors }: Theme): string | undefined {

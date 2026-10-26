@@ -10,9 +10,8 @@ import { ScrollText } from '../scroll-list.js'
 import { indented, settingLines } from '../setting-lines.js'
 import { textWidth } from '../tab-layout.js'
 import type { Theme } from '../theme.js'
-import { fit, oneLine, wrapText } from '../text-fit.js'
+import { fit, oneLine, shortenHome, wrapText } from '../text-fit.js'
 import { durationText } from '../units.js'
-import { shortenHome } from './home.js'
 
 const GAP = '  '
 

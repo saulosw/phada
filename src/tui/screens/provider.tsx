@@ -9,8 +9,7 @@ import type { UiMessages } from '../i18n/messages.js'
 import { ScrollText } from '../scroll-list.js'
 import { textWidth } from '../tab-layout.js'
 import type { Theme } from '../theme.js'
-import { fit, namesText, oneLine, wrapText } from '../text-fit.js'
-import { shortenHome } from './home.js'
+import { fit, namesText, oneLine, shortenHome, wrapText } from '../text-fit.js'
 
 export const PROVIDER_NAMES: Readonly<Record<ReportedProvider['provider'], string>> = {
   claude: 'Claude Code',
