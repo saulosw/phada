@@ -6,6 +6,7 @@ import { readQueue } from './read-queue.js'
 import type { QueueHistory } from './read-queue.js'
 
 const NOW = new Date('2026-10-25T12:00:00.000Z')
+const CONFIG_FILE = '/home/ana/.config/phada/config.yml'
 const SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
 const SETTINGS: WatchSettings = {
   intervalMs: 300_000,
@@ -59,9 +60,17 @@ function fakeHistory(
 describe('readQueue', () => {
   it('reads an empty queue when there is no history file', () => {
     expect(
-      readQueue({ history: undefined, settings: SETTINGS, holder: undefined, now: NOW }),
+      readQueue({
+        history: undefined,
+        settings: SETTINGS,
+        holder: undefined,
+        now: NOW,
+        configFile: CONFIG_FILE,
+      }),
     ).toEqual({
       recorded: false,
+      watchConfigured: true,
+      configFile: CONFIG_FILE,
       holder: null,
       pause: null,
       hourly: { count: 0, max: 6 },
@@ -87,7 +96,13 @@ describe('readQueue', () => {
       },
     })
 
-    const view = readQueue({ history, settings: SETTINGS, holder: 4242, now: NOW })
+    const view = readQueue({
+      history,
+      settings: SETTINGS,
+      holder: 4242,
+      now: NOW,
+      configFile: CONFIG_FILE,
+    })
 
     expect(view.holder).toEqual({ pid: 4242 })
     expect(view.lastCycleAt).toBe('2026-10-25T11:57:00.000Z')
@@ -99,7 +114,13 @@ describe('readQueue', () => {
       status: { repos: [{ repo: 'acme/shop', checkedAt: '2026-10-25T11:57:00.000Z' }] },
     })
 
-    const view = readQueue({ history, settings: SETTINGS, holder: undefined, now: NOW })
+    const view = readQueue({
+      history,
+      settings: SETTINGS,
+      holder: undefined,
+      now: NOW,
+      configFile: CONFIG_FILE,
+    })
 
     expect(view.holder).toBeNull()
     expect(view.lastCycleAt).toBe('2026-10-25T11:57:00.000Z')
@@ -113,12 +134,23 @@ describe('readQueue', () => {
       status: { pause: { until: '2026-10-25T11:00:00.000Z', reason: 'rate-limit', streak: 1 } },
     })
 
-    expect(readQueue({ history: active, settings: SETTINGS, holder: 1, now: NOW }).pause).toEqual({
+    expect(
+      readQueue({
+        history: active,
+        settings: SETTINGS,
+        holder: 1,
+        now: NOW,
+        configFile: CONFIG_FILE,
+      }).pause,
+    ).toEqual({
       until,
       reason: 'rate-limit',
       streak: 1,
     })
-    expect(readQueue({ history: over, settings: SETTINGS, holder: 1, now: NOW }).pause).toBeNull()
+    expect(
+      readQueue({ history: over, settings: SETTINGS, holder: 1, now: NOW, configFile: CONFIG_FILE })
+        .pause,
+    ).toBeNull()
   })
 
   it('counts the reviews of the last hour against the limit, and none without watch settings', () => {
@@ -130,11 +162,30 @@ describe('readQueue', () => {
       ],
     })
 
-    expect(readQueue({ history, settings: SETTINGS, holder: 1, now: NOW }).hourly).toEqual({
+    expect(
+      readQueue({ history, settings: SETTINGS, holder: 1, now: NOW, configFile: CONFIG_FILE })
+        .hourly,
+    ).toEqual({
       count: 2,
       max: 6,
     })
-    expect(readQueue({ history, settings: undefined, holder: 1, now: NOW }).hourly).toBeNull()
+    expect(
+      readQueue({ history, settings: undefined, holder: 1, now: NOW, configFile: CONFIG_FILE })
+        .hourly,
+    ).toBeNull()
+  })
+
+  it('says the watch is not configured, with the config file to set it up in, without watch settings', () => {
+    const view = readQueue({
+      history: undefined,
+      settings: undefined,
+      holder: undefined,
+      now: NOW,
+      configFile: CONFIG_FILE,
+    })
+
+    expect(view.watchConfigured).toBe(false)
+    expect(view.configFile).toBe(CONFIG_FILE)
   })
 
   it('gives each job of the queue its requests, with the jobs waiting for CI in their order', () => {
@@ -151,7 +202,13 @@ describe('readQueue', () => {
       requests: [request(1, 2, 'watch'), request(2, 3, 'slack'), request(3, 4, 'enqueue')],
     })
 
-    const view = readQueue({ history, settings: SETTINGS, holder: 1, now: NOW })
+    const view = readQueue({
+      history,
+      settings: SETTINGS,
+      holder: 1,
+      now: NOW,
+      configFile: CONFIG_FILE,
+    })
 
     expect(view.queue).toEqual([
       { job: waiting, requests: [request(1, 2, 'watch')] },
@@ -183,7 +240,13 @@ describe('readQueue', () => {
       requests: [request(4, 5, 'pr-command')],
     })
 
-    const view = readQueue({ history, settings: SETTINGS, holder: 1, now: NOW })
+    const view = readQueue({
+      history,
+      settings: SETTINGS,
+      holder: 1,
+      now: NOW,
+      configFile: CONFIG_FILE,
+    })
 
     expect(view.skippedForCi).toEqual([{ job: recent, requests: [request(4, 5, 'pr-command')] }])
   })
@@ -207,7 +270,13 @@ describe('readQueue', () => {
     }
     const history = fakeHistory({ status: { failed: [failed], lastRuns: [lastRun] } })
 
-    const view = readQueue({ history, settings: SETTINGS, holder: undefined, now: NOW })
+    const view = readQueue({
+      history,
+      settings: SETTINGS,
+      holder: undefined,
+      now: NOW,
+      configFile: CONFIG_FILE,
+    })
 
     expect(view.recorded).toBe(true)
     expect(view.failed).toEqual([{ job: failed, requests: [] }])

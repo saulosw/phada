@@ -111,6 +111,8 @@ export interface QueueMessages {
   lastCycle(when: string): string
   next(when: string): string
   startWith: string
+  notConfigured: string
+  setUp(file: string): string
   paused(until: string, relative: string, reason: string): string
   pauseReasons: { rateLimit: string; usageLimit: string }
   hourly(count: number, max: number): string

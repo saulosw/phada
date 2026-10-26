@@ -11,8 +11,15 @@ export function watchStatusText(
   holder: number | undefined,
   now: Date,
   format: IndexFormat,
+  configFile: string,
 ): string {
-  const view = readQueue({ history, settings: resolveWatchSettings(layers), holder, now })
+  const view = readQueue({
+    history,
+    settings: resolveWatchSettings(layers),
+    holder,
+    now,
+    configFile,
+  })
   const status: HistoryStatus = {
     repos: view.repos,
     queued: view.queue.map(({ job }) => job),

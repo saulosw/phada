@@ -10,7 +10,7 @@ import { dataFiles } from '../config/data-paths.js'
 import { mergeConfig, resolveProvider } from '../config/merge-config.js'
 import { resolveMcp, userMcp } from '../config/mcp-servers.js'
 import { BUILT_IN_SKILL, builtInSkillError } from '../app/review-passes.js'
-import { loadTopLevelUserLayers, loadUserLayers } from '../config/user-config.js'
+import { loadTopLevelUserLayers, loadUserLayers, userConfigFile } from '../config/user-config.js'
 import type { WatchSettings } from '../config/watch-settings.js'
 import type { SubmitDeps } from '../app/submit-request.js'
 import { sleepUntilNewJob } from './queue-wake.js'
@@ -127,7 +127,16 @@ export async function runWatch(command: WatchCommand, deps: WatchCommandDeps): P
     const history = await deps.openHistoryStore(files.history)
     try {
       const holder = await deps.lockHolder(files.lock)
-      deps.stdout.write(watchStatusText(history, layers, holder, deps.clock(), command.format))
+      deps.stdout.write(
+        watchStatusText(
+          history,
+          layers,
+          holder,
+          deps.clock(),
+          command.format,
+          userConfigFile(deps.env, deps.home),
+        ),
+      )
     } finally {
       history.close()
     }

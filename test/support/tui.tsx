@@ -45,6 +45,8 @@ export function minutesFrom(now: Date, minutes: number): string {
 export function emptyQueue(): QueueView {
   return {
     recorded: false,
+    watchConfigured: true,
+    configFile: CONFIG_FILE,
     holder: null,
     pause: null,
     hourly: null,

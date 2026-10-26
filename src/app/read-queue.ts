@@ -13,6 +13,8 @@ export interface QueueJob {
 
 export interface QueueView {
   recorded: boolean
+  watchConfigured: boolean
+  configFile: string
   holder: { pid: number } | null
   pause: PauseState | null
   hourly: { count: number; max: number } | null
@@ -31,8 +33,9 @@ export function readQueue(input: {
   settings: WatchSettings | undefined
   holder: number | undefined
   now: Date
+  configFile: string
 }): QueueView {
-  const { history, settings, holder, now } = input
+  const { history, settings, holder, now, configFile } = input
   const status = history?.status() ?? {
     repos: [],
     queued: [],
@@ -51,6 +54,8 @@ export function readQueue(input: {
   const lastCycleAt = latest(status.repos.map(({ checkedAt }) => checkedAt))
   return {
     recorded: history !== undefined,
+    watchConfigured: settings !== undefined,
+    configFile,
     holder: holder === undefined ? null : { pid: holder },
     pause: activePause(status.pause, now),
     hourly:

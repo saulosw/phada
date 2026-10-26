@@ -132,6 +132,16 @@ describe('the Queue screen', () => {
     expect(frame()).toContain('phada watch')
   })
 
+  it('says the watch is not configured and how to set it up, never to start it', async () => {
+    const { frame } = openQueue(async () => ({ ...emptyQueue(), watchConfigured: false }))
+    await settle()
+    const text = frame()
+    expectFits(text, { columns: 80, rows: 24 })
+    expect(text).toContain('Watch not configured')
+    expect(text).toContain('Add watch.repos to ~/.config/phada/config.yml, then run phada watch')
+    expect(text).not.toContain('start it with')
+  })
+
   it('shows the running watch, its cycles, pause, hourly count and every kind of job in 80×24', async () => {
     const { frame } = openQueue(async () => busyQueue())
     await settle()

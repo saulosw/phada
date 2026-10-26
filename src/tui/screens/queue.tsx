@@ -19,6 +19,7 @@ import { ScrollList, ScrollText, useSelection } from '../scroll-list.js'
 import { textWidth } from '../tab-layout.js'
 import type { Theme } from '../theme.js'
 import { fit, namesText, oneLine } from '../text-fit.js'
+import { shortenHome } from './home.js'
 
 interface QueueRow {
   kind: QueueRowKind
@@ -97,10 +98,10 @@ function QueueList({
   const messages = useMessages()
   const theme = useTheme()
   const { colors } = theme
-  const { now } = useAppDeps()
+  const { now, home } = useAppDeps()
   const size = useScreenSize()
   const time = now()
-  const header = headerLines(view, time, messages, theme)
+  const header = headerLines(view, time, home, messages, theme)
   const kindWidth = Math.max(...Object.values(messages.queue.kinds).map(textWidth))
   const refWidth = Math.min(
     Math.max(0, ...rows.map(({ entry }) => textWidth(jobRef(entry)))),
@@ -143,20 +144,39 @@ function QueueList({
   )
 }
 
-function headerLines(view: QueueView, now: Date, messages: UiMessages, theme: Theme): ReactNode[] {
+function headerLines(
+  view: QueueView,
+  now: Date,
+  home: string,
+  messages: UiMessages,
+  theme: Theme,
+): ReactNode[] {
   const { colors } = theme
   const m = messages.queue
   const when = (at: string) => relativeTime(at, now, messages.time)
   const cycle = view.lastCycleAt === null ? [] : [m.lastCycle(when(view.lastCycleAt))]
+  const command = (
+    <Text bold color={colors.accent}>
+      phada watch
+    </Text>
+  )
+  if (view.holder === null && !view.watchConfigured) {
+    return [
+      <Text>
+        <Text color={colors.dim}>○ </Text>
+        <Text bold>{m.notConfigured}</Text>
+      </Text>,
+      <Text>
+        {m.setUp(oneLine(shortenHome(view.configFile, home)))} {command}
+      </Text>,
+    ]
+  }
   const watch =
     view.holder === null ? (
       <Text>
         <Text color={colors.dim}>○ </Text>
         <Text bold>{m.stopped}</Text>
-        {[...cycle, m.startWith].map((part) => ` · ${part}`).join('')}{' '}
-        <Text bold color={colors.accent}>
-          phada watch
-        </Text>
+        {[...cycle, m.startWith].map((part) => ` · ${part}`).join('')} {command}
       </Text>
     ) : (
       <Text>

@@ -141,6 +141,7 @@ async function appDeps(deps: AppCommandDeps, history: AppHistory, lock: string):
         settings: await watchSettings(),
         holder: await deps.lockHolder(lock),
         now: deps.clock(),
+        configFile: userConfigFile(deps.env, deps.home),
       }),
     readReviews: async (filter: Parameters<AppDeps['readReviews']>[0]) =>
       readReviews(await history.current(), filter),

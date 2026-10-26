@@ -106,7 +106,8 @@ src/
     read-queue.ts        #   readQueue(): the watch from the lock holder and the history — repos
                          #   with their last cycle, the next one estimated while a watch runs,
                          #   queued, waiting for CI, running, skipped for failing CI and failed
-                         #   jobs with their requests, pause, reviews of the last hour
+                         #   jobs with their requests, pause, reviews of the last hour, whether
+                         #   the watch is configured and the config file to set it up in
     read-history.ts      #   readReviews(), readFindings() (destination and marks of each),
                          #   readFeedbackStats() (feedbackStats() per repository, ruleStats() per
                          #   rule), readReviewDetail(): one run with what its stored JSON keeps

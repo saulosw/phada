@@ -121,6 +121,8 @@ export const portuguese: UiMessages = {
     lastCycle: (when) => `último ciclo ${when}`,
     next: (when) => `próximo ${when}`,
     startWith: 'inicie com',
+    notConfigured: 'Watch não configurado',
+    setUp: (file) => `Adicione watch.repos em ${file} e rode`,
     paused: (until, relative, reason) => `Pausado até ${until} (${relative}): ${reason}`,
     pauseReasons: {
       rateLimit: 'o limite de requisições do GitHub',
