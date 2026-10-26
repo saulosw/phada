@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { FindingRecord, RunRecord } from '../store/history-store.js'
+import { feedbackStats } from '../app/read-history.js'
 import {
-  feedbackStats,
   formatHistoryJson,
   formatHistoryText,
   formatStatsJson,

@@ -7,9 +7,6 @@ import { singleLine } from './markdown-text.js'
 import { shortSha } from './review-text.js'
 import { formatCount, formatLocalTime } from './units.js'
 
-export { feedbackStats } from '../app/read-history.js'
-export type { RepoStats } from '../app/read-history.js'
-
 const SCHEMA_VERSION = 1
 const WARNING = 'Signals, not verdicts: a dismissed finding may still have been right.'
 
