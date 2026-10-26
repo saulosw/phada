@@ -115,7 +115,8 @@ src/
                          #   published finding; no history file reads as empty
     read-repositories.ts #   readRepositories(): watch.repos ∪ the user's repos/<owner>/<repo>/
                          #   folders ∪ the history, each with its origins, index file and last
-                         #   review; readRepository(): the user config with the origin of each
+                         #   review, watched first, then own config, then history, each by
+                         #   name; readRepository(): the user config with the origin of each
                          #   value (userSettings()) and each rule with its name (userRules()),
                          #   the watch filters, the index, the related
                          #   repositories declared and the last reviews; an invalid config as a

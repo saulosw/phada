@@ -103,19 +103,39 @@ describe('readRepositories', () => {
           lastReview: null,
         },
         {
-          repo: 'old/lib',
-          origins: ['history'],
-          index: { file: null, indexedSha: null, checkedAt: null },
-          lastReview: lastRun,
-        },
-        {
           repo: 'zeta/web',
           origins: ['own-config'],
           index: { file: null, indexedSha: null, checkedAt: null },
           lastReview: null,
         },
+        {
+          repo: 'old/lib',
+          origins: ['history'],
+          index: { file: null, indexedSha: null, checkedAt: null },
+          lastReview: lastRun,
+        },
       ],
     })
+  })
+
+  it('lists the watched repositories first, then those with their own config, then the history, each by name', async () => {
+    const list = await readRepositories(
+      readers({
+        topLevelLayers: async () => [layer('user', 'watch:\n  repos: [zeta/app, beta/api]\n')],
+        userRepoConfigs: async () => ['alpha/own', 'omega/own', 'zeta/app'],
+        history: async () =>
+          history({ lastRuns: [run('aaa/old'), run('beta/api'), run('mid/old')] }),
+      }),
+    )
+
+    expect(list.repositories.map(({ repo }) => repo)).toEqual([
+      'beta/api',
+      'zeta/app',
+      'alpha/own',
+      'omega/own',
+      'aaa/old',
+      'mid/old',
+    ])
   })
 
   it('keeps listing the folders and the history when the top-level config is invalid', async () => {

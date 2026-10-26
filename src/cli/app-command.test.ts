@@ -214,8 +214,8 @@ describe('runApp', () => {
         expect(
           list.repositories.map(({ repo, origins, index }) => [repo, origins, index.file]),
         ).toEqual([
-          ['acme/api', ['own-config'], null],
           ['acme/shop', ['watched'], { path: '/cache/index/acme/shop.sqlite', bytes: 2000 }],
+          ['acme/api', ['own-config'], null],
         ])
         const detail = await appDeps.readRepository('acme/api')
         expect(detail.config.status === 'read' && detail.config.settings).toContainEqual({

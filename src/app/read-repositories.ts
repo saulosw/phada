@@ -110,12 +110,15 @@ export async function readRepositories(readers: RepositoryReaders): Promise<Repo
     ...state.lastRuns.keys(),
   ])
   const repositories = await Promise.all(
-    [...names].sort().map(async (repo) => ({
+    [...names].map(async (repo) => ({
       repo,
       origins: originsOf(repo, state),
       index: await indexOf(repo, state, readers),
       lastReview: state.lastRuns.get(repo) ?? null,
     })),
+  )
+  repositories.sort(
+    (a, b) => originRank(a.origins) - originRank(b.origins) || (a.repo < b.repo ? -1 : 1),
   )
   const configError = 'error' in state.topLevel ? state.topLevel.error : null
   return {
@@ -188,6 +191,12 @@ async function readLocalState(readers: RepositoryReaders): Promise<LocalState> {
     records: new Map((status?.repos ?? []).map((record) => [record.repo.toLowerCase(), record])),
     lastRuns: new Map((status?.lastRuns ?? []).map((run) => [run.repo.toLowerCase(), run])),
   }
+}
+
+const ORIGIN_ORDER: readonly RepositoryOrigin[] = ['watched', 'own-config', 'history']
+
+function originRank([first]: readonly RepositoryOrigin[]): number {
+  return first === undefined ? ORIGIN_ORDER.length : ORIGIN_ORDER.indexOf(first)
 }
 
 function originsOf(repo: string, state: LocalState): RepositoryOrigin[] {
