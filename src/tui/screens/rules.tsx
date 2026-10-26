@@ -136,6 +136,7 @@ function RepositoryRules({ repo, onClose }: { repo: string; onClose(): void }) {
   const [invalid, setInvalid] = useState<string | undefined>()
   const local = usePolled(() => readLocalRules(repo), undefined, repo)
   const field = useTextField({
+    emptyOnFocus: true,
     onSubmit: (value) => {
       const typed = value.trim()
       if (PULL_NUMBER.test(typed)) {

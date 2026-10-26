@@ -8,12 +8,12 @@ import { TextFieldLine, useTextField } from './text-field.js'
 
 afterEach(() => cleanup())
 
-function fieldScreen(submitted: string[] = []): ScreenDefinition {
+function fieldScreen(submitted: string[] = [], emptyOnFocus = false): ScreenDefinition {
   return {
     id: 'field',
     title: () => ({ full: 'Field', short: 'Field' }),
     Screen: () => {
-      const field = useTextField({ onSubmit: (value) => submitted.push(value) })
+      const field = useTextField({ emptyOnFocus, onSubmit: (value) => submitted.push(value) })
       useScreenKeys(
         field.focused ? [{ keys: 'Enter', label: 'apply' }] : [{ keys: 'f', label: 'filter' }],
       )
@@ -82,6 +82,20 @@ describe('a text field', () => {
     expect(frame()).toContain('applied: [15]')
     expect(frame()).toContain('Filter: 15')
     expect(submitted).toEqual(['15'])
+  })
+
+  it('opens empty when asked to, so typing replaces the applied value', async () => {
+    const submitted: string[] = []
+    const { frame, press, type } = renderApp({ screens: [fieldScreen(submitted, true)] })
+    await settle()
+    await press('f', '15\r', 'f')
+    expect(frame()).toMatch(/Filter: *$/m)
+    await type('16')
+    await press(KEYS.enter)
+    expect(frame()).toContain('applied: [16]')
+    expect(submitted).toEqual(['15', '16'])
+    await press('f', KEYS.escape)
+    expect(frame()).toContain('Filter: 16')
   })
 
   it('does not pass the typed keys to the other inputs of the screen', async () => {

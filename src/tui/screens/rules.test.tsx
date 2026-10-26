@@ -408,6 +408,29 @@ describe('the Rules screen', () => {
     expect(rules.frame()).toMatch(/❯ acme\/shop/)
   })
 
+  it('opens the pull request number field empty, so what you type replaces the last number', async () => {
+    const rules = openRules()
+    await openShop(rules)
+    await rules.press('p')
+    await rules.type('abc')
+    await rules.press(KEYS.enter)
+    await waitFor(() => rules.frame().includes('is not a pull request number'))
+    await rules.press('p')
+    await waitFor(() => rules.frame().includes('Pull request number'))
+    expect(rules.frame()).toMatch(/Pull request number: *$/m)
+    await rules.type('15')
+    await rules.press(KEYS.enter)
+    await waitFor(() => rules.frame().includes('Loaded rules'))
+
+    await rules.press('p')
+    await rules.type('16')
+    expect(rules.frame()).toContain('Pull request number: 16')
+    expect(rules.frame()).not.toContain('1516')
+    await rules.press(KEYS.enter)
+    await waitFor(() => rules.calls.includes('pull acme/shop#16'))
+    expect(rules.calls).toEqual(['branch acme/shop', 'pull acme/shop#15', 'pull acme/shop#16'])
+  })
+
   it('refuses a pull request number that is not digits, saying what to type', async () => {
     const rules = openRules()
     await openShop(rules)
@@ -418,7 +441,7 @@ describe('the Rules screen', () => {
     expect(rules.frame()).toContain('"abc" is not a pull request number. Type its digits, e.g. 15.')
     expect(rules.calls).toEqual(['branch acme/shop'])
 
-    await rules.press('p', KEYS.backspace, KEYS.backspace, KEYS.backspace)
+    await rules.press('p')
     await rules.type('0')
     await rules.press(KEYS.enter)
     await waitFor(() => rules.frame().includes('"0"'))

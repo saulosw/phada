@@ -365,7 +365,7 @@ src/
                          #   "n–m of N"), ScrollText (lines that scroll); listWindow()
     text-field.tsx       #   useTextField() (every key while focused, Enter applies, Esc leaves;
                          #   a write of several keys taken in order; switched after the key that
-                         #   asked), TextFieldLine
+                         #   asked; emptyOnFocus opens it empty), TextFieldLine
     text-fit.ts          #   oneLine() (toTerminalText on one line), namesText() (the first names
                          #   and "+N"), fit() (pad or cut with …, at the end or the start),
                          #   wrapText()

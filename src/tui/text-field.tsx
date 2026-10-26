@@ -10,7 +10,7 @@ export interface TextField {
 }
 
 export function useTextField(
-  options: { initial?: string; onSubmit?(value: string): void } = {},
+  options: { initial?: string; emptyOnFocus?: boolean; onSubmit?(value: string): void } = {},
 ): TextField {
   const { inputActive, setTyping } = useContext(ScreenContext)
   const [value, setValue] = useState(options.initial ?? '')
@@ -20,6 +20,7 @@ export function useTextField(
   const draftNow = useRef(draft)
   const submit = useRef(options.onSubmit)
   submit.current = options.onSubmit
+  const emptyOnFocus = options.emptyOnFocus ?? false
 
   const edit = (next: string) => {
     draftNow.current = next
@@ -70,10 +71,10 @@ export function useTextField(
       if (focusedNow.current) return
       focusedNow.current = true
       setTyping(true)
-      edit(value)
+      edit(emptyOnFocus ? '' : value)
       setFocused(true)
     })
-  }, [value, setTyping])
+  }, [value, emptyOnFocus, setTyping])
 
   return { value, draft: focused ? draft : value, focused, focus }
 }
