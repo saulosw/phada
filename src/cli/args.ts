@@ -88,7 +88,9 @@ const MAX_AGE_MS = durationMs('36500d')
 
 export const USAGE = `Usage: phada <command> [options]
 
-Reviews GitHub pull requests with the AI provider you choose.
+Reviews GitHub pull requests with the AI provider you choose. Run phada with no
+command in a terminal to open the app: what Phada has set up, running and
+reviewed.
 
 Commands:
   review <pull request>  Review a pull request and publish the review on it

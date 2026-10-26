@@ -7,6 +7,26 @@ output can change between minor versions.
 
 ## Unreleased
 
+### Added
+
+- `phada` with no command, in a terminal, opens an app with what Phada has set up, running and
+  reviewed: Home (GitHub, the AI, the watch, the queue, the repository maps, the last reviews and
+  what to do next), Repositories, Rules (the reviewer lens, the rules and the prompt of a pull
+  request), Reviews, Queue (the watch running in another terminal), Automation, Provider (each AI
+  checked: installed, logged in, Ollama running) and Learnings. It only reads, refreshes what is
+  on your machine every 2 seconds and what comes from GitHub or the AI CLIs on `r`, follows the
+  `language` of your config (English, Portuguese, Spanish), adapts to 16 colors, `NO_COLOR` and
+  `TERM=dumb`, needs 80×24 and gives the terminal back as it was on quit, Ctrl-C or `SIGTERM`.
+  Outside a terminal, `phada` alone prints the same error as before.
+- Without `GITHUB_TOKEN` or `GH_TOKEN`, every command uses the login of the GitHub CLI
+  (`gh auth token`, or `gh auth status --show-token` on older `gh` versions), never saved or
+  printed.
+- The fixed texts of the review in Spanish with `language: es` (or `--language es`).
+
+### Changed
+
+- The message for a missing GitHub token says to run `gh auth login` or set `GITHUB_TOKEN`.
+
 ## 0.9.0 - 2026-10-25
 
 ### Added

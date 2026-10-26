@@ -16,7 +16,7 @@ the rest in the review body (see [Publishing](#publishing)).
 
 - Node.js 22.13 or newer
 - `git`, for the repository investigation and `phada index` (without it, the AI only sees the diff and the context)
-- A GitHub token that can read the pull request and write reviews (see [GitHub token](#github-token))
+- A GitHub token that can read the pull request and write reviews, or the login of the GitHub CLI (`gh`) (see [GitHub token](#github-token))
 - One AI provider:
   - [Claude Code](https://code.claude.com/) (`claude`), logged in with your subscription,
   - [Codex CLI](https://developers.openai.com/codex/cli) (`codex`, install with `npm i -g @openai/codex`, then `codex login`), or
@@ -38,7 +38,6 @@ npx phada review owner/repo#123
 ## Usage
 
 ```bash
-export GITHUB_TOKEN=$(gh auth token)
 phada review owner/repo#123
 phada review https://github.com/owner/repo/pull/123 --provider codex
 ```
@@ -52,12 +51,16 @@ be posted and posts nothing.
 `phada index --help`, `phada rules --help`, `phada prompt --help`, `phada watch --help` and
 `phada history --help` list their options. To have new pull requests and pushes reviewed without running anything, see
 [Watch mode](#watch-mode); to see what happened to the comments Phada published, see
-[History](#history).
+[History](#history). To see all of it in one place, run `phada` alone (see
+[Terminal app](#terminal-app)).
 
 ### GitHub token
 
-Phada reads the token from `GITHUB_TOKEN`, or from `GH_TOKEN` when `GITHUB_TOKEN` is not set. It
-reads the pull request and its reviews and publishes a review, so the token needs:
+Phada reads the token from `GITHUB_TOKEN`, or from `GH_TOKEN` when `GITHUB_TOKEN` is not set.
+Without either, it uses the login of the GitHub CLI: after `gh auth login`, every command works
+with no variable to export. Phada asks `gh auth token` (or, on older `gh` versions without it,
+`gh auth status --show-token`) once per run, only when a command needs GitHub, and never saves
+or prints the token. The token reads the pull request and its reviews and publishes a review, so the token needs:
 
 - a fine-grained token with **Contents: Read-only** and **Pull requests: Read and write** on the
   repository, plus **Checks: Read-only**, **Commit statuses: Read-only** and **Actions:
@@ -71,8 +74,38 @@ without it, the review runs on the diff alone and says so. Without one of the CI
 review runs without that part of the checks and warns with the permission the token lacks, e.g.
 `CI check runs were not read: GitHub denied reading the check runs (HTTP 403): the token needs the checks:read permission.`
 
-If you use the GitHub CLI, `export GITHUB_TOKEN=$(gh auth token)` reuses its login (older `gh`
-versions without `gh auth token` show it with `gh auth status -t`).
+## Terminal app
+
+Run `phada` with no command in a terminal to open the app: what Phada has set up, running and
+reviewed, in one place, without remembering commands or folders. It opens on the terminal's
+alternate screen, like `less` or `vim`, and the terminal is back as it was when you quit.
+
+```bash
+phada
+```
+
+| Screen       | What it shows                                                                                                                                                                                                                 |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Home         | One line each for GitHub (where the token comes from and whose it is), the AI (installed and logged in), the watch, the queue and the repository maps; the last reviews; and what to do next, with the command                |
+| Repositories | The watched repositories, the ones with a config of their own and the ones in the history → the settings of each with where every value comes from, its watch filters, its map, its related repositories and its last reviews |
+| Rules        | The reviewer lens and your rules at once; the repository's `.phada/` and the rules and docs a review of the default branch reads; `p` and a pull request number show what a review of it reads and its prompt                 |
+| Reviews      | The history, with `f` to filter → one review with its score, findings, what was published, the CI line and what happened to each comment                                                                                      |
+| Queue        | The watch running in another terminal (or not), its last and next cycle, the job running, the jobs queued, waiting for CI, skipped for failing CI or failed, a pause, and the reviews this hour → a job with its requests     |
+| Automation   | The watch, the CI wait, the request sources that are on (pull request comments, `phada enqueue`, `phada mcp`, Slack), the hooks and the `when` commands                                                                       |
+| Provider     | The provider and model you chose and where they come from, each AI checked (installed, logged in, Ollama running and its models) with the command that fixes it, and your MCP servers                                         |
+| Learnings    | Per repository, the relations learned from reviews and what happened to Phada's comments, per repository and per rule                                                                                                         |
+
+Keys: `←`/`→` or `Tab` move between screens, `1`–`8` jump to one, `/` finds a screen by name, `?`
+lists every key, `↑`/`↓` and `Enter` open an item, `Esc` goes back, `r` reads again what comes from
+GitHub or the AI CLIs, and `q` quits. The footer lists the keys of the screen you are on.
+
+What is on your machine (the config, the history, the queue) is read every 2 seconds; what comes
+from GitHub or the AI CLIs is read when a screen opens and on `r`. The app only reads: it changes
+no config and no history, and never creates the history file. It needs a terminal of at least
+80×24 and says so when it is smaller. It follows the `language` of your config (English,
+Portuguese and Spanish), uses the full colors your terminal supports (down to 16), and none with
+`NO_COLOR` or `TERM=dumb`. `q` exits with 0, Ctrl-C with 130 and `SIGTERM` with 143. Outside a
+terminal (a pipe, a script), `phada` with no command prints the same error as before.
 
 ## What a review looks like
 
@@ -316,8 +349,8 @@ For example, from cron every morning:
 | `list_queue`          | The jobs waiting and the one running                                                                                                       |
 
 The AI asks; Phada decides. A message that talks the AI into asking for a review of some other
-repository is refused like any other request. `phada mcp` needs `GITHUB_TOKEN` (or `GH_TOKEN`) in
-its environment to read the pull requests asked for.
+repository is refused like any other request. `phada mcp` needs a GitHub token (`GITHUB_TOKEN`,
+`GH_TOKEN` or the `gh` login) to read the pull requests asked for.
 
 ### From the pull request: `/phada review`
 
@@ -499,7 +532,7 @@ The history keeps when each one started and, when it stopped, when.
 `phada review` saves the state of the threads it reads on every run. `phada watch` also reads
 the pull requests with Phada comments every 30 minutes when the queue is idle, and once more when
 they are merged or closed. Without the watch, `phada history --refresh` reads them on demand
-(it needs `GITHUB_TOKEN`); `phada history owner/repo#123 --refresh` reads that pull request even
+(it needs a GitHub token); `phada history owner/repo#123 --refresh` reads that pull request even
 when the history has nothing about it yet.
 
 `--stats` counts the comments published in the period per repository, with the share of each
@@ -1079,7 +1112,7 @@ your own stops Phada with an error that names the file and the key.
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `--provider <name>`    | AI provider: `claude` (default, unless your config sets one), `codex` or `ollama`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `--model <name>`       | Model to use. Required for Ollama. Default: for Claude, the Claude Code default model, else `opus`; for Codex, the `model` in `~/.codex/config.toml` (or `$CODEX_HOME/config.toml`), else the Codex CLI default                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| `--language <tag>`     | Language of the review, e.g. `pt-BR`. The AI writes its text in it, and Phada's own headings and labels follow it in English (`en`) and Portuguese (`pt`, `pt-BR`); other languages keep those labels in English. Default: English                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `--language <tag>`     | Language of the review, e.g. `pt-BR`. The AI writes its text in it, and Phada's own headings and labels follow it in English (`en`), Portuguese (`pt`, `pt-BR`) and Spanish (`es`, `es-MX`, …); other languages keep those labels in English. Default: English                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `--min-confidence <n>` | Confidence cut, a whole number from 50 to 100. Findings at the cut or above are shown and scored; the ones from 50 up to the cut are listed as worth checking. Default: 60                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `--format <name>`      | Output: `markdown` (default) or `json`. The JSON (`schemaVersion: 1`) carries the same review as data: the [verdict](#review-events-and-hooks), score, summary, every changed file, findings, findings worth checking, dropped counts, the verification (unless `--no-verify`), provider, model, time and tokens, a `publication` block (`published` with the URL, `failed`, `dry-run` with the exact body and comments, or `skipped`; with the number of findings `stillOpen` and `dismissed`), a `context` block (see [Rules and repository context](#rules-and-repository-context)), `conversation` and `ci` blocks (see [Conversation and CI](#conversation-and-ci)), an `investigation` block (see [Repository investigation](#repository-investigation)) and an `impact` block (see [Repository graph](#repository-graph)) |
 | `--no-investigate`     | Reviews without letting the AI read the rest of the repository (see [Repository investigation](#repository-investigation)); `--investigate` turns it back on when the config turns it off                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
@@ -1110,6 +1143,8 @@ GitHub could not be read.
 `phada enqueue` exits with 0 when the request was queued or joined a job, 1 when it was refused
 or GitHub could not be read, and 2 when the command line or your config is wrong.
 `phada mcp` exits with 0 when its input ends.
+`phada` with no command exits with 0 when you quit the app, 130 on Ctrl-C, 143 on `SIGTERM`, 1
+when it failed and 2 outside a terminal.
 `phada watch` exits with 0 when it stopped or `--once` finished, 1 when it stopped on an error
 (another watch running, an AI CLI that is not logged in, a token GitHub rejects), 2 when the
 command line or your config is wrong, and 130 when a second Ctrl-C aborted it.
@@ -1172,6 +1207,6 @@ what changed in each version.
 
 - [CONTRIBUTING.md](CONTRIBUTING.md) explains how to run Phada from source and send a change.
 - [SECURITY.md](SECURITY.md) explains how to report a vulnerability privately.
-- Tokens are read from environment variables only and are never printed. Phada never reads or
+- Tokens are read from environment variables or the `gh` login and are never saved or printed. Phada never reads or
   manages the credentials of your AI CLI: authentication belongs to that tool.
 - Phada is licensed under the [Apache License 2.0](LICENSE).

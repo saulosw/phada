@@ -10,6 +10,8 @@ uses — an AI CLI they are logged into (Claude Code, Codex) or a model served b
 the review as Markdown or JSON and publishes it on the pull request as the owner of the GitHub
 token. Phada is not the AI: it fetches the pull request, builds the prompt, runs the provider,
 validates and scores the answer, formats the result and posts it.
+`phada` with no command, in a terminal, opens a read-only app (`src/tui/`, Ink and React) that
+shows what Phada has set up, running and reviewed, over the same use cases the commands use.
 
 ## One engine, many callers
 
@@ -20,6 +22,10 @@ the engine, today `src/main.ts`). Code in `src/review/`:
 - never reads files, environment variables or `process.cwd()`, never prints, never talks to
   GitHub;
 - never sees credentials.
+
+The read use cases of `src/app/` (queue, history, rules, repositories, automation, provider,
+learnings, home) return data, never text; the commands format it and the app draws it, so both
+show the same facts.
 
 `src/publish/` follows the same rules: it takes the earlier reviews and threads on the pull request
 and the review result as data, decides whether to review and which findings to post, and never
@@ -764,6 +770,7 @@ npm run format
 npm run smoke                          # pack, install and run the package
 npm run dev -- review owner/repo#N     # needs GITHUB_TOKEN, GH_TOKEN or a gh login
 npm run dev -- index owner/repo        # the repository map; PHADA_CACHE_HOME to keep it apart
+npm run dev                            # the terminal app (in a terminal of at least 80×24)
 ```
 
 ## Workflow
