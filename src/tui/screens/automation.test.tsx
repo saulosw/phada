@@ -108,8 +108,9 @@ describe('AutomationScreen', () => {
     const end = view.frame()
     expect(end).toMatch(/● \/phada review comments/)
     expect(flat(end)).toContain(
-      '● Slack 2 channels: C0123ABCD (publishes, link), C0456EFGH (Slack only, full review)',
+      '○ Slack not ready · 2 channels: C0123ABCD (publishes, link), C0456EFGH (Slack only, full review)',
     )
+    expect(end).not.toMatch(/● Slack/)
     expect(flat(end)).toContain('PHADA_SLACK_BOT_TOKEN set · PHADA_SLACK_APP_TOKEN missing')
     expect(end).toContain('Hooks · timeout 45s')
     expect(end).toMatch(/review\.finished\s+\.\/notify\.sh --channel reviews/)
@@ -117,6 +118,27 @@ describe('AutomationScreen', () => {
     expect(end).toMatch(/every repository\s+\.\/gate\.sh/)
     expect(end).toMatch(/acme\/api\s+\.\/api-gate\.sh/)
     expectFits(end, { columns: 80, rows: 24 })
+  })
+
+  it('shows Slack on once both of its tokens are set', async () => {
+    const all = everything()
+    const slack = all.sources.slack
+    if (slack === null) throw new Error('slack expected')
+    const view = openAutomation({
+      readAutomation: async () => ({
+        ...all,
+        sources: {
+          ...all.sources,
+          slack: { ...slack, tokens: { ...slack.tokens, app: { ...slack.tokens.app, set: true } } },
+        },
+      }),
+    })
+    await waitFor(() => view.frame().includes('Interval'))
+    await view.press(KEYS.end)
+    const end = view.frame()
+    expect(flat(end)).toContain('● Slack 2 channels: C0123ABCD (publishes, link)')
+    expect(end).not.toContain('not ready')
+    expect(flat(end)).toContain('PHADA_SLACK_BOT_TOKEN set · PHADA_SLACK_APP_TOKEN set')
   })
 
   it('points a fresh machine to phada init --global and shows everything off', async () => {

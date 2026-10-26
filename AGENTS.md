@@ -158,7 +158,8 @@ src/
     home-recommendation.ts # recommend(): the one next step of the Home with its command — invalid
                          #   config › no token (or refused) › no user config › the chosen AI ›
                          #   paused › failed in the last day › skipped for CI › watched without
-                         #   index › watch stopped › review; "checking" while a slow fact it
+                         #   index › Slack tokens missing (no watch running) › watch stopped ›
+                         #   review; "checking" while a slow fact it
                          #   could be outranked by is loading; recentFailures()
   cli/                   # terminal edge
     args.ts              #   parseCliArgs(): `review` (--dry-run, --force, --verify/--no-verify,

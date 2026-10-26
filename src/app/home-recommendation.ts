@@ -1,4 +1,5 @@
 import type { ProviderName } from '../providers/types.js'
+import type { AutomationView } from './read-automation.js'
 import type { Fact, GitHubTokenSource, HomeLocal, HomeSlow } from './read-home.js'
 import { nextStep } from './read-provider.js'
 import type { NextStep } from './read-provider.js'
@@ -15,6 +16,7 @@ export type Recommendation =
   | { kind: 'failed-jobs'; count: number; ref: string; error: string | null; command: string }
   | { kind: 'ci-skipped'; count: number; ref: string; failing: string[]; command: string }
   | { kind: 'index'; repo: string; count: number; command: string }
+  | { kind: 'slack-tokens'; missing: string[]; command: string }
   | { kind: 'watch'; command: string }
   | { kind: 'review'; command: string }
 
@@ -90,10 +92,29 @@ export function recommend(local: HomeLocal, slow: HomeSlow, now: Date): Recommen
       command: `phada index ${first.repo}`,
     }
   }
+  const slackTokens = missingSlackTokens(automation)
+  if (slackTokens.length > 0 && queue?.holder == null) {
+    return {
+      kind: 'slack-tokens',
+      missing: slackTokens.map(({ variable }) => variable),
+      command: `export ${slackTokens.map(({ variable, example }) => `${variable}=${example}`).join(' ')}`,
+    }
+  }
   if (automation?.watch != null && queue !== undefined && queue.holder === null) {
     return { kind: 'watch', command: 'phada watch' }
   }
   return { kind: 'review', command: 'phada review owner/repo#N' }
+}
+
+function missingSlackTokens(
+  automation: AutomationView | undefined,
+): { variable: string; example: string }[] {
+  const tokens = automation?.sources.slack?.tokens
+  if (tokens === undefined) return []
+  return [
+    { ...tokens.bot, example: 'xoxb-…' },
+    { ...tokens.app, example: 'xapp-…' },
+  ].filter(({ set }) => !set)
 }
 
 function aiStep(local: HomeLocal, slow: HomeSlow): Recommendation | undefined {

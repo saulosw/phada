@@ -96,6 +96,7 @@ export interface HomeMessages {
     failedJobs(count: number, ref: string, error: string | null): string
     ciSkipped(count: number, ref: string, failing: string): string
     index(repo: string, count: number): string
+    slackTokens(names: readonly string[]): string
     watch: string
     review: string
   }
@@ -257,6 +258,7 @@ export interface AutomationMessages {
   slackPublish: Readonly<Record<'pr' | 'none', string>>
   slackReply: Readonly<Record<'link' | 'summary' | 'full', string>>
   token(name: string, set: boolean): string
+  notReady: string
   hooks: string
   timeout(duration: string): string
   noHooks(file: string): string

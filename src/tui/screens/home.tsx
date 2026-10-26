@@ -329,6 +329,8 @@ function recommendationText(
       )
     case 'index':
       return m.index(oneLine(recommendation.repo), recommendation.count)
+    case 'slack-tokens':
+      return m.slackTokens(recommendation.missing)
     case 'watch':
       return m.watch
     case 'review':

@@ -87,6 +87,7 @@ export const english: UiMessages = {
         `${ref} was skipped: CI failing${failing === '' ? '' : ` (${failing})`}${count > 1 ? `, ${count} in all` : ''}. Phada reviews it again when CI passes, or review it now`,
       index: (repo, count) =>
         `Index ${repo}${count > 1 ? ` and ${count - 1} more` : ''} so reviews see the graph`,
+      slackTokens: (names) => `Set ${names.join(' and ')} for Slack`,
       watch: 'The watch is configured but not running: start it',
       review: 'All set: review a pull request',
     },
@@ -306,6 +307,7 @@ export const english: UiMessages = {
     slackPublish: { pr: 'publishes', none: 'Slack only' },
     slackReply: { link: 'link', summary: 'summary', full: 'full review' },
     token: (name, set) => `${name} ${set ? 'set' : 'missing'}`,
+    notReady: 'not ready',
     hooks: 'Hooks',
     timeout: (duration) => `timeout ${duration}`,
     noHooks: (file) => `None. Add hooks to ${file} to run a command on each review event.`,

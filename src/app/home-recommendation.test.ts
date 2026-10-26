@@ -88,6 +88,28 @@ const withoutIndex: Change = ({ local }) => {
   }
 }
 const watchStopped = queue({ holder: null, nextCycle: null })
+const slackWithout =
+  (bot: boolean, app: boolean): Change =>
+  ({ local }) => {
+    const current =
+      local.automation.status === 'ready' ? local.automation.value : configuredAutomation()
+    local.automation = {
+      status: 'ready',
+      value: {
+        ...current,
+        sources: {
+          ...current.sources,
+          slack: {
+            channels: [{ id: 'C0123ABCD', publish: 'pr', reply: 'link' }],
+            tokens: {
+              bot: { variable: 'PHADA_SLACK_BOT_TOKEN', set: !bot },
+              app: { variable: 'PHADA_SLACK_APP_TOKEN', set: !app },
+            },
+          },
+        },
+      },
+    }
+  }
 
 describe('recommend', () => {
   it('says to fix an invalid config, naming its file and the error', () => {
@@ -225,6 +247,38 @@ describe('recommend', () => {
       repo: 'acme/api',
       count: 2,
       command: 'phada index acme/api',
+    })
+  })
+
+  it('asks for the missing Slack tokens before starting a watch that would refuse without them', () => {
+    expect(home(watchStopped, slackWithout(true, true))).toEqual({
+      kind: 'slack-tokens',
+      missing: ['PHADA_SLACK_BOT_TOKEN', 'PHADA_SLACK_APP_TOKEN'],
+      command: 'export PHADA_SLACK_BOT_TOKEN=xoxb-… PHADA_SLACK_APP_TOKEN=xapp-…',
+    })
+    expect(home(watchStopped, slackWithout(false, true))).toEqual({
+      kind: 'slack-tokens',
+      missing: ['PHADA_SLACK_APP_TOKEN'],
+      command: 'export PHADA_SLACK_APP_TOKEN=xapp-…',
+    })
+    expect(
+      home(slackWithout(true, false), watchStopped, ({ local }) => {
+        if (local.automation.status === 'ready') local.automation.value.watch = null
+      }),
+    ).toMatchObject({ kind: 'slack-tokens', missing: ['PHADA_SLACK_BOT_TOKEN'] })
+  })
+
+  it('ranks the missing Slack tokens after indexing, and leaves them out while a watch runs', () => {
+    expect(home(withoutIndex, watchStopped, slackWithout(true, true))).toMatchObject({
+      kind: 'index',
+    })
+    expect(home(slackWithout(true, true))).toEqual({
+      kind: 'review',
+      command: 'phada review owner/repo#N',
+    })
+    expect(home(watchStopped, slackWithout(false, false))).toEqual({
+      kind: 'watch',
+      command: 'phada watch',
     })
   })
 

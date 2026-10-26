@@ -88,6 +88,7 @@ export const spanish: UiMessages = {
         `${ref} se omitió: CI fallando${failing === '' ? '' : ` (${failing})`}${count > 1 ? `, ${count} en total` : ''}. Phada lo revisa de nuevo cuando el CI pase, o revísalo ahora`,
       index: (repo, count) =>
         `Indexa ${repo}${count > 1 ? ` y ${count - 1} más` : ''} para que las revisiones vean el grafo`,
+      slackTokens: (names) => `Define ${names.join(' y ')} para Slack`,
       watch: 'El watch está configurado pero detenido: inícialo',
       review: 'Todo listo: revisa un pull request',
     },
@@ -309,6 +310,7 @@ export const spanish: UiMessages = {
     slackPublish: { pr: 'publica', none: 'solo en Slack' },
     slackReply: { link: 'enlace', summary: 'resumen', full: 'revisión completa' },
     token: (name, set) => `${name} ${set ? 'definido' : 'falta'}`,
+    notReady: 'no está listo',
     hooks: 'Hooks',
     timeout: (duration) => `límite ${duration}`,
     noHooks: (file) => `Ninguno. Agrega hooks en ${file} para ejecutar un comando en cada evento.`,

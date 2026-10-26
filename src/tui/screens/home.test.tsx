@@ -178,6 +178,30 @@ describe('the Home screen', () => {
     expect(frame()).toContain('phada index acme/web')
   })
 
+  it('asks for the missing Slack token instead of starting a watch that would refuse', async () => {
+    const { frame } = openHome({
+      queue: async () => ({ ...runningQueue(), holder: null, nextCycle: null }),
+      automation: async () => ({
+        ...configuredAutomation(),
+        sources: {
+          ...configuredAutomation().sources,
+          slack: {
+            channels: [{ id: 'C0123ABCD', publish: 'pr', reply: 'link' }],
+            tokens: {
+              bot: { variable: 'PHADA_SLACK_BOT_TOKEN', set: true },
+              app: { variable: 'PHADA_SLACK_APP_TOKEN', set: false },
+            },
+          },
+        },
+      }),
+    })
+    await waitFor(() => frame().includes('for Slack'))
+    expectFits(frame(), NARROW.columns)
+    expect(frame()).toContain('→ Set PHADA_SLACK_APP_TOKEN for Slack')
+    expect(frame()).toContain('export PHADA_SLACK_APP_TOKEN=xapp-…')
+    expect(frame()).not.toContain('start it')
+  })
+
   it('opens without config, history or token and says what is missing', async () => {
     const { frame } = openHome({
       automation: async () => emptyAutomation(),

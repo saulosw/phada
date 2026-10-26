@@ -111,17 +111,19 @@ function sourceLines(
   const m = messages.automation
   const { sources } = view
   const { slack } = sources
-  const entries: { label: string; on: boolean; value: string }[] = [
+  const slackReady = slack !== null && slack.tokens.bot.set && slack.tokens.app.set
+  const entries: { label: string; on: boolean; warn?: boolean; value: string }[] = [
     { label: m.prComments, on: sources.prComments, value: '' },
     { label: m.enqueue, on: sources.enqueue, value: '' },
     { label: m.mcp, on: sources.mcp, value: '' },
     {
       label: m.slack,
-      on: slack !== null,
+      on: slackReady,
+      warn: slack !== null && !slackReady,
       value:
         slack === null
           ? messages.settings.off
-          : `${m.slackChannels(slack.channels.length)}: ${slack.channels
+          : `${slackReady ? '' : `${m.notReady} · `}${m.slackChannels(slack.channels.length)}: ${slack.channels
               .map(
                 (channel) =>
                   `${oneLine(channel.id)} (${m.slackPublish[channel.publish]}, ${m.slackReply[channel.reply]})`,
@@ -140,16 +142,20 @@ function sourceLines(
       </Text>
     ))
   const lines = entries.flatMap((entry) => {
-    const color = entry.on ? undefined : theme.colors.dim
+    const color = entry.on || entry.warn === true ? undefined : theme.colors.dim
     const value =
       entry.value === '' ? (entry.on ? messages.settings.on : m.needsWatch) : entry.value
     const [first = '', ...rest] = wrapText(value, valueWidth)
     return [
       <Text>
         {'  '}
-        <Text color={entry.on ? theme.colors.ok : theme.colors.dim}>
-          {entry.on ? '●' : '○'}
-        </Text>{' '}
+        {entry.warn === true ? (
+          <Text color={theme.colors.warn} bold={theme.colors.warn === undefined}>
+            ○
+          </Text>
+        ) : (
+          <Text color={entry.on ? theme.colors.ok : theme.colors.dim}>{entry.on ? '●' : '○'}</Text>
+        )}{' '}
         {fit(entry.label, labelWidth)}
         {GAP}
         <Text color={color}>{first}</Text>
@@ -160,10 +166,9 @@ function sourceLines(
   if (slack === null) return lines
   const { bot, app } = slack.tokens
   const tokens = [m.token(bot.variable, bot.set), m.token(app.variable, app.set)].join(' · ')
-  const missing = !bot.set || !app.set
   return [
     ...lines,
-    ...continued(wrapText(tokens, valueWidth), missing ? theme.colors.warn : theme.colors.dim),
+    ...continued(wrapText(tokens, valueWidth), slackReady ? theme.colors.dim : theme.colors.warn),
   ]
 }
 
