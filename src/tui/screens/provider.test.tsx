@@ -1,7 +1,7 @@
 import { cleanup } from 'ink-testing-library'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ProviderReport, ProviderSetup, ReportedProvider } from '../../app/read-provider.js'
-import { frameLines, renderApp, settle, visibleWidth } from '../../../test/support/tui.js'
+import { frameLines, renderApp, visibleWidth, waitFor } from '../../../test/support/tui.js'
 import { SCREENS } from '../screens.js'
 import type { TerminalSize } from '../terminal-size.js'
 import { ProviderScreen } from './provider.js'
@@ -92,8 +92,8 @@ describe('the Provider screen', () => {
   })
 
   it('shows the chosen provider and model, where they come from, every AI logged in and the MCP servers in 80×24', async () => {
-    const { frame } = openProvider()
-    await settle()
+    const { frame, showing } = openProvider()
+    await showing('Reviews with Claude Code · model opus', 'MCP servers (3)', '2 models: qwen2.5')
     const text = frame()
     expectFits(text, { columns: 80, rows: 24 })
     expect(text).toContain('Reviews with Claude Code · model opus')
@@ -113,21 +113,21 @@ describe('the Provider screen', () => {
   })
 
   it("says Phada's default chose the provider and that the CLI picks the model", async () => {
-    const { frame } = openProvider({
+    const { frame, showing } = openProvider({
       setup: async () =>
         setup({
           choice: { provider: 'claude', model: null, origin: { kind: 'default' } },
           mcp: [],
         }),
     })
-    await settle()
+    await showing("Reviews with Claude Code · the AI CLI's default model", 'Codex')
     expect(frame()).toContain("Reviews with Claude Code · the AI CLI's default model")
     expect(frame()).toContain("Phada's default: your config does not choose a provider")
     expect(frame()).toContain('No MCP servers in your config')
   })
 
   it('gives the command for a logged-out CLI, a missing one and a stopped Ollama', async () => {
-    const { frame } = openProvider({
+    const { frame, showing } = openProvider({
       providers: async () =>
         report([
           claude({
@@ -145,7 +145,7 @@ describe('the Provider screen', () => {
           }),
         ]),
     })
-    await settle()
+    await showing('Reviews with Claude Code', '→ start it with ollama serve')
     const text = frame()
     expectFits(text, { columns: 80, rows: 24 })
     expect(row(text, 'Claude Code')).toMatch(/○ Claude Code\s+chosen\s+2\.1\.0 · logged out/)
@@ -157,7 +157,7 @@ describe('the Provider screen', () => {
   })
 
   it('asks for a model when Ollama has none and names what went wrong with a check', async () => {
-    const { frame } = openProvider({
+    const { frame, showing } = openProvider({
       providers: async () =>
         report([
           claude({ login: { state: 'unknown', problem: 'timeout' } }),
@@ -171,7 +171,7 @@ describe('the Provider screen', () => {
           }),
         ]),
     })
-    await settle()
+    await showing('Reviews with Claude Code', '→ pull a model with ollama pull <model>')
     const text = frame()
     expect(row(text, 'Claude Code')).toMatch(
       /\? Claude Code\s+chosen\s+2\.1\.0 · login unknown: no answer in 5 s/,
@@ -184,7 +184,7 @@ describe('the Provider screen', () => {
   it('says it is checking, then checks again with r keeping the last result meanwhile', async () => {
     let checks = 0
     let finish: (value: ProviderReport) => void = () => {}
-    const { frame, press } = openProvider({
+    const { frame, press, showing } = openProvider({
       providers: () => {
         checks++
         return new Promise((resolve) => {
@@ -192,14 +192,16 @@ describe('the Provider screen', () => {
         })
       },
     })
-    await settle()
+    await showing('Reviews with Claude Code', 'Checking…')
+    expect(checks).toBe(1)
     expect(frame()).toContain('Reviews with Claude Code')
     expect(frame()).toContain('Checking…')
     finish(report([claude(), codex(), ollama()]))
-    await settle()
+    await showing('logged in (claude.ai)')
     expect(frame()).not.toContain('Checking…')
     expect(frame()).toContain('logged in (claude.ai)')
     await press('r')
+    await waitFor(() => checks === 2)
     expect(checks).toBe(2)
     expect(frame()).toContain('logged in (claude.ai)')
     expect(frame()).not.toContain('Checking…')
@@ -213,12 +215,12 @@ describe('the Provider screen', () => {
         ollama(),
       ]),
     )
-    await settle()
+    await showing('claude auth login')
     expect(frame()).toContain('claude auth login')
   })
 
   it('shows a failed check and a config it cannot read on the screen', async () => {
-    const { frame } = openProvider({
+    const { frame, showing } = openProvider({
       setup: async () => {
         throw new Error('Invalid config /home/ana/.config/phada/config.yml: provider')
       },
@@ -226,13 +228,13 @@ describe('the Provider screen', () => {
         throw new Error('spawn failed')
       },
     })
-    await settle()
+    await showing('Could not load: Invalid config', 'Could not load: spawn failed')
     expect(frame()).toContain('Could not load: Invalid config')
     expect(frame()).toContain('Could not load: spawn failed')
   })
 
   it('draws an error and the model names it read on one line, without control characters', async () => {
-    const { frame } = openProvider({
+    const { frame, showing } = openProvider({
       setup: async () => {
         throw new Error('Invalid config:\n  provider\u001B[2J\u202Eollama')
       },
@@ -240,7 +242,7 @@ describe('the Provider screen', () => {
         throw new Error('spawn failed:\n\u001B]0;title\u0007done')
       },
     })
-    await settle()
+    await showing('Could not load: Invalid config', 'Could not load: spawn failed')
     expect(frame()).toContain('Could not load: Invalid config: provider[2Jollama')
     expect(frame()).toContain('Could not load: spawn failed: ]0;titledone')
     expect(frame()).not.toMatch(/[\u0007\u202E]|\u001B\[2J|\u001B\]/)
@@ -248,8 +250,8 @@ describe('the Provider screen', () => {
 
   it('fits a wide terminal', async () => {
     const size = { columns: 160, rows: 40 }
-    const { frame } = openProvider({ size })
-    await settle()
+    const { frame, showing } = openProvider({ size })
+    await showing('repos/<owner>/<repo>/config.yml of your config folder', 'Ollama')
     expectFits(frame(), size)
     expect(frame()).toContain(
       'repos/<owner>/<repo>/config.yml of your config folder or in its .phada/config.yml',
@@ -257,7 +259,7 @@ describe('the Provider screen', () => {
   })
 
   it('is translated', async () => {
-    const { frame } = openProvider({
+    const { frame, showing } = openProvider({
       language: 'pt',
       providers: async () =>
         report([
@@ -269,7 +271,7 @@ describe('the Provider screen', () => {
           ollama(),
         ]),
     })
-    await settle()
+    await showing('Revisa com Claude Code · modelo opus', '→ faça login com claude auth login')
     expect(frame()).toContain('Revisa com Claude Code · modelo opus')
     expect(frame()).toContain('→ faça login com claude auth login')
     expect(frame()).toContain('Servidores MCP (3)')

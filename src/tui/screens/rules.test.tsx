@@ -193,9 +193,16 @@ function openRules(
 }
 
 async function openShop(rules: ReturnType<typeof openRules>) {
-  await waitFor(() => rules.frame().includes('acme/shop'))
+  await rules.showing('acme/shop', 'Enter open')
   await rules.press(KEYS.down, KEYS.enter)
-  await waitFor(() => rules.frame().includes('Lens'))
+  await rules.showing('Lens', 'p pull request')
+}
+
+async function typePull(rules: ReturnType<typeof openRules>, typed: string) {
+  await rules.press('p')
+  await rules.showing('Enter apply')
+  await rules.type(typed)
+  await rules.showing(`Pull request number: ${typed}`)
 }
 
 function expectFits(frame: string, size: TerminalSize) {
@@ -230,7 +237,7 @@ describe('the Rules screen', () => {
   it("shows the built-in lens, the user's rules and the .phada/ of the default branch in 80×24", async () => {
     const rules = openRules()
     await openShop(rules)
-    await waitFor(() => rules.frame().includes('at main'))
+    await rules.showing('at main', 'Your rules (2)')
     const text = rules.frame()
     expectFits(text, SMALL)
     expect(text).toMatch(/Lens\s+Phada's built-in reviewer lens/)
@@ -266,7 +273,7 @@ describe('the Rules screen', () => {
       },
     })
     await openShop(rules)
-    await waitFor(() => rules.frame().includes('No GitHub token'))
+    await rules.showing('No GitHub token', 'own prompt')
     const text = rules.frame()
     expect(text).toContain('own prompt ~/.config/phada/lens.md · replaces the built-in lens')
     expect(text).toContain('set by your global config')
@@ -297,7 +304,7 @@ describe('the Rules screen', () => {
       },
     })
     await openShop(rules)
-    await waitFor(() => rules.frame().includes('skills'))
+    await rules.showing('skills security')
     const text = rules.frame()
     expect(text).toContain('skills security (native), phada · own prompt .phada/lens.md')
     expect(text).toContain('set by .phada/config.yml in the repository')
@@ -308,6 +315,11 @@ describe('the Rules screen', () => {
     const pending = deferred<BranchRules>()
     const rules = openRules({ deps: { readRepositoryRules: () => pending.promise } })
     await openShop(rules)
+    await rules.showing(
+      "Phada's built-in reviewer lens",
+      'Your rules (2)',
+      /\.phada\/ of the repository\s*\n\s+Loading/,
+    )
     const text = rules.frame()
     expect(text).toContain("Phada's built-in reviewer lens")
     expect(text).toContain('Your rules (2)')
@@ -328,7 +340,7 @@ describe('the Rules screen', () => {
       },
     })
     await openShop(rules)
-    await waitFor(() => rules.frame().includes('not accessible'))
+    await rules.showing('not accessible', 'Your rules (2)')
     const text = rules.frame()
     expect(text).toContain('Resource not accessible by integration')
     expect(text).toContain('Your rules (2)')
@@ -349,7 +361,7 @@ describe('the Rules screen', () => {
       },
     })
     await openShop(rules)
-    await waitFor(() => rules.frame().includes('502'))
+    await rules.showing('502', 'Invalid config')
     const text = rules.frame()
     expect(text).toContain('Could not load: Invalid config: rules[2Jutc')
     expect(text).toContain('Could not load: GitHub answered 502: <html>down')
@@ -359,7 +371,7 @@ describe('the Rules screen', () => {
   it('says how to get a token without one, still showing the local parts', async () => {
     const rules = openRules({ deps: { readRepositoryRules: async () => ({ status: 'no-token' }) } })
     await openShop(rules)
-    await waitFor(() => rules.frame().includes('No GitHub token'))
+    await rules.showing('No GitHub token', 'Your rules (2)')
     const text = rules.frame()
     expect(text).toContain('No GitHub token — gh auth login or set GITHUB_TOKEN')
     expect(text).toContain('Your rules (2)')
@@ -373,25 +385,23 @@ describe('the Rules screen', () => {
       },
     })
     await openShop(nothing)
-    await waitFor(() => nothing.frame().includes('No .phada/'))
+    await nothing.showing('No .phada/', 'Create .phada/ in the repository')
     expect(nothing.frame()).toContain('Create .phada/ in the repository with phada init')
     cleanup()
 
     const empty = openRules({ deps: { readRepositoryRules: async () => ({ status: 'empty' }) } })
     await openShop(empty)
-    await waitFor(() => empty.frame().includes('empty'))
+    await empty.showing('The repository is empty')
     expect(empty.frame()).toContain('The repository is empty')
   })
 
   it('opens the loaded rules and the prompt of a pull request with p, and Esc returns', async () => {
     const rules = openRules()
     await openShop(rules)
-    await rules.press('p')
-    await waitFor(() => rules.frame().includes('Pull request number'))
-    await rules.type('15')
+    await typePull(rules, '15')
     expect(rules.frame()).toContain('Pull request number: 15')
     await rules.press(KEYS.enter)
-    await waitFor(() => rules.frame().includes('Loaded rules'))
+    await rules.showing('Loaded rules', 'acme/shop#15 · head', 'p pull request')
     const text = rules.frame()
     expectFits(text, SMALL)
     expect(text).toContain('acme/shop#15 · head a1b2c3d · base b1b2c3d')
@@ -404,26 +414,25 @@ describe('the Rules screen', () => {
     await waitFor(() => rules.frame().includes('at main'))
     expect(rules.frame()).not.toContain('Loaded rules')
     await rules.press(KEYS.escape)
-    await waitFor(() => rules.frame().includes('Pick a repository'))
+    await rules.showing('Pick a repository', /❯ acme\/shop/)
     expect(rules.frame()).toMatch(/❯ acme\/shop/)
   })
 
   it('opens the pull request number field empty, so what you type replaces the last number', async () => {
     const rules = openRules()
     await openShop(rules)
-    await rules.press('p')
-    await rules.type('abc')
+    await typePull(rules, 'abc')
     await rules.press(KEYS.enter)
-    await waitFor(() => rules.frame().includes('is not a pull request number'))
+    await rules.showing('is not a pull request number', 'p pull request')
     await rules.press('p')
-    await waitFor(() => rules.frame().includes('Pull request number'))
+    await rules.showing('Pull request number', 'Enter apply')
     expect(rules.frame()).toMatch(/Pull request number: *$/m)
     await rules.type('15')
+    await rules.showing('Pull request number: 15')
     await rules.press(KEYS.enter)
-    await waitFor(() => rules.frame().includes('Loaded rules'))
+    await rules.showing('Loaded rules', 'p pull request')
 
-    await rules.press('p')
-    await rules.type('16')
+    await typePull(rules, '16')
     expect(rules.frame()).toContain('Pull request number: 16')
     expect(rules.frame()).not.toContain('1516')
     await rules.press(KEYS.enter)
@@ -434,35 +443,36 @@ describe('the Rules screen', () => {
   it('refuses a pull request number that is not digits, saying what to type', async () => {
     const rules = openRules()
     await openShop(rules)
-    await rules.press('p')
-    await rules.type('abc')
+    await typePull(rules, 'abc')
     await rules.press(KEYS.enter)
-    await waitFor(() => rules.frame().includes('is not a pull request number'))
+    await rules.showing('is not a pull request number', 'p pull request')
     expect(rules.frame()).toContain('"abc" is not a pull request number. Type its digits, e.g. 15.')
     expect(rules.calls).toEqual(['branch acme/shop'])
 
-    await rules.press('p')
-    await rules.type('0')
+    await typePull(rules, '0')
     await rules.press(KEYS.enter)
-    await waitFor(() => rules.frame().includes('"0"'))
+    await rules.showing('"0"', 'p pull request')
     expect(rules.calls).toEqual(['branch acme/shop'])
   })
 
   it('scrolls the prompt: data blocks, then every instruction line', async () => {
     const rules = openRules()
     await openShop(rules)
-    await rules.press('p')
-    await rules.type('15')
+    await typePull(rules, '15')
     await rules.press(KEYS.enter)
-    await waitFor(() => rules.frame().includes('Loaded rules'))
+    await rules.showing('Loaded rules', 'p pull request')
     expect(rules.frame()).not.toContain('Instruction line 60')
     await rules.press(KEYS.end)
+    await rules.showing('Instruction line 60')
     const end = rules.frame()
     expectFits(end, SMALL)
     expect(end).toContain('Answer with JSON only.')
     expect(end).toContain('Instruction line 60')
     await rules.press(KEYS.home)
+    await rules.showing('Loaded rules')
+    const top = rules.frame()
     for (let page = 0; page < 2; page += 1) await rules.press(KEYS.pageDown)
+    await waitFor(() => rules.frame() !== top)
     const middle = rules.frame()
     expect(middle).toMatch(/PHADA_DIFF\s+30\.0 KB|Instruction line/)
   })
@@ -470,10 +480,9 @@ describe('the Rules screen', () => {
   it('shows the data blocks, the warnings and the pass of the prompt in a wide terminal', async () => {
     const rules = openRules({ size: WIDE })
     await openShop(rules)
-    await rules.press('p')
-    await rules.type('15')
+    await typePull(rules, '15')
     await rules.press(KEYS.enter)
-    await waitFor(() => rules.frame().includes('Loaded rules'))
+    await rules.showing('Loaded rules', 'Pass 1: phada (built-in)', 'CI annotations not read')
     const text = rules.frame()
     expectFits(text, WIDE)
     expect(text).toContain('Pass 1: phada (built-in)')
@@ -491,10 +500,9 @@ describe('the Rules screen', () => {
       },
     })
     await openShop(rules)
-    await rules.press('p')
-    await rules.type('15')
+    await typePull(rules, '15')
     await rules.press(KEYS.enter)
-    await waitFor(() => rules.frame().includes('acme/shop#15'))
+    await rules.showing('acme/shop#15', 'p pull request')
     expect(rules.frame()).toContain('No GitHub token — gh auth login or set GITHUB_TOKEN')
   })
 
@@ -507,10 +515,9 @@ describe('the Rules screen', () => {
       },
     })
     await openShop(rules)
-    await rules.press('p')
-    await rules.type('99')
+    await typePull(rules, '99')
     await rules.press(KEYS.enter)
-    await waitFor(() => rules.frame().includes('not found'))
+    await rules.showing('not found')
     expect(rules.frame()).toContain('Pull request acme/shop#99 not found')
   })
 
@@ -522,9 +529,9 @@ describe('the Rules screen', () => {
       language,
       deps: { readRepositoryRules: async () => ({ status: 'no-token' }) },
     })
-    await waitFor(() => rules.frame().includes('acme/shop'))
+    await rules.showing('acme/shop', 'Enter abrir')
     await rules.press(KEYS.down, KEYS.enter)
-    await waitFor(() => rules.frame().includes(noToken))
+    await rules.showing(noToken, userRules)
     const text = rules.frame()
     expectFits(text, SMALL)
     expect(text).toContain(lens)

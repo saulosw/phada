@@ -2,8 +2,8 @@ import { Text } from 'ink'
 import { cleanup } from 'ink-testing-library'
 import { useState } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { frameLines, KEYS, renderApp, settle } from '../../test/support/tui.js'
-import { useBack, useScreenSize } from './app-context.js'
+import { frameLines, KEYS, renderApp, waitFor } from '../../test/support/tui.js'
+import { useBack, useScreenKeys, useScreenSize } from './app-context.js'
 import type { ScreenDefinition } from './screens.js'
 import { listWindow, ScrollList, ScrollText, useSelection } from './scroll-list.js'
 
@@ -61,11 +61,11 @@ const NAMES = Array.from({ length: 40 }, (_, index) => `item ${index + 1}`)
 describe('ScrollList', () => {
   it('fits the height with an "n–m of N" hint and scrolls with the arrows and the page keys', async () => {
     const opened: string[] = []
-    const { frame, press } = renderApp({
+    const { frame, press, showing } = renderApp({
       screens: [listScreen(NAMES, {}, opened)],
       size: { columns: 80, rows: 24 },
     })
-    await settle()
+    await showing('1–19 of 40')
     const rows = frameLines(frame())
     expect(rows).toHaveLength(24)
     expect(frame()).toContain('❯ item 1')
@@ -73,56 +73,64 @@ describe('ScrollList', () => {
     expect(frame()).not.toContain('item 20')
     expect(frame()).toContain('1–19 of 40')
     await press(...Array<string>(19).fill(KEYS.down))
+    await showing('❯ item 20', '2–20 of 40')
     expect(frame()).toContain('❯ item 20')
     expect(frame()).toContain('2–20 of 40')
     expect(frame()).not.toMatch(/item 1\b/)
     await press(KEYS.pageDown, KEYS.pageDown)
+    await showing('❯ item 40', '22–40 of 40')
     expect(frame()).toContain('❯ item 40')
     expect(frame()).toContain('22–40 of 40')
     await press(KEYS.down, KEYS.enter)
+    await waitFor(() => opened.length > 0)
     expect(opened).toEqual(['item 40'])
     await press(KEYS.pageUp)
+    await showing('❯ item 30')
     expect(frame()).toContain('❯ item 30')
   })
 
   it('opens the item the keys moved to when they arrive in one write', async () => {
     const opened: string[] = []
-    const { app, frame } = renderApp({ screens: [listScreen(NAMES, {}, opened)] })
-    await settle()
-    app.stdin.write(`${KEYS.down}${KEYS.enter}`)
-    await settle()
-    app.stdin.write(`${KEYS.end}${KEYS.enter}`)
-    await settle()
-    app.stdin.write(`${KEYS.up}${KEYS.up}${KEYS.enter}`)
-    await settle()
+    const { frame, press, showing } = renderApp({ screens: [listScreen(NAMES, {}, opened)] })
+    await showing('❯ item 1')
+    await press(
+      `${KEYS.down}${KEYS.enter}`,
+      `${KEYS.end}${KEYS.enter}`,
+      `${KEYS.up}${KEYS.up}${KEYS.enter}`,
+    )
+    await waitFor(() => opened.length >= 3)
+    await showing('❯ item 38')
     expect(opened).toEqual(['item 2', 'item 40', 'item 38'])
     expect(frame()).toContain('❯ item 38')
   })
 
   it('keeps the selected item when the list changes under it, or the same place when it is gone', async () => {
     const setItems: { current?: (items: string[]) => void } = {}
-    const { frame, press } = renderApp({ screens: [listScreen(['a', 'b', 'c'], setItems, [])] })
-    await settle()
+    const { frame, press, showing } = renderApp({
+      screens: [listScreen(['a', 'b', 'c'], setItems, [])],
+    })
+    await showing('❯ a')
     await press(KEYS.down)
+    await showing('❯ b')
     expect(frame()).toContain('❯ b')
     setItems.current?.(['new', 'a', 'b', 'c'])
-    await settle()
+    await showing('new', '❯ b')
     expect(frame()).toContain('❯ b')
     setItems.current?.(['new', 'a', 'c'])
-    await settle()
+    await showing('❯ c')
     expect(frame()).toContain('❯ c')
     setItems.current?.(['new'])
-    await settle()
+    await showing('❯ new')
     expect(frame()).toContain('❯ new')
   })
 
   it('is translated', async () => {
-    const { frame } = renderApp({
+    const { frame, showing } = renderApp({
       deps: { language: 'pt' },
       screens: [listScreen(NAMES, {}, [])],
       size: { columns: 80, rows: 24 },
     })
-    await settle()
+    await showing('1–19 de 40')
     expect(frame()).toContain('1–19 de 40')
   })
 })
@@ -144,6 +152,9 @@ describe('ScrollText', () => {
           },
         })
         useBack(open === undefined ? undefined : () => setOpen(undefined))
+        useScreenKeys([
+          open === undefined ? { keys: 'Enter', label: 'open' } : { keys: 'Esc', label: 'back' },
+        ])
         if (open !== undefined) {
           return (
             <ScrollText
@@ -167,18 +178,24 @@ describe('ScrollText', () => {
         )
       },
     }
-    const { frame, press } = renderApp({ screens: [screen] })
-    await settle()
+    const { frame, press, showing } = renderApp({ screens: [screen] })
+    await showing('Enter open')
     await press(KEYS.down, KEYS.enter)
+    await showing('Esc back', '1–9 of 40')
     expect(frame()).toContain('two item 9')
     expect(frame()).not.toContain('two item 10')
     expect(frame()).toContain('1–9 of 40')
     await press(KEYS.down, KEYS.down)
+    await showing('3–11 of 40')
     expect(frame()).toContain('3–11 of 40')
     expect(frame()).not.toContain('two item 2\n')
     await press(KEYS.pageDown, KEYS.pageDown, KEYS.pageDown, KEYS.pageDown, KEYS.pageDown)
+    await showing('32–40 of 40')
     expect(frame()).toContain('32–40 of 40')
-    await press(KEYS.escape, KEYS.enter)
+    await press(KEYS.escape)
+    await showing('Enter open')
+    await press(KEYS.enter)
+    await showing('Esc back', '1–9 of 40')
     expect(opened).toEqual(['two', 'two'])
     expect(frame()).toContain('1–9 of 40')
   })
@@ -196,10 +213,10 @@ describe('ScrollText', () => {
         />
       ),
     }
-    const { app, frame } = renderApp({ screens: [screen] })
-    await settle()
-    app.stdin.write(`${KEYS.down}${KEYS.down}${KEYS.down}`)
-    await settle()
+    const { frame, press, showing } = renderApp({ screens: [screen] })
+    await showing('1–9 of 40')
+    await press(`${KEYS.down}${KEYS.down}${KEYS.down}`)
+    await showing('4–12 of 40')
     expect(frame()).toContain('4–12 of 40')
   })
 })

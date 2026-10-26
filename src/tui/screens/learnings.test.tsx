@@ -9,7 +9,6 @@ import {
   minutesFrom,
   NOW,
   renderApp,
-  settle,
   visibleWidth,
 } from '../../../test/support/tui.js'
 import { SCREENS } from '../screens.js'
@@ -133,22 +132,22 @@ describe('the Learnings screen', () => {
   })
 
   it('says how to start learning when there is no history', async () => {
-    const { frame } = openLearnings(async () => ({ recorded: false, repos: [] }))
-    await settle()
+    const { frame, showing } = openLearnings(async () => ({ recorded: false, repos: [] }))
+    await showing('Nothing learned yet')
     expect(frame()).toContain('Nothing learned yet: Phada learns from the reviews it publishes.')
     expect(frame()).toContain('phada review owner/repo#N')
     expect(frame()).toContain('phada watch')
   })
 
   it('says nothing was published yet when the history has nothing to learn from', async () => {
-    const { frame } = openLearnings(async () => ({ recorded: true, repos: [] }))
-    await settle()
+    const { frame, showing } = openLearnings(async () => ({ recorded: true, repos: [] }))
+    await showing('No published comments or relations yet.')
     expect(frame()).toContain('No published comments or relations yet.')
   })
 
   it('lists each repository with its relations and the feedback of its comments in 80×24', async () => {
-    const { frame } = openLearnings(async () => full())
-    await settle()
+    const { frame, showing } = openLearnings(async () => full())
+    await showing('What Phada learned from its reviews', 'saulosw/verno', 'Enter open')
     const text = frame()
     expectFits(text, { columns: 80, rows: 24 })
     expect(text).toContain('What Phada learned from its reviews · 3 repositories')
@@ -162,7 +161,7 @@ describe('the Learnings screen', () => {
   })
 
   it('leaves out of a row the outcomes no comment had', async () => {
-    const { frame } = openLearnings(async () => ({
+    const { frame, showing } = openLearnings(async () => ({
       recorded: true,
       repos: [
         shop({
@@ -174,14 +173,15 @@ describe('the Learnings screen', () => {
         }),
       ],
     }))
-    await settle()
+    await showing('acme/shop')
     expect(row(frame(), 'acme/shop')).toMatch(/no relations · 3 comments: 1 ignored · 2 open\s*$/)
   })
 
   it('opens a repository with its feedback, each rule and the relations, and goes back with Esc', async () => {
-    const { frame, press, exits } = openLearnings(async () => full())
-    await settle()
+    const { frame, press, showing, exits } = openLearnings(async () => full())
+    await showing('acme/shop', 'Enter open')
     await press(KEYS.enter)
+    await showing('Relations learned (2)', 'Esc back')
     const text = frame()
     expectFits(text, { columns: 80, rows: 24 })
     expect(text).toMatch(/Comments Phada published\s+30/)
@@ -198,63 +198,72 @@ describe('the Learnings screen', () => {
       frameLines(text).findIndex((line) => line.includes('#41')),
     )
     await press(KEYS.escape)
+    await showing('What Phada learned from its reviews')
     expect(frame()).toContain('What Phada learned from its reviews')
     expect(exits).toEqual([])
   })
 
   it('explains unreadable relations, a repository without comments and one without relations', async () => {
-    const { frame, press } = openLearnings(async () => full())
-    await settle()
+    const { frame, press, showing } = openLearnings(async () => full())
+    await showing('acme/shop', 'Enter open')
     await press(KEYS.down, KEYS.enter)
+    await showing('No comments published here yet.', 'Esc back')
     expect(frame()).toContain('No comments published here yet.')
     expect(frame()).toContain('The relations file could not be read')
-    await press(KEYS.escape, KEYS.down, KEYS.enter)
+    await press(KEYS.escape)
+    await showing('Enter open')
+    await press(KEYS.down, KEYS.enter)
+    await showing('None of these comments came from a rule.', 'Esc back')
     expect(frame()).toContain('None of these comments came from a rule.')
     expect(frame()).toContain('None yet. Phada learns them from verified findings')
   })
 
   it('scrolls a long detail within 80×24', async () => {
     const edges = Array.from({ length: 30 }, (_, index) => edge(index + 1, index + 10))
-    const { frame, press } = openLearnings(async () => ({
+    const { frame, press, showing } = openLearnings(async () => ({
       recorded: true,
       repos: [shop({ observed: { state: 'read', edges } })],
     }))
-    await settle()
+    await showing('acme/shop', 'Enter open')
     await press(KEYS.enter)
+    await showing(/1–\d+ of \d+/, 'Esc back')
     expectFits(frame(), { columns: 80, rows: 24 })
     expect(frame()).toMatch(/1–\d+ of \d+/)
     await press(KEYS.end)
+    await showing('#70')
     expect(frame()).toContain('#70')
     expectFits(frame(), { columns: 80, rows: 24 })
   })
 
   it('reads the learnings again every 2 seconds', async () => {
     let learnings: Learnings = { recorded: false, repos: [] }
-    const { frame, clock } = openLearnings(async () => learnings)
-    await settle()
+    const { frame, clock, showing } = openLearnings(async () => learnings)
+    await showing('Nothing learned yet')
     expect(frame()).toContain('Nothing learned yet')
     learnings = full()
     clock.advance(2000)
-    await settle()
+    await showing('acme/shop')
     expect(frame()).toContain('acme/shop')
   })
 
   it('fits a wide terminal', async () => {
     const size = { columns: 160, rows: 40 }
-    const { frame, press } = openLearnings(async () => full(), { size })
-    await settle()
+    const { frame, press, showing } = openLearnings(async () => full(), { size })
+    await showing('saulosw/verno', 'Enter open')
     expectFits(frame(), size)
     expect(row(frame(), 'acme/shop')).toContain('7 open')
     await press(KEYS.enter)
+    await showing('Relations learned (2)', 'Esc back')
     expectFits(frame(), size)
   })
 
   it('is translated', async () => {
-    const { frame, press } = openLearnings(async () => full(), { language: 'pt' })
-    await settle()
+    const { frame, press, showing } = openLearnings(async () => full(), { language: 'pt' })
+    await showing('O que o Phada aprendeu com os reviews', 'Enter abrir')
     expect(frame()).toContain('O que o Phada aprendeu com os reviews · 3 repositórios')
     expect(row(frame(), 'acme/shop')).toContain('2 relações · 30 comentários: 10 corrigidos')
     await press(KEYS.enter)
+    await showing('Por regra (2)', 'Esc voltar')
     expect(frame()).toContain('Por regra (2)')
   })
 })

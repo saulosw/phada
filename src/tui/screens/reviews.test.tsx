@@ -12,7 +12,7 @@ import {
   minutesFrom,
   NOW,
   renderApp,
-  settle,
+  shows,
   visibleWidth,
   waitFor,
 } from '../../../test/support/tui.js'
@@ -195,8 +195,8 @@ describe('the Reviews screen', () => {
   })
 
   it('says how to get a first review when the history is empty', async () => {
-    const { frame } = openReviews({ runs: () => [] })
-    await settle()
+    const { frame, showing } = openReviews({ runs: () => [] })
+    await showing('No reviews yet.')
     expect(frame()).toContain('No reviews yet.')
     expect(frame()).not.toContain('0 reviews')
     expect(frame()).toContain('phada review owner/repo#N')
@@ -204,8 +204,8 @@ describe('the Reviews screen', () => {
   })
 
   it('lists each review with its pull request, verdict, score, findings, when and source in 80×24', async () => {
-    const { frame, filters } = openReviews()
-    await settle()
+    const { frame, showing, filters } = openReviews()
+    await showing('3 reviews', 'acme/web#3', 'Enter open')
     expectFits(frame(), { columns: 80, rows: 24 })
     expect(filters[0]).toEqual({ limit: 200 })
     const rows = frameLines(frame())
@@ -221,45 +221,57 @@ describe('the Reviews screen', () => {
   })
 
   it('keeps the repository name and number of a long reference at 80 columns', async () => {
-    const { frame } = openReviews({
+    const { frame, showing } = openReviews({
       runs: () => [run(5, { repo: 'some-organization/phada-dev-web', title: 'Weekly ranking' })],
     })
-    await settle()
+    await showing('Weekly ranking')
     expect(frame()).toMatch(/❯ …[\w/-]*phada-dev-web#5\s+Weekly ranking/)
   })
 
   it('filters by text with f, typing the shell keys into the field, and Esc leaves it unapplied', async () => {
-    const { frame, press, type, filters, exits } = openReviews()
-    await settle()
+    const { frame, press, type, showing, filters, exits } = openReviews()
+    await showing('3 reviews', 'f filter')
     await press('f')
+    await showing('Enter apply')
     await type('q?')
+    await showing('Filter: q?')
     expect(frame()).toContain('Filter: q?')
     expect(exits).toEqual([])
     await press(KEYS.escape)
+    await showing('f filter')
     expect(frame()).not.toContain('Filter:')
     expect(frame()).toContain('acme/api#2')
     await press('f')
+    await showing('Enter apply')
     await type('cart')
     await press(KEYS.enter)
+    await waitFor(
+      () => shows(frame(), 'Filter: cart', 'f filter') && !frame().includes('acme/api#2'),
+    )
     expect(filters.at(-1)).toEqual({ text: 'cart', limit: 200 })
     expect(frame()).toContain('Filter: cart')
     expect(frame()).toContain('acme/shop#1')
     expect(frame()).not.toContain('acme/api#2')
     await press('f')
+    await showing('Enter apply')
     await type('zzz')
     await press(KEYS.enter)
+    await showing('No review matches “cartzzz”.')
     expect(frame()).toContain('No review matches “cartzzz”.')
-    await press('f', KEYS.backspace, KEYS.backspace, KEYS.backspace, KEYS.backspace, KEYS.backspace)
+    await press('f')
+    await showing('Enter apply')
+    await press(KEYS.backspace, KEYS.backspace, KEYS.backspace, KEYS.backspace, KEYS.backspace)
     await press(KEYS.backspace, KEYS.backspace, KEYS.enter)
+    await showing('acme/api#2')
     expect(filters.at(-1)).toEqual({ limit: 200 })
     expect(frame()).toContain('acme/api#2')
   })
 
   it('opens the detail with score, verdict, summary, findings, publication, CI, feedback and the link, and Esc goes back', async () => {
-    const { frame, press, exits } = openReviews({ size: { columns: 80, rows: 40 } })
-    await settle()
+    const { frame, press, showing, exits } = openReviews({ size: { columns: 80, rows: 40 } })
+    await showing('Enter open')
     await press(KEYS.enter)
-    await waitFor(() => frame().includes('Score'))
+    await showing('Score', 'Feedback on the published comments (2)', 'Esc back')
     const text = frame()
     expectFits(text, { columns: 80, rows: 40 })
     expect(text).toContain('acme/shop#1 · Fix the cart total')
@@ -283,26 +295,28 @@ describe('the Reviews screen', () => {
       /dismissed\s+src\/coupon.ts\s+Coupon code is not trimmed · negative reaction · h/,
     )
     await press(KEYS.escape)
+    await showing('3 reviews')
     expect(frame()).toContain('3 reviews')
     expect(exits).toEqual([])
   })
 
   it('scrolls the detail in 80×24', async () => {
-    const { frame, press } = openReviews()
-    await settle()
+    const { frame, press, showing } = openReviews()
+    await showing('Enter open')
     await press(KEYS.enter)
-    await waitFor(() => frame().includes('Score'))
+    await showing('Score', 'Esc back')
     expectFits(frame(), { columns: 80, rows: 24 })
     expect(frame()).toMatch(/1–\d+ of \d+/)
     expect(frame()).not.toContain('Feedback on the published comments')
     await press(KEYS.end)
+    await showing('Feedback on the published comments (2)')
     expect(frame()).toContain('Feedback on the published comments (2)')
     expectFits(frame(), { columns: 80, rows: 24 })
   })
 
   it('shows the error of a failed review', async () => {
     const failed = RUNS[2] ?? run(3)
-    const { frame, press } = openReviews({
+    const { frame, press, showing } = openReviews({
       detail: () => ({
         ...detail(),
         run: failed,
@@ -317,9 +331,9 @@ describe('the Reviews screen', () => {
         published: [],
       }),
     })
-    await settle()
+    await showing('Enter open')
     await press(KEYS.end, KEYS.enter)
-    await waitFor(() => frame().includes('Error'))
+    await showing('Error', 'Esc back')
     expect(frame()).toContain('acme/web#3')
     expect(frame()).toMatch(/Error\s+The AI CLI is not logged in/)
     expect(frame()).not.toContain('Findings')
@@ -327,53 +341,55 @@ describe('the Reviews screen', () => {
 
   it('scrolls a long history within 80×24 and says when it shows only the latest', async () => {
     const many = Array.from({ length: 200 }, (_, index) => run(index + 1))
-    const { frame, press } = openReviews({ runs: () => many, total: 1234 })
-    await settle()
+    const { frame, press, showing } = openReviews({ runs: () => many, total: 1234 })
+    await showing('1,234 reviews · the latest 200', 'Enter open')
     expectFits(frame(), { columns: 80, rows: 24 })
     expect(frame()).toContain('1,234 reviews · the latest 200')
     expect(frame()).toMatch(/1–\d+ of 200/)
     await press(KEYS.end)
+    await showing('❯ acme/shop#200')
     expect(frame()).toMatch(/\d+–200 of 200/)
     expect(frame()).toContain('❯ acme/shop#200')
   })
 
   it('reads the history again every 2 seconds and keeps the selected review', async () => {
     let runs = RUNS.slice(1)
-    const { frame, press, clock } = openReviews({ runs: () => runs })
-    await settle()
+    const { frame, press, showing, clock } = openReviews({ runs: () => runs })
+    await showing('❯ acme/api#2', 'Enter open')
     await press(KEYS.down)
+    await showing('❯ acme/web#3')
     expect(frame()).toContain('❯ acme/web#3')
     runs = [run(9, { repo: 'acme/new', title: 'Brand new' }), ...RUNS]
     clock.advance(2000)
-    await settle()
+    await showing('acme/new#9', '❯ acme/web#3')
     expect(frame()).toContain('acme/new#9')
     expect(frame()).toContain('❯ acme/web#3')
   })
 
   it('cleans control characters out of titles', async () => {
-    const { frame } = openReviews({
+    const { frame, showing } = openReviews({
       runs: () => [run(1, { title: 'Evil\u001B[2J title\nwith a break\u202E' })],
       size: { columns: 160, rows: 40 },
     })
-    await settle()
+    await showing('Evil')
     expect(frame()).toContain('Evil[2J title with a break')
     expect(frame()).not.toContain('\u001B[2J')
   })
 
   it('fits a wide terminal', async () => {
     const size = { columns: 160, rows: 40 }
-    const { frame, press } = openReviews({ size })
-    await settle()
+    const { frame, press, showing } = openReviews({ size })
+    await showing('3 reviews', 'Enter open')
     expectFits(frame(), size)
     await press(KEYS.enter)
-    await waitFor(() => frame().includes('Score'))
+    await showing('Score', 'Feedback on the published comments (2)')
     expectFits(frame(), size)
     expect(frame()).toContain('Feedback on the published comments (2)')
   })
 
   it('is translated', async () => {
-    const { frame } = openReviews({ language: 'es' })
-    await settle()
+    const { frame, showing } = openReviews({ language: 'es' })
+    await showing('3 revisiones')
     expect(frame()).toContain('3 revisiones')
     expect(frame()).toMatch(/hace 13m/)
   })

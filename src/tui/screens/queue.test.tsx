@@ -8,7 +8,6 @@ import {
   minutesFrom,
   NOW,
   renderApp,
-  settle,
   visibleWidth,
 } from '../../../test/support/tui.js'
 import type { TerminalSize } from '../terminal-size.js'
@@ -125,16 +124,16 @@ describe('the Queue screen', () => {
   })
 
   it('says how to start a watch when none ever ran', async () => {
-    const { frame } = openQueue(async () => emptyQueue())
-    await settle()
+    const { frame, showing } = openQueue(async () => emptyQueue())
+    await showing('No watch has run here yet.')
     expect(frame()).toContain('Watch not running')
     expect(frame()).toContain('No watch has run here yet.')
     expect(frame()).toContain('phada watch')
   })
 
   it('says the watch is not configured and how to set it up, never to start it', async () => {
-    const { frame } = openQueue(async () => ({ ...emptyQueue(), watchConfigured: false }))
-    await settle()
+    const { frame, showing } = openQueue(async () => ({ ...emptyQueue(), watchConfigured: false }))
+    await showing('Watch not configured')
     const text = frame()
     expectFits(text, { columns: 80, rows: 24 })
     expect(text).toContain('Watch not configured')
@@ -143,8 +142,8 @@ describe('the Queue screen', () => {
   })
 
   it('shows the running watch, its cycles, pause, hourly count and every kind of job in 80×24', async () => {
-    const { frame } = openQueue(async () => busyQueue())
-    await settle()
+    const { frame, showing } = openQueue(async () => busyQueue())
+    await showing('Watch running', 'acme/web#2', 'Enter open')
     const text = frame()
     expectFits(text, { columns: 80, rows: 24 })
     expect(text).toContain('Watch running · PID 4242 · last cycle 2m ago · next in ~3m')
@@ -174,35 +173,36 @@ describe('the Queue screen', () => {
   })
 
   it('shows a watch whose lock is gone as stopped, with its leftover jobs and how to start it', async () => {
-    const { frame } = openQueue(async () => ({
+    const { frame, showing } = openQueue(async () => ({
       ...busyQueue(),
       holder: null,
       nextCycle: null,
       pause: null,
     }))
-    await settle()
+    await showing('Watch not running', 'acme/shop#12')
     expect(frame()).toContain('Watch not running · last cycle 2m ago · start it with phada watch')
     expect(frame()).not.toContain('Paused')
     expect(frame()).toContain('acme/shop#12')
   })
 
   it('says the queue is empty while the watch runs', async () => {
-    const { frame } = openQueue(async () => ({
+    const { frame, showing } = openQueue(async () => ({
       ...emptyQueue(),
       recorded: true,
       holder: { pid: 7 },
       lastCycleAt: at(-1),
       nextCycle: { at: at(-1), estimated: true },
     }))
-    await settle()
+    await showing('next any moment', 'Nothing in the queue.')
     expect(frame()).toContain('next any moment')
     expect(frame()).toContain('Nothing in the queue.')
   })
 
   it('opens a job with its requests, where they came from and when, and goes back with Esc', async () => {
-    const { frame, press, exits } = openQueue(async () => busyQueue())
-    await settle()
+    const { frame, press, showing, exits } = openQueue(async () => busyQueue())
+    await showing('acme/shop#12', 'Enter open')
     await press(KEYS.enter)
+    await showing('Requests (3)', 'Esc back')
     const text = frame()
     expectFits(text, { columns: 80, rows: 24 })
     expect(text).toContain('acme/shop#12 · a1b2c3d · running')
@@ -213,29 +213,35 @@ describe('the Queue screen', () => {
     expect(text).toContain('https://github.com/acme/shop/pull/12#issuecomment-9')
     expect(text).toMatch(/Slack\s+channel C0123 · not published · 2m ago/)
     await press(KEYS.escape)
+    await showing('Watch running')
     expect(frame()).toContain('Watch running')
     expect(exits).toEqual([])
   })
 
   it('opens a waiting job with its deadline, its pending checks and a failed one with its error', async () => {
-    const { frame, press } = openQueue(async () => busyQueue())
-    await settle()
+    const { frame, press, showing } = openQueue(async () => busyQueue())
+    await showing('acme/api#15', 'Enter open')
     await press(KEYS.down, KEYS.enter)
+    await showing('acme/api#15 · a1b2c3d · waiting for CI', 'Esc back')
     expect(frame()).toContain('acme/api#15 · a1b2c3d · waiting for CI')
     expect(frame()).toMatch(/CI deadline\s+\S+ \S+ \(in 14m\)/)
     expect(frame()).toMatch(/Pending\s+build, test/)
-    await press(KEYS.escape, KEYS.down, KEYS.down, KEYS.down, KEYS.enter)
+    await press(KEYS.escape)
+    await showing('Enter open')
+    await press(KEYS.down, KEYS.down, KEYS.down, KEYS.enter)
+    await showing('acme/web#2 · a1b2c3d · failed', 'Esc back')
     expect(frame()).toContain('acme/web#2 · a1b2c3d · failed')
     expect(frame()).toMatch(/Error\s+definitive: The pull request diff is too large/)
   })
 
   it('scrolls a long queue within 80×24', async () => {
     const queue = Array.from({ length: 40 }, (_, index) => job(100 + index))
-    const { frame, press } = openQueue(async () => ({ ...busyQueue(), queue }))
-    await settle()
+    const { frame, press, showing } = openQueue(async () => ({ ...busyQueue(), queue }))
+    await showing(/1–\d+ of 43/, 'Enter open')
     expectFits(frame(), { columns: 80, rows: 24 })
     expect(frame()).toMatch(/1–\d+ of 43/)
     await press(KEYS.end)
+    await showing('❯ failed')
     expect(frame()).toMatch(/\d+–43 of 43/)
     expect(frame()).toContain('❯ failed')
     expectFits(frame(), { columns: 80, rows: 24 })
@@ -243,36 +249,36 @@ describe('the Queue screen', () => {
 
   it('reads the queue again every 2 seconds', async () => {
     let view = emptyQueue()
-    const { frame, clock } = openQueue(async () => view)
-    await settle()
+    const { frame, clock, showing } = openQueue(async () => view)
+    await showing('No watch has run here yet.')
     expect(frame()).toContain('No watch has run here yet.')
     view = busyQueue()
     clock.advance(2000)
-    await settle()
+    await showing('acme/shop#12')
     expect(frame()).toContain('acme/shop#12')
   })
 
   it('fits a wide terminal', async () => {
     const size = { columns: 160, rows: 40 }
-    const { frame } = openQueue(async () => busyQueue(), { size })
-    await settle()
+    const { frame, showing } = openQueue(async () => busyQueue(), { size })
+    await showing('Watch running', 'acme/web#2')
     expectFits(frame(), size)
     expect(frame()).toContain('definitive: The pull request diff is too large')
     expect(frame()).toContain('asked from /phada review, Slack')
   })
 
   it('is translated', async () => {
-    const { frame } = openQueue(async () => busyQueue(), { language: 'pt' })
-    await settle()
+    const { frame, showing } = openQueue(async () => busyQueue(), { language: 'pt' })
+    await showing('Watch rodando', 'Reviews na última hora')
     expect(frame()).toContain('Watch rodando · PID 4242 · último ciclo há 2m · próximo em ~3m')
     expect(frame()).toContain('Reviews na última hora: 2 de 6')
   })
 
   it('shows a history it cannot read as one line', async () => {
-    const { frame } = openQueue(async () => {
+    const { frame, showing } = openQueue(async () => {
       throw new Error('history.sqlite was written by a newer Phada')
     })
-    await settle()
+    await showing('Could not load')
     expect(frame()).toContain('Could not load: history.sqlite was written by a newer Phada')
   })
 })

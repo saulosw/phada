@@ -1,72 +1,15 @@
 import chalk from 'chalk'
 import { Text } from 'ink'
-import { cleanup, render } from 'ink-testing-library'
+import { cleanup } from 'ink-testing-library'
 import { useState } from 'react'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { fakeAppDeps, renderApp, waitFor } from '../../test/support/tui.js'
-import { App } from './app.js'
-import type { AppResult } from './app.js'
+import { KEYS, renderApp, settle, waitFor } from '../../test/support/tui.js'
 import { useBack, useScreenInput, useScreenKeys, useWorking } from './app-context.js'
-import type { AppDeps, Scheduler } from './app-context.js'
+import type { AppDeps } from './app-context.js'
 import { SCREENS } from './screens.js'
 import type { ScreenDefinition } from './screens.js'
 import { FLAP_MS, Mascot, MASCOT_FRAMES } from './mascot.js'
-import type { SizeSource, TerminalSize } from './terminal-size.js'
-
-const ESC = '\u001B'
-const KEYS = {
-  right: `${ESC}[C`,
-  left: `${ESC}[D`,
-  up: `${ESC}[A`,
-  down: `${ESC}[B`,
-  tab: '\t',
-  shiftTab: `${ESC}[Z`,
-  enter: '\r',
-  escape: ESC,
-  backspace: '\u007F',
-  ctrlC: '\u0003',
-}
-
-function fakeSize(initial: TerminalSize) {
-  let size = initial
-  const listeners = new Set<() => void>()
-  const source: SizeSource = {
-    current: () => size,
-    subscribe: (listener) => {
-      listeners.add(listener)
-      return () => listeners.delete(listener)
-    },
-  }
-  return {
-    source,
-    resize: (next: TerminalSize) => {
-      size = next
-      for (const listener of listeners) listener()
-    },
-  }
-}
-
-function fakeScheduler() {
-  const ticks = new Map<number, { ms: number; tick: () => void }>()
-  let next = 0
-  const scheduler: Scheduler = {
-    every: (ms, tick) => {
-      const id = next++
-      ticks.set(id, { ms, tick })
-      return () => ticks.delete(id)
-    },
-  }
-  return {
-    scheduler,
-    advance: (ms: number) => {
-      for (const { ms: every, tick } of [...ticks.values()]) if (every <= ms) tick()
-    },
-    active: (ms?: number) =>
-      [...ticks.values()].filter((entry) => ms === undefined || entry.ms === ms).length,
-  }
-}
-
-const settle = () => new Promise((resolve) => setTimeout(resolve, 50))
+import type { TerminalSize } from './terminal-size.js'
 
 function openApp(
   options: {
@@ -76,29 +19,14 @@ function openApp(
     screens?: readonly ScreenDefinition[]
   } = {},
 ) {
-  const size = fakeSize(options.size ?? { columns: 100, rows: 30 })
-  const clock = fakeScheduler()
-  const exits: AppResult[] = []
-  const deps: AppDeps = fakeAppDeps(clock.scheduler, {
-    env: options.env ?? { TERM: 'xterm-256color' },
-    ...(options.language === undefined ? {} : { language: options.language }),
+  return renderApp({
+    deps: {
+      ...(options.env === undefined ? {} : { env: options.env }),
+      ...(options.language === undefined ? {} : { language: options.language }),
+    },
+    ...(options.size === undefined ? {} : { size: options.size }),
+    ...(options.screens === undefined ? {} : { screens: options.screens }),
   })
-  const app = render(
-    <App
-      deps={deps}
-      size={size.source}
-      onExit={(result) => exits.push(result)}
-      {...(options.screens === undefined ? {} : { screens: options.screens })}
-    />,
-  )
-  const frame = () => app.lastFrame() ?? ''
-  const press = async (...keys: string[]) => {
-    for (const key of keys) {
-      app.stdin.write(key)
-      await settle()
-    }
-  }
-  return { app, frame, press, exits, resize: size.resize, clock }
 }
 
 function lines(frame: string): string[] {
@@ -116,8 +44,8 @@ describe('the tabs', () => {
       'Inicio  Repositorios  Reglas  Revisiones  Cola  Automatización  Proveedor  Aprendizajes',
     ],
   ])('show the full names when they fit (%s)', async (language, tabs) => {
-    const { frame } = openApp({ language, size: { columns: 160, rows: 30 } })
-    await settle()
+    const { frame, until } = openApp({ language, size: { columns: 160, rows: 30 } })
+    await until(() => lines(frame())[0]?.trim() === tabs)
     expect(lines(frame())[0]?.trim()).toBe(tabs)
   })
 
@@ -126,8 +54,8 @@ describe('the tabs', () => {
     ['pt', 'Início  Repos  Regras  Reviews  Fila  Auto  IA  Aprend.'],
     ['es', 'Inicio  Repos  Reglas  Revis.  Cola  Auto  IA  Aprend.'],
   ])('fit 80 columns (%s)', async (language, tabs) => {
-    const { frame } = openApp({ language, size: { columns: 80, rows: 24 } })
-    await settle()
+    const { frame, until } = openApp({ language, size: { columns: 80, rows: 24 } })
+    await until(() => lines(frame())[0]?.trim() === tabs)
     const rows = lines(frame())
     expect(rows[0]?.trim()).toBe(tabs)
     expect(rows.every((row) => [...row].length <= 80)).toBe(true)
@@ -156,14 +84,15 @@ describe('the tabs', () => {
   ])(
     'mark the active tab with brackets when the terminal has no colors or styles (%s)',
     async (language, first, key, moved) => {
-      const { frame, press } = openApp({
+      const { frame, press, until } = openApp({
         language,
         env: { TERM: 'dumb' },
         size: { columns: 80, rows: 24 },
       })
-      await settle()
+      await until(() => lines(frame())[0]?.trim() === first)
       expect(lines(frame())[0]?.trim()).toBe(first)
       await press(key)
+      await until(() => lines(frame())[0]?.trim() === moved)
       const rows = lines(frame())
       expect(rows[0]?.trim()).toBe(moved)
       expect(rows.every((row) => [...row].length <= 80)).toBe(true)
@@ -176,13 +105,14 @@ describe('the tabs', () => {
       title: () => ({ full: `Screen number ${index + 1}`, short: `Screen ${index + 1}` }),
       Screen: () => <Text>screen {index + 1}</Text>,
     }))
-    const { frame, press } = openApp({
+    const { frame, press, showing } = openApp({
       screens,
       env: { NO_COLOR: '1', TERM: 'dumb' },
       size: { columns: 80, rows: 24 },
     })
-    await settle()
+    await showing('screen 1')
     await press('9')
+    await showing('screen 9')
     expect(lines(frame())[0]).toBe(
       '‹  Screen 3  Screen 4  Screen 5  Screen 6  Screen 7  Screen 8 [Screen 9]',
     )
@@ -194,12 +124,13 @@ describe('the tabs', () => {
       title: () => ({ full: `Screen number ${index + 1}`, short: `Screen ${index + 1}` }),
       Screen: () => <Text>screen {index + 1}</Text>,
     }))
-    const { frame, press } = openApp({ screens, size: { columns: 80, rows: 24 } })
-    await settle()
+    const { frame, press, showing } = openApp({ screens, size: { columns: 80, rows: 24 } })
+    await showing('screen 1')
     expect(lines(frame())[0]).toBe(
       '   Screen 1  Screen 2  Screen 3  Screen 4  Screen 5  Screen 6  Screen 7  ›',
     )
     await press('9')
+    await showing('screen 9')
     expect(lines(frame())[0]).toBe(
       '‹  Screen 3  Screen 4  Screen 5  Screen 6  Screen 7  Screen 8  Screen 9',
     )
@@ -213,39 +144,46 @@ describe('navigation', () => {
       ...screen,
       Screen: () => <Text>showing {screen.id}</Text>,
     }))
-    const { frame, press } = openApp({ screens })
-    await settle()
+    const { frame, press, showing } = openApp({ screens })
+    await showing('showing home')
     expect(frame()).toContain('showing home')
     await press('3')
+    await showing('showing rules')
     expect(frame()).toContain('showing rules')
     await press(KEYS.left, KEYS.left)
+    await showing('showing home')
     expect(frame()).toContain('showing home')
     await press(KEYS.left)
+    await showing('showing learnings')
     expect(frame()).toContain('showing learnings')
     await press(KEYS.right)
+    await showing('showing home')
     expect(frame()).toContain('showing home')
     await press(KEYS.tab, KEYS.tab)
+    await showing('showing rules')
     expect(frame()).toContain('showing rules')
     await press(KEYS.shiftTab)
+    await showing('showing repositories')
     expect(frame()).toContain('showing repositories')
-    await press('9')
-    expect(frame()).toContain('showing repositories')
+    await press('9', KEYS.right)
+    await showing('showing rules')
+    expect(frame()).toContain('showing rules')
   })
 
   it('draws the screens it is given instead of its own', async () => {
-    const { frame } = openApp({
+    const { frame, showing } = openApp({
       screens: [
         { id: 'rules', title: (m) => m.screens.rules, Screen: () => <Text>given screen</Text> },
       ],
     })
-    await settle()
+    await showing('given screen')
     expect(frame()).toContain('given screen')
     expect(frame()).not.toContain('Phada v1.2.3')
   })
 
   it('shows the Home with the version and the folder under ~', async () => {
-    const { frame } = openApp()
-    await settle()
+    const { frame, showing } = openApp()
+    await showing('Phada v1.2.3', '~/code/shop')
     expect(frame()).toContain('Phada v1.2.3')
     expect(frame()).toContain('~/code/shop')
     expect(frame()).toContain('▐███▙ ● ▟███▌')
@@ -254,27 +192,29 @@ describe('navigation', () => {
 
 describe('the footer', () => {
   it('lists the keys of the screen and the global ones', async () => {
-    const { frame } = openApp({ screens: [keyedScreen()] })
-    await settle()
+    const { frame, showing } = openApp({ screens: [keyedScreen()] })
+    await showing('Space mark')
     expect(lines(frame()).at(-1)?.trim()).toBe(
       '↑/↓ select · Enter open · r refresh · Space mark · ←/→ screens · / go to · ? help · q quit',
     )
   })
 
   it('ends with "? more" when the keys do not fit', async () => {
-    const { frame } = openApp({ screens: [keyedScreen()], size: { columns: 80, rows: 24 } })
-    await settle()
+    const { frame, showing } = openApp({
+      screens: [keyedScreen()],
+      size: { columns: 80, rows: 24 },
+    })
+    await showing('Space mark')
     expect(lines(frame()).at(-1)).toBe(
       '↑/↓ select · Enter open · r refresh · Space mark · ←/→ screens · ? more',
     )
   })
 
   it('is translated', async () => {
-    const { frame } = openApp({ language: 'pt-BR' })
-    await settle()
-    expect(lines(frame()).at(-1)?.trim()).toBe(
-      'r atualizar · ←/→ telas · / ir para · ? ajuda · q sair',
-    )
+    const { footer, until } = openApp({ language: 'pt-BR' })
+    const translated = 'r atualizar · ←/→ telas · / ir para · ? ajuda · q sair'
+    await until(() => footer().trim() === translated)
+    expect(footer().trim()).toBe(translated)
   })
 })
 
@@ -282,16 +222,16 @@ describe('the language', () => {
   it('follows the user config while the app is open, keeping the last good one on an error', async () => {
     let read: () => Promise<string | undefined> = async () => 'pt-BR'
     const footer = (frame: string) => lines(frame).at(-1)?.trim()
-    const { frame, clock } = renderApp({
+    const { frame, clock, until } = renderApp({
       deps: { readLanguage: () => read() },
       screens: [keyedScreen()],
     })
-    await settle()
+    await until(() => footer(frame())?.includes('telas') === true)
     expect(footer(frame())).toContain('telas')
 
     read = async () => 'es'
     clock.advance(2000)
-    await settle()
+    await until(() => footer(frame())?.includes('pantallas') === true)
     expect(footer(frame())).toContain('pantallas')
 
     read = () => Promise.reject(new Error('Invalid config'))
@@ -301,25 +241,30 @@ describe('the language', () => {
 
     read = async () => undefined
     clock.advance(2000)
-    await settle()
+    await until(() => footer(frame())?.includes('screens') === true)
     expect(footer(frame())).toContain('screens')
   })
 })
 
 describe('help', () => {
   it('lists every key, the screen ones first, and closes with Esc or ?', async () => {
-    const { frame, press, exits } = openApp({ screens: [keyedScreen()] })
-    await settle()
+    const { frame, press, showing, exits } = openApp({ screens: [keyedScreen()] })
+    await showing('keyed screen', 'Space mark')
     await press('?')
+    await showing('Keys', /Space\s+mark/)
     expect(frame()).toContain('Keys')
     expect(frame()).toMatch(/Space\s+mark/)
     expect(frame()).toMatch(/1–1\s+go to a screen by its number/)
     expect(frame()).toMatch(/Esc\s+back/)
     expect(frame()).not.toContain('keyed screen')
     await press(KEYS.escape)
+    await showing('keyed screen')
     expect(frame()).not.toContain('Keys')
     expect(frame()).toContain('keyed screen')
-    await press('?', '?')
+    await press('?')
+    await showing('Keys')
+    await press('?')
+    await showing('keyed screen')
     expect(frame()).not.toContain('Keys')
     expect(exits).toEqual([])
   })
@@ -327,33 +272,39 @@ describe('help', () => {
 
 describe('the palette', () => {
   it('filters the screens as you type and jumps with Enter', async () => {
-    const { frame, press } = openApp()
-    await settle()
+    const { frame, press, showing } = openApp()
+    await showing('Phada v1.2.3')
     await press('/', 'r', 'e')
+    await showing('/ re')
     const palette = lines(frame()).slice(1).join('\n')
     expect(palette).toContain('❯ Repositories')
     expect(palette).toContain('Reviews')
     expect(palette).not.toContain('Queue')
     await press(KEYS.down, KEYS.enter)
+    await showing('No reviews yet.')
     expect(frame()).not.toContain('❯')
     expect(frame()).toContain('No reviews yet.')
   })
 
   it('matches the English names and ignores accents in another language', async () => {
-    const { frame, press } = openApp({ language: 'pt' })
-    await settle()
+    const { frame, press, showing } = openApp({ language: 'pt' })
+    await showing('Início  Repos')
     await press('/', 'q', 'u', 'e')
+    await showing('/ que', '❯ Fila')
     expect(frame()).toContain('❯ Fila')
     await press(KEYS.backspace, KEYS.backspace, KEYS.backspace, 'i', 'n', 'i', 'c')
+    await showing('/ inic', '❯ Início')
     expect(frame()).toContain('❯ Início')
   })
 
   it('types the global keys into the query and closes with Esc', async () => {
-    const { frame, press, exits } = openApp()
-    await settle()
+    const { frame, press, showing, exits } = openApp()
+    await showing('Phada v1.2.3')
     await press('/', 'q', '1')
+    await showing('No screen matches.')
     expect(frame()).toContain('No screen matches.')
     await press(KEYS.escape)
+    await showing('Phada v1.2.3')
     expect(frame()).toContain('Phada v1.2.3')
     expect(exits).toEqual([])
   })
@@ -361,52 +312,60 @@ describe('the palette', () => {
 
 describe('Esc and q', () => {
   it('closes the open detail of a screen before quitting', async () => {
-    const { frame, press, exits } = openApp({ screens: [detailScreen()] })
-    await settle()
+    const { frame, press, showing, exits } = openApp({ screens: [detailScreen()] })
+    await showing('list')
     await press(KEYS.enter)
+    await showing('detail open')
     expect(frame()).toContain('detail open')
     await press(KEYS.escape)
+    await showing('list')
     expect(frame()).toContain('list')
     expect(exits).toEqual([])
     await press(KEYS.escape)
+    await waitFor(() => exits.length > 0)
     expect(exits).toEqual([{ kind: 'quit' }])
   })
 
   it('quits with q', async () => {
-    const { press, exits } = openApp()
-    await settle()
+    const { press, showing, exits } = openApp()
+    await showing('Phada v1.2.3')
     await press('q')
+    await waitFor(() => exits.length > 0)
     expect(exits).toEqual([{ kind: 'quit' }])
   })
 
   it('stops on Ctrl-C, even with the palette open', async () => {
-    const { press, exits } = openApp()
-    await settle()
-    await press('/', KEYS.ctrlC)
+    const { press, showing, exits } = openApp()
+    await showing('Phada v1.2.3')
+    await press('/')
+    await showing('Go to')
+    await press(KEYS.ctrlC)
+    await waitFor(() => exits.length > 0)
     expect(exits).toEqual([{ kind: 'interrupted' }])
   })
 })
 
 describe('the size of the terminal', () => {
   it('warns below 80×24 with the current size and redraws on resize', async () => {
-    const { frame, resize, press, exits } = openApp({ size: { columns: 70, rows: 20 } })
-    await settle()
+    const { frame, resize, press, showing, exits } = openApp({ size: { columns: 70, rows: 20 } })
+    await showing('The terminal is 70×20')
     expect(frame()).toContain('The terminal is 70×20. Phada needs at least 80×24')
     expect(frame()).not.toContain('Home')
     resize({ columns: 120, rows: 30 })
-    await settle()
+    await showing('Phada v1.2.3')
     expect(frame()).toContain('Phada v1.2.3')
     expect(lines(frame())).toHaveLength(30)
     resize({ columns: 80, rows: 23 })
-    await settle()
+    await showing('80×23')
     expect(frame()).toContain('80×23')
     await press('q')
+    await waitFor(() => exits.length > 0)
     expect(exits).toEqual([{ kind: 'quit' }])
   })
 
   it('warns in the language of the config', async () => {
-    const { frame } = openApp({ language: 'es', size: { columns: 60, rows: 30 } })
-    await settle()
+    const { frame, showing } = openApp({ language: 'es', size: { columns: 60, rows: 30 } })
+    await showing('La terminal mide 60×30')
     expect(frame()).toContain('La terminal mide 60×30')
   })
 })
@@ -453,14 +412,14 @@ describe('colors', () => {
   })
 
   it('paints the Violeta accent in truecolor', async () => {
-    const { frame } = openApp({ env: { COLORTERM: 'truecolor' } })
-    await settle()
+    const { frame, showing } = openApp({ env: { COLORTERM: 'truecolor' } })
+    await showing('\u001B[38;2;139;92;246m')
     expect(frame()).toContain('\u001B[38;2;139;92;246m')
   })
 
   it('paints no color with NO_COLOR, keeping bold and inverse', async () => {
-    const { frame } = openApp({ env: { NO_COLOR: '1', COLORTERM: 'truecolor' } })
-    await settle()
+    const { frame, showing } = openApp({ env: { NO_COLOR: '1', COLORTERM: 'truecolor' } })
+    await showing('Phada', '\u001B[7m')
     expect(frame()).not.toMatch(/\u001B\[(?:3[0-9]|4[0-9]|9[0-7]|10[0-7])[;m]/)
     expect(frame()).toContain('\u001B[7m')
     expect(frame()).toContain('Phada')

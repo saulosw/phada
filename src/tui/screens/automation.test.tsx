@@ -8,7 +8,6 @@ import {
   KEYS,
   renderApp,
   visibleWidth,
-  waitFor,
 } from '../../../test/support/tui.js'
 import type { AppDeps } from '../app-context.js'
 import type { TerminalSize } from '../terminal-size.js'
@@ -93,7 +92,7 @@ function expectFits(frame: string, size: TerminalSize) {
 describe('AutomationScreen', () => {
   it('shows the watch, the CI wait, the request sources, the hooks and the when commands', async () => {
     const view = openAutomation({ readAutomation: async () => everything() })
-    await waitFor(() => view.frame().includes('Interval'))
+    await view.showing('Interval', 'ci.checks')
 
     const top = view.frame()
     expect(top).toMatch(/Interval\s+2m/)
@@ -105,6 +104,7 @@ describe('AutomationScreen', () => {
     expectFits(top, { columns: 80, rows: 24 })
 
     await view.press(KEYS.end)
+    await view.showing('Hooks · timeout 45s', /acme\/api\s+\.\/api-gate\.sh/)
     const end = view.frame()
     expect(end).toMatch(/● \/phada review comments/)
     expect(flat(end)).toContain(
@@ -133,8 +133,11 @@ describe('AutomationScreen', () => {
         },
       }),
     })
-    await waitFor(() => view.frame().includes('Interval'))
+    await view.showing('Interval')
     await view.press(KEYS.end)
+    await view.until(() =>
+      flat(view.frame()).includes('PHADA_SLACK_BOT_TOKEN set · PHADA_SLACK_APP_TOKEN set'),
+    )
     const end = view.frame()
     expect(flat(end)).toContain('● Slack 2 channels: C0123ABCD (publishes, link)')
     expect(end).not.toContain('not ready')
@@ -145,7 +148,7 @@ describe('AutomationScreen', () => {
     const view = openAutomation({
       readAutomation: async () => ({ ...emptyAutomation(), ci: DEFAULT_CI }),
     })
-    await waitFor(() => view.frame().includes('No config yet'))
+    await view.showing('No config yet', /ci\.wait\s+15m\s+default/)
 
     const frame = view.frame()
     expect(frame).toContain('Create your own config with phada init --global')
@@ -155,6 +158,7 @@ describe('AutomationScreen', () => {
     expect(frame).toMatch(/ci\.wait\s+15m\s+default/)
 
     await view.press(KEYS.end)
+    await view.showing('None: every pull request that passes the filters is reviewed.')
     const end = view.frame()
     expect(end).toMatch(/○ phada enqueue\s+needs watch/)
     expect(end).toMatch(/○ Slack\s+off/)
@@ -171,7 +175,7 @@ describe('AutomationScreen', () => {
         ci: DEFAULT_CI,
       }),
     })
-    await waitFor(() => view.frame().includes('Invalid config'))
+    await view.showing('Invalid config')
 
     expect(flat(view.frame())).toContain(
       'Invalid config: Invalid config /cfg/config.yml: hooks.timeout: must be 10m at most',
@@ -184,7 +188,7 @@ describe('AutomationScreen', () => {
       { readAutomation: async () => everything() },
       { size, language: 'es' },
     )
-    await waitFor(() => view.frame().includes('Intervalo'))
+    await view.showing('Intervalo', 'Orígenes de solicitudes', 'PHADA_SLACK_APP_TOKEN falta')
 
     const frame = view.frame()
     expect(frame).toContain('Orígenes de solicitudes')

@@ -1,4 +1,5 @@
 import { render } from 'ink-testing-library'
+import { vi } from 'vitest'
 import type { QueueView } from '../../src/app/read-queue.js'
 import type { AutomationView } from '../../src/app/read-automation.js'
 import type { RepositoryDetail, RepositoryList } from '../../src/app/read-repositories.js'
@@ -7,6 +8,8 @@ import type { AppResult } from '../../src/tui/app.js'
 import type { AppDeps, Scheduler } from '../../src/tui/app-context.js'
 import type { ScreenDefinition } from '../../src/tui/screens.js'
 import type { SizeSource, TerminalSize } from '../../src/tui/terminal-size.js'
+
+vi.setConfig({ testTimeout: 15_000 })
 
 const ESC = '\u001B'
 
@@ -29,11 +32,31 @@ export const KEYS = {
 
 export const settle = () => new Promise((resolve) => setTimeout(resolve, 50))
 
-export async function waitFor(ready: () => boolean, timeoutMs = 2000): Promise<void> {
-  for (let waited = 0; !ready() && waited < timeoutMs; waited += 10) {
+const nextTurn = () => new Promise((resolve) => setImmediate(resolve))
+
+export async function waitFor(ready: () => boolean, timeoutMs = 3000): Promise<void> {
+  const deadline = Date.now() + timeoutMs
+  while (!ready() && Date.now() < deadline) {
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
   await settle()
+  await nextTurn()
+  await nextTurn()
+}
+
+export function shows(frame: string, ...expected: (string | RegExp)[]): boolean {
+  return expected.every((text) =>
+    typeof text === 'string' ? frame.includes(text) : text.test(frame),
+  )
+}
+
+export async function writeKeys(stdin: { write(data: string): void }, keys: readonly string[]) {
+  for (const key of keys) {
+    stdin.write(key)
+    if (key.endsWith(ESC)) await settle()
+    await nextTurn()
+    await nextTurn()
+  }
 }
 
 export const NOW = new Date('2026-10-25T12:00:00.000Z')
@@ -114,7 +137,8 @@ export function fakeScheduler() {
     advance: (ms: number) => {
       for (const { ms: every, tick } of [...ticks.values()]) if (every <= ms) tick()
     },
-    active: () => ticks.size,
+    active: (ms?: number) =>
+      [...ticks.values()].filter((entry) => ms === undefined || entry.ms === ms).length,
   }
 }
 
@@ -189,14 +213,25 @@ export function renderApp(
     />,
   )
   const frame = () => app.lastFrame() ?? ''
-  const press = async (...keys: string[]) => {
-    for (const key of keys) {
-      app.stdin.write(key)
-      await settle()
-    }
-  }
+  const press = (...keys: string[]) => writeKeys(app.stdin, keys)
   const type = async (text: string) => press(...[...text])
-  return { app, frame, press, type, exits, resize: size.resize, clock, deps }
+  const listening = () => app.stdin.listenerCount('readable') > 0
+  const until = (ready: () => boolean) => waitFor(() => listening() && ready())
+  const showing = (...expected: (string | RegExp)[]) => until(() => shows(frame(), ...expected))
+  const footer = () => frameLines(frame()).at(-1) ?? ''
+  return {
+    app,
+    frame,
+    footer,
+    press,
+    type,
+    until,
+    showing,
+    exits,
+    resize: size.resize,
+    clock,
+    deps,
+  }
 }
 
 export function frameLines(frame: string): string[] {

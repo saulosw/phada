@@ -23,7 +23,6 @@ import {
   frameLines,
   KEYS,
   renderApp,
-  settle,
   visibleWidth,
   waitFor,
 } from '../../../test/support/tui.js'
@@ -94,8 +93,8 @@ const never = () => new Promise<never>(() => {})
 
 describe('the Home screen', () => {
   it('shows each status in one line, the last reviews and the recommendation in 80×24', async () => {
-    const { frame } = openHome()
-    await waitFor(() => frame().includes('All set'))
+    const { frame, showing } = openHome()
+    await showing('All set', 'Last reviews', 'acme/shop#3', /Watch +● running/, /Graph +●/)
     const text = frame()
     expect(text).toContain('Phada v1.2.3')
     expect(text).toContain('~/code/shop')
@@ -131,7 +130,7 @@ describe('the Home screen', () => {
 
   it('shows five reviews in a wide terminal', async () => {
     const { frame } = openHome({ size: WIDE })
-    await waitFor(() => frame().includes('All set'))
+    await waitFor(() => frame().includes('All set') && frame().includes('acme/shop#5'))
     expect(frame()).toContain('acme/shop#5')
     const row = frameLines(frame()).find((line) => line.includes('Change number 5')) ?? ''
     expect(visibleWidth(row.trimEnd())).toBeLessThan(120)
@@ -156,7 +155,7 @@ describe('the Home screen', () => {
         pause: { until: '2026-10-25T13:00:00.000Z', reason: 'rate-limit', streak: 1 },
       }),
     })
-    await waitFor(() => frame().includes('paused'))
+    await waitFor(() => frame().includes('paused') && frame().includes('phada watch --status'))
     expect(frame()).toMatch(
       /Queue +○ 1 running · 2 queued · 1 waiting for CI · 1 failed · paused until .*\(in 1h\)/,
     )
@@ -173,7 +172,7 @@ describe('the Home screen', () => {
           watchedRepository('acme/web', false),
         ]),
     })
-    await waitFor(() => frame().includes('phada index'))
+    await waitFor(() => frame().includes('phada index') && frame().includes('without index'))
     expect(frame()).toMatch(/Graph +○ 1 watched repository indexed · 1 without index/)
     expect(frame()).toContain('phada index acme/web')
   })
@@ -216,7 +215,13 @@ describe('the Home screen', () => {
       github: async () => ({ source: null }),
       deps: { readReviews: async () => ({ runs: [], total: 0 }) },
     })
-    await waitFor(() => frame().includes('gh auth login'))
+    await waitFor(
+      () =>
+        frame().includes('gh auth login') &&
+        frame().includes('No reviews yet.') &&
+        /Watch +○ not configured/.test(frame()) &&
+        /Graph +○ no watched repositories/.test(frame()),
+    )
     const text = frame()
     expect(text).toMatch(/GitHub +○ no token/)
     expect(text).toContain('Phada needs a GitHub token')
@@ -239,7 +244,11 @@ describe('the Home screen', () => {
         },
       },
     })
-    await waitFor(() => frame().includes('Fix the config file'))
+    await waitFor(
+      () =>
+        frame().includes('Fix the config file') &&
+        frame().includes('watch.interval: expected a duration like 5m'),
+    )
     expect(frame()).toContain('Fix the config file ~/.config/phada/config.yml')
     expect(frame()).toContain('watch.interval: expected a duration like 5m')
     expectFits(frame(), 80)
@@ -247,7 +256,10 @@ describe('the Home screen', () => {
 
   it('says what it is checking while slow reads load, flapping, and never says all is well', async () => {
     const { frame, clock } = openHome({ providers: never })
-    await waitFor(() => frame().includes('Checking the AI'))
+    await waitFor(
+      () =>
+        frame().includes('Checking the AI') && /AI +… Claude Code · opus · checking…/.test(frame()),
+    )
     expect(frame()).toMatch(/AI +… Claude Code · opus · checking…/)
     expect(frame()).not.toContain('All set')
     const before = frame()
@@ -284,35 +296,37 @@ describe('the Home screen', () => {
   })
 
   it('reads local data every 2 s and the slow parts only on open and on r', async () => {
-    const { frame, clock, press, calls } = openHome()
-    await waitFor(() => frame().includes('All set'))
+    const { frame, clock, press, showing, calls } = openHome()
+    await showing('All set', 'r refresh')
     expect(calls).toMatchObject({ github: 1, providers: 1 })
     const queueReads = calls.queue
-    for (let tick = 0; tick < 3; tick += 1) {
+    for (let tick = 1; tick <= 3; tick += 1) {
       clock.advance(2000)
-      await settle()
+      await waitFor(() => calls.queue === queueReads + tick)
     }
     expect(calls.queue).toBe(queueReads + 3)
     expect(calls).toMatchObject({ github: 1, providers: 1 })
     expect(frame()).toContain('r refresh')
     await press('r')
-    await waitFor(() => frame().includes('All set'))
+    await waitFor(() => calls.github === 2 && calls.providers === 2)
+    await showing('All set')
     expect(calls).toMatchObject({ github: 2, providers: 2 })
   })
 
   it('shares the AI check with the Provider screen and shows the last facts at once on return', async () => {
-    const { frame, press, resize, calls } = openHome()
-    await waitFor(() => frame().includes('All set'))
+    const { frame, press, showing, resize, calls } = openHome()
+    await showing('All set', 'r refresh')
     await press('7')
-    await waitFor(() => frame().includes('Claude Code'))
+    await showing('AI providers', 'Claude Code')
     expect(frame()).not.toContain('checking')
     await press('1')
+    await showing('All set')
     expect(frame()).toContain('All set')
     expect(frame()).not.toContain('checking')
     resize({ columns: 70, rows: 20 })
-    await settle()
+    await showing('The terminal is 70×20')
     resize(NARROW)
-    await settle()
+    await showing('All set')
     expect(frame()).toContain('All set')
     expect(calls).toMatchObject({ github: 1, providers: 1 })
   })
@@ -321,7 +335,10 @@ describe('the Home screen', () => {
     const { frame } = openHome({
       github: async () => ({ source: 'GH_TOKEN', account: { state: 'refused' } }),
     })
-    await waitFor(() => frame().includes('refused'))
+    await waitFor(
+      () =>
+        frame().includes('refused') && frame().includes('GitHub refused the token from GH_TOKEN'),
+    )
     expect(frame()).toMatch(/GitHub +✗ GH_TOKEN · refused by GitHub/)
     expect(frame()).toContain('GitHub refused the token from GH_TOKEN')
 
@@ -336,7 +353,10 @@ describe('the Home screen', () => {
           },
         ]),
     })
-    await waitFor(() => ai.frame().includes('claude auth login'))
+    await waitFor(
+      () =>
+        ai.frame().includes('claude auth login') && ai.frame().includes('Log in to Claude Code'),
+    )
     expect(ai.frame()).toMatch(/AI +○ Claude Code · opus · logged out/)
     expect(ai.frame()).toContain('Log in to Claude Code')
   })
@@ -346,7 +366,9 @@ describe('the Home screen', () => {
     ['es', /Cola +○ vacía/, 'Todo listo: revisa un pull request', 'Últimas revisiones'],
   ])('is translated (%s)', async (language, queue, recommendation, reviews) => {
     const { frame } = openHome({ language, size: WIDE })
-    await waitFor(() => frame().includes(recommendation))
+    await waitFor(
+      () => frame().includes(recommendation) && frame().includes(reviews) && queue.test(frame()),
+    )
     expect(frame()).toMatch(queue)
     expect(frame()).toContain(reviews)
     expectFits(frame(), 160)
@@ -381,9 +403,10 @@ describe('the Home screen', () => {
   })
 
   it('moves with the keys of the shell', async () => {
-    const { frame, press } = openHome()
-    await waitFor(() => frame().includes('All set'))
+    const { frame, press, showing } = openHome()
+    await showing('All set', 'r refresh')
     await press(KEYS.right)
+    await showing('Enter open')
     expect(frame()).not.toContain('All set')
   })
 })

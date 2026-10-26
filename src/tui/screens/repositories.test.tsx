@@ -146,7 +146,7 @@ function expectFits(frame: string, size: TerminalSize) {
 describe('RepositoriesScreen', () => {
   it('lists each repository with its origins, index and last review within 80×24', async () => {
     const view = openRepositories({ readRepositories: async () => busyList() })
-    await waitFor(() => view.frame().includes('acme/shop'))
+    await view.showing('3 repositories · 2 watched', 'blocking · 3d ago')
 
     const frame = view.frame()
     expect(frame).toContain('3 repositories · 2 watched')
@@ -166,10 +166,10 @@ describe('RepositoriesScreen', () => {
         return shopDetail()
       },
     })
-    await waitFor(() => view.frame().includes('acme/shop'))
+    await view.showing('acme/shop', 'Enter open')
 
     await view.press(KEYS.down, KEYS.enter)
-    await waitFor(() => view.frame().includes('Your config'))
+    await view.showing('Your config', 'Esc back')
 
     expect(asked).toEqual(['acme/shop'])
     const frame = view.frame()
@@ -186,6 +186,7 @@ describe('RepositoriesScreen', () => {
     expectFits(frame, { columns: 80, rows: 24 })
 
     await view.press(KEYS.end)
+    await view.showing('Last reviews (2 of 7)')
     const end = view.frame()
     expect(end).toMatch(/no-any\s+Avoid any in new code\.\s+global/)
     expect(end).toMatch(/rules\.md\s+Prefer small functions\.\s+this repo/)
@@ -211,10 +212,10 @@ describe('RepositoriesScreen', () => {
         },
       }),
     })
-    await waitFor(() => view.frame().includes('acme/api'))
+    await view.showing('acme/api', 'Enter open')
 
     await view.press(KEYS.enter)
-    await waitFor(() => view.frame().includes('phada index acme/api'))
+    await view.showing('phada index acme/api', 'Not watched', 'Esc back')
 
     const frame = view.frame()
     expect(frame).toContain('No index yet. Build it with phada index acme/api')
@@ -250,7 +251,7 @@ describe('RepositoriesScreen', () => {
         configError: 'Invalid config /cfg/config.yml: watch.repos: list at least one owner/repo',
       }),
     })
-    await waitFor(() => view.frame().includes('acme/shop'))
+    await view.showing('acme/shop', 'Invalid config')
 
     expect(view.frame()).toContain('Invalid config: Invalid config /cfg/config.yml')
   })
@@ -261,7 +262,7 @@ describe('RepositoriesScreen', () => {
       { readRepositories: async () => busyList() },
       { size, language: 'pt' },
     )
-    await waitFor(() => view.frame().includes('acme/shop'))
+    await view.showing('3 repositórios · 2 observados', 'observado, config própria, histórico')
 
     const frame = view.frame()
     expect(frame).toContain('3 repositórios · 2 observados')

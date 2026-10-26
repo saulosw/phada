@@ -1,14 +1,12 @@
 import { cleanup, render } from 'ink-testing-library'
 import { cloneElement, isValidElement } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
-import { fakeAppDeps } from '../../test/support/tui.js'
+import { fakeAppDeps, waitFor, writeKeys } from '../../test/support/tui.js'
 import type { AppProps } from './app.js'
 import type { AppDeps } from './app-context.js'
 import { openApp } from './open-app.js'
 import type { AppHost, StopSignal } from './open-app.js'
 import type { ScreenDefinition } from './screens.js'
-
-const settle = () => new Promise((resolve) => setTimeout(resolve, 50))
 
 const DEPS: AppDeps = fakeAppDeps(
   { every: () => () => {} },
@@ -19,7 +17,7 @@ function host(options: { screens?: readonly ScreenDefinition[] } = {}) {
   const calls: string[] = []
   const signals: ((signal?: StopSignal) => void)[] = []
   let renderedOptions: unknown
-  let stdin: { write(data: string): void } | undefined
+  let stdin: ReturnType<typeof render>['stdin'] | undefined
   let exit = () => {}
   const exited = new Promise<void>((resolve) => {
     exit = resolve
@@ -50,9 +48,9 @@ function host(options: { screens?: readonly ScreenDefinition[] } = {}) {
     appHost,
     calls,
     signal: (signal?: StopSignal) => signals.forEach((handler) => handler(signal)),
+    mounted: () => waitFor(() => (stdin?.listenerCount('readable') ?? 0) > 0),
     press: async (key: string) => {
-      stdin?.write(key)
-      await settle()
+      if (stdin !== undefined) await writeKeys(stdin, [key])
     },
     renderedOptions: () => renderedOptions,
   }
@@ -64,7 +62,7 @@ describe('openApp', () => {
   it('renders on the alternate screen and handles Ctrl-C itself', async () => {
     const fake = host()
     const result = openApp(DEPS, fake.appHost)
-    await settle()
+    await fake.mounted()
     await fake.press('q')
     await result
     expect(fake.renderedOptions()).toMatchObject({ alternateScreen: true, exitOnCtrlC: false })
@@ -73,7 +71,7 @@ describe('openApp', () => {
   it('unmounts and quits on q', async () => {
     const fake = host()
     const result = openApp(DEPS, fake.appHost)
-    await settle()
+    await fake.mounted()
     await fake.press('q')
     expect(await result).toEqual({ kind: 'quit' })
     expect(fake.calls).toEqual(['unmount'])
@@ -82,7 +80,7 @@ describe('openApp', () => {
   it('unmounts and stops as interrupted on Ctrl-C', async () => {
     const fake = host()
     const result = openApp(DEPS, fake.appHost)
-    await settle()
+    await fake.mounted()
     await fake.press('\u0003')
     expect(await result).toEqual({ kind: 'interrupted' })
     expect(fake.calls).toEqual(['unmount'])
@@ -94,7 +92,7 @@ describe('openApp', () => {
   ] as const)('unmounts on %s', async (signal, expected) => {
     const fake = host()
     const result = openApp(DEPS, fake.appHost)
-    await settle()
+    await fake.mounted()
     fake.signal(signal)
     fake.signal(signal)
     expect(await result).toEqual(expected)
