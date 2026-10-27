@@ -1,3 +1,4 @@
+import { errorMessage } from '../app/error-message.js'
 import { z } from 'zod'
 import { nodeHttpFetch } from './node-http-fetch.js'
 import { resolveOllamaBaseUrl } from './ollama-host.js'
@@ -30,7 +31,7 @@ export async function pullOllamaModel(
   try {
     baseUrl = resolveOllamaBaseUrl(options.env ?? process.env)
   } catch (error) {
-    return { kind: 'failed', message: messageOf(error) }
+    return { kind: 'failed', message: errorMessage(error) }
   }
   const { signal } = options
   const fetch = options.fetch ?? nodeHttpFetch
@@ -47,7 +48,7 @@ export async function pullOllamaModel(
   } catch (error) {
     if (signal?.aborted === true) return { kind: 'cancelled' }
     if (NOT_RUNNING_CODES.has(errorCode(error) ?? '')) return { kind: 'stopped' }
-    return { kind: 'failed', message: messageOf(error) }
+    return { kind: 'failed', message: errorMessage(error) }
   }
 }
 
@@ -104,21 +105,20 @@ function readLine(
 }
 
 function statusMessage(status: number, body: string): string {
+  const parsed = ErrorBody.safeParse(jsonOf(body))
+  return parsed.success ? parsed.data.error : `HTTP ${status}`
+}
+
+function jsonOf(text: string): unknown {
   try {
-    const parsed = ErrorBody.safeParse(JSON.parse(body))
-    if (parsed.success) return parsed.data.error
+    return JSON.parse(text)
   } catch {
-    return `HTTP ${status}`
+    return undefined
   }
-  return `HTTP ${status}`
 }
 
 function errorCode(error: unknown): string | undefined {
   const cause = error instanceof Error ? error.cause : undefined
   const code: unknown = cause instanceof Error && 'code' in cause ? cause.code : undefined
   return typeof code === 'string' ? code : undefined
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }
