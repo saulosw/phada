@@ -485,6 +485,21 @@ export const english: UiMessages = {
     leaveQuestion: 'Leave the setup?',
     leaveHint: 'What you confirmed is already written. phada setup opens the setup again.',
     pending: 'Nothing to do in this step: s skips it.',
+    continue: 'continue',
+    github: {
+      checking: 'Checking the GitHub token…',
+      found: (source, login) => `Token from ${source} · @${login}`,
+      readsAs: (login) => `Phada reads pull requests and publishes reviews as @${login}.`,
+      noToken: 'No GitHub token',
+      why: 'Phada reads pull requests and publishes reviews with a GitHub token: GITHUB_TOKEN, GH_TOKEN or the token of your gh login. It never stores the token.',
+      logIn: 'log in with gh',
+      refused: (source) => `GitHub refused the token from ${source}.`,
+      replace: (variable) => `Set a valid token in ${variable}, or unset it to use your gh login.`,
+      unreachable: (message) => `Could not reach GitHub: ${message}`,
+      notInstalled:
+        'gh is not installed. Install it from https://cli.github.com, or export GITHUB_TOKEN with a token of yours.',
+      notCompleted: 'gh login not completed.',
+    },
   },
 }
 

@@ -1,6 +1,7 @@
 import type { ComponentType } from 'react'
 import type { UserConfigPlan } from '../../config/user-config-edit.js'
 import type { SetupStepId } from '../i18n/messages.js'
+import { GitHubStep } from './github-step.js'
 import { PendingStep } from './pending-step.js'
 
 export interface SetupProgress {
@@ -20,7 +21,7 @@ export interface SetupStep {
 }
 
 export const SETUP_STEPS: readonly SetupStep[] = [
-  { id: 'github', skippable: true, Step: PendingStep },
+  { id: 'github', skippable: true, Step: GitHubStep },
   { id: 'ai', skippable: true, Step: PendingStep },
   { id: 'language', skippable: true, Step: PendingStep },
   { id: 'repositories', skippable: true, Step: PendingStep },

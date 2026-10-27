@@ -493,6 +493,22 @@ export const spanish: UiMessages = {
     leaveQuestion: '¿Salir de la configuración?',
     leaveHint: 'Lo que confirmaste ya está guardado. phada setup la abre de nuevo.',
     pending: 'Nada que hacer en este paso: s lo omite.',
+    continue: 'continuar',
+    github: {
+      checking: 'Comprobando el token de GitHub…',
+      found: (source, login) => `Token de ${source} · @${login}`,
+      readsAs: (login) => `Phada lee pull requests y publica revisiones como @${login}.`,
+      noToken: 'Ningún token de GitHub',
+      why: 'Phada lee pull requests y publica revisiones con un token de GitHub: GITHUB_TOKEN, GH_TOKEN o el token de tu sesión de gh. Nunca guarda el token.',
+      logIn: 'iniciar sesión con gh',
+      refused: (source) => `GitHub rechazó el token de ${source}.`,
+      replace: (variable) =>
+        `Pon un token válido en ${variable}, o quítala para usar tu sesión de gh.`,
+      unreachable: (message) => `No se pudo contactar con GitHub: ${message}`,
+      notInstalled:
+        'gh no está instalado. Instálalo desde https://cli.github.com, o exporta GITHUB_TOKEN con un token tuyo.',
+      notCompleted: 'Inicio de sesión en gh no completado.',
+    },
   },
 }
 

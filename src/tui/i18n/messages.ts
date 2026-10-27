@@ -118,6 +118,20 @@ export interface SetupMessages {
   leaveQuestion: string
   leaveHint: string
   pending: string
+  continue: string
+  github: {
+    checking: string
+    found(source: string, login: string): string
+    readsAs(login: string): string
+    noToken: string
+    why: string
+    logIn: string
+    refused(source: string): string
+    replace(variable: string): string
+    unreachable(message: string): string
+    notInstalled: string
+    notCompleted: string
+  }
 }
 
 type RequestSource = QueueJob['requests'][number]['source']
