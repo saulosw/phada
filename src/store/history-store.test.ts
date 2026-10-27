@@ -474,6 +474,25 @@ describe('HistoryStore queries', () => {
     store.close()
   })
 
+  it('keeps the titles with their runs, newest first, when the list is limited', async () => {
+    const store = await openHistoryStore(fresh())
+    const titled = (title: string) => JSON.stringify({ pullRequest: { title } })
+    store.addRun({ ...RUN, number: 1, startedAt: at(1), resultJson: titled('Oldest') })
+    store.addRun({ ...RUN, number: 2, startedAt: at(2), resultJson: titled('Middle') })
+    store.addRun({ ...RUN, number: 3, startedAt: at(3) })
+    store.addRun({ ...RUN, number: 4, startedAt: at(4), resultJson: titled('Newest') })
+
+    const listed = store.runs({ limit: 3 })
+
+    expect(listed.total).toBe(4)
+    expect(listed.runs.map(({ number, title }) => [number, title])).toEqual([
+      [4, 'Newest'],
+      [3, undefined],
+      [2, 'Middle'],
+    ])
+    store.close()
+  })
+
   it('runs never return resultJson', async () => {
     const store = await openHistoryStore(fresh())
     store.addRun(RUN)

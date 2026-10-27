@@ -237,7 +237,11 @@ export interface OpenHistoryStoreOptions {
 
 const RECENT_FAILURES = 20
 const RUN_TITLE =
-  "case when json_valid(result_json) then json_extract(result_json, '$.pullRequest.title') end"
+  "case when json_valid(run.result_json) then json_extract(run.result_json, '$.pullRequest.title') end"
+const LISTED_RUN_COLUMNS = Object.entries(RUN_TABLE.columns)
+  .filter(([key]) => key !== 'resultJson')
+  .map(([, column]) => column)
+  .join(', ')
 const PAUSE_KEY = 'pause'
 
 export async function openHistoryStore(
@@ -558,22 +562,24 @@ class SqliteHistoryStore implements HistoryStore {
     }
     if (filter.text !== undefined && filter.text !== '') {
       where.push(
-        "(instr(lower(repo || '#' || number), ?) > 0 or instr(lower(coalesce(title, '')), ?) > 0)",
+        `(instr(lower(repo || '#' || number), ?) > 0 or instr(lower(coalesce(${RUN_TITLE}, '')), ?) > 0)`,
       )
       values.push(filter.text.toLowerCase(), filter.text.toLowerCase())
     }
-    const listed = `with listed as (select *, ${RUN_TITLE} as title from run) `
     const clause = where.length === 0 ? '' : ` where ${where.join(' and ')}`
     const total = Number(
-      this.#db.prepare(`${listed}select count(*) as total from listed${clause}`).get(...values)
-        ?.total ?? 0,
+      this.#db.prepare(`select count(*) as total from run${clause}`).get(...values)?.total ?? 0,
     )
     const limit = filter.limit === undefined ? '' : ' limit ?'
+    const listed = `select ${LISTED_RUN_COLUMNS} from run${clause} order by started_at desc, id desc${limit}`
     const runs = this.#db
-      .prepare(`${listed}select * from listed${clause} order by started_at desc, id desc${limit}`)
+      .prepare(
+        `select listed.*, ${RUN_TITLE} as title from (${listed}) as listed join run using (id)
+         order by listed.started_at desc, listed.id desc`,
+      )
       .all(...values, ...(filter.limit === undefined ? [] : [filter.limit]))
       .map((row) => {
-        const { resultJson: _json, ...run } = fromRow<RunRecord>(row, RUN_TABLE)
+        const run = fromRow<RunRecord>(row, RUN_TABLE)
         return row.title === null || row.title === undefined
           ? run
           : { ...run, title: String(row.title) }
