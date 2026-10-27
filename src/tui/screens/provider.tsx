@@ -1,7 +1,6 @@
 import { Text } from 'ink'
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { loginCommand } from '../../app/read-provider.js'
 import type { ProviderReport, ProviderSetup, ReportedProvider } from '../../app/read-provider.js'
 import {
   useAppDeps,
@@ -105,7 +104,7 @@ function ProviderView({
     if (editable && input === 'L') return onEdit('language')
     if (input !== 'l' || target === undefined) return
     setLogin(undefined)
-    void handOff.run({ kind: 'command', ...loginCommand(target) }).then((outcome) => {
+    void handOff.run({ kind: 'ai-login', provider: target }).then((outcome) => {
       if (outcome === undefined) return
       reload()
       setLogin({ provider: target, outcome })

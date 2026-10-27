@@ -290,7 +290,7 @@ describe('the Provider screen', () => {
       expect(footer()).toContain('l log in to Claude Code')
       await press('l')
       await showing('logged in (claude.ai)')
-      expect(targets).toEqual([{ kind: 'command', command: 'claude', args: ['auth', 'login'] }])
+      expect(targets).toEqual([{ kind: 'ai-login', provider: 'claude' }])
       expect(checks()).toBe(2)
       expect(frame()).not.toContain('claude auth login')
       expect(frame()).not.toContain('not completed')
@@ -305,7 +305,7 @@ describe('the Provider screen', () => {
       expect(footer()).toContain('l log in to Codex')
       await press('l')
       await waitFor(() => targets.length === 1)
-      expect(targets).toEqual([{ kind: 'command', command: 'codex', args: ['login'] }])
+      expect(targets).toEqual([{ kind: 'ai-login', provider: 'codex' }])
     })
 
     it('says the login was not completed when it ends with an error, checks again and keeps working', async () => {

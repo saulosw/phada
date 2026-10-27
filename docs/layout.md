@@ -190,8 +190,9 @@ src/
     app-index.ts         #   indexForApp(): token, user layers, mirror and index of the cache as
                          #   phada index uses them → indexRepository() with the signal and the
                          #   progress (fetching, extracting); no token and failures as data
-    terminal-hand-off.ts #   terminalHandOff(): handOff (a command, or a file in $VISUAL › $EDITOR
-                         #   › vi split on spaces, run in the app's folder with its environment;
+    terminal-hand-off.ts #   terminalHandOff(): handOff (a command, the login of an AI CLI
+                         #   without the GitHub tokens, or a file in $VISUAL › $EDITOR › vi split
+                         #   on spaces, run in the app's folder with its environment;
                          #   runInteractive injectable) and the app's signals: SIGINT ignored
                          #   while the command runs (Ctrl-C is the command's), SIGTERM ends the
                          #   command and the app

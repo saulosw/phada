@@ -420,7 +420,7 @@ describe('handing the terminal over', () => {
       runInteractive: run,
       during: async (appDeps) => {
         results.push(
-          await appDeps.handOff({ kind: 'command', command: 'claude', args: ['auth', 'login'] }),
+          await appDeps.handOff({ kind: 'command', command: 'gh', args: ['auth', 'login'] }),
         )
       },
     })
@@ -428,11 +428,34 @@ describe('handing the terminal over', () => {
     expect(results).toEqual([{ kind: 'exited', exitCode: 1 }])
     expect(calls).toHaveLength(1)
     expect(calls[0]).toMatchObject({
-      command: 'claude',
+      command: 'gh',
       args: ['auth', 'login'],
       options: { cwd: '/home/ana/shop', env: app.env },
     })
   })
+
+  it.each([
+    ['claude', 'claude', ['auth', 'login']],
+    ['codex', 'codex', ['login']],
+  ] as const)(
+    'logs in to %s without the GitHub tokens of the environment',
+    async (provider, command, args) => {
+      const { run, calls } = runner(async () => ({ kind: 'exited', exitCode: 0 }))
+      const { app } = deps({
+        env: { GITHUB_TOKEN: 'ghp_x', GH_TOKEN: 'gho_y', HOME: '/home/ana', PATH: '/usr/bin' },
+        runInteractive: run,
+        during: async (appDeps) => {
+          await appDeps.handOff({ kind: 'ai-login', provider })
+        },
+      })
+      await runApp(app)
+      expect(calls).toHaveLength(1)
+      expect(calls[0]).toMatchObject({ command, args, options: { cwd: '/home/ana/shop' } })
+      const { GITHUB_TOKEN: _github, GH_TOKEN: _gh, ...rest } = app.env
+      expect(calls[0]?.options.env).toEqual(rest)
+      expect(rest).toMatchObject({ HOME: '/home/ana', PATH: '/usr/bin' })
+    },
+  )
 
   it.each([
     [{ VISUAL: 'code --wait', EDITOR: 'nano' }, 'code', ['--wait']],
@@ -464,7 +487,7 @@ describe('handing the terminal over', () => {
       runInteractive: run,
       during: async (appDeps, host) => {
         host.onSignal((signal) => received.push(signal))
-        const handOff = appDeps.handOff({ kind: 'command', command: 'codex', args: ['login'] })
+        const handOff = appDeps.handOff({ kind: 'ai-login', provider: 'codex' })
         send('SIGINT')
         expect(received).toEqual([])
         child.finish(130)
@@ -484,7 +507,7 @@ describe('handing the terminal over', () => {
       runInteractive: run,
       during: async (appDeps, host) => {
         host.onSignal((signal) => received.push(signal))
-        const handOff = appDeps.handOff({ kind: 'command', command: 'codex', args: ['login'] })
+        const handOff = appDeps.handOff({ kind: 'ai-login', provider: 'codex' })
         expect(calls[0]?.options.signal?.aborted).toBe(false)
         send('SIGTERM')
         expect(received).toEqual(['SIGTERM'])

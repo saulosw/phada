@@ -78,8 +78,9 @@ The app never starts a timer: periodic work goes through `scheduler.every()` and
 A screen that runs an interactive command (an AI CLI's login, a file in the editor) calls
 `run(target)` of **`useHandOff()`**: the app leaves the alternate screen and raw mode, the command
 owns the terminal (and Ctrl-C) until it ends, then the app redraws. `target` is
-`{ kind: 'command', command, args }` or `{ kind: 'editor', file }` (`$VISUAL` › `$EDITOR` › `vi`,
-resolved by the CLI). It resolves to `exited` with the exit code, `not-found` with the command, or
+`{ kind: 'command', command, args }`, `{ kind: 'ai-login', provider }` (the login of Claude Code or
+Codex, run by the CLI without the GitHub tokens) or `{ kind: 'editor', file }` (`$VISUAL` ›
+`$EDITOR` › `vi`, resolved by the CLI). It resolves to `exited` with the exit code, `not-found` with the command, or
 `failed` with the error, never throws, and to `undefined` when another hand-off is running; ignore
 the key while `running`. Data that the command changes is read again on return: `reload()` of
 `useLoaded` forces a slow load past `FRESH_MS`. An exit code other than 0 is a cancel or a failure

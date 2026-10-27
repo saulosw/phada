@@ -255,7 +255,7 @@ describe('the AI step', () => {
     expect(footer()).toContain('Enter log in to Claude Code')
     await press(KEYS.enter)
     await seeing('logged in (claude.ai)')
-    expect(handOffs).toEqual([{ kind: 'command', command: 'claude', args: ['auth', 'login'] }])
+    expect(handOffs).toEqual([{ kind: 'ai-login', provider: 'claude' }])
     expect(footer()).toContain('Enter choose')
     await press(KEYS.enter)
     await seeing('Model for Claude Code')

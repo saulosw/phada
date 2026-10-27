@@ -29,7 +29,9 @@ export interface Scheduler {
 }
 
 export type HandOffTarget =
-  { kind: 'command'; command: string; args: readonly string[] } | { kind: 'editor'; file: string }
+  | { kind: 'command'; command: string; args: readonly string[] }
+  | { kind: 'ai-login'; provider: 'claude' | 'codex' }
+  | { kind: 'editor'; file: string }
 
 export type HandOffResult =
   { kind: 'exited'; exitCode: number } | { kind: 'not-found'; command: string }

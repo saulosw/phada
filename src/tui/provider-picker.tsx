@@ -1,7 +1,7 @@
 import { Text } from 'ink'
 import { useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { hasModel, loginCommand, SUGGESTED_OLLAMA_MODEL } from '../app/read-provider.js'
+import { hasModel, SUGGESTED_OLLAMA_MODEL } from '../app/read-provider.js'
 import type { ProviderChoiceView, ProviderReport, ReportedProvider } from '../app/read-provider.js'
 import type { UserConfigChange, UserConfigPlan } from '../config/user-config-edit.js'
 import {
@@ -173,7 +173,7 @@ export function ProviderPicker({
 
   const logIn = (provider: LoginProvider) => {
     setLogin(undefined)
-    void handOff.run({ kind: 'command', ...loginCommand(provider) }).then((outcome) => {
+    void handOff.run({ kind: 'ai-login', provider }).then((outcome) => {
       if (outcome === undefined) return
       reload()
       setLogin({ provider, outcome })

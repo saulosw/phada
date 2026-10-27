@@ -1,5 +1,7 @@
+import { loginCommand } from '../app/read-provider.js'
 import { runInteractive } from '../process/run-interactive.js'
-import type { AppDeps, AppHost } from '../tui/open-app.js'
+import { withoutGitHubTokens } from '../providers/cli-run.js'
+import type { AppDeps, AppHost, HandOffTarget } from '../tui/open-app.js'
 
 const DEFAULT_EDITOR = 'vi'
 
@@ -20,16 +22,11 @@ export function terminalHandOff(deps: TerminalHandOffDeps): TerminalHandOff {
   let child: AbortController | undefined
   return {
     handOff: async (target) => {
-      const { command, args } =
-        target.kind === 'command' ? target : editorCommand(deps.env, target.file)
+      const { command, args, env } = handOffCommand(deps.env, target)
       const running = new AbortController()
       child = running
       try {
-        return await run(command, args, {
-          cwd: deps.cwd,
-          env: deps.env,
-          signal: running.signal,
-        })
+        return await run(command, args, { cwd: deps.cwd, env, signal: running.signal })
       } finally {
         if (child === running) child = undefined
       }
@@ -43,6 +40,23 @@ export function terminalHandOff(deps: TerminalHandOffDeps): TerminalHandOff {
           handler(signal)
         }
       }),
+  }
+}
+
+interface HandOffCommand {
+  command: string
+  args: readonly string[]
+  env: NodeJS.ProcessEnv
+}
+
+function handOffCommand(env: NodeJS.ProcessEnv, target: HandOffTarget): HandOffCommand {
+  switch (target.kind) {
+    case 'command':
+      return { command: target.command, args: target.args, env }
+    case 'ai-login':
+      return { ...loginCommand(target.provider), env: withoutGitHubTokens(env) }
+    case 'editor':
+      return { ...editorCommand(env, target.file), env }
   }
 }
 

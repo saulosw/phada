@@ -8,7 +8,7 @@ import { outputSize } from './terminal-size.js'
 import type { SizeSource } from './terminal-size.js'
 
 export type { AppResult } from './app.js'
-export type { AppDeps, AppStart, Scheduler } from './app-context.js'
+export type { AppDeps, AppStart, HandOffTarget, Scheduler } from './app-context.js'
 
 export interface RenderedApp {
   unmount(): void
