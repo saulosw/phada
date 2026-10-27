@@ -1,7 +1,7 @@
 import { Text } from 'ink'
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { ProviderReport, ProviderSetup } from '../../app/read-provider.js'
+import type { ProviderChecks, ProviderSetup } from '../../app/read-provider.js'
 import {
   useAppDeps,
   useMessages,
@@ -71,13 +71,17 @@ function ProviderView({
   checkAgain: boolean
   onEdit(mode: Exclude<Mode, 'view'>): void
 }) {
-  const { readProviderSetup, readProviders, readLanguage, home } = useAppDeps()
+  const { readProviderSetup, readProviders, readProviderChecks, readLanguage, home } = useAppDeps()
   const messages = useMessages()
   const theme = useTheme()
   const size = useScreenSize()
   const setup = usePolled(readProviderSetup)
   const language = usePolled(readLanguage)
-  const loaded = useLoaded('providers', readProviders)
+  const configRead = setup.status !== 'failed'
+  const loaded = useLoaded<ProviderChecks>(
+    configRead ? 'providers' : 'provider-checks',
+    configRead ? readProviders : readProviderChecks,
+  )
   const { state: checked, reload } = loaded
   const handOff = useHandOff()
   const [login, setLogin] = useState<AiLogin>()
@@ -169,7 +173,7 @@ function choiceLines(setup: DataState<ProviderSetup>, draw: Draw): ReactNode[] {
   ]
 }
 
-function providerLines(checked: DataState<ProviderReport>, draw: Draw): ReactNode[] {
+function providerLines(checked: DataState<ProviderChecks>, draw: Draw): ReactNode[] {
   const { messages, theme } = draw
   const { colors } = theme
   const m = messages.provider
@@ -203,7 +207,7 @@ function providerLines(checked: DataState<ProviderReport>, draw: Draw): ReactNod
   ]
 }
 
-function loginTarget({ providers }: ProviderReport): LoginProvider | undefined {
+function loginTarget({ providers }: ProviderChecks): LoginProvider | undefined {
   const clis = providers.flatMap((status) =>
     status.provider !== 'ollama' && status.install.state === 'installed' ? [status] : [],
   )

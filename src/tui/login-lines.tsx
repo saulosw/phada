@@ -1,7 +1,7 @@
 import { Text } from 'ink'
 import type { ReactNode } from 'react'
 import { errorMessage } from '../app/error-message.js'
-import type { ProviderReport } from '../app/read-provider.js'
+import type { ProviderChecks } from '../app/read-provider.js'
 import type { Loaded } from './data-hooks.js'
 import type { HandOffOutcome } from './hand-off.js'
 import type { UiMessages } from './i18n/messages.js'
@@ -28,7 +28,7 @@ export interface LoginJudgement {
 
 export function aiLoginLines(
   login: AiLogin | undefined,
-  checked: Loaded<ProviderReport>,
+  checked: Loaded<ProviderChecks>,
   draw: LoginDraw,
 ): ReactNode[] {
   if (login === undefined) return []
@@ -60,7 +60,7 @@ export function loginOutcomeLines(
 }
 
 function loggedInAfter(
-  { state, loading }: Loaded<ProviderReport>,
+  { state, loading }: Loaded<ProviderChecks>,
   provider: LoginProvider,
 ): boolean | undefined {
   if (loading || state.status !== 'ready') return undefined

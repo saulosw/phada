@@ -4,7 +4,7 @@ import { applyUserConfigPlan, planUserConfig } from '../app/edit-user-config.js'
 import { readReviewDetail, readReviews } from '../app/read-history.js'
 import { readLearnings } from '../app/read-learnings.js'
 import type { ObservedRead } from '../app/read-learnings.js'
-import { providerSetup, readProviders } from '../app/read-provider.js'
+import { providerSetup, readProviderChecks, readProviders } from '../app/read-provider.js'
 import type { ModelPullOptions, ProviderConfigInput } from '../app/read-provider.js'
 import { readQueue } from '../app/read-queue.js'
 import { readAutomation } from '../app/read-automation.js'
@@ -193,6 +193,7 @@ async function appDeps(
         ...(await providerConfig(deps)),
         checkers: deps.providerCheckers ?? statusCheckers(deps.env),
       }),
+    readProviderChecks: () => readProviderChecks(deps.providerCheckers ?? statusCheckers(deps.env)),
     readLearnings: async () =>
       readLearnings({
         history: await history.current(),

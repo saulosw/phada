@@ -185,6 +185,7 @@ export function fakeAppDeps(scheduler: Scheduler, overrides: Partial<AppDeps> = 
       choice: { provider: 'claude', model: null, origin: { kind: 'default' } },
       providers: [],
     }),
+    readProviderChecks: async () => ({ providers: [] }),
     readLearnings: async () => ({ recorded: false, repos: [] }),
     readGitHub: async () => ({ source: null }),
     readUserRepositories: async () => ({ status: 'no-token', repositories: [] }),

@@ -1,6 +1,11 @@
 import { cleanup } from 'ink-testing-library'
 import { afterEach, describe, expect, it } from 'vitest'
-import type { ProviderReport, ProviderSetup, ReportedProvider } from '../../app/read-provider.js'
+import type {
+  ProviderChecks,
+  ProviderReport,
+  ProviderSetup,
+  ReportedProvider,
+} from '../../app/read-provider.js'
 import type {
   SettingKey,
   UserConfigChange,
@@ -78,6 +83,7 @@ function openProvider(
   options: {
     setup?: () => Promise<ProviderSetup>
     providers?: () => Promise<ProviderReport>
+    checks?: () => Promise<ProviderChecks>
     size?: TerminalSize
     language?: string
     handOff?: (target: HandOffTarget) => Promise<HandOffResult>
@@ -87,6 +93,7 @@ function openProvider(
     deps: {
       readProviderSetup: options.setup ?? (async () => setup()),
       readProviders: options.providers ?? (async () => report([claude(), codex(), ollama()])),
+      ...(options.checks === undefined ? {} : { readProviderChecks: options.checks }),
       ...(options.handOff === undefined ? {} : { handOff: options.handOff }),
       ...(options.language === undefined ? {} : { language: options.language }),
     },
@@ -242,7 +249,7 @@ describe('the Provider screen', () => {
       setup: async () => {
         throw new Error('Invalid config /home/ana/.config/phada/config.yml: provider')
       },
-      providers: async () => {
+      checks: async () => {
         throw new Error('spawn failed')
       },
     })
@@ -265,12 +272,34 @@ describe('the Provider screen', () => {
     expectFits(frame(), { columns: 80, rows: 24 })
   })
 
+  it('checks the AI CLIs with an invalid config, which they do not depend on, offering no change', async () => {
+    const { frame, footer, showing } = openProvider({
+      setup: async () => {
+        throw new Error(LONG_CONFIG_ERROR)
+      },
+      providers: async () => {
+        throw new Error(LONG_CONFIG_ERROR)
+      },
+      checks: async () => ({
+        providers: [claude({ chosen: false }), codex(), ollama({ chosen: false })],
+      }),
+    })
+    await showing('Could not load: Invalid config', 'logged in (claude.ai)')
+    expect(frame()).toContain('logged in (claude.ai)')
+    expect(frame()).toContain('Codex')
+    expect(frame().split('Invalid config')).toHaveLength(2)
+    expect(frame()).not.toContain('chosen')
+    expect(footer()).not.toContain('c change')
+    expect(footer()).not.toContain('L language')
+    expectFits(frame(), { columns: 80, rows: 24 })
+  })
+
   it('draws an error and the model names it read on one line, without control characters', async () => {
     const { frame, showing } = openProvider({
       setup: async () => {
         throw new Error('Invalid config:\n  provider\u001B[2J\u202Eollama')
       },
-      providers: async () => {
+      checks: async () => {
         throw new Error('spawn failed:\n\u001B]0;title\u0007done')
       },
     })

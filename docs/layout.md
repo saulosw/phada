@@ -130,6 +130,7 @@ src/
                          #   default) and its MCP servers by name and kind, never their command,
                          #   env, URL or headers; readProviders(): the choice and every provider
                          #   checked with its nextStep() (install, login, ollama serve, ollama pull);
+                         #   readProviderChecks(): every provider checked without the config;
                          #   loginCommand(): the login of Claude Code or Codex as command and
                          #   arguments; SUGGESTED_OLLAMA_MODEL (name and size)
     edit-user-config.ts  #   planUserConfig(): the user's own config.yml read (injected) →
@@ -369,7 +370,7 @@ src/
                          #   logged in), else to a logged-out CLI, and checked again on return, the MCP servers; c → the
                          #   ProviderPicker and L → the LanguagePicker in a SubView, back on save
                          #   or Esc with the AIs checked again; none while the config is
-                         #   invalid), learnings.tsx (each
+                         #   invalid, when the AIs are checked without it), learnings.tsx (each
                          #   repository's relations and feedback → its feedback per rule and its
                          #   relations), rules.tsx (a repository → the lens and who set it, the
                          #   user's rules at once, .phada/ and docs of the default branch on open

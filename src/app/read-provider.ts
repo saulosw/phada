@@ -29,9 +29,12 @@ export interface ProviderSetup {
 
 export type ReportedProvider = CheckedProvider & { next: NextStep | null }
 
-export interface ProviderReport {
-  choice: ProviderChoiceView
+export interface ProviderChecks {
   providers: ReportedProvider[]
+}
+
+export interface ProviderReport extends ProviderChecks {
+  choice: ProviderChoiceView
 }
 
 export interface NextStep {
@@ -100,6 +103,13 @@ export async function readProviders(
       ...status,
       next: nextStep(status, choice.model) ?? null,
     })),
+  }
+}
+
+export async function readProviderChecks(checkers: ProviderCheckers): Promise<ProviderChecks> {
+  const providers = await checkProviders(checkers, null)
+  return {
+    providers: providers.map((status) => ({ ...status, next: nextStep(status, null) ?? null })),
   }
 }
 

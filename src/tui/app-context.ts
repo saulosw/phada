@@ -9,6 +9,7 @@ import type { Learnings } from '../app/read-learnings.js'
 import type {
   ModelPullOptions,
   OllamaPullResult,
+  ProviderChecks,
   ProviderReport,
   ProviderSetup,
 } from '../app/read-provider.js'
@@ -56,6 +57,7 @@ export interface AppDeps {
   readAutomation(): Promise<AutomationView>
   readProviderSetup(): Promise<ProviderSetup>
   readProviders(): Promise<ProviderReport>
+  readProviderChecks(): Promise<ProviderChecks>
   readLearnings(): Promise<Learnings>
   readGitHub(): Promise<GitHubAccess>
   readUserRepositories(): Promise<UserRepositories>
