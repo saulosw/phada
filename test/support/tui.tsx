@@ -30,7 +30,7 @@ export const KEYS = {
   ctrlC: '\u0003',
 }
 
-export const settle = () => new Promise((resolve) => setTimeout(resolve, 50))
+const settle = () => new Promise((resolve) => setTimeout(resolve, 50))
 
 const nextTurn = () => new Promise((resolve) => setImmediate(resolve))
 

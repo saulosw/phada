@@ -635,6 +635,56 @@ describe('screen imports', () => {
   })
 })
 
+const FIXED_PAUSE = /\b(setTimeout|setInterval|settle|sleep)\s*\(/g
+const TIMERS_MODULE = /^node:timers(\/promises)?$/
+
+function testsOf(dir: string) {
+  const url = new URL(`./${dir}/`, import.meta.url)
+  return readdirSync(url, { recursive: true, encoding: 'utf8' })
+    .map((name) => name.split('\\').join('/'))
+    .filter((name) => /\.test\.tsx?$/.test(name))
+    .map((name) => ({ name, code: readFileSync(new URL(name, url), 'utf8') }))
+}
+
+function fixedPauses(code: string): string[] {
+  const timers = [...code.matchAll(STATIC_MODULE)]
+    .map(([, , specifier = '']) => specifier)
+    .filter((specifier) => TIMERS_MODULE.test(specifier))
+    .map((specifier) => `imports '${specifier}'`)
+  const calls = [...code.replace(STRING_LITERAL, "''").matchAll(FIXED_PAUSE)].map(
+    ([, name]) => `pauses with ${name}()`,
+  )
+  return [...timers, ...calls]
+}
+
+describe('pauses in the app tests', () => {
+  it('accepts waits on a condition and settings named after a pause', () => {
+    const code = [
+      "import { KEYS, renderApp, waitFor } from '../../test/support/tui.js'",
+      "await showing('Phada v1.2.3')",
+      "await until(() => footer().includes('telas'))",
+      'await waitFor(() => rejected)',
+      "const ci = { settleMs: 180_000, label: 'settle() the queue' }",
+    ].join('\n')
+
+    expect(fixedPauses(code)).toEqual([])
+  })
+
+  it.each([
+    ['settle()', 'await settle()'],
+    ['a timer', 'await new Promise((resolve) => setTimeout(resolve, 50))'],
+    ['an interval', 'const id = setInterval(tick, 10)'],
+    ['a sleep', 'await sleep(100)'],
+    ['the timers promises', "import { setTimeout as wait } from 'node:timers/promises'"],
+  ])('flags %s', (_case, code) => {
+    expect(fixedPauses(code)).not.toEqual([])
+  })
+
+  it.each(testsOf('tui'))('$name waits on a condition', ({ code }) => {
+    expect(fixedPauses(code)).toEqual([])
+  })
+})
+
 describe('repository boundary rules', () => {
   it.each([
     [

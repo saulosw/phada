@@ -4,7 +4,7 @@ import { Text } from 'ink'
 import { cleanup } from 'ink-testing-library'
 import { useState } from 'react'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { KEYS, renderApp, settle, waitFor } from '../../test/support/tui.js'
+import { KEYS, renderApp, waitFor } from '../../test/support/tui.js'
 import { useBack, useScreenInput, useScreenKeys, useWorking } from './app-context.js'
 import type { AppDeps } from './app-context.js'
 import { SCREENS } from './screens.js'
@@ -244,9 +244,13 @@ describe('the language', () => {
     await until(() => footer(frame())?.includes('pantallas') === true)
     expect(footer(frame())).toContain('pantallas')
 
-    read = () => Promise.reject(new Error('Invalid config'))
+    let refused = false
+    read = () => {
+      refused = true
+      return Promise.reject(new Error('Invalid config'))
+    }
     clock.advance(2000)
-    await settle()
+    await until(() => refused)
     expect(footer(frame())).toContain('pantallas')
 
     read = async () => undefined
