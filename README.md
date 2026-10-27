@@ -26,8 +26,12 @@ the rest in the review body (see [Publishing](#publishing)).
 
 ```bash
 npm install -g phada
-phada --version
+phada
 ```
+
+In a terminal, `phada` opens the [setup](#setup) while you have no config of your own: one step at
+a time, it gets the GitHub token, the AI, the language and the repositories to watch ready, and
+writes nothing before you confirm it. `phada setup` opens it again at any time.
 
 Or run it without installing:
 
@@ -47,8 +51,8 @@ saves only the review, and `--format json` prints it as JSON for scripts. A revi
 request can take a few minutes. `phada review owner/repo#123 --dry-run` prints exactly what would
 be posted and posts nothing.
 
-`phada --help` lists the commands, and `phada review --help`, `phada init --help`,
-`phada index --help`, `phada rules --help`, `phada prompt --help`, `phada watch --help` and
+`phada --help` lists the commands, and `phada review --help`, `phada setup --help`,
+`phada init --help`, `phada index --help`, `phada rules --help`, `phada prompt --help`, `phada watch --help` and
 `phada history --help` list their options. To have new pull requests and pushes reviewed without running anything, see
 [Watch mode](#watch-mode); to see what happened to the comments Phada published, see
 [History](#history). To see all of it in one place, run `phada` alone (see
@@ -77,35 +81,112 @@ review runs without that part of the checks and warns with the permission the to
 ## Terminal app
 
 Run `phada` with no command in a terminal to open the app: what Phada has set up, running and
-reviewed, in one place, without remembering commands or folders. It opens on the terminal's
-alternate screen, like `less` or `vim`, and the terminal is back as it was when you quit.
+reviewed, in one place, without remembering commands or folders, and the [setup](#setup) and the
+[changes to your config](#changing-your-config-from-the-app) you would otherwise write by hand.
+It opens on the terminal's alternate screen, like `less` or `vim`, and the terminal is back as it
+was when you quit.
 
 ```bash
 phada
 ```
 
-| Screen       | What it shows                                                                                                                                                                                                                 |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Home         | One line each for GitHub (where the token comes from and whose it is), the AI (installed and logged in), the watch, the queue and the repository maps; the last reviews; and what to do next, with the command                |
-| Repositories | The watched repositories, the ones with a config of their own and the ones in the history → the settings of each with where every value comes from, its watch filters, its map, its related repositories and its last reviews |
-| Rules        | The reviewer lens and your rules at once; the repository's `.phada/` and the rules and docs a review of the default branch reads; `p` and a pull request number show what a review of it reads and its prompt                 |
-| Reviews      | The history, with `f` to filter → one review with its score, findings, what was published, the CI line and what happened to each comment                                                                                      |
-| Queue        | The watch running in another terminal (or not), its last and next cycle, the job running, the jobs queued, waiting for CI, skipped for failing CI or failed, a pause, and the reviews this hour → a job with its requests     |
-| Automation   | The watch, the CI wait, the request sources that are on (pull request comments, `phada enqueue`, `phada mcp`, Slack), the hooks and the `when` commands                                                                       |
-| Provider     | The provider and model you chose and where they come from, each AI checked (installed, logged in, Ollama running and its models) with the command that fixes it, and your MCP servers                                         |
-| Learnings    | Per repository, the relations learned from reviews and what happened to Phada's comments, per repository and per rule                                                                                                         |
+| Screen       | What it shows                                                                                                                                                                                                                                                                                      |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Home         | One line each for GitHub (where the token comes from and whose it is), the AI (installed and logged in), the watch, the queue and the repository maps; the last reviews; and what to do next, with the command                                                                                     |
+| Repositories | The watched repositories (and whether each publishes), the ones with a config of their own and the ones in the history → the settings of each with where every value comes from, its watch filters, its map, its related repositories and its last reviews; `w`, `p`, `a`, `e` and `R` change them |
+| Rules        | The reviewer lens and your rules at once; the repository's `.phada/` and the rules and docs a review of the default branch reads; `p` and a pull request number show what a review of it reads and its prompt                                                                                      |
+| Reviews      | The history, with `f` to filter → one review with its score, findings, what was published, the CI line and what happened to each comment                                                                                                                                                           |
+| Queue        | The watch running in another terminal (or not), its last and next cycle, the job running, the jobs queued, waiting for CI, skipped for failing CI or failed, a pause, and the reviews this hour → a job with its requests                                                                          |
+| Automation   | The watch, the CI wait, the request sources that are on (pull request comments, `phada enqueue`, `phada mcp`, Slack), the hooks and the `when` commands                                                                                                                                            |
+| Provider     | The provider and model you chose and where they come from, the language, each AI checked (installed, logged in, Ollama running and its models) with the command that fixes it, and your MCP servers; `c`, `L` and `l` change them                                                                  |
+| Learnings    | Per repository, the relations learned from reviews and what happened to Phada's comments, per repository and per rule                                                                                                                                                                              |
 
-Keys: `←`/`→` or `Tab` move between screens, `1`–`8` jump to one, `/` finds a screen by name, `?`
-lists every key, `↑`/`↓` and `Enter` open an item, `Esc` goes back, `r` reads again what comes from
-GitHub or the AI CLIs, and `q` quits. The footer lists the keys of the screen you are on.
+Keys: `←`/`→` or `Tab` move between screens, `1`–`8` jump to one, `/` finds a screen by name (and
+`/setup` the setup, `/language` the language), `?` lists every key, `↑`/`↓` and `Enter` open an
+item, `Esc` goes back, `r` reads again what comes from GitHub or the AI CLIs, and `q` quits. The footer lists the keys of the screen you are on.
 
 What is on your machine (the config, the history, the queue) is read every 2 seconds; what comes
-from GitHub or the AI CLIs is read when a screen opens and on `r`. The app only reads: it changes
-no config and no history, and never creates the history file. It needs a terminal of at least
-80×24 and says so when it is smaller. It follows the `language` of your config (English,
+from GitHub or the AI CLIs is read when a screen opens and on `r`. The app writes only what
+[Changing your config from the app](#changing-your-config-from-the-app) lists, and never the
+history (it does not even create its file). It needs a terminal of at least 80×24 and says so
+when it is smaller. It follows the `language` of your config (English,
 Portuguese and Spanish), uses the full colors your terminal supports (down to 16), and none with
 `NO_COLOR` or `TERM=dumb`. `q` exits with 0, Ctrl-C with 130 and `SIGTERM` with 143. Outside a
-terminal (a pipe, a script), `phada` with no command prints the same error as before.
+terminal (a pipe, a script), `phada` with no command prints the same error as before, and
+`phada setup` stops with a usage error.
+
+### Setup
+
+`phada setup` opens the app on the setup; `phada` alone opens it while your own `config.yml` does
+not exist, and `/setup` opens it from any screen. It has seven steps, shown as `Step n of 7`: `s`
+skips one, and `Esc` asks whether to leave the setup for the Home (what you confirmed is already
+written, and `phada setup` starts again).
+
+1. **GitHub**: where the token comes from (`GITHUB_TOKEN`, `GH_TOKEN` or the `gh` login) and
+   whose it is. Without a token, or when GitHub refuses the token of the `gh` login, `Enter`
+   hands the terminal to `gh auth login` and checks again when it ends. Without `gh`, it says how
+   to install it or to export `GITHUB_TOKEN`; a token from a variable that GitHub refuses has to
+   be replaced or unset.
+2. **AI**: Claude Code, Codex and Ollama, each checked (installed, logged in, running), and `r`
+   checks again. Choosing a CLI that is not logged in hands the terminal to its login
+   (`claude auth login`, `codex login`) and checks again when it ends; the credentials stay with
+   the CLI. A CLI reviews with its own default model or one you type. When Ollama is not running,
+   the step says to start it with `ollama serve` and press `r`; when it runs, you pick an
+   installed model, type one, or take the suggested `qwen2.5-coder:7b` (about 4.7 GB). A model
+   Ollama does not have is pulled through its API (at `OLLAMA_HOST` too), with its progress, and
+   `Esc` cancels the pull.
+3. **Language**: English, Portuguese or Spanish, for the app and the reviews; the app speaks it at
+   once.
+4. **Repositories**: the repositories of the token owner on GitHub (owned, as a collaborator and
+   of your organizations, without the archived ones, most recently pushed first), with the ones
+   already in `watch.repos` marked and first. `f` filters the list, `Space` marks or unmarks one,
+   `a` adds an `owner/repo` that is not listed, and `Enter` saves the marked ones to
+   `watch.repos`.
+5. **Graph**: builds the [map](#repository-map) of each watched repository, one at a time, with
+   `N of M files`. `Esc` stops: what was extracted is kept, and `phada watch` finishes it when it
+   is idle, or `phada index owner/repo` now.
+6. **This repository**: when the app runs inside a git repository without a `.phada/` folder,
+   `Enter` runs `phada init` there and lists the files it created.
+7. **Summary**: what was written and to which file, what was indexed or left for later, what
+   `phada init` created, the steps skipped, and what to run now (`phada watch`,
+   `phada review owner/repo#N`).
+
+A step that changes your config shows the change first, one line per value
+(`provider claude → codex`, `watch.repos + owner/repo`), and writes it only on `Enter`; `Esc`
+cancels it.
+
+### Changing your config from the app
+
+- **Provider**: `c` changes the AI and its model (the choice of the setup's AI step, with the
+  login or the model pull there), `L` changes the language and `l` logs in to the chosen AI CLI
+  again (or to one that is not logged in). `/language` changes the language from any screen.
+- **Repositories**: on the selected repository, `w` watches or unwatches it, `p` turns its
+  `publish` on or off, `a` adds repositories from your GitHub list or typed, and `e` and `R` open
+  its own `repos/<owner>/<repo>/config.yml` and `rules.md` (in your config folder) in `$VISUAL`,
+  `$EDITOR` or `vi`, created with a commented header when they do not exist. The app is back when
+  the editor exits, with the file read again.
+
+Like the setup, each change shows what it does before → after and is written only on `Enter`.
+The app writes:
+
+- your own `config.yml`: `provider`, `model`, `language` and `watch.repos` (a new file gets the
+  values on top and the commented template of `phada init --global` below them);
+- the `repos/<owner>/<repo>/config.yml` and `rules.md` you open in the editor, created when they
+  do not exist and never overwritten;
+- the [map](#repository-map) of a repository when you index it in the setup, in the cache, as
+  `phada index` does;
+- a repository's `.phada/` only through `phada init`, in the setup's step 6.
+
+Comments, the order of the keys and the lines a change does not touch stay as you wrote them. When
+a line cannot be kept as written (an indentation of 4 spaces, for example), the change says that
+the file is rewritten in a standard layout before you confirm it. The new text is checked like any
+config before it is written, and it is written atomically (a temporary file renamed over it); a
+symbolic link stays a link, and the file it points to changes. A config file that is already
+invalid is never edited: the app shows its error and offers no change. If the file changed after
+the change was shown, `Enter` shows it again.
+
+While a login or the editor runs, the terminal is theirs and Ctrl-C goes to them, not to the app.
+The login of an AI CLI runs without `GITHUB_TOKEN` and `GH_TOKEN` in its environment.
 
 ## What a review looks like
 
@@ -228,7 +309,9 @@ review of your own open in its interface; submit or discard it first.
 ## Watch mode
 
 `phada watch` follows the repositories you list in your own config and reviews new pull
-requests and new pushes on its own, one at a time, and publishes them like `phada review`:
+requests and new pushes on its own, one at a time, and publishes them like `phada review`. The
+[setup](#setup) and the Repositories screen of the app list them for you; the other keys are
+written by hand:
 
 ```yaml
 # ~/.config/phada/config.yml
@@ -1035,7 +1118,9 @@ Phada reads two kinds of config, both optional:
 
 `phada init` creates commented `.phada/` files in the current repository; `phada init --global`
 creates your own config, and `phada init --global owner/repo` the one for a single repository.
-Existing files are never overwritten.
+Existing files are never overwritten. [`phada setup`](#setup) and the app write `provider`,
+`model`, `language` and `watch.repos` in your own config for you (see
+[Changing your config from the app](#changing-your-config-from-the-app)).
 
 ```yaml
 # .phada/config.yml
@@ -1144,8 +1229,8 @@ GitHub could not be read.
 `phada enqueue` exits with 0 when the request was queued or joined a job, 1 when it was refused
 or GitHub could not be read, and 2 when the command line or your config is wrong.
 `phada mcp` exits with 0 when its input ends.
-`phada` with no command exits with 0 when you quit the app, 130 on Ctrl-C, 143 on `SIGTERM`, 1
-when it failed and 2 outside a terminal.
+`phada` with no command and `phada setup` exit with 0 when you quit the app, 130 on Ctrl-C, 143
+on `SIGTERM`, 1 when it failed and 2 outside a terminal.
 `phada watch` exits with 0 when it stopped or `--once` finished, 1 when it stopped on an error
 (another watch running, an AI CLI that is not logged in, a token GitHub rejects), 2 when the
 command line or your config is wrong, and 130 when a second Ctrl-C aborted it.
@@ -1185,6 +1270,7 @@ ollama pull qwen2.5-coder:7b
 phada review owner/repo#123 --provider ollama --model qwen2.5-coder:7b
 ```
 
+The [setup](#setup) and the Provider screen of the app can pull the model and choose it for you.
 Phada talks to Ollama at `127.0.0.1:11434` (or `OLLAMA_HOST`). It checks the model's context
 window first and stops with an error when the pull request does not fit: it never lets the
 model silently cut the diff. When the prompt carries the conversation or the checks, the error
