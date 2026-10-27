@@ -143,7 +143,14 @@ export async function indexRepository(
 ): Promise<IndexReport | IndexCancelled> {
   const started = deps.now()
   const ref = input.ref ?? 'HEAD'
-  const sha = await deps.mirror.fetch(ref, INDEX_REF)
+  const { signal } = input
+  let sha: string
+  try {
+    sha = await deps.mirror.fetch(ref, INDEX_REF, signal === undefined ? {} : { signal })
+  } catch (error) {
+    if (signal?.aborted === true) return { cancelled: true, extracted: 0, total: 0 }
+    throw error
+  }
   const files = await deps.mirror.listFiles(sha)
   const warnings: string[] = []
   const isIgnored = await ignoreMatcher(input.userLayers, files, deps, sha, warnings)

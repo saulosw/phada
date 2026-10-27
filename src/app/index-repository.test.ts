@@ -289,6 +289,27 @@ describe('indexRepository', () => {
     expect(read).toEqual([])
   })
 
+  it('stops the fetch when cancelled while fetching', async () => {
+    const { mirror, read } = fakeMirror({ 'src/a.ts': { content: 'export const a = 1\n' } })
+    const cancel = new AbortController()
+    const fetching: IndexRepositoryDeps['mirror'] = {
+      ...mirror,
+      fetch: (_ref, _keepAs, options) =>
+        new Promise((_resolve, reject) => {
+          options?.signal?.addEventListener('abort', () => reject(new Error('git stopped')))
+          cancel.abort()
+        }),
+    }
+
+    const result = await indexRepository(
+      { ...INPUT, signal: cancel.signal },
+      deps(fetching, storePath()).deps,
+    )
+
+    expect(result).toEqual({ cancelled: true, extracted: 0, total: 0 })
+    expect(read).toEqual([])
+  })
+
   it('extracts a blob shared by two paths once and counts both files', async () => {
     const { mirror, read } = fakeMirror({
       'a/x.ts': { content: 'export function x() {}\n' },

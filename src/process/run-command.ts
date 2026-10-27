@@ -1,5 +1,6 @@
 import { execa } from 'execa'
 import {
+  CommandAbortedError,
   CommandError,
   CommandNotFoundError,
   CommandOutputTooLargeError,
@@ -39,6 +40,7 @@ export interface RunCommandOptions {
   timeoutMs?: number
   maxOutputLength?: number
   detached?: boolean
+  signal?: AbortSignal
 }
 
 export interface RunCommandResult {
@@ -98,27 +100,37 @@ async function execute(
     stripFinalNewline: false,
     encoding,
     detached: options.detached ?? false,
+    ...(options.signal === undefined ? {} : { cancelSignal: options.signal }),
   })
   const pid = options.detached === true ? child.pid : undefined
   if (pid !== undefined) detachedChildren.add(pid)
   let groupTimedOut = false
   let graceTimer: NodeJS.Timeout | undefined
+  const stopGroup = () => {
+    if (pid === undefined || graceTimer !== undefined) return
+    signalGroup(pid, 'SIGTERM')
+    graceTimer = setTimeout(() => signalGroup(pid, 'SIGKILL'), KILL_GRACE_MS)
+  }
   const groupTimer =
     pid === undefined
       ? undefined
       : setTimeout(() => {
           groupTimedOut = true
-          signalGroup(pid, 'SIGTERM')
-          graceTimer = setTimeout(() => signalGroup(pid, 'SIGKILL'), KILL_GRACE_MS)
+          stopGroup()
         }, timeoutMs)
+  options.signal?.addEventListener('abort', stopGroup, { once: true })
   const result = await child.finally(() => {
     clearTimeout(groupTimer)
     clearTimeout(graceTimer)
+    options.signal?.removeEventListener('abort', stopGroup)
     if (pid !== undefined) detachedChildren.delete(pid)
   })
   const durationMs = performance.now() - startedAt
 
   if (result.code === 'ENOENT') throw new CommandNotFoundError(command)
+  if (result.isCanceled) {
+    throw new CommandAbortedError(command)
+  }
   if (result.timedOut || groupTimedOut) throw new CommandTimeoutError(command, timeoutMs)
   if (result.isMaxBuffer) throw new CommandOutputTooLargeError(command, maxOutputLength)
   if (result.exitCode === undefined) {

@@ -47,8 +47,9 @@ src/
     feedback.ts          #   recordReviewFeedback(): the threads a run read and the comments it
                          #   published → the history; refreshFeedback(): read due pull requests
     index-repository.ts  #   indexRepository(): mirror → files left out and why → indexCommit();
-                         #   with a signal, a cancel stops between files (IndexCancelled), the
-                         #   blobs extracted kept for the next run; refreshIndex(): the same
+                         #   with a signal, a cancel stops the fetch or stops between files
+                         #   (IndexCancelled), the blobs extracted kept for the next run;
+                         #   refreshIndex(): the same
                          #   within a deadline (idle watch); indexCommit(): extract new blobs
                          #   (optional deadline or signal) → store the commit; IndexingResult,
                          #   IndexingProgress: indexing as the app sees it
@@ -631,7 +632,8 @@ src/
       mcp-bridge.ts      #     what the AI CLI starts: stdio ↔ the socket of mcp-server.ts
   process/               # safe subprocess runner (stdin, timeout, typed errors)
     run-command.ts       #   runCommand(), runCommandBytes(): return the exit code, never interpret it;
-                         #   detached children in their own process group, killDetachedChildren()
+                         #   detached children in their own process group, killDetachedChildren();
+                         #   an AbortSignal stops the child (its group) like the timeout
     run-interactive.ts   #   runInteractive(): a command with stdio inherited (the terminal is
                          #   its own), its exit code (128 + n for a signal), not found, ended by
                          #   an AbortSignal; spawn injectable
@@ -686,7 +688,7 @@ src/
     git-checkout.ts      #   GitCheckout: one commit of the mirror (log, blame); the git environment
                          #   without tokens
     git-mirror.ts        #   openGitMirror(): bare repository in the cache, fetch --depth 1 into
-                         #   refs/phada/*, deepen to 200 commits for history, ls-tree -r,
+                         #   refs/phada/* (stopped by the caller's signal), deepen to 200 commits for history, ls-tree -r,
                          #   cat-file --batch
     mirror-lock.ts       #   withMirrorLock(): one fetch at a time per mirror, stale locks taken over
     repo-path.ts         #   toRepoPath(): paths inside the repository only

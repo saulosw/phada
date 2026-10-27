@@ -2,6 +2,7 @@ import { realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { describe, expect, it } from 'vitest'
 import {
+  CommandAbortedError,
   CommandError,
   CommandNotFoundError,
   CommandOutputTooLargeError,
@@ -117,6 +118,32 @@ describe('runCommand', () => {
     expect(performance.now() - startedAt).toBeLessThan(2_000)
   })
 
+  it('kills the child and throws CommandAbortedError when the signal aborts', async () => {
+    const startedAt = performance.now()
+    const cancel = new AbortController()
+    const running = captureError(
+      runCommand(...node('setInterval(() => {}, 1000)'), { signal: cancel.signal }),
+    )
+    setTimeout(() => cancel.abort(), 100)
+
+    const error = await running
+
+    expect(error).toBeInstanceOf(CommandAbortedError)
+    expect(error).toMatchObject({ command: NODE })
+    expect(performance.now() - startedAt).toBeLessThan(3_000)
+  })
+
+  it('never starts a child for a signal already aborted', async () => {
+    const cancel = new AbortController()
+    cancel.abort()
+
+    const error = await captureError(
+      runCommand(...node('process.stdout.write("ran")'), { signal: cancel.signal }),
+    )
+
+    expect(error).toBeInstanceOf(CommandAbortedError)
+  })
+
   it('throws CommandOutputTooLargeError when the output passes the limit', async () => {
     const error = await captureError(
       runCommand(...node('process.stdout.write("x".repeat(2000))'), { maxOutputLength: 100 }),
@@ -226,6 +253,21 @@ describe('detached children', () => {
     )
 
     expect(error).toBeInstanceOf(CommandTimeoutError)
+    expect(performance.now() - started).toBeLessThan(5_000)
+  })
+
+  it('stops a detached child and the children it started when the signal aborts', async () => {
+    const started = performance.now()
+    const cancel = new AbortController()
+    const running = captureError(
+      runCommand('/bin/sh', ['-c', "trap '' TERM; sleep 8; echo late"], {
+        detached: true,
+        signal: cancel.signal,
+      }),
+    )
+    setTimeout(() => cancel.abort(), 200)
+
+    expect(await running).toBeInstanceOf(CommandAbortedError)
     expect(performance.now() - started).toBeLessThan(5_000)
   })
 
