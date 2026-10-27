@@ -38,7 +38,7 @@ export function LanguageStep({ next }: SetupStepProps) {
     0,
   )
   const selected = picked ?? currentIndex
-  const change = useConfigChange((plan) => next(plan))
+  const change = useConfigChange((plan) => next({ written: plan }))
   useBack(change.open ? change.cancel : undefined)
   const pick = (index: number) => {
     pickedNow.current = index

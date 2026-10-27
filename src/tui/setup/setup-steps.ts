@@ -13,9 +13,13 @@ export interface SetupProgress {
   skipped: readonly SetupStepId[]
 }
 
+export interface StepResult {
+  written?: UserConfigPlan
+}
+
 export interface SetupStepProps {
   progress: SetupProgress
-  next(written?: UserConfigPlan): void
+  next(result?: StepResult): void
 }
 
 export interface SetupStep {

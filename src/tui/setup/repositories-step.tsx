@@ -9,7 +9,7 @@ export function RepositoriesStep({ next }: SetupStepProps) {
     <RepositoryPicker
       intro={m.intro}
       noToken={m.noToken}
-      onSaved={(plan) => next(plan)}
+      onSaved={(plan) => next({ written: plan })}
       onContinue={{ label: messages.setup.continue, run: () => next() }}
     />
   )

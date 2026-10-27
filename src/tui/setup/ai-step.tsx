@@ -4,5 +4,7 @@ import type { SetupStepProps } from './setup-steps.js'
 
 export function AiStep({ next }: SetupStepProps) {
   const messages = useMessages()
-  return <ProviderPicker intro={messages.setup.ai.intro} onSaved={(plan) => next(plan)} />
+  return (
+    <ProviderPicker intro={messages.setup.ai.intro} onSaved={(plan) => next({ written: plan })} />
+  )
 }

@@ -36,12 +36,17 @@ export function Setup({ onClose }: { onClose(): void }) {
     indexNow.current += 1
     setIndex(indexNow.current)
   }
-  const next: SetupStepProps['next'] = (written) =>
-    advance((current) =>
-      written === undefined || written.changes.length === 0
-        ? current
-        : { ...current, written: [...current.written, written] },
-    )
+  const next: SetupStepProps['next'] = (result = {}) =>
+    advance((current) => {
+      const { written, ...outcome } = result
+      return {
+        ...current,
+        ...outcome,
+        ...(written === undefined || written.changes.length === 0
+          ? {}
+          : { written: [...current.written, written] }),
+      }
+    })
   const skip = () => {
     const skipped = SETUP_STEPS[indexNow.current]
     if (skipped === undefined || !skipped.skippable) return
