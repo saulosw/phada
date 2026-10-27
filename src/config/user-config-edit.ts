@@ -173,10 +173,14 @@ function ollamaWithoutModel(
   after: ConfigFile,
   changes: readonly UserConfigChange[],
 ): boolean {
-  if (after.provider !== 'ollama') return false
+  if (after.provider !== 'ollama' || !changes.some(touchesProviderOrModel)) return false
   if (after.model === undefined) return true
   const switched = before.provider !== 'ollama'
   return switched && !changes.some((change) => change.kind === 'set' && change.key === 'model')
+}
+
+function touchesProviderOrModel(change: UserConfigChange): boolean {
+  return (change.kind === 'set' || change.kind === 'unset') && change.key !== 'language'
 }
 
 function valueChanges(before: ConfigFile, after: ConfigFile): ValueChange[] {

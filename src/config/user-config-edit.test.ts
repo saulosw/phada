@@ -138,6 +138,21 @@ describe('planUserConfigEdit', () => {
     ).toEqual([{ key: 'language', before: null, after: 'es' }])
   })
 
+  it('leaves an ollama config without a model alone when the change is about something else', () => {
+    const current = 'provider: ollama\n'
+
+    expect(planned(current, [{ kind: 'set', key: 'language', value: 'es' }]).changes).toEqual([
+      { key: 'language', before: null, after: 'es' },
+    ])
+    expect(planned(current, [{ kind: 'watch', repo: 'acme/api' }]).changes).toEqual([
+      { key: 'watch.repos', added: ['acme/api'], removed: [] },
+    ])
+    expect(plan(current, [{ kind: 'set', key: 'provider', value: 'ollama' }])).toEqual({
+      ok: false,
+      reason: 'ollama-without-model',
+    })
+  })
+
   describe('watched repositories', () => {
     const WATCHING = `watch:
   interval: 5m # often
