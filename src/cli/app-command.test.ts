@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { Readable } from 'node:stream'
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 import { memoryFiles } from '../../test/support/memory-files.js'
 import { ConfigError } from '../config/errors.js'
 import { HISTORY_MIGRATIONS } from '../store/history-migrations.js'
@@ -15,6 +15,12 @@ import type { AppCommandDeps, StopSignal } from './app-command.js'
 import { UsageError } from './errors.js'
 import { USER_CONFIG_TEMPLATE } from './init-templates.js'
 import { pullRequestFixture } from '../../test/support/pull-request.js'
+import { memoryMirror } from '../../test/support/memory-mirror.js'
+import { createExtractor } from '../repo-map/extract.js'
+import type { GitMirrorOptions } from '../repository/git-mirror.js'
+import { CheckoutUnavailableError } from '../repository/git-checkout.js'
+import { openIndexStore } from '../store/index-store.js'
+import type { IndexingProgress } from '../app/index-repository.js'
 import { reviewState } from '../../test/support/review-state.js'
 
 function terminal(isTTY: boolean) {
@@ -41,6 +47,7 @@ function deps(
     ollamaFetch?: AppCommandDeps['ollamaFetch']
     ghToken?: string
     dataHome?: string
+    openMirror?: AppCommandDeps['openMirror']
   } = {},
 ) {
   const ghCalls: string[][] = []
@@ -109,6 +116,10 @@ function deps(
     ...(options.github ?? fakeGitHub()).readers,
     ...(options.runInteractive === undefined ? {} : { runInteractive: options.runInteractive }),
     ...(options.ollamaFetch === undefined ? {} : { ollamaFetch: options.ollamaFetch }),
+    openMirror:
+      options.openMirror ?? (async () => memoryMirror({ 'src/a.ts': 'export const a = 1\n' })),
+    openIndexStore: async () => openIndexStore(join(indexDir, `i${(stores += 1)}.sqlite`)),
+    createExtractor,
   }
   app.env.PHADA_DATA_HOME = options.dataHome ?? '/data'
   const send = (signal: StopSignal) => {
@@ -116,6 +127,10 @@ function deps(
   }
   return { app, opened, files, historyPaths, ghCalls, userTokens, send }
 }
+
+const indexDir = mkdtempSync(join(tmpdir(), 'phada-app-index-'))
+let stores = 0
+afterAll(() => rmSync(indexDir, { recursive: true, force: true }))
 
 const MISSING = new UsageError('Missing the command, e.g. phada review owner/repo#123.')
 
@@ -646,6 +661,107 @@ describe('the user repositories reader', () => {
     await runApp(app)
 
     expect(seen).toEqual([{ status: 'no-token', repositories: [] }])
+  })
+})
+
+describe('the indexer', () => {
+  function indexing(
+    during: (appDeps: AppDeps) => Promise<void>,
+    options: Parameters<typeof deps>[0] = {},
+  ) {
+    const mirrors: GitMirrorOptions[] = []
+    const opened = deps({
+      env: { GITHUB_TOKEN: 'ghp_env', PHADA_CACHE_HOME: '/cache' },
+      during,
+      openMirror: async (mirror) => {
+        mirrors.push(mirror)
+        return memoryMirror({
+          'src/a.ts': 'export function a() {}\n',
+          'src/b.ts': 'export function b() {}\n',
+          'README.md': '# shop\n',
+        })
+      },
+      ...options,
+    })
+    return { ...opened, mirrors }
+  }
+
+  it('indexes a repository in the mirror of the cache with the token, reporting each phase', async () => {
+    const progress: IndexingProgress[] = []
+    const seen: unknown[] = []
+    const { app, mirrors } = indexing(async (appDeps) => {
+      seen.push(
+        await appDeps.indexRepository('acme/shop', {
+          signal: new AbortController().signal,
+          onProgress: (step) => progress.push(step),
+        }),
+      )
+    })
+
+    await runApp(app)
+
+    expect(seen).toEqual([{ kind: 'indexed', files: 2 }])
+    expect(mirrors).toEqual([
+      expect.objectContaining({
+        dir: '/cache/repos/acme/shop.git',
+        owner: 'acme',
+        repo: 'shop',
+        token: 'ghp_env',
+      }),
+    ])
+    expect(progress).toEqual([
+      { phase: 'fetching' },
+      { phase: 'extracting', done: 0, total: 2 },
+      { phase: 'extracting', done: 1, total: 2 },
+      { phase: 'extracting', done: 2, total: 2 },
+    ])
+  })
+
+  it('stops when cancelled, saying how far it got', async () => {
+    const seen: unknown[] = []
+    const cancel = new AbortController()
+    cancel.abort()
+    const { app } = indexing(async (appDeps) => {
+      seen.push(
+        await appDeps.indexRepository('acme/shop', { signal: cancel.signal, onProgress: () => {} }),
+      )
+    })
+
+    await runApp(app)
+
+    expect(seen).toEqual([{ kind: 'cancelled', extracted: 0, total: 2 }])
+  })
+
+  it('gives a failure back as its message', async () => {
+    const seen: unknown[] = []
+    const { app } = indexing(
+      async (appDeps) => {
+        const options = { signal: new AbortController().signal, onProgress: () => {} }
+        seen.push(await appDeps.indexRepository('acme/secret', options))
+      },
+      {
+        env: { GITHUB_TOKEN: 'ghp_env' },
+        openMirror: async () => {
+          throw new CheckoutUnavailableError('no-access', 'Could not fetch HEAD from acme/secret')
+        },
+      },
+    )
+    await runApp(app)
+    expect(seen).toEqual([{ kind: 'failed', message: 'Could not fetch HEAD from acme/secret' }])
+  })
+
+  it('says there is no token without fetching', async () => {
+    const seen: unknown[] = []
+    const { app, mirrors } = indexing(
+      async (appDeps) => {
+        const options = { signal: new AbortController().signal, onProgress: () => {} }
+        seen.push(await appDeps.indexRepository('acme/shop', options))
+      },
+      { env: {} },
+    )
+    await runApp(app)
+    expect(seen).toEqual([{ kind: 'no-token' }])
+    expect(mirrors).toEqual([])
   })
 })
 

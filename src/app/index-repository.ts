@@ -67,6 +67,20 @@ export interface IndexCancelled {
   total: number
 }
 
+export type IndexingProgress =
+  { phase: 'fetching' } | { phase: 'extracting'; done: number; total: number }
+
+export interface IndexingOptions {
+  signal: AbortSignal
+  onProgress(progress: IndexingProgress): void
+}
+
+export type IndexingResult =
+  | { kind: 'indexed'; files: number }
+  | { kind: 'cancelled'; extracted: number; total: number }
+  | { kind: 'no-token' }
+  | { kind: 'failed'; message: string }
+
 export interface IndexRepositoryEvents {
   extracting(total: number): void
   extracted(done: number, total: number): void

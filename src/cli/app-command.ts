@@ -1,4 +1,5 @@
 import type { ProviderCheckers } from '../app/check-providers.js'
+import type { IndexingOptions } from '../app/index-repository.js'
 import { applyUserConfigPlan, planUserConfig } from '../app/edit-user-config.js'
 import { readReviewDetail, readReviews } from '../app/read-history.js'
 import { readLearnings } from '../app/read-learnings.js'
@@ -48,13 +49,16 @@ import { USER_CONFIG_TEMPLATE } from './init-templates.js'
 import { ghTokenReader, readGitHubToken } from './github-token.js'
 import type { GhTokenReader, RunGh } from './github-token.js'
 import type { TextOutput } from './progress.js'
+import { indexForApp } from './app-index.js'
+import type { AppIndexDeps } from './app-index.js'
 import { SLACK_APP_TOKEN, SLACK_BOT_TOKEN } from './review-event-sinks.js'
 import { terminalHandOff } from './terminal-hand-off.js'
 import type { TerminalHandOff } from './terminal-hand-off.js'
 
 export type StopSignal = 'SIGINT' | 'SIGTERM'
 
-export interface AppCommandDeps extends Omit<RulesReaderDeps, 'ghToken'> {
+export interface AppCommandDeps
+  extends Omit<RulesReaderDeps, 'ghToken'>, Omit<AppIndexDeps, 'ghToken'> {
   env: NodeJS.ProcessEnv
   home: string
   cwd: string
@@ -220,6 +224,8 @@ async function appDeps(
         deps.files,
       ),
     applyConfig: (plan: UserConfigPlan) => applyUserConfigPlan(plan, deps.files),
+    indexRepository: (repo: string, options: IndexingOptions) =>
+      indexForApp(repo, options, { ...deps, ghToken }),
   }
   const language = await readLanguage().catch(() => undefined)
   return language === undefined ? base : { ...base, language }

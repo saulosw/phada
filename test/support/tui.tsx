@@ -199,6 +199,7 @@ export function fakeAppDeps(scheduler: Scheduler, overrides: Partial<AppDeps> = 
       message: 'no config in this test',
     }),
     applyConfig: async () => ({ ok: true, written: true }),
+    indexRepository: async () => ({ kind: 'indexed', files: 0 }),
     ...overrides,
   }
 }

@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useRef } from 'react'
 import type { AppliedUserConfig, UserConfigPlanResult } from '../app/edit-user-config.js'
 import type { HistoryFilter, ListedRun, ReviewDetail } from '../app/read-history.js'
 import type { GitHubAccess } from '../app/read-home.js'
+import type { IndexingOptions, IndexingResult } from '../app/index-repository.js'
 import type { Learnings } from '../app/read-learnings.js'
 import type {
   ModelPullOptions,
@@ -61,6 +62,7 @@ export interface AppDeps {
   pullModel(model: string, options: ModelPullOptions): Promise<OllamaPullResult>
   planConfig(changes: readonly UserConfigChange[]): Promise<UserConfigPlanResult>
   applyConfig(plan: UserConfigPlan): Promise<AppliedUserConfig>
+  indexRepository(repo: string, options: IndexingOptions): Promise<IndexingResult>
 }
 
 export interface KeyHint {
