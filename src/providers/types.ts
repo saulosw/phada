@@ -128,3 +128,15 @@ export interface OllamaStatus {
 }
 
 export type ProviderStatus = CliStatus | OllamaStatus
+
+export interface OllamaPullProgress {
+  status: string
+  completed: number | null
+  total: number | null
+}
+
+export type OllamaPullResult =
+  | { kind: 'pulled' }
+  | { kind: 'cancelled' }
+  | { kind: 'stopped' }
+  | { kind: 'failed'; message: string | null }
