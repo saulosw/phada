@@ -1,8 +1,12 @@
 import { Text } from 'ink'
 import type { ReactNode } from 'react'
 import { errorMessage } from '../app/error-message.js'
+import type { ProviderReport } from '../app/read-provider.js'
+import type { Loaded } from './data-hooks.js'
 import type { HandOffOutcome } from './hand-off.js'
 import type { UiMessages } from './i18n/messages.js'
+import type { LoginProvider } from './provider-lines.js'
+import { PROVIDER_NAMES } from './provider-names.js'
 import type { Theme } from './theme.js'
 import { oneLine, wrapText } from './text-fit.js'
 
@@ -12,18 +16,40 @@ export interface LoginDraw {
   width: number
 }
 
+export interface AiLogin {
+  provider: LoginProvider
+  outcome: HandOffOutcome
+}
+
+export interface LoginJudgement {
+  notFound?: string
+  loggedIn?: boolean
+}
+
+export function aiLoginLines(
+  login: AiLogin | undefined,
+  checked: Loaded<ProviderReport>,
+  draw: LoginDraw,
+): ReactNode[] {
+  if (login === undefined) return []
+  const loggedIn = loggedInAfter(checked, login.provider)
+  return loginOutcomeLines(PROVIDER_NAMES[login.provider], login.outcome, draw, {
+    ...(loggedIn === undefined ? {} : { loggedIn }),
+  })
+}
+
 export function loginOutcomeLines(
   name: string,
   outcome: HandOffOutcome,
   { messages, theme, width }: LoginDraw,
-  notFound?: string,
+  { notFound, loggedIn }: LoginJudgement = {},
 ): ReactNode[] {
   const { colors } = theme
   const lines = (text: string, color: string | undefined) =>
     wrapText(text, width).map((line) => <Text color={color}>{line}</Text>)
   switch (outcome.kind) {
     case 'exited':
-      return outcome.exitCode === 0
+      return (loggedIn ?? outcome.exitCode === 0)
         ? []
         : lines(messages.provider.loginNotCompleted(name), colors.warn)
     case 'not-found':
@@ -31,4 +57,15 @@ export function loginOutcomeLines(
     case 'failed':
       return lines(messages.handOff.failed(oneLine(errorMessage(outcome.error))), colors.error)
   }
+}
+
+function loggedInAfter(
+  { state, loading }: Loaded<ProviderReport>,
+  provider: LoginProvider,
+): boolean | undefined {
+  if (loading || state.status !== 'ready') return undefined
+  const status = state.value.providers.find((checked) => checked.provider === provider)
+  if (status === undefined || !('login' in status)) return undefined
+  if (status.login.state === 'logged-in') return true
+  return status.login.state === 'logged-out' ? false : undefined
 }

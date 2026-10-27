@@ -16,9 +16,9 @@ import { failedText } from '../data-view.js'
 import { useHandOff } from '../hand-off.js'
 import { LanguagePicker, languageName } from '../language-picker.js'
 import { ProviderPicker } from '../provider-picker.js'
-import type { HandOffOutcome } from '../hand-off.js'
 import { PROVIDER_NAMES } from '../provider-names.js'
-import { loginOutcomeLines } from '../login-lines.js'
+import { aiLoginLines } from '../login-lines.js'
+import type { AiLogin } from '../login-lines.js'
 import { modelsLine, nextStepLine, stateIcon, statusParts } from '../provider-lines.js'
 import type { LoginProvider } from '../provider-lines.js'
 import type { UiMessages } from '../i18n/messages.js'
@@ -29,11 +29,6 @@ import type { Theme } from '../theme.js'
 import { fit, oneLine, shortenHome, wrapText } from '../text-fit.js'
 
 const MAX_MCP_NAME = 24
-
-interface LoginAttempt {
-  provider: LoginProvider
-  outcome: HandOffOutcome
-}
 
 interface Draw {
   messages: UiMessages
@@ -82,9 +77,10 @@ function ProviderView({
   const size = useScreenSize()
   const setup = usePolled(readProviderSetup)
   const language = usePolled(readLanguage)
-  const { state: checked, reload } = useLoaded('providers', readProviders)
+  const loaded = useLoaded('providers', readProviders)
+  const { state: checked, reload } = loaded
   const handOff = useHandOff()
-  const [login, setLogin] = useState<LoginAttempt>()
+  const [login, setLogin] = useState<AiLogin>()
   const target = checked.status === 'ready' ? loginTarget(checked.value) : undefined
   const editable = setup.status === 'ready'
   const checkedAgain = useRef(false)
@@ -117,9 +113,7 @@ function ProviderView({
       : []),
     <Text> </Text>,
     ...providerLines(checked, draw),
-    ...(login === undefined
-      ? []
-      : loginOutcomeLines(PROVIDER_NAMES[login.provider], login.outcome, draw)),
+    ...aiLoginLines(login, loaded, draw),
     ...(setup.status === 'ready' ? [<Text> </Text>, ...mcpLines(setup.value, draw)] : []),
   ]
   useScreenKeys([

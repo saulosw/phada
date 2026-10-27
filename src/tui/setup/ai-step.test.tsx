@@ -292,6 +292,18 @@ describe('the AI step', () => {
     expect(handOffs).toHaveLength(2)
   })
 
+  it('says a login that ended with 0 but left the CLI logged out was not completed', async () => {
+    const { press, reach, seeing, frame } = openAiStep({
+      reports: [report(OLLAMA_STOPPED, CLAUDE_OUT)],
+      handOff: { kind: 'exited', exitCode: 0 },
+    })
+    await reach()
+    await seeing('logged out')
+    await press(KEYS.enter)
+    await seeing('Claude Code login not completed.')
+    expect(frame()).toContain('log in with claude auth login')
+  })
+
   it('chooses nothing for an AI CLI that is not installed', async () => {
     const { footer, press, reach, seeing, plans, frame } = openAiStep()
     await reach()

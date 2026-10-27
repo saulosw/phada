@@ -407,7 +407,9 @@ src/
     provider-lines.tsx   #   statusParts(), stateIcon(), modelsLine(), nextStepLine(): an AI
                          #   provider as checked
     login-lines.tsx      #   loginOutcomeLines(): the end of a login handed to its CLI (an AI CLI
-                         #   or gh) as wrapped lines
+                         #   or gh) as wrapped lines; aiLoginLines(): an AI CLI's login judged by
+                         #   the check after it (still logged out → not completed, whatever the
+                         #   exit code), by the exit code while that check runs
     provider-picker.tsx  #   ProviderPicker: the AIs as checked (r) → ↑/↓ Enter: a logged-out CLI
                          #   logs in (handed over, checked again), a ready CLI → its default
                          #   model (model unset) or a typed one, a running Ollama → an installed
@@ -437,8 +439,8 @@ src/
                          #   screens list it
     data-hooks.ts        #   usePolled() (local data, at once, every 2 s on the scheduler and when
                          #   its key changes), useLoaded(key) (slow data through the load cache:
-                         #   the last value at once, loaded again on open after 30 s and on r);
-                         #   DataState
+                         #   the last value at once, loaded again on open after 30 s and on r;
+                         #   loading while a load runs); DataState
     load-cache.ts        #   createLoadCache(): the app's last slow loads by name (GitHub, the AI
                          #   checks, rules per repository and pull request), a running load
                          #   joined, fresh for FRESH_MS on the app's clock; LoadCacheContext

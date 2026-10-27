@@ -83,8 +83,10 @@ Codex, run by the CLI without the GitHub tokens) or `{ kind: 'editor', file }` (
 `$EDITOR` › `vi`, resolved by the CLI). It resolves to `exited` with the exit code, `not-found` with the command, or
 `failed` with the error, never throws, and to `undefined` when another hand-off is running; ignore
 the key while `running`. Data that the command changes is read again on return: `reload()` of
-`useLoaded` forces a slow load past `FRESH_MS`. An exit code other than 0 is a cancel or a failure
-to show in one line; the app keeps working.
+`useLoaded` forces a slow load past `FRESH_MS` (its `loading` is true meanwhile). An exit code
+other than 0 is a cancel or a failure to show in one line; the app keeps working. A login is judged
+by that check, not by the exit code alone (`codex login` ends with 0 when cancelled):
+`aiLoginLines()` (`login-lines.tsx`) says "not completed" while the CLI is still logged out.
 
 ## Changing the user config (`config-change.tsx`)
 

@@ -18,10 +18,10 @@ import { configChangeLines, useConfigChange } from './config-change.js'
 import { useLoaded } from './data-hooks.js'
 import { failedText } from './data-view.js'
 import { useHandOff } from './hand-off.js'
-import type { HandOffOutcome } from './hand-off.js'
 import type { UiMessages } from './i18n/messages.js'
 import { modelPullLines, useModelPull } from './model-pull.js'
-import { loginOutcomeLines } from './login-lines.js'
+import { aiLoginLines } from './login-lines.js'
+import type { AiLogin } from './login-lines.js'
 import { modelsLine, nextStepLine, stateIcon, statusParts } from './provider-lines.js'
 import type { LoginProvider } from './provider-lines.js'
 import { PROVIDER_NAMES } from './provider-names.js'
@@ -39,11 +39,6 @@ type ModelOption =
   | { kind: 'type' }
 
 type Mode = 'providers' | 'models'
-
-interface LoginAttempt {
-  provider: LoginProvider
-  outcome: HandOffOutcome
-}
 
 interface Draw {
   messages: UiMessages
@@ -65,11 +60,12 @@ export function ProviderPicker({
   const messages = useMessages()
   const theme = useTheme()
   const size = useScreenSize()
-  const { state: checked, reload } = useLoaded('providers', readProviders)
+  const loaded = useLoaded('providers', readProviders)
+  const { state: checked, reload } = loaded
   const report = checked.status === 'ready' ? checked.value : undefined
   const providers = report?.providers ?? []
   const handOff = useHandOff()
-  const [login, setLogin] = useState<LoginAttempt>()
+  const [login, setLogin] = useState<AiLogin>()
   const [mode, setMode] = useState<Mode>('providers')
   const modeNow = useRef<Mode>('providers')
   const [providerPick, setProviderPick] = useState<number>()
@@ -222,6 +218,7 @@ export function ProviderPicker({
   }
   const nameWidth = Math.max(...Object.values(PROVIDER_NAMES).map(textWidth))
   if (mode === 'providers' || selected === undefined) {
+    const loginLines = aiLoginLines(login, loaded, draw)
     const lines = [
       ...head,
       ...providers.flatMap((status, index) =>
@@ -235,12 +232,7 @@ export function ProviderPicker({
             ...wrapText(m.serveHint, size.columns).map((line) => <Text>{line}</Text>),
           ]
         : []),
-      ...(login === undefined
-        ? []
-        : [
-            <Text> </Text>,
-            ...loginOutcomeLines(PROVIDER_NAMES[login.provider], login.outcome, draw),
-          ]),
+      ...(loginLines.length === 0 ? [] : [<Text> </Text>, ...loginLines]),
       ...tail,
     ]
     return <ScrollText lines={lines} rows={size.rows} active={false} />

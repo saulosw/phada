@@ -45,6 +45,7 @@ export function usePolled<T>(
 
 export interface Loaded<T> {
   state: DataState<T>
+  loading: boolean
   reload(): void
 }
 
@@ -68,5 +69,5 @@ export function useLoaded<T>(key: string, load: () => Promise<T>): Loaded<T> {
   useScreenInput((input) => {
     if (input === 'r') reload()
   })
-  return { state: entry.state as DataState<T>, reload }
+  return { state: entry.state as DataState<T>, loading: entry.loading, reload }
 }

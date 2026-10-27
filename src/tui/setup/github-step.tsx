@@ -102,6 +102,8 @@ function accessLines(
 
 function loginLines(login: HandOffOutcome | undefined, draw: LoginDraw): ReactNode[] {
   if (login === undefined) return []
-  const lines = loginOutcomeLines('gh', login, draw, draw.messages.setup.github.notInstalled)
+  const lines = loginOutcomeLines('gh', login, draw, {
+    notFound: draw.messages.setup.github.notInstalled,
+  })
   return lines.length === 0 ? [] : [<Text> </Text>, ...lines]
 }

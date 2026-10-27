@@ -348,6 +348,19 @@ describe('the Provider screen', () => {
       expect(targets).toHaveLength(2)
     })
 
+    it('says the login was not completed when the CLI ends with 0 but is still logged out', async () => {
+      const { frame, press, showing, checks } = loginFlow({ kind: 'exited', exitCode: 0 }, [
+        report([claude({ chosen: false }), loggedOut(codex), ollama({ chosen: true })]),
+      ])
+      await showing('→ log in with codex login')
+      await press('l')
+      await showing('Codex login not completed.')
+      expect(frame()).toContain('Codex login not completed.')
+      expect(checks()).toBe(2)
+      expect(frame()).toContain('→ log in with codex login')
+      expectFits(frame(), { columns: 80, rows: 24 })
+    })
+
     it('names a login command it could not find', async () => {
       const { frame, press, showing } = loginFlow({ kind: 'not-found', command: 'claude' }, [
         report([loggedOut(claude), codex(), ollama()]),
