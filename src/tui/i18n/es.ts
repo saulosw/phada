@@ -585,11 +585,6 @@ export const spanish: UiMessages = {
       created: (path) => `Creado ${path}`,
       kept: (path) => `${path} ya existe, sin cambios`,
     },
-    language: {
-      intro: 'El idioma de esta app y de las revisiones que Phada escribe.',
-      current: 'actual',
-      choose: 'elegir',
-    },
     summary: {
       written: (path) => `Guardado en ${path}:`,
       nothing: 'No se guardó nada en tu configuración.',
@@ -604,6 +599,12 @@ export const spanish: UiMessages = {
       review: 'revisa un pull request',
       home: 'ir al Inicio',
     },
+  },
+  language: {
+    title: 'Idioma',
+    intro: 'El idioma de esta app y de las revisiones que Phada escribe.',
+    current: 'actual',
+    choose: 'elegir',
   },
   config: {
     create: (path) => `¿Crear ${path}?`,

@@ -575,11 +575,6 @@ export const english: UiMessages = {
       created: (path) => `Created ${path}`,
       kept: (path) => `${path} exists, left unchanged`,
     },
-    language: {
-      intro: 'The language of this app and of the reviews Phada writes.',
-      current: 'current',
-      choose: 'choose',
-    },
     summary: {
       written: (path) => `Written to ${path}:`,
       nothing: 'Nothing was written to your config.',
@@ -593,6 +588,12 @@ export const english: UiMessages = {
       review: 'reviews one pull request',
       home: 'go to Home',
     },
+  },
+  language: {
+    title: 'Language',
+    intro: 'The language of this app and of the reviews Phada writes.',
+    current: 'current',
+    choose: 'choose',
   },
   config: {
     create: (path) => `Create ${path}?`,

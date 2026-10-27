@@ -61,6 +61,7 @@ export interface UiMessages {
   learnings: LearningsMessages
   rules: RulesMessages
   setup: SetupMessages
+  language: { title: string; intro: string; current: string; choose: string }
   config: ConfigMessages
 }
 
@@ -162,7 +163,6 @@ export interface SetupMessages {
     created(path: string): string
     kept(path: string): string
   }
-  language: { intro: string; current: string; choose: string }
   summary: {
     written(path: string): string
     nothing: string

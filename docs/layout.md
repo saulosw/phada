@@ -360,7 +360,7 @@ src/
                          #   its prompt: each pass, its data blocks and instructions)
     setup/               #   the setup, outside the tabs: setup.tsx (Setup: "step n of 7" and the
                          #   step's title, s skips, Esc asks to leave (a step's back first),
-                         #   y/Enter → Home; each step drawn as a screen in a smaller area, its
+                         #   s hidden while the step holds Esc; y/Enter → Home; each step drawn as a screen in a smaller area, its
                          #   keys and back gathered by the setup), setup-steps.ts (SETUP_STEPS
                          #   in order, SetupStep, SetupStepProps: progress and next(result): the
                          #   config written, the indexing and the init of the step),
@@ -369,8 +369,7 @@ src/
                          #   gh missing → install it or export GITHUB_TOKEN), ai-step.tsx (the
                          #   ProviderPicker → the change → written), repositories-step.tsx (the
                          #   RepositoryPicker → the change → written; no token → Enter goes
-                         #   on), language-step.tsx
-                         #   (en, pt, es → the change → written, the app speaking it at once),
+                         #   on), language-step.tsx (the LanguagePicker → written),
                          #   graph-step.tsx (the watched repositories of readRepositories;
                          #   Enter indexes them in series with useIndexSeries, "N of M files",
                          #   Esc stops; each one indexed, stopped, not started or failed in one
@@ -401,6 +400,9 @@ src/
                          #   owner/repo; Enter → watch and unwatch changes (useConfigChange), or
                          #   onContinue when nothing changed; a failed listing in one line, the
                          #   typed field still there
+    language-picker.tsx  #   LanguagePicker: en, pt, es with the current one marked → the change
+                         #   of language (useConfigChange) → onDone(plan), the app speaking it at
+                         #   once; the current one picked → onDone() without writing
     index-series.ts      #   useIndexSeries(): AppDeps.indexRepository one repository after the
                          #   other with an AbortController (stop() cancels the current one and
                          #   starts no other; aborted on unmount), each one waiting, running with
