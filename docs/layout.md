@@ -194,7 +194,8 @@ src/
     terminal-hand-off.ts #   terminalHandOff(): handOff (a command, the login of an AI CLI
                          #   without the GitHub tokens, or a file in $VISUAL › $EDITOR › vi split
                          #   on spaces, run in the app's folder with its environment, the
-                         #   app's stdin paused first so every key goes to the command;
+                         #   app's stdin paused first so every key goes to the command, and
+                         #   the cursor back at the line start after it, where the app redraws;
                          #   runInteractive injectable) and the app's signals: SIGINT ignored
                          #   while the command runs (Ctrl-C is the command's), SIGTERM ends the
                          #   command and the app

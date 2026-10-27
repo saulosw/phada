@@ -3,12 +3,16 @@ import { loginCommand } from '../app/read-provider.js'
 import { runInteractive } from '../process/run-interactive.js'
 import { withoutGitHubTokens } from '../providers/cli-run.js'
 import type { AppDeps, AppHost, HandOffTarget } from '../tui/open-app.js'
+import type { TextOutput } from './progress.js'
 
 const DEFAULT_EDITOR = 'vi'
+
+const LINE_START = '\r'
 
 export interface TerminalHandOffDeps {
   env: NodeJS.ProcessEnv
   stdin: NodeJS.ReadableStream
+  stdout: TextOutput
   cwd: string
   onSignal: AppHost['onSignal']
   runInteractive?: typeof runInteractive
@@ -31,6 +35,7 @@ export function terminalHandOff(deps: TerminalHandOffDeps): TerminalHandOff {
       try {
         return await run(command, args, { cwd: deps.cwd, env, signal: running.signal })
       } finally {
+        deps.stdout.write(LINE_START)
         if (child === running) child = undefined
       }
     },

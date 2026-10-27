@@ -499,6 +499,29 @@ describe('handing the terminal over', () => {
     expect(events).toEqual(['pause', 'run'])
   })
 
+  it('returns the cursor to the start of the line after the command, where the app redraws', async () => {
+    const events: string[] = []
+    const { run } = runner(async () => {
+      events.push('run')
+      return { kind: 'exited', exitCode: 0 }
+    })
+    const { app } = deps({
+      runInteractive: run,
+      during: async (appDeps) => {
+        await appDeps.handOff({ kind: 'ai-login', provider: 'codex' })
+      },
+    })
+    app.stdout = {
+      isTTY: true,
+      write: (text: string) => {
+        events.push(`write ${JSON.stringify(text)}`)
+        return true
+      },
+    }
+    await runApp(app)
+    expect(events).toEqual(['run', 'write "\\r"'])
+  })
+
   it('leaves Ctrl-C to the command while it runs, and ends the app on it afterwards', async () => {
     const child = pending()
     const { run } = runner(() => child.promise)
