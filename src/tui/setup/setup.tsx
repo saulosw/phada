@@ -69,7 +69,7 @@ export function Setup({ onClose }: { onClose(): void }) {
         ]
       : [
           ...stepKeys,
-          ...(step.skippable ? [{ keys: 's', label: m.skip }] : []),
+          ...(step.skippable && !outer.typing ? [{ keys: 's', label: m.skip }] : []),
           ...(stepHasBack ? [] : [{ keys: 'Esc', label: m.leave }]),
         ],
   )
