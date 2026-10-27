@@ -1,4 +1,4 @@
-import { toTerminalText } from './terminal-text.js'
+import { toTerminalText } from '../app/terminal-text.js'
 
 const RULE_LINE = /^(\s*)(([-=*_])(?:\s*\3)*\s*)$/
 const BLOCK_MARKER = /^((?:\s*(?:>|[-*+]\s|\d{1,9}[.)]\s))*\s*)(#|<|```|~~~)/

@@ -62,8 +62,6 @@ export const english: Messages = {
   },
   github: {
     skillBody: (skill) => `Review by skill ${skill}`,
-    heading: '🦋 Phada review',
-    generatedWith: 'Generated with Phada 🦋',
     inlineComments: (bySeverity, count) =>
       `**${bySeverity} as ${count === 1 ? 'inline comment' : 'inline comments'}**`,
     stillOpenCount: (count) => `${count} still open from previous reviews`,
@@ -76,8 +74,8 @@ export const english: Messages = {
     onlyStillOpenTitle: 'no new findings',
     onlyStillOpen: (count, sha) =>
       count === 1
-        ? `No new problems in ${sha}. 1 Phada comment from previous reviews is still open: resolve it to get a full review of this commit.`
-        : `No new problems in ${sha}. ${count} Phada comments from previous reviews are still open: resolve them to get a full review of this commit.`,
+        ? `No new problems in ${sha}. 1 comment from previous reviews is still open: resolve it to get a full review of this commit.`
+        : `No new problems in ${sha}. ${count} comments from previous reviews are still open: resolve them to get a full review of this commit.`,
     preview: (index, total, place) => `===== Inline comment ${index}/${total} · ${place} =====`,
     fixedThreads: (count, sha) =>
       count === 1

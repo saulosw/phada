@@ -1,24 +1,14 @@
+import type { RepoStats } from '../app/read-history.js'
 import { destinationOf } from '../publish/feedback.js'
 import type { Destination, SignalKind } from '../publish/feedback.js'
 import type { FindingRecord, RunRecord } from '../store/history-store.js'
-import { toTerminalText } from './terminal-text.js'
+import { toTerminalText } from '../app/terminal-text.js'
 import { singleLine } from './markdown-text.js'
 import { shortSha } from './review-text.js'
 import { formatCount, formatLocalTime } from './units.js'
 
 const SCHEMA_VERSION = 1
 const WARNING = 'Signals, not verdicts: a dismissed finding may still have been right.'
-
-export interface RepoStats {
-  repo: string
-  published: number
-  fixed: number
-  dismissed: number
-  ignored: number
-  open: number
-  negativeReaction: number
-  humanReply: number
-}
 
 export function formatHistoryText(
   runs: readonly RunRecord[],
@@ -52,20 +42,6 @@ export function formatHistoryJson(
     null,
     2,
   )}\n`
-}
-
-export function feedbackStats(findings: readonly FindingRecord[]): RepoStats[] {
-  const byRepo = new Map<string, RepoStats>()
-  for (const finding of findings) {
-    const stats = byRepo.get(finding.repo) ?? emptyStats(finding.repo)
-    const kinds = currentKinds(finding)
-    stats.published++
-    stats[destinationOf(kinds)]++
-    if (kinds.includes('negative-reaction')) stats.negativeReaction++
-    if (kinds.includes('human-reply')) stats.humanReply++
-    byRepo.set(finding.repo, stats)
-  }
-  return [...byRepo.values()].sort((a, b) => a.repo.localeCompare(b.repo))
 }
 
 export function formatStatsText(stats: readonly RepoStats[], since: string | undefined): string {
@@ -175,17 +151,4 @@ function findingJson(finding: FindingRecord) {
 
 function currentKinds(finding: FindingRecord): SignalKind[] {
   return finding.signals.filter((signal) => signal.clearedAt === undefined).map(({ kind }) => kind)
-}
-
-function emptyStats(repo: string): RepoStats {
-  return {
-    repo,
-    published: 0,
-    fixed: 0,
-    dismissed: 0,
-    ignored: 0,
-    open: 0,
-    negativeReaction: 0,
-    humanReply: 0,
-  }
 }

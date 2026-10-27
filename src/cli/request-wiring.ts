@@ -12,6 +12,7 @@ import type { PullFacts } from '../watch/pull-facts.js'
 import type { LocalFileSystem } from '../config/local-files.js'
 import type { TextOutput } from './progress.js'
 import { whenChecker } from './run-when.js'
+import type { GitHubTokenDeps } from './github-token.js'
 
 export interface RequestWiringDeps {
   env: NodeJS.ProcessEnv
@@ -20,7 +21,7 @@ export interface RequestWiringDeps {
   fetchPullRequestMetadata: (options: FetchPullRequestOptions) => Promise<PullRequestMetadata>
 }
 
-export interface RequestCommandDeps extends RequestWiringDeps {
+export interface RequestCommandDeps extends RequestWiringDeps, GitHubTokenDeps {
   files: LocalFileSystem
   stdout: TextOutput
   stderr: TextOutput

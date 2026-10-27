@@ -11,12 +11,13 @@ import { english } from './i18n/en.js'
 import type { Messages } from './i18n/messages.js'
 import { codeFence, githubBlock, githubCell, githubLine } from './markdown-text.js'
 import { firstNames } from './name-list.js'
-import { modelLabel, shortSha } from './review-text.js'
+import { shortSha } from './review-text.js'
 
 export const GITHUB_BODY_LIMIT = 65_536
 
 const MAX_FILE_ROWS = 300
 const SEVERITIES: readonly Severity[] = ['P0', 'P1', 'P2']
+const BUTTERFLY = '🦋'
 
 export interface GitHubReview {
   body: string
@@ -28,7 +29,6 @@ interface BodyParts {
   summary: string
   skillBodies: string
   files: string
-  model: string
   stillOpen: Finding[]
   stillOpenOmitted: number
   worthChecking: Finding[]
@@ -67,10 +67,9 @@ export function formatIgnoredOnlyReview(
 ): GitHubReview {
   const sha = shortSha(headSha)
   const body = [
-    `## ${messages.github.heading}: ${messages.github.allIgnoredTitle}`,
+    `## ${BUTTERFLY} ${messages.github.allIgnoredTitle}`,
     messages.github.allIgnored(sha),
     leftOutLine(ignored, messages),
-    `---\n<sub>${messages.github.generatedWith} · ${sha}</sub>`,
     reviewMarker({ sha: headSha, findings: 0, ...(diff === undefined ? {} : { diff }) }),
   ]
     .filter((section) => section !== '')
@@ -105,11 +104,10 @@ function onlyStillOpenBody(
 ): string {
   const sha = shortSha(result.target.headSha)
   return [
-    `## ${messages.github.heading}: ${messages.github.onlyStillOpenTitle}`,
+    `## ${BUTTERFLY} ${messages.github.onlyStillOpenTitle}`,
     ci,
     messages.github.onlyStillOpen(plan.openThreads, sha),
     fixedLine(result, plan, messages),
-    `---\n<sub>${footer(result, githubLine(modelLabel(result)), messages)}</sub>`,
     markerOf(result),
   ]
     .filter((section) => section !== '')
@@ -133,7 +131,6 @@ function reviewBody(
       )
       .join('\n\n'),
     files: filesDetails(result.files, messages),
-    model: modelLabel(result),
     stillOpen: [...plan.stillOpen],
     stillOpenOmitted: 0,
     worthChecking: [...result.worthChecking],
@@ -146,7 +143,6 @@ function reviewBody(
   fit(parts, ['skillBodies', 'summary', 'reason'], render, limit, messages)
   omitToFit(parts, 'worthChecking', 'worthCheckingOmitted', render, limit)
   omitToFit(parts, 'stillOpen', 'stillOpenOmitted', render, limit)
-  fit(parts, ['model'], render, limit, messages)
   return render()
 }
 
@@ -160,7 +156,7 @@ function renderBody(
   const { score } = result
   const summary = githubBlock(parts.summary)
   return [
-    `## ${messages.github.heading}: ${score.value}/5 (${messages.scoreLabels[score.value]})`,
+    `## ${BUTTERFLY} ${score.value}/5 (${messages.scoreLabels[score.value]})`,
     ci,
     capitalize(githubBlock(parts.reason)),
     summary === '' ? '' : `### ${messages.summary}\n\n${summary}`,
@@ -177,7 +173,6 @@ function renderBody(
     ),
     messages.dropped(result.dropped),
     leftOutLine(result.ignored ?? [], messages),
-    `---\n<sub>${footer(result, githubLine(parts.model), messages)}</sub>`,
     markerOf(result),
   ]
     .filter((section) => section !== '')
@@ -248,15 +243,6 @@ function findingList(
   )
   if (omitted > 0) items.push(`- ${messages.moreItems(omitted)}`)
   return [`### ${heading}`, '', ...items].join('\n')
-}
-
-function footer(result: ReviewResult, model: string, messages: Messages): string {
-  const provider =
-    result.model === undefined ? result.providerId : `${result.providerId} (${model})`
-  const parts = [messages.github.generatedWith, provider]
-  if (result.verification !== undefined) parts.push(messages.verification(result.verification))
-  parts.push(shortSha(result.target.headSha))
-  return parts.join(' · ')
 }
 
 function findingComment(finding: Finding, limit: number, messages: Messages): ReviewComment {

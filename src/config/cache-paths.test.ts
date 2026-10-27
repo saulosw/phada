@@ -1,8 +1,16 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { indexFile, mirrorDir, pathSize, phadaCacheDir, repositoryCache } from './cache-paths.js'
+import {
+  indexFile,
+  mirrorDir,
+  observedFile,
+  observedRepositories,
+  pathSize,
+  phadaCacheDir,
+  repositoryCache,
+} from './cache-paths.js'
 
 describe('phadaCacheDir', () => {
   it('prefers PHADA_CACHE_HOME, then XDG_CACHE_HOME, then ~/.cache', () => {
@@ -53,5 +61,33 @@ describe('repositoryCache', () => {
     expect(repositoryCache({}, '/home/u', 'acme', 'shop').mirror).toBe(
       '/home/u/.cache/phada/repos/acme/shop.git',
     )
+  })
+})
+
+describe('observedRepositories', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'phada-observed-list-'))
+  afterAll(() => rmSync(dir, { recursive: true, force: true }))
+
+  it('lists the repositories with an observed file, and none without the folder', async () => {
+    expect(await observedRepositories(dir)).toEqual([])
+    mkdirSync(join(dir, 'observed', 'acme'), { recursive: true })
+    mkdirSync(join(dir, 'observed', 'zeta'), { recursive: true })
+    writeFileSync(join(dir, 'observed', 'acme', 'web.sqlite'), '')
+    writeFileSync(join(dir, 'observed', 'acme', 'shop.sqlite'), '')
+    writeFileSync(join(dir, 'observed', 'acme', 'shop.sqlite-wal'), '')
+    writeFileSync(join(dir, 'observed', 'zeta', 'notes.txt'), '')
+    writeFileSync(join(dir, 'observed', 'stray.sqlite'), '')
+
+    expect(await observedRepositories(dir)).toEqual(['acme/shop', 'acme/web'])
+  })
+
+  it('lists the repository of each file observedFile() names', async () => {
+    const cache = join(dir, 'named')
+    const path = observedFile(cache, 'Octo', 'Api')
+    mkdirSync(dirname(path), { recursive: true })
+    writeFileSync(path, '')
+
+    expect(path).toBe(join(cache, 'observed', 'octo', 'api.sqlite'))
+    expect(await observedRepositories(cache)).toEqual(['octo/api'])
   })
 })

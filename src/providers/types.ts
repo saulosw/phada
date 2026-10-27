@@ -95,3 +95,36 @@ export class ProviderError extends Error {
     this.reason = reason
   }
 }
+
+export type ProviderName = 'claude' | 'codex' | 'ollama'
+
+export type StatusProblem = 'timeout' | 'failed' | 'unexpected-output' | 'invalid-host'
+
+export type CliInstall =
+  | { state: 'installed'; version: string | null }
+  | { state: 'missing' }
+  | { state: 'unknown'; problem: StatusProblem }
+
+export type CliLogin =
+  | { state: 'logged-in'; method: string | null }
+  | { state: 'logged-out' }
+  | { state: 'unknown'; problem: StatusProblem | 'not-installed' }
+
+export interface CliStatus {
+  provider: 'claude' | 'codex'
+  install: CliInstall
+  login: CliLogin
+}
+
+export type OllamaServer =
+  | { state: 'running'; version: string | null; models: string[] }
+  | { state: 'stopped' }
+  | { state: 'unknown'; problem: StatusProblem }
+
+export interface OllamaStatus {
+  provider: 'ollama'
+  baseUrl: string | null
+  server: OllamaServer
+}
+
+export type ProviderStatus = CliStatus | OllamaStatus

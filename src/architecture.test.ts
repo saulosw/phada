@@ -6,6 +6,7 @@ interface Boundary {
   dir: string
   values: ReadonlySet<string>
   types: ReadonlySet<string>
+  typeDirs?: string[]
   expected: string[]
   globals?: string[]
 }
@@ -237,7 +238,12 @@ const APP: Boundary = {
     '../context/split-diff.js',
     '../skills/errors.js',
     '../config/merge-config.js',
+    '../config/layer-label.js',
+    '../config/mcp-servers.js',
     '../config/parse-config.js',
+    '../config/watch-settings.js',
+    '../config/duration.js',
+    '../config/schema.js',
     '../context/ignore.js',
     '../graph/impact.js',
     '../graph/linked-graph.js',
@@ -282,6 +288,7 @@ const APP: Boundary = {
     '../repository/work-tree.js',
     '../config/mcp-servers.js',
     '../config/types.js',
+    '../config/schema.js',
     '../config/watch-settings.js',
     '../context/types.js',
     '../github/check-runs.js',
@@ -331,6 +338,22 @@ const APP: Boundary = {
     'select-related.ts',
   ],
 }
+const TUI: Boundary = {
+  dir: 'tui',
+  values: new Set([
+    'ink',
+    'react',
+    '../app/error-message.js',
+    '../app/terminal-text.js',
+    '../app/read-home.js',
+    '../app/home-recommendation.js',
+    '../app/read-provider.js',
+  ]),
+  types: new Set(),
+  typeDirs: ['../app/', '../config/'],
+  expected: ['app.tsx', 'open-app.tsx', 'theme.ts', 'screens.ts', 'i18n/messages.ts'],
+  globals: ['process', 'console', 'setTimeout', 'setInterval', 'Date.now'],
+}
 const STATIC_MODULE = /^\s*(?:import|export)\s+(type\s+)?(?:[^'"]*?\bfrom\s+)?['"]([^'"]+)['"]/gm
 const DYNAMIC_MODULE = /\bimport\(\s*['"]([^'"]+)['"]\s*\)/g
 const STRING_LITERAL = /(['"`])(?:\\.|(?!\1)[^\\])*\1/g
@@ -340,7 +363,7 @@ function sourcesOf({ dir }: Boundary) {
   const url = new URL(`./${dir}/`, import.meta.url)
   return readdirSync(url, { recursive: true, encoding: 'utf8' })
     .map((name) => name.split('\\').join('/'))
-    .filter((name) => name.endsWith('.ts') && !name.endsWith('.test.ts'))
+    .filter((name) => /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name))
     .map((name) => ({ name, code: readFileSync(new URL(name, url), 'utf8') }))
 }
 
@@ -379,7 +402,8 @@ function isAllowedModule(
   return (
     fromRoot.startsWith('./') ||
     boundary.values.has(fromRoot) ||
-    (typeOnly && boundary.types.has(fromRoot))
+    (typeOnly && boundary.types.has(fromRoot)) ||
+    (typeOnly && (boundary.typeDirs ?? []).some((dir) => fromRoot.startsWith(dir)))
   )
 }
 
@@ -544,6 +568,35 @@ describe('app boundary rules', () => {
   })
 })
 
+describe('tui boundary rules', () => {
+  it('accepts Ink, React and type-only imports of the use cases and the config', () => {
+    const code = [
+      "import { Box, Text, useInput } from 'ink'",
+      "import { useState } from 'react'",
+      "import type { ConfigLayer } from '../config/types.js'",
+      "import type { WatchStatus } from '../app/watch-status.js'",
+      "import { App } from './app.js'",
+    ].join('\n')
+
+    expect(boundaryViolations(code, TUI, 'app.tsx')).toEqual([])
+  })
+
+  it.each([
+    ['the GitHub client', "import { fetchPullRequest } from '../github/pull-request.js'"],
+    ['a concrete provider', "import { ClaudeCliProvider } from '../providers/claude.js'"],
+    ['the CLI', "import { formatError } from '../cli/format-error.js'"],
+    [
+      'a value import of the config loader',
+      "import { loadUserLayers } from '../config/user-config.js'",
+    ],
+    ['the terminal', "process.stdout.write('x')"],
+    ['the console', "console.log('debug')"],
+    ['a real timer', 'setInterval(() => {}, 450)'],
+  ])('flags %s', (_case, code) => {
+    expect(boundaryViolations(code, TUI)).not.toEqual([])
+  })
+})
+
 describe('repository boundary rules', () => {
   it.each([
     [
@@ -604,6 +657,7 @@ describe.each([
   SKILLS,
   GH_FACADE,
   SLACK,
+  TUI,
 ])('$dir boundary', (boundary) => {
   const sources = sourcesOf(boundary)
 

@@ -8,9 +8,11 @@ import { dataFiles } from './config/data-paths.js'
 import type { ConfigLayer } from './config/types.js'
 import { historyEnabled } from './config/watch-settings.js'
 import type { PullRequestReview } from './app/review-pull-request.js'
+import { assertAppTerminal, runApp } from './cli/app-command.js'
+import type { AppCommandDeps } from './cli/app-command.js'
 import { parseCliArgs } from './cli/args.js'
 import type { CliCommand } from './cli/args.js'
-import { MissingGitHubTokenError } from './cli/errors.js'
+import { requireGitHubToken } from './cli/github-token.js'
 import { formatError } from './cli/format-error.js'
 import { formatGitHubPreview } from './cli/format-github.js'
 import { formatCiLine, formatCiSection } from './cli/format-ci.js'
@@ -50,7 +52,7 @@ import type { ProviderOptions } from './cli/provider-choice.js'
 export { assertProviderChoice } from './cli/provider-choice.js'
 export type { ProviderOptions } from './cli/provider-choice.js'
 import type { Choice } from './cli/review-wiring.js'
-import { toTerminalText } from './cli/terminal-text.js'
+import { toTerminalText } from './app/terminal-text.js'
 import { resolveProvider } from './config/merge-config.js'
 import { resolveMcp, userMcp } from './config/mcp-servers.js'
 import { loadUserLayers } from './config/user-config.js'
@@ -66,7 +68,7 @@ import { CodexCliProvider } from './providers/codex.js'
 import { OllamaProvider } from './providers/ollama.js'
 import type { ReviewProvider } from './providers/types.js'
 
-export interface MainDeps extends WatchCommandDeps, McpCommandDeps {
+export interface MainDeps extends WatchCommandDeps, McpCommandDeps, AppCommandDeps {
   cwd: string
   pathSize: (path: string) => Promise<number>
 }
@@ -106,6 +108,11 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
       deps.stderr.write(`${lines.join('\n')}\n`)
       return 0
     }
+    if (command.kind === 'app') {
+      assertAppTerminal(command, deps)
+      debug = command.debug
+      return await runApp(deps)
+    }
     debug = command.debug
     if (command.kind === 'index') {
       await runIndex(command, deps)
@@ -131,8 +138,7 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
       return 0
     }
 
-    const token = deps.env.GITHUB_TOKEN?.trim() || deps.env.GH_TOKEN?.trim()
-    if (!token) throw new MissingGitHubTokenError()
+    const token = await requireGitHubToken(deps)
     const { owner, repo } = command.ref
     const userLayers = await loadUserLayers({
       env: deps.env,

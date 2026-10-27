@@ -10,7 +10,7 @@ import { dataFiles } from '../config/data-paths.js'
 import { mergeConfig, resolveProvider } from '../config/merge-config.js'
 import { resolveMcp, userMcp } from '../config/mcp-servers.js'
 import { BUILT_IN_SKILL, builtInSkillError } from '../app/review-passes.js'
-import { loadTopLevelUserLayers, loadUserLayers } from '../config/user-config.js'
+import { loadTopLevelUserLayers, loadUserLayers, userConfigFile } from '../config/user-config.js'
 import type { WatchSettings } from '../config/watch-settings.js'
 import type { SubmitDeps } from '../app/submit-request.js'
 import { sleepUntilNewJob } from './queue-wake.js'
@@ -33,6 +33,7 @@ import type {
 } from '../github/pull-request.js'
 import type { BranchHead } from '../github/repository.js'
 import type { RepositoryFilesOptions } from '../github/repository-files.js'
+import type { StopSignal } from './app-command.js'
 import type { TextOutput } from './progress.js'
 import { MirrorLockTimeoutError } from '../repository/mirror-lock.js'
 import type { HistoryStore } from '../store/history-store.js'
@@ -40,7 +41,9 @@ import { publishOf } from '../watch/request-policy.js'
 import type { JobRecord, RequestRecord } from '../watch/types.js'
 import type { IndexFormat } from './args.js'
 import { classifyFailure } from './classify-failure.js'
-import { MissingGitHubTokenError, UsageError, WatchRunningError } from './errors.js'
+import { UsageError, WatchRunningError } from './errors.js'
+import { requireGitHubToken } from './github-token.js'
+import type { GitHubTokenDeps } from './github-token.js'
 import { formatError } from './format-error.js'
 import { formatWatchEvent } from './format-watch.js'
 import { requestSourceOf, watchRun } from './history-run.js'
@@ -74,7 +77,7 @@ import type { StopControl } from './watch-stop.js'
 
 export { ABORTED_EXIT_CODE }
 
-export interface WatchCommandDeps extends ReviewWiringDeps {
+export interface WatchCommandDeps extends ReviewWiringDeps, GitHubTokenDeps {
   stdout: TextOutput
   fetchPullRequest: (options: FetchPullRequestOptions) => Promise<PullRequest>
   fetchReviewState: (options: FetchReviewStateOptions) => Promise<PullRequestReviewState>
@@ -99,7 +102,7 @@ export interface WatchCommandDeps extends ReviewWiringDeps {
   ) => Promise<BranchHead>
   withLock: <T>(path: string, work: () => Promise<T>) => Promise<T>
   lockHolder: (path: string) => Promise<number | undefined>
-  onSignal: (handler: () => void) => void
+  onSignal: (handler: (signal?: StopSignal) => void) => void
   killDetachedChildren: () => void
   abort: (code: number) => void
   sleep: (ms: number, signal: AbortSignal) => Promise<void>
@@ -124,15 +127,23 @@ export async function runWatch(command: WatchCommand, deps: WatchCommandDeps): P
     const history = await deps.openHistoryStore(files.history)
     try {
       const holder = await deps.lockHolder(files.lock)
-      deps.stdout.write(watchStatusText(history, layers, holder, deps.clock(), command.format))
+      deps.stdout.write(
+        watchStatusText(
+          history,
+          layers,
+          holder,
+          deps.clock(),
+          command.format,
+          userConfigFile(deps.env, deps.home),
+        ),
+      )
     } finally {
       history.close()
     }
     return 0
   }
   const settings = requireWatchSettings(layers)
-  const token = deps.env.GITHUB_TOKEN?.trim() || deps.env.GH_TOKEN?.trim()
-  if (!token) throw new MissingGitHubTokenError()
+  const token = await requireGitHubToken(deps)
   const sinkSettings = reviewEventSinkSettings(layers, deps.env)
   const check = memoized(mcpNameChecker(deps))
   for (const { repo } of settings.repos) {

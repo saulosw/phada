@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
+import { memoryFiles as sharedMemoryFiles } from '../../test/support/memory-files.js'
 import { ConfigError } from './errors.js'
 import type { LocalFileSystem } from './local-files.js'
 import {
   expandHome,
+  listUserRepoConfigs,
   loadTopLevelUserLayers,
   loadUserLayers,
   userConfigDir,
+  userConfigFile,
   userRepoDir,
 } from './user-config.js'
 
@@ -28,6 +31,10 @@ describe('userConfigDir', () => {
     [{ PHADA_CONFIG_HOME: '  ', XDG_CONFIG_HOME: '' }, '/home/u/.config/phada'],
   ])('resolves %o', (env, dir) => {
     expect(userConfigDir(env, '/home/u')).toBe(dir)
+  })
+
+  it('names the config.yml of the folder', () => {
+    expect(userConfigFile({ PHADA_CONFIG_HOME: '/cfg' }, '/home/u')).toBe('/cfg/config.yml')
   })
 
   it('lowercases the per-repository folder', () => {
@@ -152,5 +159,30 @@ describe('loadUserLayers review readDirs', () => {
     })
 
     expect(layers[0]?.config.review?.readDirs).toEqual(['/cfg/rules', '~/x', '/abs'])
+  })
+})
+
+describe('listUserRepoConfigs', () => {
+  it('lists the repositories with a config or rules in their own user folder', async () => {
+    const files = sharedMemoryFiles(
+      {
+        '/cfg/config.yml': 'language: pt',
+        '/cfg/repos/acme/shop/config.yml': 'verify: true',
+        '/cfg/repos/acme/api/rules.md': 'Use the ORM.',
+        '/cfg/repos/acme/notes.txt': 'not a folder',
+        '/cfg/repos/zeta/web/README': 'nothing Phada reads',
+      },
+      ['/cfg/repos/acme/empty'],
+    )
+
+    expect(
+      await listUserRepoConfigs({ env: { PHADA_CONFIG_HOME: '/cfg' }, home: '/h', files }),
+    ).toEqual(['acme/api', 'acme/shop'])
+  })
+
+  it('is empty without a repos folder', async () => {
+    expect(
+      await listUserRepoConfigs({ env: {}, home: '/h', files: sharedMemoryFiles({}) }),
+    ).toEqual([])
   })
 })

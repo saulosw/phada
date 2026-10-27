@@ -3,6 +3,7 @@ import { dataFiles } from '../config/data-paths.js'
 import { loadTopLevelUserLayers } from '../config/user-config.js'
 import { handleMcpMessage } from '../investigation/mcp/mcp-server.js'
 import { MissingGitHubTokenError } from './errors.js'
+import { readGitHubToken } from './github-token.js'
 import { queueToolbox } from './queue-tools.js'
 import { submitDeps, watchSettingsOf } from './request-wiring.js'
 import type { RequestCommandDeps } from './request-wiring.js'
@@ -15,7 +16,7 @@ export interface McpCommandDeps extends RequestCommandDeps {
 export async function runMcp(deps: McpCommandDeps): Promise<number> {
   const layers = await loadTopLevelUserLayers(deps)
   const settings = watchSettingsOf(layers)
-  const token = deps.env.GITHUB_TOKEN?.trim() || deps.env.GH_TOKEN?.trim()
+  const token = settings === undefined ? undefined : await readGitHubToken(deps)
   const files = dataFiles(deps.env, deps.home)
   const history = await deps.openHistoryStore(files.history)
   const never = new AbortController().signal

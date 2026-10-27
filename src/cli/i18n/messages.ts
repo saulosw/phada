@@ -2,6 +2,7 @@ import type { CiState } from '../../context/types.js'
 import type { ScoreFocus } from '../../review/score.js'
 import type { DroppedFindings, ScoreValue, Severity, Verification } from '../../review/types.js'
 import { english } from './en.js'
+import { spanish } from './es.js'
 import { portuguese } from './pt.js'
 
 export interface CiNames {
@@ -40,8 +41,6 @@ export interface Messages {
   }
   github: {
     skillBody(skill: string): string
-    heading: string
-    generatedWith: string
     inlineComments(bySeverity: string, count: number): string
     stillOpenCount(count: number): string
     stillOpen: string
@@ -58,7 +57,7 @@ export interface Messages {
   }
 }
 
-const CATALOGS: Readonly<Record<string, Messages>> = { en: english, pt: portuguese }
+const CATALOGS: Readonly<Record<string, Messages>> = { en: english, pt: portuguese, es: spanish }
 
 export function messagesFor(language: string | undefined): Messages {
   const base = language?.split('-', 1)[0]?.toLowerCase() ?? 'en'

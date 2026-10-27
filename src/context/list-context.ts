@@ -1,5 +1,5 @@
 import { posix } from 'node:path'
-import type { EffectiveConfig } from '../config/merge-config.js'
+import type { EffectiveConfig, ReviewSettings } from '../config/merge-config.js'
 import type { ConfigLayer } from '../config/types.js'
 import type { RepositoryTree } from '../github/repository-files.js'
 import { docScope } from './doc-scope.js'
@@ -25,6 +25,7 @@ const NESTED_RULES = '/.cursor/rules/'
 export interface ListedContext {
   report: ContextReport
   ignore: string[]
+  review: ReviewSettings
 }
 
 export async function listContext(input: {
@@ -58,6 +59,7 @@ export async function listContext(input: {
       warnings,
     },
     ignore: [...DEFAULT_IGNORE, ...merged.ignore],
+    review: merged.review,
   }
 }
 

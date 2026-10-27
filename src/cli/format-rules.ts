@@ -2,7 +2,7 @@ import type { ConfigFileReport, ContextReport } from '../context/types.js'
 import { docLine, ruleLine } from './format-context.js'
 import { contextJson } from './format-json.js'
 import { shortSha } from './review-text.js'
-import { toTerminalText } from './terminal-text.js'
+import { toTerminalText } from '../app/terminal-text.js'
 
 export interface RulesView {
   pullRequest: { owner: string; repo: string; number: number; baseSha: string } | null

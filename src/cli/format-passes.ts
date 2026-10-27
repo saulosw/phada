@@ -1,7 +1,7 @@
 import type { PassPlan } from '../app/review-passes.js'
 import type { BlockedCommand } from '../providers/types.js'
 import type { PassReport } from '../review/types.js'
-import { toTerminalText } from './terminal-text.js'
+import { toTerminalText } from '../app/terminal-text.js'
 import { formatCount, formatDuration, formatTokens } from './units.js'
 
 export function formatPassesLine(plan: readonly PassPlan[]): string {

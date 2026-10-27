@@ -6,7 +6,7 @@ import { findingReferences, leftOutLine } from './finding-references.js'
 import type { Messages } from './i18n/messages.js'
 import { blockText, cell, codeFence, singleLine } from './markdown-text.js'
 import { modelLabel, shortSha } from './review-text.js'
-import { toTerminalText } from './terminal-text.js'
+import { toTerminalText } from '../app/terminal-text.js'
 import { formatBytes, formatCount, formatDuration, formatTokens } from './units.js'
 
 const MAX_FILE_ROWS = 20

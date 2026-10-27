@@ -2,7 +2,7 @@ import type { IndexReport, LeftOutFile } from '../app/index-repository.js'
 import { LANGUAGE_LABELS } from '../repo-map/languages.js'
 import type { Language } from '../repo-map/languages.js'
 import type { SymbolKind } from '../repo-map/types.js'
-import { toTerminalText } from './terminal-text.js'
+import { toTerminalText } from '../app/terminal-text.js'
 import { formatBytes, formatDuration } from './units.js'
 
 export interface IndexSizes {

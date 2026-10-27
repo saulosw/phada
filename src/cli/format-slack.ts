@@ -3,7 +3,7 @@ import { CI_FAILING } from '../watch/ci-revisit.js'
 import type { ReviewedFinding, ReviewEvent } from './review-event.js'
 import { nameList } from './name-list.js'
 import { shortSha } from './review-text.js'
-import { toTerminalText } from './terminal-text.js'
+import { toTerminalText } from '../app/terminal-text.js'
 import { formatCount } from './units.js'
 
 export const MAX_SLACK_MESSAGE = 3_500

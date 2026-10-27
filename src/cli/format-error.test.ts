@@ -54,7 +54,7 @@ describe('formatError', () => {
     ],
     [
       new MissingGitHubTokenError(),
-      'phada: No GitHub token found. Set GITHUB_TOKEN (or GH_TOKEN) to a token that can read the pull request and write reviews (read-only is enough with --dry-run), e.g. export GITHUB_TOKEN=$(gh auth token)',
+      'phada: No GitHub token found. Log in with gh auth login, or set GITHUB_TOKEN (or GH_TOKEN) to a token that can read the pull request and write reviews (read-only is enough with --dry-run).',
       1,
     ],
     [

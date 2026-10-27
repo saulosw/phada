@@ -24,6 +24,7 @@ export type RulesTarget =
 export type CliCommand =
   | { kind: 'help'; text: string }
   | { kind: 'version' }
+  | { kind: 'app'; debug: boolean }
   | { kind: 'init'; global: boolean; repo?: RepositoryName }
   | { kind: 'index'; repo: RepositoryName; ref?: string; format: IndexFormat; debug: boolean }
   | { kind: 'rules'; target: RulesTarget; format: IndexFormat; debug: boolean }
@@ -87,7 +88,9 @@ const MAX_AGE_MS = durationMs('36500d')
 
 export const USAGE = `Usage: phada <command> [options]
 
-Reviews GitHub pull requests with the AI provider you choose.
+Reviews GitHub pull requests with the AI provider you choose. Run phada with no
+command in a terminal to open the app: what Phada has set up, running and
+reviewed.
 
 Commands:
   review <pull request>  Review a pull request and publish the review on it
@@ -125,7 +128,8 @@ Options:
 
 Environment:
   GITHUB_TOKEN         GitHub token used to read the pull request
-  GH_TOKEN             Used when GITHUB_TOKEN is not set`
+  GH_TOKEN             Used when GITHUB_TOKEN is not set; with neither, Phada
+                       uses the token of your gh login (gh auth login)`
 
 export const MCP_USAGE = `Usage: phada mcp
 
@@ -141,7 +145,8 @@ Options:
 
 Environment:
   GITHUB_TOKEN         GitHub token used to read the pull requests asked for
-  GH_TOKEN             Used when GITHUB_TOKEN is not set`
+  GH_TOKEN             Used when GITHUB_TOKEN is not set; with neither, Phada
+                       uses the token of your gh login (gh auth login)`
 
 export const REVIEW_USAGE = `Usage: phada review <owner/repo#N | pull request URL> [options]
 
@@ -153,7 +158,7 @@ Options:
   --provider <name>     AI provider: claude, codex or ollama (default: claude)
   --model <name>        Model (required for ollama; otherwise the model set in the
                         provider's own config; for claude, opus when none is set)
-  --language <tag>      Review language, e.g. pt-BR (default: English)
+  --language <tag>      Review language, e.g. pt-BR or es (default: English)
   --min-confidence <n>  Confidence cut from ${CONFIDENCE_FLOOR} to ${MAX_CONFIDENCE} (default: ${DEFAULT_MIN_CONFIDENCE}); findings
                         below it are listed as worth checking
   --format <name>       Output: markdown or json (default: markdown)
@@ -187,9 +192,9 @@ Config:
 
 Environment:
   GITHUB_TOKEN          GitHub token that can read the pull request and the
-                        repository contents and write reviews, e.g.
-                        export GITHUB_TOKEN=$(gh auth token)
-  GH_TOKEN              Used when GITHUB_TOKEN is not set
+                        repository contents and write reviews
+  GH_TOKEN              Used when GITHUB_TOKEN is not set; with neither, Phada
+                        uses the token of your gh login (gh auth login)
   OLLAMA_HOST           Ollama address (default: 127.0.0.1:11434)
   PHADA_CONFIG_HOME     Folder of your own config (default: ~/.config/phada)`
 
@@ -223,7 +228,8 @@ Options:
 
 Environment:
   GITHUB_TOKEN       GitHub token that can read the repository contents
-  GH_TOKEN           Used when GITHUB_TOKEN is not set
+  GH_TOKEN           Used when GITHUB_TOKEN is not set; with neither, Phada
+                     uses the token of your gh login (gh auth login)
   PHADA_CACHE_HOME   Folder of the mirror and the index (default: ~/.cache/phada)`
 
 export const RULES_USAGE = `Usage: phada rules <owner/repo[#N] | pull request URL> [options]
@@ -243,7 +249,8 @@ Options:
 
 Environment:
   GITHUB_TOKEN       GitHub token that can read the repository contents
-  GH_TOKEN           Used when GITHUB_TOKEN is not set
+  GH_TOKEN           Used when GITHUB_TOKEN is not set; with neither, Phada
+                     uses the token of your gh login (gh auth login)
   PHADA_CONFIG_HOME  Folder of your own config (default: ~/.config/phada)`
 
 export const PROMPT_USAGE = `Usage: phada prompt <owner/repo#N | pull request URL> [options]
@@ -265,7 +272,8 @@ Options:
 Environment:
   GITHUB_TOKEN       GitHub token that can read the pull request and the
                      repository contents
-  GH_TOKEN           Used when GITHUB_TOKEN is not set
+  GH_TOKEN           Used when GITHUB_TOKEN is not set; with neither, Phada
+                     uses the token of your gh login (gh auth login)
   PHADA_CONFIG_HOME  Folder of your own config (default: ~/.config/phada)`
 
 export const WATCH_USAGE = `Usage: phada watch [options]
@@ -304,7 +312,8 @@ Config (in ~/.config/phada/config.yml):
 Environment:
   GITHUB_TOKEN       GitHub token that can read the pull requests and the
                      repository contents and write reviews
-  GH_TOKEN           Used when GITHUB_TOKEN is not set
+  GH_TOKEN           Used when GITHUB_TOKEN is not set; with neither, Phada
+                     uses the token of your gh login (gh auth login)
   PHADA_CONFIG_HOME  Folder of your own config (default: ~/.config/phada)
   PHADA_DATA_HOME    Folder of the history (default: ~/.local/share/phada)
   PHADA_CACHE_HOME   Folder of the mirrors and indexes (default: ~/.cache/phada)`
@@ -331,7 +340,8 @@ Options:
 
 Environment:
   GITHUB_TOKEN         GitHub token for --refresh
-  GH_TOKEN             Used when GITHUB_TOKEN is not set
+  GH_TOKEN             Used when GITHUB_TOKEN is not set; with neither, Phada
+                       uses the token of your gh login (gh auth login)
   PHADA_DATA_HOME      Folder of the history (default: ~/.local/share/phada)`
 
 const REPOSITORY_NAME = /^([\w.-]+)\/([\w.-]+)$/
@@ -349,13 +359,16 @@ export function parseCliArgs(argv: readonly string[]): CliCommand {
   if (command === 'mcp') return parseMcpArgs(rest)
   if (command !== undefined && !command.startsWith('-')) throw unknownCommand(command)
 
-  const { values } = parseOptions(argv, {
+  const { values, positionals } = parseOptions(argv, {
     help: { type: 'boolean', short: 'h', default: false },
     version: { type: 'boolean', short: 'v', default: false },
+    debug: { type: 'boolean', default: false },
   })
   if (values.help) return { kind: 'help', text: USAGE }
   if (values.version) return { kind: 'version' }
-  throw new UsageError('Missing the command, e.g. phada review owner/repo#123.')
+  const [extra] = positionals
+  if (extra !== undefined) throw unknownCommand(extra)
+  return { kind: 'app', debug: values.debug }
 }
 
 function unknownCommand(command: string): UsageError {

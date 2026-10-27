@@ -1,5 +1,12 @@
 import { ConfigError } from '../config/errors.js'
-import type { ReviewPromptRef, ReviewSettings, SkillEntry } from '../config/merge-config.js'
+import { layerOrigin } from '../config/layer-label.js'
+import type { LayerOrigin } from '../config/layer-label.js'
+import type {
+  ReviewPromptRef,
+  ReviewSettings,
+  ReviewSkillsRef,
+  SkillEntry,
+} from '../config/merge-config.js'
 import { matcher } from '../context/ignore.js'
 import type { NativeSkillRef } from '../providers/types.js'
 import type { ReviewerLens, SkillPass } from '../review/types.js'
@@ -34,7 +41,28 @@ export interface PlannedPasses {
   nativeSkills: Map<string, NativeSkillRef>
 }
 
+export type ConfiguredLens =
+  | { kind: 'built-in' }
+  | { kind: 'prompt'; prompt: ReviewPromptRef; setBy: LayerOrigin }
+  | { kind: 'skills'; skills: ReviewSkillsRef; prompt: ReviewPromptRef | null; setBy: LayerOrigin }
+
 export const BUILT_IN_SKILL = 'phada'
+
+export function configuredLens(review: ReviewSettings | undefined): ConfiguredLens {
+  const { prompt, skills } = review ?? {}
+  if (skills !== undefined && skills.entries.length > 0) {
+    const phada = skills.entries.some(({ name }) => name === BUILT_IN_SKILL)
+    return {
+      kind: 'skills',
+      skills,
+      prompt: phada ? (prompt ?? null) : null,
+      setBy: layerOrigin(skills.origin),
+    }
+  }
+  return prompt === undefined
+    ? { kind: 'built-in' }
+    : { kind: 'prompt', prompt, setBy: layerOrigin(prompt.origin) }
+}
 
 export function builtInSkillError(name: string): SkillError {
   return new SkillError(

@@ -1,4 +1,4 @@
-import { mkdir } from 'node:fs/promises'
+import { access, mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { DatabaseSync, SQLInputValue } from 'node:sqlite'
 import type { Verdict } from '../review/verdict.js'
@@ -111,7 +111,12 @@ export interface HistoryFilter {
   repo?: string
   number?: number
   since?: string
+  text?: string
   limit?: number
+}
+
+export interface ListedRun extends RunRecord {
+  title?: string
 }
 
 export interface PruneCounts {
@@ -139,6 +144,7 @@ export interface HistoryStore {
   transaction<T>(work: () => T): T
   addRun(run: RunRecord): number
   runOfJob(jobId: number): RunRecord | undefined
+  run(id: number): RunRecord | undefined
   watchRunsSince(iso: string): string[]
   pause(): PauseState | undefined
   setPause(state: PauseState | undefined): void
@@ -147,7 +153,7 @@ export interface HistoryStore {
   observeFeedback(observation: FeedbackObservation): void
   findings(filter: FindingFilter): FindingRecord[]
   feedbackDue(filter: DueFilter, before: string, limit?: number): DuePull[]
-  runs(filter: HistoryFilter): { runs: RunRecord[]; total: number }
+  runs(filter: HistoryFilter): { runs: ListedRun[]; total: number }
   prune(before: string): PruneCounts
   close(): void
 }
@@ -170,14 +176,72 @@ export class HistoryVersionError extends HistoryStoreError {
   }
 }
 
+export class HistoryOutdatedError extends HistoryStoreError {
+  override readonly name = 'HistoryOutdatedError'
+  readonly found: number
+  readonly known: number
+
+  constructor(path: string, found: number, known: number) {
+    super(
+      `${path} was written by an older Phada (history version ${found}, this one knows ${known}); run any phada command, such as phada history, to update it`,
+    )
+    this.found = found
+    this.known = known
+  }
+}
+
+export type HistoryOpening =
+  | { status: 'open'; history: HistoryStore }
+  | { status: 'missing'; path: string }
+  | { status: 'newer'; path: string; error: HistoryVersionError }
+  | { status: 'older'; path: string; error: HistoryOutdatedError }
+  | { status: 'unreadable'; path: string; error: HistoryStoreError }
+
+export interface OpenExistingHistoryOptions {
+  exists?: (path: string) => Promise<boolean>
+  open?: (path: string) => Promise<HistoryStore>
+}
+
+export async function openExistingHistoryStore(
+  path: string,
+  options: OpenExistingHistoryOptions = {},
+): Promise<HistoryOpening> {
+  const exists = options.exists ?? fileExists
+  if (!(await exists(path))) return { status: 'missing', path }
+  try {
+    return { status: 'open', history: await (options.open ?? openHistoryStore)(path) }
+  } catch (error) {
+    if (error instanceof HistoryVersionError) return { status: 'newer', path, error }
+    if (error instanceof HistoryOutdatedError) return { status: 'older', path, error }
+    if (error instanceof HistoryStoreError) return { status: 'unreadable', path, error }
+    throw error
+  }
+}
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path)
+    return true
+  } catch {
+    return false
+  }
+}
+
 type Sqlite = typeof import('node:sqlite')
 
 export interface OpenHistoryStoreOptions {
   loadSqlite?: () => Promise<Sqlite>
   migrations?: readonly HistoryMigration[]
+  readOnly?: boolean
 }
 
 const RECENT_FAILURES = 20
+const RUN_TITLE =
+  "case when json_valid(run.result_json) then json_extract(run.result_json, '$.pullRequest.title') end"
+const LISTED_RUN_COLUMNS = Object.entries(RUN_TABLE.columns)
+  .filter(([key]) => key !== 'resultJson')
+  .map(([, column]) => column)
+  .join(', ')
 const PAUSE_KEY = 'pause'
 
 export async function openHistoryStore(
@@ -190,22 +254,30 @@ export async function openHistoryStore(
   } catch {
     throw new HistoryStoreError('The review history needs Node.js 22.13 or newer')
   }
-  try {
-    await mkdir(dirname(path), { recursive: true, mode: 0o700 })
-  } catch (error) {
-    throw new HistoryStoreError(`Cannot write ${path}: ${(error as Error).message}`)
+  const readOnly = options.readOnly === true
+  if (!readOnly) {
+    try {
+      await mkdir(dirname(path), { recursive: true, mode: 0o700 })
+    } catch (error) {
+      throw new HistoryStoreError(`Cannot write ${path}: ${(error as Error).message}`)
+    }
   }
   let db: DatabaseSync
   try {
-    db = new sqlite.DatabaseSync(path)
+    db = new sqlite.DatabaseSync(path, { readOnly })
   } catch (error) {
     throw new HistoryStoreError(`Cannot open ${path}: ${(error as Error).message}`)
   }
+  const migrations = options.migrations ?? HISTORY_MIGRATIONS
   try {
     db.exec('pragma busy_timeout = 5000')
-    db.exec('pragma journal_mode = wal')
-    db.exec('pragma foreign_keys = on')
-    migrate(db, path, options.migrations ?? HISTORY_MIGRATIONS)
+    if (readOnly) {
+      checkVersion(db, path, migrations)
+    } else {
+      db.exec('pragma journal_mode = wal')
+      db.exec('pragma foreign_keys = on')
+      migrate(db, path, migrations)
+    }
   } catch (error) {
     db.close()
     if (error instanceof HistoryStoreError) throw error
@@ -219,10 +291,28 @@ export async function openHistoryStore(
   return new SqliteHistoryStore(db, path)
 }
 
-function migrate(db: DatabaseSync, path: string, migrations: readonly HistoryMigration[]): void {
+function checkVersion(
+  db: DatabaseSync,
+  path: string,
+  migrations: readonly HistoryMigration[],
+): void {
+  const { current, known } = versions(db, path, migrations)
+  if (current < known) throw new HistoryOutdatedError(path, current, known)
+}
+
+function versions(
+  db: DatabaseSync,
+  path: string,
+  migrations: readonly HistoryMigration[],
+): { current: number; known: number } {
   const known = migrations.at(-1)?.version ?? 0
   const current = Number(db.prepare('pragma user_version').get()?.user_version ?? 0)
   if (current > known) throw new HistoryVersionError(path, current, known)
+  return { current, known }
+}
+
+function migrate(db: DatabaseSync, path: string, migrations: readonly HistoryMigration[]): void {
+  const { current } = versions(db, path, migrations)
   for (const migration of migrations) {
     if (migration.version <= current) continue
     if (migration.rebuildsTables === true) db.exec('pragma foreign_keys = off')
@@ -378,6 +468,11 @@ class SqliteHistoryStore implements HistoryStore {
     return row === undefined ? undefined : fromRow<RunRecord>(row, RUN_TABLE)
   }
 
+  run(id: number): RunRecord | undefined {
+    const row = this.#db.prepare('select * from run where id = ?').get(id)
+    return row === undefined ? undefined : fromRow<RunRecord>(row, RUN_TABLE)
+  }
+
   watchRunsSince(iso: string): string[] {
     return this.#db
       .prepare(
@@ -450,7 +545,7 @@ class SqliteHistoryStore implements HistoryStore {
     return feedbackDue(this.#db, filter, before, limit)
   }
 
-  runs(filter: HistoryFilter): { runs: RunRecord[]; total: number } {
+  runs(filter: HistoryFilter): { runs: ListedRun[]; total: number } {
     const where: string[] = []
     const values: SQLInputValue[] = []
     if (filter.repo !== undefined) {
@@ -465,17 +560,29 @@ class SqliteHistoryStore implements HistoryStore {
       where.push('started_at >= ?')
       values.push(filter.since)
     }
+    if (filter.text !== undefined && filter.text !== '') {
+      where.push(
+        `(instr(lower(repo || '#' || number), ?) > 0 or instr(lower(coalesce(${RUN_TITLE}, '')), ?) > 0)`,
+      )
+      values.push(filter.text.toLowerCase(), filter.text.toLowerCase())
+    }
     const clause = where.length === 0 ? '' : ` where ${where.join(' and ')}`
     const total = Number(
       this.#db.prepare(`select count(*) as total from run${clause}`).get(...values)?.total ?? 0,
     )
     const limit = filter.limit === undefined ? '' : ' limit ?'
+    const listed = `select ${LISTED_RUN_COLUMNS} from run${clause} order by started_at desc, id desc${limit}`
     const runs = this.#db
-      .prepare(`select * from run${clause} order by started_at desc, id desc${limit}`)
+      .prepare(
+        `select listed.*, ${RUN_TITLE} as title from (${listed}) as listed join run using (id)
+         order by listed.started_at desc, listed.id desc`,
+      )
       .all(...values, ...(filter.limit === undefined ? [] : [filter.limit]))
       .map((row) => {
-        const { resultJson: _json, ...run } = fromRow<RunRecord>(row, RUN_TABLE)
-        return run
+        const run = fromRow<RunRecord>(row, RUN_TABLE)
+        return row.title === null || row.title === undefined
+          ? run
+          : { ...run, title: String(row.title) }
       })
     return { runs, total }
   }

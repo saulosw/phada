@@ -3,7 +3,7 @@ import { CI_LOG_TOTAL_BYTES, CI_MAX_ANNOTATIONS } from '../context/ci.js'
 import type { Ci } from '../context/types.js'
 import type { CiCheck } from '../review/types.js'
 import { nameList } from './name-list.js'
-import { toTerminalText } from './terminal-text.js'
+import { toTerminalText } from '../app/terminal-text.js'
 import { formatBytes, formatCount } from './units.js'
 
 const HEADING = '## CI sent to the AI\n\n'

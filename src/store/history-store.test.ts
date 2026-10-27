@@ -1,11 +1,17 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { HISTORY_MIGRATIONS } from './history-migrations.js'
-import { HistoryStoreError, HistoryVersionError, openHistoryStore } from './history-store.js'
-import type { RunRecord } from './history-store.js'
+import {
+  HistoryOutdatedError,
+  HistoryStoreError,
+  HistoryVersionError,
+  openExistingHistoryStore,
+  openHistoryStore,
+} from './history-store.js'
+import type { HistoryStore, RunRecord } from './history-store.js'
 import type { JobRecord } from '../watch/types.js'
 
 const dir = mkdtempSync(join(tmpdir(), 'phada-history-'))
@@ -441,6 +447,52 @@ describe('HistoryStore queries', () => {
     store.close()
   })
 
+  it('runs carry the pull request title of their stored JSON and filter by text over repo#number and title', async () => {
+    const store = await openHistoryStore(fresh())
+    const titled = (title: string) => JSON.stringify({ pullRequest: { title } })
+    store.addRun({ ...RUN, startedAt: at(1), resultJson: titled('Fix the CART total') })
+    store.addRun({ ...RUN, number: 14, startedAt: at(2), resultJson: titled('Add 100% coverage') })
+    store.addRun({ ...RUN, repo: 'acme/api', number: 2, startedAt: at(3), resultJson: '{oops' })
+    store.addRun({ ...RUN, repo: 'acme/web', number: 31, startedAt: at(4) })
+
+    const refs = (text: string) =>
+      store.runs({ text }).runs.map((run) => `${run.repo}#${run.number}`)
+
+    expect(store.runs({}).runs.map((run) => run.title)).toEqual([
+      undefined,
+      undefined,
+      'Add 100% coverage',
+      'Fix the CART total',
+    ])
+    expect(refs('cart')).toEqual(['acme/shop#3'])
+    expect(refs('SHOP#14')).toEqual(['acme/shop#14'])
+    expect(refs('acme/')).toHaveLength(4)
+    expect(refs('#3')).toEqual(['acme/web#31', 'acme/shop#3'])
+    expect(refs('100%')).toEqual(['acme/shop#14'])
+    expect(refs('1_0')).toEqual([])
+    expect(store.runs({ text: 'acme', limit: 1 }).total).toBe(4)
+    store.close()
+  })
+
+  it('keeps the titles with their runs, newest first, when the list is limited', async () => {
+    const store = await openHistoryStore(fresh())
+    const titled = (title: string) => JSON.stringify({ pullRequest: { title } })
+    store.addRun({ ...RUN, number: 1, startedAt: at(1), resultJson: titled('Oldest') })
+    store.addRun({ ...RUN, number: 2, startedAt: at(2), resultJson: titled('Middle') })
+    store.addRun({ ...RUN, number: 3, startedAt: at(3) })
+    store.addRun({ ...RUN, number: 4, startedAt: at(4), resultJson: titled('Newest') })
+
+    const listed = store.runs({ limit: 3 })
+
+    expect(listed.total).toBe(4)
+    expect(listed.runs.map(({ number, title }) => [number, title])).toEqual([
+      [4, 'Newest'],
+      [3, undefined],
+      [2, 'Middle'],
+    ])
+    store.close()
+  })
+
   it('runs never return resultJson', async () => {
     const store = await openHistoryStore(fresh())
     store.addRun(RUN)
@@ -577,6 +629,149 @@ describe('HistoryStore prune', () => {
       jobs: 0,
       vacuumed: true,
     })
+    store.close()
+  })
+})
+
+describe('openExistingHistoryStore', () => {
+  it('says the history is missing without creating the file or its folder', async () => {
+    const path = fresh()
+
+    expect(await openExistingHistoryStore(path)).toEqual({ status: 'missing', path })
+    expect(existsSync(dirname(path))).toBe(false)
+  })
+
+  it('opens a history that exists', async () => {
+    const path = fresh()
+    ;(await openHistoryStore(path)).close()
+
+    const opening = await openExistingHistoryStore(path)
+
+    expect(opening.status).toBe('open')
+    if (opening.status === 'open') opening.history.close()
+  })
+
+  it('gives a file written by a newer Phada as data', async () => {
+    const path = fresh()
+    ;(await openHistoryStore(path)).close()
+    const db = new DatabaseSync(path)
+    db.exec('pragma user_version = 99')
+    db.close()
+
+    const opening = await openExistingHistoryStore(path)
+
+    expect(opening).toMatchObject({ status: 'newer', path })
+    expect(opening.status === 'newer' && opening.error).toBeInstanceOf(HistoryVersionError)
+  })
+
+  it('gives a file it cannot open as data', async () => {
+    const path = fresh()
+    ;(await openHistoryStore(path)).close()
+    writeFileSync(path, 'not sqlite at all, just some text that is long enough')
+
+    const opening = await openExistingHistoryStore(path)
+
+    expect(opening).toMatchObject({ status: 'unreadable', path })
+    expect(opening.status === 'unreadable' && opening.error.message).toContain(
+      'is not a Phada history file',
+    )
+  })
+
+  it('uses the exists check and the opener it is given, and lets other errors through', async () => {
+    const opened: string[] = []
+    const store = { close: () => undefined } as HistoryStore
+    const open = async (path: string) => {
+      opened.push(path)
+      return store
+    }
+
+    expect(await openExistingHistoryStore('/h', { exists: async () => false, open })).toEqual({
+      status: 'missing',
+      path: '/h',
+    })
+    expect(await openExistingHistoryStore('/h', { exists: async () => true, open })).toEqual({
+      status: 'open',
+      history: store,
+    })
+    expect(opened).toEqual(['/h'])
+    await expect(
+      openExistingHistoryStore('/h', {
+        exists: async () => true,
+        open: () => Promise.reject(new Error('boom')),
+      }),
+    ).rejects.toThrow('boom')
+  })
+})
+
+describe('openHistoryStore read-only', () => {
+  const userVersion = (path: string) => {
+    const db = new DatabaseSync(path, { readOnly: true })
+    const version = db.prepare('pragma user_version').get()?.user_version
+    db.close()
+    return version
+  }
+
+  it('reads a current history without being able to write it', async () => {
+    const path = fresh()
+    const writer = await openHistoryStore(path)
+    const id = writer.addRun(RUN)
+    writer.close()
+    const before = readFileSync(path)
+
+    const reader = await openHistoryStore(path, { readOnly: true })
+
+    expect(reader.run(id)).toEqual({ ...RUN, id })
+    expect(() => reader.addRun(RUN)).toThrow(/readonly/)
+    reader.close()
+    expect(readFileSync(path).equals(before)).toBe(true)
+  })
+
+  it('leaves a history of an older Phada as it is and says how to update it', async () => {
+    const path = fresh()
+    ;(await openHistoryStore(path, { migrations: HISTORY_MIGRATIONS.slice(0, 1) })).close()
+    const known = HISTORY_MIGRATIONS.at(-1)?.version
+
+    const opening = await openExistingHistoryStore(path, {
+      open: (file) => openHistoryStore(file, { readOnly: true }),
+    })
+
+    expect(opening).toMatchObject({ status: 'older', path })
+    expect(opening.status === 'older' && opening.error).toBeInstanceOf(HistoryOutdatedError)
+    expect(opening.status === 'older' && opening.error.message).toBe(
+      `${path} was written by an older Phada (history version 1, this one knows ${known}); run any phada command, such as phada history, to update it`,
+    )
+    expect(userVersion(path)).toBe(1)
+  })
+
+  it('still refuses a history of a newer Phada', async () => {
+    const path = fresh()
+    ;(await openHistoryStore(path)).close()
+    const db = new DatabaseSync(path)
+    db.exec('pragma user_version = 99')
+    db.close()
+
+    await expect(openHistoryStore(path, { readOnly: true })).rejects.toBeInstanceOf(
+      HistoryVersionError,
+    )
+  })
+
+  it('never creates the file or its folder', async () => {
+    const path = fresh()
+
+    await expect(openHistoryStore(path, { readOnly: true })).rejects.toBeInstanceOf(
+      HistoryStoreError,
+    )
+    expect(existsSync(dirname(path))).toBe(false)
+  })
+})
+
+describe('HistoryStore run', () => {
+  it('reads one run with its stored result, and nothing for an unknown id', async () => {
+    const store = await openHistoryStore(fresh())
+    const id = store.addRun(RUN)
+
+    expect(store.run(id)).toEqual({ ...RUN, id })
+    expect(store.run(id + 1)).toBeUndefined()
     store.close()
   })
 })

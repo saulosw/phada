@@ -1,5 +1,5 @@
 import type { ImpactReport } from '../graph/report.js'
-import { toTerminalText } from './terminal-text.js'
+import { toTerminalText } from '../app/terminal-text.js'
 import { formatCount } from './units.js'
 
 export function formatImpactLine(report: ImpactReport): string | undefined {

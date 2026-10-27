@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { InvalidPullRequestRefError } from '../github/errors.js'
 import {
+  ENQUEUE_USAGE,
+  MCP_USAGE,
   parseCliArgs,
   HISTORY_USAGE,
   INDEX_USAGE,
@@ -33,7 +35,18 @@ describe('parseCliArgs', () => {
   })
 
   it.each([
-    [[], 'Missing the command, e.g. phada review owner/repo#123.'],
+    [[], false],
+    [['--debug'], true],
+  ])('opens the app for %j', (argv, debug) => {
+    expect(parseCliArgs(argv)).toEqual({ kind: 'app', debug })
+  })
+
+  it('prefers the help and the version to the app', () => {
+    expect(parseCliArgs(['--debug', '--help'])).toEqual({ kind: 'help', text: USAGE })
+    expect(parseCliArgs(['--debug', '--version'])).toEqual({ kind: 'version' })
+  })
+
+  it.each([
     [['acme/shop#12'], 'Unknown command "acme/shop#12". Did you mean "phada review acme/shop#12"?'],
     [
       ['https://github.com/acme/shop/pull/12', '--verify'],
@@ -44,6 +57,10 @@ describe('parseCliArgs', () => {
       'Unknown command "reveiw". Available: review, init, index, rules, prompt, watch, enqueue, mcp, history.',
     ],
     [['--verify'], "Unknown option '--verify'."],
+    [
+      ['--debug', 'acme/shop#12'],
+      'Unknown command "acme/shop#12". Did you mean "phada review acme/shop#12"?',
+    ],
   ])('rejects the command line %j with a usage error', (argv, message) => {
     expect(() => parseCliArgs(argv)).toThrow(new UsageError(message))
   })
@@ -256,6 +273,22 @@ describe('parseCliArgs', () => {
     ]) {
       expect(REVIEW_USAGE).toContain(option)
     }
+  })
+
+  it.each([
+    ['review', REVIEW_USAGE],
+    ['index', INDEX_USAGE],
+    ['rules', RULES_USAGE],
+    ['prompt', PROMPT_USAGE],
+    ['watch', WATCH_USAGE],
+    ['history', HISTORY_USAGE],
+    ['enqueue', ENQUEUE_USAGE],
+    ['mcp', MCP_USAGE],
+  ])('says the %s usage takes the token of the gh login without GITHUB_TOKEN', (_name, text) => {
+    expect(text).toMatch(
+      /GH_TOKEN +Used when GITHUB_TOKEN is not set; with neither, Phada\n +uses the token of your gh login \(gh auth login\)$/m,
+    )
+    expect(text).not.toContain('export GITHUB_TOKEN=$(gh auth token)')
   })
 
   it.each(['--verify=yes', '--dry-run=yes', '--force=yes'])(

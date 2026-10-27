@@ -1,9 +1,10 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { DatabaseSync } from 'node:sqlite'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { IndexStoreError } from './index-store.js'
-import { openObservedStore } from './observed-store.js'
+import { openObservedStore, readObservedEdges } from './observed-store.js'
 import type { ObservedEdge } from './observed-store.js'
 
 const dir = mkdtempSync(join(tmpdir(), 'phada-observed-'))
@@ -87,5 +88,45 @@ describe('openObservedStore', () => {
         loadSqlite: async () => ({ ...sqlite, DatabaseSync: Unopenable as never }),
       }),
     ).rejects.toThrow(IndexStoreError)
+  })
+})
+
+describe('readObservedEdges', () => {
+  it('reads the edges of an existing file', async () => {
+    const path = join(dir, 'read', 'shop.sqlite')
+    const store = await openObservedStore(path, { now: () => new Date('2026-10-15T00:00:00Z') })
+    store.add([EDGE])
+    store.close()
+
+    expect(await readObservedEdges(path)).toEqual([
+      { ...EDGE, id: expect.any(Number), createdAt: '2026-10-15T00:00:00.000Z' },
+    ])
+  })
+
+  it('never creates a missing file', async () => {
+    const path = join(dir, 'absent', 'shop.sqlite')
+
+    expect(await readObservedEdges(path)).toBe('missing')
+    expect(existsSync(join(dir, 'absent'))).toBe(false)
+  })
+
+  it('leaves a file of another version or another kind as it is, unreadable', async () => {
+    const other = join(dir, 'other-version.sqlite')
+    const store = await openObservedStore(other)
+    store.close()
+    const db = new DatabaseSync(other)
+    db.prepare("update meta set value = '99' where key = 'schema_version'").run()
+    db.close()
+    const text = join(dir, 'text.sqlite')
+    writeFileSync(text, 'not a database at all, just text that is long enough to matter')
+
+    expect(await readObservedEdges(other)).toBe('unreadable')
+    expect(await readObservedEdges(text)).toBe('unreadable')
+    const reopened = new DatabaseSync(other, { readOnly: true })
+    expect(
+      reopened.prepare("select value from meta where key = 'schema_version'").get()?.value,
+    ).toBe('99')
+    reopened.close()
+    expect(readFileSync(text, 'utf8')).toContain('not a database at all')
   })
 })

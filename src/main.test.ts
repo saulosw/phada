@@ -106,6 +106,7 @@ interface Harness {
   historyFiles: string[]
   signal: () => void
   kills: () => number
+  ghAsks: () => number
   aborts: number[]
   hooked: { event: ReviewEvent; settings: HookSettings }[]
   slack: { calls: string[]; tokens: { botToken: string; appToken: string }[] }
@@ -183,6 +184,7 @@ function harness(
     comments?: MainDeps['listIssueComments']
     pullComments?: MainDeps['fetchPullComments']
     checkRuns?: MainDeps['fetchCheckRuns']
+    ghToken?: MainDeps['ghToken']
   } = {},
 ): Harness {
   const checkouts: (GitMirrorOptions & { sha: string; keepAs: string })[] = []
@@ -198,6 +200,7 @@ function harness(
   const slack: Harness['slack'] = { calls: [], tokens: [] }
   const aborts: number[] = []
   let kills = 0
+  let ghAsks = 0
   let clock = Date.parse('2026-10-18T12:00:00.000Z')
   let closed = 0
   const files = overrides.files ?? memoryFiles()
@@ -219,6 +222,10 @@ function harness(
   const prompts: ReviewPrompt[] = []
   const deps: MainDeps = {
     env: overrides.env ?? { GITHUB_TOKEN: TOKEN, PHADA_CONFIG_HOME: '/cfg' },
+    ghToken: async () => {
+      ghAsks += 1
+      return overrides.ghToken?.()
+    },
     version: '1.2.3',
     cwd: '/w/shop',
     home: '/home/u',
@@ -413,6 +420,7 @@ function harness(
       for (const handler of signalHandlers) handler()
     },
     kills: () => kills,
+    ghAsks: () => ghAsks,
     aborts,
     fetches,
     mcpChecks,
@@ -486,6 +494,62 @@ describe('run', () => {
     expect(h.stderr()).toBe('')
   })
 
+  it('keeps the missing command error without a terminal', async () => {
+    const h = harness()
+
+    expect(await run([], h.deps)).toBe(2)
+    expect(h.stderr()).toBe(
+      'phada: Missing the command, e.g. phada review owner/repo#123. Run with --help for usage.\n',
+    )
+    expect(h.stdout()).toBe('')
+  })
+
+  it('refuses --debug alone without a terminal as before the app, without details', async () => {
+    const h = harness()
+
+    expect(await run(['--debug'], h.deps)).toBe(2)
+    expect(h.stderr()).toBe("phada: Unknown option '--debug'. Run with --help for usage.\n")
+    expect(h.stdout()).toBe('')
+  })
+
+  it('opens the app with no command in a terminal and exits with its code', async () => {
+    const h = harness()
+    const opened: string[] = []
+    const deps: MainDeps = {
+      ...h.deps,
+      stdin: Object.assign(Readable.from([]), { isTTY: true }),
+      stdout: { write: () => true, isTTY: true },
+      loadApp: async () => ({
+        openApp: async ({ version }) => {
+          opened.push(version)
+          return { kind: 'terminated' }
+        },
+      }),
+    }
+
+    expect(await run([], deps)).toBe(143)
+    expect(opened).toEqual(['1.2.3'])
+    expect(h.stderr()).toBe('')
+  })
+
+  it('prints the error the app failed with in one line, with the details under --debug', async () => {
+    const h = harness()
+    const failure = new Error('the screen broke')
+    const deps: MainDeps = {
+      ...h.deps,
+      stdin: Object.assign(Readable.from([]), { isTTY: true }),
+      stdout: { write: () => true, isTTY: true },
+      loadApp: async () => ({ openApp: async () => ({ kind: 'failed', error: failure }) }),
+    }
+
+    expect(await run([], deps)).toBe(1)
+    expect(h.stderr()).toBe(
+      'phada: Unexpected error: the screen broke. Run with --debug for details.\n',
+    )
+    expect(await run(['--debug'], deps)).toBe(1)
+    expect(h.stderr()).toContain('Error: the screen broke\n    at ')
+  })
+
   it('suggests the review command for a pull request given without it', async () => {
     const h = harness()
 
@@ -549,7 +613,7 @@ describe('run', () => {
     expect(h.prompts[0]?.instructions).toContain(
       'Write summary, change, title, why and fix in pt-BR;',
     )
-    expect(h.posts[0]?.body).toContain('## Revisão do Phada 🦋: 5/5 (pronto para merge)')
+    expect(h.posts[0]?.body).toContain('## 🦋 5/5 (pronto para merge)')
     expect(h.posts[0]?.body).toContain('### Resumo')
     expect(h.stdout()).toContain(
       '**Nota de confiança: 5/5** (pronto para merge): nenhum problema encontrado',
@@ -663,7 +727,7 @@ describe('run', () => {
 
       expect(await run(['review', 'acme/shop#12'], h.deps)).toBe(1)
       expect(h.stderr()).toBe(
-        'phada: No GitHub token found. Set GITHUB_TOKEN (or GH_TOKEN) to a token that can read the pull request and write reviews (read-only is enough with --dry-run), e.g. export GITHUB_TOKEN=$(gh auth token)\n',
+        'phada: No GitHub token found. Log in with gh auth login, or set GITHUB_TOKEN (or GH_TOKEN) to a token that can read the pull request and write reviews (read-only is enough with --dry-run).\n',
       )
       expect(h.fetches).toHaveLength(0)
     },
@@ -765,6 +829,102 @@ describe('run', () => {
 
     await run(['review', 'acme/shop#12', '--debug'], h.deps)
 
+    expect(h.stdout() + h.stderr()).not.toContain(TOKEN)
+  })
+})
+
+describe('the GitHub token from the gh login', () => {
+  const NO_TOKEN = { PHADA_CONFIG_HOME: '/cfg' }
+  const WATCH_CONFIG = 'verify: false\nci:\n  wait: 0s\nwatch:\n  repos: [acme/shop]\n'
+  const watched = () => memoryFiles({ '/cfg/config.yml': WATCH_CONFIG })
+  const fromGh = async () => TOKEN
+  const reviewRequest = JSON.stringify({
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/call',
+    params: { name: 'review_pull_request', arguments: { pr: 'acme/shop#12' } },
+  })
+
+  it.each<[string, string[], (h: Harness) => unknown]>([
+    ['review', ['review', 'acme/shop#12'], (h) => h.fetches[0]?.token],
+    ['rules', ['rules', 'acme/shop#12'], (h) => h.fetches[0]?.token],
+    ['prompt', ['prompt', 'acme/shop#12'], (h) => h.fetches[0]?.token],
+    ['index', ['index', 'acme/shop'], (h) => h.mirrors[0]?.token],
+    [
+      'history --refresh',
+      ['history', 'acme/shop#12', '--refresh'],
+      (h) => h.stateFetches[0]?.token,
+    ],
+  ])('runs %s with the token of gh when the environment has none', async (_name, argv, used) => {
+    const h = harness({ env: NO_TOKEN, ghToken: fromGh })
+
+    expect(await run(argv, h.deps)).toBe(0)
+    expect(used(h)).toBe(TOKEN)
+    expect(h.ghAsks()).toBe(1)
+  })
+
+  it('runs watch with the token of gh when the environment has none', async () => {
+    const tokens: string[] = []
+    const h = harness({
+      env: NO_TOKEN,
+      ghToken: fromGh,
+      files: watched(),
+      listPulls: async ({ token }) => {
+        tokens.push(token)
+        return { status: 'ok' as const, pulls: [] }
+      },
+    })
+
+    expect(await run(['watch', '--once'], h.deps)).toBe(0)
+    expect(tokens).toEqual([TOKEN])
+  })
+
+  it('runs enqueue with the token of gh when the environment has none', async () => {
+    const h = harness({ env: NO_TOKEN, ghToken: fromGh, files: watched() })
+
+    expect(await run(['enqueue', 'acme/shop#12'], h.deps)).toBe(0)
+    expect(h.stdout()).toBe('Queued acme/shop#12 at a1b2c3d (job 1).\n')
+  })
+
+  it('lets the MCP server ask for reviews with the token of gh', async () => {
+    const h = harness({
+      env: NO_TOKEN,
+      ghToken: fromGh,
+      files: watched(),
+      stdin: [[reviewRequest]],
+    })
+
+    expect(await run(['mcp'], h.deps)).toBe(0)
+    expect(h.stdout()).toContain('"isError":false')
+    expect(h.stdout()).toContain('\\"status\\": \\"queued\\"')
+  })
+
+  it('never asks gh when the environment has a token', async () => {
+    const h = harness({ ghToken: async () => 'gho_unused' })
+
+    expect(await run(['review', 'acme/shop#12'], h.deps)).toBe(0)
+    expect(h.fetches[0]?.token).toBe(TOKEN)
+    expect(h.ghAsks()).toBe(0)
+  })
+
+  it('asks to log in with gh or to set GITHUB_TOKEN when gh has no token either', async () => {
+    const h = harness({ env: NO_TOKEN })
+
+    expect(await run(['review', 'acme/shop#12'], h.deps)).toBe(1)
+    expect(h.stderr()).toMatch(/^phada: No GitHub token found\. /)
+    expect(h.stderr()).toContain('gh auth login')
+    expect(h.stderr()).toContain('GITHUB_TOKEN')
+    expect(h.fetches).toHaveLength(0)
+  })
+
+  it('never prints the token of gh', async () => {
+    const h = harness({
+      env: NO_TOKEN,
+      ghToken: fromGh,
+      pullRequest: () => Promise.reject(new Error('socket hang up')),
+    })
+
+    expect(await run(['review', 'acme/shop#12', '--debug'], h.deps)).toBe(1)
     expect(h.stdout() + h.stderr()).not.toContain(TOKEN)
   })
 })
@@ -1108,7 +1268,7 @@ describe('run publishing', () => {
     expect(await run([...REVIEW, '--dry-run'], h.deps)).toBe(0)
     expect(h.prompts).toHaveLength(1)
     expect(h.posts).toHaveLength(0)
-    expect(h.stdout()).toContain('## 🦋 Phada review: 3/5 (implementation issues)')
+    expect(h.stdout()).toContain('## 🦋 3/5 (implementation issues)')
     expect(h.stdout()).toContain('===== Inline comment 1/1 · src/shop.ts:3 =====')
     expect(h.stderr()).toContain(
       'Dry run: nothing was posted.\nWithout --dry-run: a1b2c3d already reviewed by Phada; 1 thread still open. Use --force to review again.\n',
@@ -1142,7 +1302,7 @@ describe('run publishing', () => {
     expect(await run(REVIEW, h.deps)).toBe(0)
     expect(h.posts[0]?.comments).toEqual([])
     expect(h.posts[0]?.body).toContain(
-      'No new problems in a1b2c3d. 1 Phada comment from previous reviews is still open',
+      'No new problems in a1b2c3d. 1 comment from previous reviews is still open',
     )
     expect(h.stderr()).toContain(
       `Published the review: ${REVIEW_URL} (1 finding still open from previous reviews)`,
@@ -1357,7 +1517,7 @@ describe('run with config and repository context', () => {
 
     expect(await run(['review', 'acme/shop#12', '--dry-run'], h.deps)).toBe(0)
     expect(h.posts).toEqual([])
-    expect(h.stdout()).toContain('## 🦋 Phada review: nothing to review')
+    expect(h.stdout()).toContain('## 🦋 nothing to review')
     expect(h.stdout()).toContain('Left out of the review: `package-lock.json`')
     expect(h.stderr()).toContain('Dry run: nothing was posted.')
   })
@@ -1718,7 +1878,7 @@ describe('run index', () => {
 
     expect(await run(['index', 'acme/shop'], h.deps)).toBe(1)
     expect(h.stderr()).toMatch(
-      /^phada: No GitHub token found\. Set GITHUB_TOKEN \(or GH_TOKEN\) to a token that can read the repository contents,/,
+      /^phada: No GitHub token found\. Log in with gh auth login, or set GITHUB_TOKEN \(or GH_TOKEN\) to a token that can read the repository contents\.$/m,
     )
   })
 

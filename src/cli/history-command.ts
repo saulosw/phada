@@ -1,4 +1,5 @@
 import { refreshFeedback } from '../app/feedback.js'
+import { readFeedbackStats, readFindings, readReviews } from '../app/read-history.js'
 import { dataFiles } from '../config/data-paths.js'
 import type { LocalFileSystem } from '../config/local-files.js'
 import { loadTopLevelUserLayers } from '../config/user-config.js'
@@ -7,11 +8,13 @@ import type {
   FetchReviewStateOptions,
   PullRequestReviewState,
 } from '../github/pull-request-reviews.js'
+import { openExistingHistoryStore } from '../store/history-store.js'
 import type { HistoryStore } from '../store/history-store.js'
 import type { IndexFormat, RulesTarget } from './args.js'
-import { MissingGitHubTokenError, UsageError } from './errors.js'
+import { UsageError } from './errors.js'
+import { requireGitHubToken } from './github-token.js'
+import type { GitHubTokenDeps } from './github-token.js'
 import {
-  feedbackStats,
   formatHistoryJson,
   formatHistoryText,
   formatStatsJson,
@@ -19,7 +22,7 @@ import {
 } from './format-history.js'
 import type { TextOutput } from './progress.js'
 import { feedbackRefreshDeps } from './review-wiring.js'
-import { toTerminalText } from './terminal-text.js'
+import { toTerminalText } from '../app/terminal-text.js'
 import { formatCount } from './units.js'
 
 export interface HistoryCommand {
@@ -35,8 +38,7 @@ export interface HistoryPruneCommand {
   olderThanMs: number
 }
 
-export interface HistoryCommandDeps {
-  env: NodeJS.ProcessEnv
+export interface HistoryCommandDeps extends GitHubTokenDeps {
   home: string
   files: LocalFileSystem
   stdout: TextOutput
@@ -48,7 +50,7 @@ export interface HistoryCommandDeps {
 
 export async function runHistory(command: HistoryCommand, deps: HistoryCommandDeps): Promise<void> {
   const enabled = historyEnabled(await loadTopLevelUserLayers(deps))
-  const token = command.refresh ? refreshToken(deps.env, enabled) : undefined
+  const token = command.refresh ? await refreshToken(deps, enabled) : undefined
   if (!enabled) deps.stderr.write('The history is off in your config; nothing new is saved.\n')
   const now = deps.clock()
   const since =
@@ -56,35 +58,48 @@ export async function runHistory(command: HistoryCommand, deps: HistoryCommandDe
       ? undefined
       : new Date(now.getTime() - command.sinceMs).toISOString()
   const path = dataFiles(deps.env, deps.home).history
-  if (token === undefined && !(await deps.files.exists(path))) {
+  const filter = filterOf(command.target)
+  const history =
+    token === undefined ? await existingHistory(path, deps) : await deps.openHistoryStore(path)
+  if (history === undefined) {
     deps.stdout.write(
       command.format === 'json'
-        ? render(command, since, undefined)
+        ? render(command, since, undefined, filter)
         : 'No reviews in the history yet.\n',
     )
     return
   }
-  const history = await deps.openHistoryStore(path)
   try {
-    const filter = filterOf(command.target)
     if (token !== undefined) await refresh(history, filter, token, deps)
-    deps.stdout.write(render(command, since, { history, filter }))
+    deps.stdout.write(render(command, since, history, filter))
   } finally {
     history.close()
   }
+}
+
+async function existingHistory(
+  path: string,
+  deps: HistoryCommandDeps,
+): Promise<HistoryStore | undefined> {
+  const opening = await openExistingHistoryStore(path, {
+    exists: (file) => deps.files.exists(file),
+    open: deps.openHistoryStore,
+  })
+  if (opening.status === 'missing') return undefined
+  if (opening.status === 'open') return opening.history
+  throw opening.error
 }
 
 export async function runHistoryPrune(
   command: HistoryPruneCommand,
   deps: HistoryCommandDeps,
 ): Promise<void> {
-  const path = dataFiles(deps.env, deps.home).history
-  if (!(await deps.files.exists(path))) {
+  const history = await existingHistory(dataFiles(deps.env, deps.home).history, deps)
+  if (history === undefined) {
     deps.stdout.write('No reviews in the history yet.\n')
     return
   }
   const before = new Date(deps.clock().getTime() - command.olderThanMs).toISOString()
-  const history = await deps.openHistoryStore(path)
   try {
     const { runs, findings, jobs, vacuumed } = history.prune(before)
     deps.stdout.write(
@@ -108,25 +123,20 @@ interface Filter {
 function render(
   command: HistoryCommand,
   since: string | undefined,
-  source: { history: HistoryStore; filter: Filter } | undefined,
+  history: HistoryStore | undefined,
+  filter: Filter,
 ): string {
   const json = command.format === 'json'
   const showsFindings = json || command.stats || command.target?.kind === 'pull'
-  const findings = showsFindings
-    ? (source?.history.findings({ ...source.filter, since }) ?? [])
-    : undefined
   if (command.stats) {
-    const stats = feedbackStats(findings ?? [])
+    const stats = readFeedbackStats(history, { ...filter, since }).repos
     return json ? formatStatsJson(stats, since) : formatStatsText(stats, since)
   }
-  const { runs, total } = source?.history.runs({
-    ...source.filter,
-    since,
-    limit: command.limit,
-  }) ?? { runs: [], total: 0 }
+  const findings = showsFindings ? readFindings(history, { ...filter, since }) : undefined
+  const { runs, total } = readReviews(history, { ...filter, since, limit: command.limit })
   if (json) return formatHistoryJson(runs, total, findings ?? [])
-  if (total === 0 && findings === undefined && source !== undefined) {
-    const comments = source.history.findings({ ...source.filter, since }).length
+  if (total === 0 && findings === undefined && history !== undefined) {
+    const comments = readFindings(history, { ...filter, since }).length
     if (comments > 0) return onlyCommentsText(comments)
   }
   return formatHistoryText(runs, total, findings)
@@ -159,13 +169,11 @@ async function refresh(
   )
 }
 
-function refreshToken(env: NodeJS.ProcessEnv, enabled: boolean): string {
+async function refreshToken(deps: HistoryCommandDeps, enabled: boolean): Promise<string> {
   if (!enabled) {
     throw new UsageError('--refresh saves to the history; remove history: false from your config.')
   }
-  const token = env.GITHUB_TOKEN?.trim() || env.GH_TOKEN?.trim()
-  if (!token) throw new MissingGitHubTokenError('read the pull requests and their comments')
-  return token
+  return requireGitHubToken(deps, 'read the pull requests and their comments')
 }
 
 function filterOf(target: RulesTarget | undefined): Filter {

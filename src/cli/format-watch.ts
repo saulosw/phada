@@ -7,7 +7,7 @@ import { errorMessage } from '../app/error-message.js'
 import { formatSkipMessage } from './format-publication.js'
 import { nameList } from './name-list.js'
 import { shortSha } from './review-text.js'
-import { toTerminalText } from './terminal-text.js'
+import { toTerminalText } from '../app/terminal-text.js'
 import { formatCount, formatLocalTime } from './units.js'
 
 const SCHEMA_VERSION = 1

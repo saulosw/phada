@@ -7,7 +7,7 @@ import { SkillError } from '../skills/errors.js'
 import { HistoryStoreError } from '../store/history-store.js'
 import { IndexStoreError } from '../store/index-store.js'
 import { MissingGitHubTokenError, UsageError, WatchRunningError } from './errors.js'
-import { toTerminalText } from './terminal-text.js'
+import { toTerminalText } from '../app/terminal-text.js'
 
 export interface FormattedError {
   message: string
