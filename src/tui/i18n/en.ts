@@ -505,6 +505,15 @@ export const english: UiMessages = {
       current: 'current',
       choose: 'choose',
     },
+    summary: {
+      written: (path) => `Written to ${path}:`,
+      nothing: 'Nothing was written to your config.',
+      skipped: (steps) => `Skipped: ${steps}`,
+      now: 'What to do now',
+      watch: 'reviews the new pull requests of the watched repositories',
+      review: 'reviews one pull request',
+      home: 'go to Home',
+    },
   },
   config: {
     create: (path) => `Create ${path}?`,

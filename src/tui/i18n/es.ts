@@ -514,6 +514,15 @@ export const spanish: UiMessages = {
       current: 'actual',
       choose: 'elegir',
     },
+    summary: {
+      written: (path) => `Guardado en ${path}:`,
+      nothing: 'No se guardó nada en tu configuración.',
+      skipped: (steps) => `Omitidos: ${steps}`,
+      now: 'Qué hacer ahora',
+      watch: 'revisa los pull requests nuevos de los repositorios observados',
+      review: 'revisa un pull request',
+      home: 'ir al Inicio',
+    },
   },
   config: {
     create: (path) => `¿Crear ${path}?`,

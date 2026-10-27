@@ -134,6 +134,15 @@ export interface SetupMessages {
     notCompleted: string
   }
   language: { intro: string; current: string; choose: string }
+  summary: {
+    written(path: string): string
+    nothing: string
+    skipped(steps: string): string
+    now: string
+    watch: string
+    review: string
+    home: string
+  }
 }
 
 export interface ConfigMessages {
