@@ -45,7 +45,8 @@ src/
   architecture.test.ts   # allowed imports of src/review/, src/publish/, src/watch/, src/context/,
                          #   src/investigation/, src/repository/, src/repo-map/, src/store/,
                          #   src/graph/, src/app/, src/skills/, src/gh-facade/, src/slack/ and
-                         #   src/tui/ (.ts and .tsx)
+                         #   src/tui/ (.ts and .tsx); a screen of src/tui/screens/ imports no
+                         #   other screen; the app's tests wait on a condition, never a pause
   app/                   # use cases any caller can run (CLI today), with injected readers
     review-pull-request.ts # reviewPullRequest(): repository context → mirror → index of the head
                          #   (60 s budget) → related repositories → graph and impact of the diff
@@ -345,14 +346,16 @@ src/
                          #   related repositories and last reviews), automation.tsx (one page:
                          #   watch, CI wait, request sources, hooks, when), provider.tsx (the
                          #   choice and its origin, each AI checked on open and on r with its next
-                         #   step, the MCP servers; PROVIDER_NAMES), learnings.tsx (each
+                         #   step, the MCP servers), learnings.tsx (each
                          #   repository's relations and feedback → its feedback per rule and its
                          #   relations), rules.tsx (a repository → the lens and who set it, the
                          #   user's rules at once, .phada/ and docs of the default branch on open
                          #   and on r; p and a number → the loaded rules of that pull request and
                          #   its prompt: each pass, its data blocks and instructions)
     setting-lines.tsx    #   settingLines(), settingValue(): config settings as key, value and
-                         #   origin rows; indented()
+                         #   origin rows; ruleLines(): the user's rules as name, text and origin
+                         #   rows; indented()
+    provider-names.ts    #   PROVIDER_NAMES: the name of each AI provider as the screens show it
     units.ts             #   durationText(), bytesText()
     run-text.ts          #   runKey(), verdictLabel(), verdictColor(): a run of the history as the
                          #   screens list it
