@@ -544,6 +544,24 @@ export const english: UiMessages = {
       noToken:
         'This step needs a GitHub token to list your repositories: set it up in the GitHub step (phada setup again), or skip this one.',
     },
+    graph: {
+      reading: 'Reading the repositories you watch…',
+      intro:
+        'Phada maps the code of each watched repository (symbols, calls, imports), so a review sees what calls the code it changes. One repository at a time: the setup waits, and Esc stops.',
+      none: 'No repository is watched yet: choose them in the Repositories step (phada setup again), or index one later with phada index owner/repo.',
+      index: 'index',
+      stop: 'stop',
+      waiting: 'waiting',
+      fetching: 'fetching…',
+      stopping: 'stopping…',
+      progress: (done, total) => `${number(done)} of ${number(total)} files`,
+      indexed: (files) => `${number(files)} files indexed`,
+      cancelled: (done, total) => `stopped at ${number(done)} of ${number(total)} files`,
+      notStarted: 'not started',
+      noToken: 'no GitHub token',
+      later:
+        'phada watch indexes what was left when it is idle; phada index owner/repo indexes one now.',
+    },
     language: {
       intro: 'The language of this app and of the reviews Phada writes.',
       current: 'current',

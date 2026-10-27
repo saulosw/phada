@@ -135,6 +135,22 @@ export interface SetupMessages {
   }
   ai: { intro: string }
   repositories: { intro: string; noToken: string }
+  graph: {
+    reading: string
+    intro: string
+    none: string
+    index: string
+    stop: string
+    waiting: string
+    fetching: string
+    stopping: string
+    progress(done: number, total: number): string
+    indexed(files: number): string
+    cancelled(done: number, total: number): string
+    notStarted: string
+    noToken: string
+    later: string
+  }
   language: { intro: string; current: string; choose: string }
   summary: {
     written(path: string): string

@@ -553,6 +553,24 @@ export const portuguese: UiMessages = {
       noToken:
         'Este passo precisa de um token do GitHub para listar seus repositórios: configure-o no passo GitHub (phada setup de novo), ou pule este.',
     },
+    graph: {
+      reading: 'Lendo os repositórios que você observa…',
+      intro:
+        'O Phada mapeia o código de cada repositório observado (símbolos, chamadas, imports), para o review ver o que chama o código que muda. Um repositório por vez: o setup espera, e Esc para.',
+      none: 'Nenhum repositório observado ainda: escolha-os no passo Repositórios (phada setup de novo), ou indexe um depois com phada index owner/repo.',
+      index: 'indexar',
+      stop: 'parar',
+      waiting: 'esperando',
+      fetching: 'buscando…',
+      stopping: 'parando…',
+      progress: (done, total) => `${number(done)} de ${number(total)} arquivos`,
+      indexed: (files) => `${number(files)} arquivos indexados`,
+      cancelled: (done, total) => `parou em ${number(done)} de ${number(total)} arquivos`,
+      notStarted: 'não começou',
+      noToken: 'sem token do GitHub',
+      later:
+        'O phada watch indexa o que faltou quando estiver ocioso; phada index owner/repo indexa um agora.',
+    },
     language: {
       intro: 'O idioma deste app e dos reviews que o Phada escreve.',
       current: 'atual',
