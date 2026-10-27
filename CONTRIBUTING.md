@@ -1,7 +1,8 @@
 # Contributing to Phada
 
 Thanks for helping. This guide covers running Phada from source, the checks a change must pass
-and how to send it. [AGENTS.md](AGENTS.md) describes the code layout and the architecture rules.
+and how to send it. [AGENTS.md](AGENTS.md) describes the architecture rules and
+[docs/layout.md](docs/layout.md) the code layout.
 
 ## Run from source
 

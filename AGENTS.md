@@ -164,3 +164,4 @@ npm run dev                            # the terminal app (in a terminal of at l
 - Done means: format, typecheck, tests, `lint:unused` and smoke green (locally and in CI), no
   secrets, and the README and the `Unreleased` section of [CHANGELOG.md](CHANGELOG.md) updated
   when user-visible behavior changes.
+- A module added, moved or removed updates its entry in [docs/layout.md](docs/layout.md).
