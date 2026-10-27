@@ -70,7 +70,7 @@ export function Setup({ onClose }: { onClose(): void }) {
       : [
           ...stepKeys,
           ...(step.skippable && !outer.typing ? [{ keys: 's', label: m.skip }] : []),
-          ...(stepHasBack ? [] : [{ keys: 'Esc', label: m.leave }]),
+          ...(stepHasBack || outer.typing ? [] : [{ keys: 'Esc', label: m.leave }]),
         ],
   )
 
