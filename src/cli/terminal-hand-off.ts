@@ -1,3 +1,4 @@
+import { setImmediate as nextTurn } from 'node:timers/promises'
 import { loginCommand } from '../app/read-provider.js'
 import { runInteractive } from '../process/run-interactive.js'
 import { withoutGitHubTokens } from '../providers/cli-run.js'
@@ -7,6 +8,7 @@ const DEFAULT_EDITOR = 'vi'
 
 export interface TerminalHandOffDeps {
   env: NodeJS.ProcessEnv
+  stdin: NodeJS.ReadableStream
   cwd: string
   onSignal: AppHost['onSignal']
   runInteractive?: typeof runInteractive
@@ -25,6 +27,7 @@ export function terminalHandOff(deps: TerminalHandOffDeps): TerminalHandOff {
       const { command, args, env } = handOffCommand(deps.env, target)
       const running = new AbortController()
       child = running
+      await stopReading(deps.stdin)
       try {
         return await run(command, args, { cwd: deps.cwd, env, signal: running.signal })
       } finally {
@@ -41,6 +44,11 @@ export function terminalHandOff(deps: TerminalHandOffDeps): TerminalHandOff {
         }
       }),
   }
+}
+
+async function stopReading(stdin: NodeJS.ReadableStream): Promise<void> {
+  await nextTurn()
+  stdin.pause()
 }
 
 interface HandOffCommand {

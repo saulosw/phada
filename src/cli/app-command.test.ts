@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { Readable } from 'node:stream'
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it, vi } from 'vitest'
 import { memoryFiles } from '../../test/support/memory-files.js'
 import { ConfigError } from '../config/errors.js'
 import { HISTORY_MIGRATIONS } from '../store/history-migrations.js'
@@ -479,6 +479,26 @@ describe('handing the terminal over', () => {
     expect(results).toEqual([{ kind: 'not-found', command }])
   })
 
+  it('stops reading the terminal before the command runs, so every key goes to the command', async () => {
+    const events: string[] = []
+    const { run } = runner(async () => {
+      events.push('run')
+      return { kind: 'exited', exitCode: 130 }
+    })
+    const appInput = () => {}
+    const { app } = deps({
+      runInteractive: run,
+      during: async (appDeps, host) => {
+        host.stdin.removeListener('readable', appInput)
+        await appDeps.handOff({ kind: 'ai-login', provider: 'claude' })
+      },
+    })
+    app.stdin.on('readable', appInput)
+    app.stdin.on('pause', () => events.push('pause'))
+    await runApp(app)
+    expect(events).toEqual(['pause', 'run'])
+  })
+
   it('leaves Ctrl-C to the command while it runs, and ends the app on it afterwards', async () => {
     const child = pending()
     const { run } = runner(() => child.promise)
@@ -508,6 +528,7 @@ describe('handing the terminal over', () => {
       during: async (appDeps, host) => {
         host.onSignal((signal) => received.push(signal))
         const handOff = appDeps.handOff({ kind: 'ai-login', provider: 'codex' })
+        await vi.waitFor(() => expect(calls).toHaveLength(1))
         expect(calls[0]?.options.signal?.aborted).toBe(false)
         send('SIGTERM')
         expect(received).toEqual(['SIGTERM'])
