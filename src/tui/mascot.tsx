@@ -3,8 +3,8 @@ import { useEffect, useState } from 'react'
 import { useAppDeps, useIsWorking, useTheme } from './app-context.js'
 
 export const MASCOT_FRAMES: readonly (readonly string[])[] = [
-  [' ▗▄▖ ╹ ╹ ▗▄▖ ', '▐███▙ ● ▟███▌', ' ▝██▛ ┃ ▜██▘ ', '   ▀  ╹  ▀   '],
-  ['    ▗▖╹▗▖    ', '    ▐█●█▌    ', '    ▝█┃█▘    ', '     ▀╹▀     '],
+  [' ▗▄▖ ╹ ╹ ▗▄▖ ', '▐███▙ ┃ ▟███▌', ' ▝██▛ ┃ ▜██▘ ', '   ▀  ╹  ▀   '],
+  ['    ▗▖╹▗▖    ', '    ▐█┃█▌    ', '    ▝█┃█▘    ', '     ▀╹▀     '],
 ]
 
 export const FLAP_MS = 450

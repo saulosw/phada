@@ -265,7 +265,7 @@ describe('the Home screen', () => {
     const before = frame()
     clock.advance(FLAP_MS)
     await waitFor(() => frame() !== before)
-    expect(frame()).toContain('▐█●█▌')
+    expect(frame()).toContain('▐█┃█▌')
   })
 
   it('shows errors on screen without breaking: network down, a check that failed', async () => {

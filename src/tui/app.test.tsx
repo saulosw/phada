@@ -186,7 +186,7 @@ describe('navigation', () => {
     await showing('Phada v1.2.3', '~/code/shop')
     expect(frame()).toContain('Phada v1.2.3')
     expect(frame()).toContain('~/code/shop')
-    expect(frame()).toContain('▐███▙ ● ▟███▌')
+    expect(frame()).toContain('▐███▙ ┃ ▟███▌')
   })
 })
 
