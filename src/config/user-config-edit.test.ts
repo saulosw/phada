@@ -26,6 +26,13 @@ describe('planUserConfigEdit', () => {
     expect(result).toMatchObject({ path: PATH, exists: true, before: current })
   })
 
+  it('keeps a long value on one line', () => {
+    const rule = `  - rule: ${'Use the ORM for every query; never build SQL by hand. '.repeat(3).trim()}\n`
+    const current = `provider: claude\nrules:\n${rule}`
+
+    expect(planned(current, [{ kind: 'unset', key: 'provider' }]).text).toBe(`rules:\n${rule}`)
+  })
+
   it('adds a new key at the end and removes one', () => {
     const current = 'provider: claude\nmodel: opus # pinned\n# tail\n'
 
@@ -120,5 +127,124 @@ describe('planUserConfigEdit', () => {
       planned('provider: ollama\nmodel: llama3\n', [{ kind: 'set', key: 'language', value: 'es' }])
         .changes,
     ).toEqual([{ key: 'language', before: null, after: 'es' }])
+  })
+
+  describe('watched repositories', () => {
+    const WATCHING = `watch:
+  interval: 5m # often
+  repos:
+    - acme/api # the main one
+    - repo: acme/web
+      labels: [phada]
+`
+
+    it('adds a repository at the end of watch.repos', () => {
+      const result = planned(WATCHING, [{ kind: 'watch', repo: 'acme/sdk' }])
+
+      expect(result.text).toBe(`${WATCHING}    - acme/sdk\n`)
+      expect(result.changes).toEqual([{ key: 'watch.repos', added: ['acme/sdk'], removed: [] }])
+    })
+
+    it('starts the watch block when there is none', () => {
+      const result = planned('provider: claude\n', [{ kind: 'watch', repo: 'acme/api' }])
+
+      expect(result.text).toBe('provider: claude\nwatch:\n  repos:\n    - acme/api\n')
+    })
+
+    it('matches a repository by name, ignoring case', () => {
+      expect(planned(WATCHING, [{ kind: 'watch', repo: 'Acme/Web' }]).changes).toEqual([])
+      expect(planned(WATCHING, [{ kind: 'unwatch', repo: 'acme/nope' }]).changes).toEqual([])
+
+      const result = planned(WATCHING, [{ kind: 'unwatch', repo: 'ACME/web' }])
+
+      expect(result.text).toBe(
+        'watch:\n  interval: 5m # often\n  repos:\n    - acme/api # the main one\n',
+      )
+      expect(result.changes).toEqual([{ key: 'watch.repos', added: [], removed: ['acme/web'] }])
+    })
+
+    it('refuses a repository name that is not owner/repo', () => {
+      expect(plan(WATCHING, [{ kind: 'watch', repo: 'acme' }])).toMatchObject({
+        ok: false,
+        reason: 'invalid-result',
+      })
+    })
+
+    it('removes the watch block with its last repository when it holds nothing else', () => {
+      const current = 'provider: claude\nwatch:\n  repos: [acme/api]\nlanguage: es\n'
+
+      const result = planned(current, [{ kind: 'unwatch', repo: 'acme/api' }])
+
+      expect(result.text).toBe('provider: claude\nlanguage: es\n')
+      expect(result.changes).toEqual([{ key: 'watch.repos', added: [], removed: ['acme/api'] }])
+    })
+
+    it('keeps the other watch settings, refusing to take out the last repository', () => {
+      const current = 'watch:\n  interval: 5m\n  settle: 1m\n  repos: [acme/api]\n'
+
+      expect(plan(current, [{ kind: 'unwatch', repo: 'acme/api' }])).toEqual({
+        ok: false,
+        reason: 'last-watched-repo',
+        repo: 'acme/api',
+        settings: ['interval', 'settle'],
+      })
+    })
+
+    it('turns publishing off, writing an entry as an object only when it has to', () => {
+      const result = planned(WATCHING, [
+        { kind: 'publish', repo: 'acme/api', publish: false },
+        { kind: 'publish', repo: 'acme/web', publish: false },
+      ])
+
+      expect(result.text).toBe(`watch:
+  interval: 5m # often
+  repos:
+    - repo: acme/api # the main one
+      publish: false
+    - repo: acme/web
+      labels: [phada]
+      publish: false
+`)
+      expect(result.changes).toEqual([
+        { key: 'publish', repo: 'acme/api', before: true, after: false },
+        { key: 'publish', repo: 'acme/web', before: true, after: false },
+      ])
+    })
+
+    it('turns publishing back on, back to a plain name when nothing else is set', () => {
+      const current = `watch:
+  repos:
+    - repo: acme/api # the main one
+      publish: false
+    - repo: acme/web
+      publish: false
+      labels: [phada]
+`
+
+      const result = planned(current, [
+        { kind: 'publish', repo: 'acme/api', publish: true },
+        { kind: 'publish', repo: 'acme/web', publish: true },
+        { kind: 'publish', repo: 'acme/web', publish: true },
+      ])
+
+      expect(result.text).toBe(`watch:
+  repos:
+    - acme/api # the main one
+    - repo: acme/web
+      labels: [phada]
+`)
+      expect(result.changes).toEqual([
+        { key: 'publish', repo: 'acme/api', before: false, after: true },
+        { key: 'publish', repo: 'acme/web', before: false, after: true },
+      ])
+    })
+
+    it('refuses to set publishing on a repository it does not watch', () => {
+      expect(plan(WATCHING, [{ kind: 'publish', repo: 'acme/sdk', publish: false }])).toEqual({
+        ok: false,
+        reason: 'not-watched',
+        repo: 'acme/sdk',
+      })
+    })
   })
 })
