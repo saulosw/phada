@@ -86,6 +86,13 @@ try {
         'phada: Missing the command, e.g. phada review owner/repo#123. Run with --help for usage.\n',
     `phada with no command outside a terminal: exit ${noCommand.status}, ${noCommand.stderr}`,
   )
+  const setup = spawnSync(phada, ['setup'], { encoding: 'utf8', timeout: TIMEOUT_MS })
+  check(
+    setup.status === 2 &&
+      setup.stderr ===
+        'phada: phada setup needs an interactive terminal. Run with --help for usage.\n',
+    `phada setup outside a terminal: exit ${setup.status}, ${setup.stderr}`,
+  )
   const appEntry = join(dir, 'node_modules', 'phada', 'dist', 'tui', 'open-app.js')
   const tui = spawnSync(
     process.execPath,
