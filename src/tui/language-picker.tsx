@@ -12,6 +12,7 @@ import {
 } from './app-context.js'
 import { configChangeLines, useConfigChange } from './config-change.js'
 import { usePolled } from './data-hooks.js'
+import { failedText } from './data-view.js'
 import { ScrollText } from './scroll-list.js'
 import { fit, wrapText } from './text-fit.js'
 
@@ -44,8 +45,9 @@ export function LanguagePicker({ onDone }: { onDone(plan?: UserConfigPlan): void
     pickedNow.current = index
     setPicked(index)
   }
+  const unreadable = read.status === 'failed'
   useScreenInput((_input, key) => {
-    if (change.open) return
+    if (change.open || unreadable) return
     const at = pickedNow.current ?? currentIndex
     if (key.upArrow) return pick(Math.max(at - 1, 0))
     if (key.downArrow) return pick(Math.min(at + 1, LANGUAGES.length - 1))
@@ -58,15 +60,26 @@ export function LanguagePicker({ onDone }: { onDone(plan?: UserConfigPlan): void
   useScreenKeys(
     change.open
       ? change.keys
-      : [
-          { keys: '↑/↓', label: messages.keys.select },
-          { keys: 'Enter', label: m.choose },
-        ],
+      : unreadable
+        ? []
+        : [
+            { keys: '↑/↓', label: messages.keys.select },
+            { keys: 'Enter', label: m.choose },
+          ],
   )
   const { colors } = theme
-  const lines = [
+  const intro = [
     ...wrapText(m.intro, size.columns).map((line) => <Text>{line}</Text>),
     <Text> </Text>,
+  ]
+  if (read.status === 'failed') {
+    const error = wrapText(failedText(messages, read.error), size.columns).map((line) => (
+      <Text color={colors.error}>{line}</Text>
+    ))
+    return <ScrollText lines={[...intro, ...error]} rows={size.rows} />
+  }
+  const lines = [
+    ...intro,
     ...LANGUAGES.map(({ tag, name }, index) => (
       <Text bold={index === selected}>
         {index === selected ? <Text color={colors.accent}>❯ </Text> : '  '}

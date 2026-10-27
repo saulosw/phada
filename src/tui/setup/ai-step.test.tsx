@@ -115,6 +115,7 @@ function openAiStep(
     handOff?: HandOffResult
     pullModel?: AppDeps['pullModel']
     language?: string
+    invalid?: string
   } = {},
 ) {
   const reports = [...(options.reports ?? [report(OLLAMA_STOPPED)])]
@@ -125,8 +126,10 @@ function openAiStep(
   const app = renderApp({
     deps: {
       start: 'setup',
-      readProviders: async () =>
-        (reports.length > 1 ? reports.shift() : reports[0]) ?? report(OLLAMA_STOPPED),
+      readProviders: async () => {
+        if (options.invalid !== undefined) throw new Error(options.invalid)
+        return (reports.length > 1 ? reports.shift() : reports[0]) ?? report(OLLAMA_STOPPED)
+      },
       handOff: async (target) => {
         handOffs.push(target)
         return options.handOff ?? { kind: 'exited', exitCode: 0 }
@@ -175,6 +178,20 @@ describe('the AI step', () => {
     expect(frame()).toContain('start it with ollama serve')
     expect(footer()).toContain('Enter choose')
     expectFits(frame())
+  })
+
+  it('shows the error of an invalid config instead of the AIs, and skips on', async () => {
+    const { footer, frame, press, reach, seeing, plans } = openAiStep({
+      invalid: 'Invalid config /home/ana/.config/phada/config.yml: watch.interval: expected 5m',
+    })
+    await reach()
+    await seeing('Could not load: Invalid config')
+    expect(frame()).not.toContain('Claude Code')
+    expect(footer()).not.toContain('Enter')
+    await press(KEYS.enter)
+    expect(plans).toEqual([])
+    await press('s')
+    await seeing(/Step 3 of 7 · Language/)
   })
 
   it("writes the provider with the CLI's default model after its before and after", async () => {

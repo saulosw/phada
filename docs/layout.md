@@ -416,8 +416,8 @@ src/
                          #   typed field still there
     language-picker.tsx  #   LanguagePicker: en, pt, es with the current one marked → the change
                          #   of language (useConfigChange) → onDone(plan), the app speaking it at
-                         #   once; the current one picked → onDone() without writing;
-                         #   languageName()
+                         #   once; the current one picked → onDone() without writing; a config
+                         #   it cannot read → its error, no choice; languageName()
     sub-view.tsx         #   SubView: a picker shown in place of a screen's view, its keys and back
                          #   gathered, Esc (when the picker does not hold it) → onLeave()
     index-series.ts      #   useIndexSeries(): AppDeps.indexRepository one repository after the

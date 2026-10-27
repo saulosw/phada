@@ -325,12 +325,15 @@ describe('the palette', () => {
 })
 
 describe('/language', () => {
-  function openWithLanguage() {
+  function openWithLanguage(options: { invalid?: string } = {}) {
     let language: string | undefined
     const writes: unknown[] = []
     const app = renderApp({
       deps: {
-        readLanguage: async () => language,
+        readLanguage: async () => {
+          if (options.invalid !== undefined) throw new Error(options.invalid)
+          return language
+        },
         planConfig: async (changes) => {
           const [change] = changes
           const after = change?.kind === 'set' ? change.value : null
@@ -377,6 +380,24 @@ describe('/language', () => {
     await showing('Nenhuma config ainda.')
     expect(frame()).toContain('Nenhuma config ainda.')
     expect(writes).toHaveLength(1)
+  })
+
+  it('shows the error of an invalid config instead of the languages', async () => {
+    const { footer, frame, press, showing, type, writes } = openWithLanguage({
+      invalid: 'Invalid config /home/ana/.config/phada/config.yml: watch.interval: expected 5m',
+    })
+    await showing('Phada v1.2.3')
+    await press('/')
+    await type('language')
+    await showing('❯ Language')
+    await press(KEYS.enter)
+    await showing('Could not load: Invalid config')
+    expect(frame()).not.toContain('Español')
+    expect(footer()).toContain('Esc back')
+    expect(footer()).not.toContain('Enter')
+    await press(KEYS.enter, KEYS.escape)
+    await showing('Phada v1.2.3')
+    expect(writes).toEqual([])
   })
 
   it('goes back to the screen it came from on Esc, without writing', async () => {

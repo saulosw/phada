@@ -21,6 +21,7 @@ function planOf(changes: readonly UserConfigChange[], current: string | undefine
 function openLanguageStep(
   options: {
     language?: string
+    invalid?: string
     planned?: UserConfigPlanResult[]
     applied?: AppliedUserConfig[]
   } = {},
@@ -34,7 +35,10 @@ function openLanguageStep(
     deps: {
       start: 'setup',
       ...(language === undefined ? {} : { language }),
-      readLanguage: async () => language,
+      readLanguage: async () => {
+        if (options.invalid !== undefined) throw new Error(options.invalid)
+        return language
+      },
       planConfig: async (changes) => {
         plans.push(changes)
         return planned.shift() ?? { ok: true, plan: planOf(changes, language) }
@@ -119,6 +123,20 @@ describe('the language step', () => {
     await seeing('expected 5m')
     await press(KEYS.enter)
     expect(writes).toEqual([])
+  })
+
+  it('shows the error of an invalid config instead of the languages, and skips on', async () => {
+    const { footer, frame, press, reach, seeing, plans } = openLanguageStep({
+      invalid: 'Invalid config /home/ana/.config/phada/config.yml: watch.interval: expected 5m',
+    })
+    await reach()
+    await seeing('Step 3 of 7', 'Could not load: Invalid config', 'expected 5m')
+    expect(frame()).not.toContain('Português')
+    expect(footer()).not.toContain('Enter')
+    await press(KEYS.enter)
+    expect(plans).toEqual([])
+    await press('s')
+    await seeing('Step 4 of 7')
   })
 
   it('plans again when the file changed since the plan', async () => {

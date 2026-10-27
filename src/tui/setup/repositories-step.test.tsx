@@ -47,6 +47,7 @@ function planOf(changes: readonly UserConfigChange[]): UserConfigPlan {
 function openRepositoriesStep(
   options: {
     read?: UserRepositories
+    invalid?: string
     planned?: UserConfigPlanResult[]
     applied?: AppliedUserConfig[]
   } = {},
@@ -58,8 +59,10 @@ function openRepositoriesStep(
   const app = renderApp({
     deps: {
       start: 'setup',
-      readUserRepositories: async () =>
-        options.read ?? { status: 'listed', repositories: [SHOP, INK, BLOG] },
+      readUserRepositories: async () => {
+        if (options.invalid !== undefined) throw new Error(options.invalid)
+        return options.read ?? { status: 'listed', repositories: [SHOP, INK, BLOG] }
+      },
       planConfig: async (changes) => {
         plans.push(changes)
         return planned.shift() ?? { ok: true, plan: planOf(changes) }
@@ -221,6 +224,21 @@ describe('the repositories step', () => {
     await seeing('Save to ~/.config/phada/config.yml?')
     expect(plans).toEqual([[{ kind: 'watch', repo: 'other/lib' }]])
     expectFits(frame())
+  })
+
+  it('shows the error of an invalid config instead of the repositories, and skips on', async () => {
+    const { footer, frame, press, reach, seeing, plans } = openRepositoriesStep({
+      invalid: 'Invalid config /home/ana/.config/phada/config.yml: watch.interval: expected 5m',
+    })
+    await reach()
+    await seeing('Could not load: Invalid config', 'expected 5m')
+    expect(frame()).not.toContain('acme/shop')
+    expect(footer()).not.toContain('Enter')
+    expect(footer()).not.toContain('add')
+    await press(KEYS.enter, 'a')
+    expect(plans).toEqual([])
+    await press('s')
+    await seeing('Step 5 of 7 · Graph')
   })
 
   it('says it needs GitHub without a token, and Enter goes on', async () => {
