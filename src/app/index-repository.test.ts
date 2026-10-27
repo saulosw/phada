@@ -245,6 +245,36 @@ describe('indexRepository', () => {
     expect(again.read).toEqual([['src/b.ts', 'src/c.ts']])
   })
 
+  it('lets a cancel from outside in while it extracts, however fast the parser answers', async () => {
+    const files = Object.fromEntries(
+      Array.from({ length: 40 }, (_, at) => [
+        `src/f${at}.ts`,
+        { content: `export const f${at} = ${at}\n` },
+      ]),
+    )
+    const { mirror } = fakeMirror(files)
+    const busyExtractor: Extractor = {
+      extract: async (language, text) => {
+        const until = performance.now() + 5
+        while (performance.now() < until);
+        return extractor.extract(language, text)
+      },
+    }
+    const cancel = new AbortController()
+    const h = deps(mirror, storePath(), {
+      extractor: busyExtractor,
+      now: () => performance.now(),
+    })
+    h.deps.events.extracting = () => {
+      setImmediate(() => cancel.abort())
+    }
+
+    const result = await indexRepository({ ...INPUT, signal: cancel.signal }, h.deps)
+
+    expect(result).toMatchObject({ cancelled: true, total: 40 })
+    expect('cancelled' in result && result.extracted).toBeLessThan(40)
+  })
+
   it('extracts nothing when cancelled before it starts', async () => {
     const { mirror, read } = fakeMirror({ 'src/a.ts': { content: 'export const a = 1\n' } })
     const cancel = new AbortController()

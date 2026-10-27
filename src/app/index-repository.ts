@@ -29,6 +29,7 @@ export const DEPENDENCY_FOLDERS: readonly string[] = [
 ]
 
 const BINARY_PROBE_LENGTH = 8000
+const YIELD_EVERY_MS = 50
 const PHADA_CONFIG = /(^|\/)\.phada\/config\.yml$/
 const MODE_STATUS: Readonly<Record<string, FileStatus>> = {
   '120000': 'symlink',
@@ -264,6 +265,7 @@ export async function indexCommit(
   deps.events.extracting(total)
   if (cancelled()) return { complete: false, extracted: 0, total }
   let done = 0
+  let yielded = deps.now()
   const toRead = [...wanted.values()].map((entry) => entry.file)
   for await (const blob of deps.mirror.readBlobs(toRead)) {
     for (const language of wanted.get(blob.oid)?.languages ?? []) {
@@ -271,6 +273,10 @@ export async function indexCommit(
       fresh.set(blobKey(blob.oid, language), status)
       done += 1
       deps.events.extracted(done, total)
+    }
+    if (deps.now() - yielded >= YIELD_EVERY_MS) {
+      await new Promise((resolve) => setImmediate(resolve))
+      yielded = deps.now()
     }
     const pastDeadline = input.deadline !== undefined && deps.now() > input.deadline
     if (done < total && (pastDeadline || cancelled())) {
