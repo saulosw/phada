@@ -3,7 +3,7 @@ import { memoryFiles } from '../../test/support/memory-files.js'
 import { mergeConfig } from '../config/merge-config.js'
 import { parseConfigText } from '../config/parse-config.js'
 import { UsageError } from './errors.js'
-import { runInit } from './init.js'
+import { initRepository, runInit } from './init.js'
 import { REPOSITORY_CONFIG_TEMPLATE, USER_CONFIG_TEMPLATE } from './init-templates.js'
 
 const ENV = { PHADA_CONFIG_HOME: '/cfg' }
@@ -89,6 +89,26 @@ describe('runInit', () => {
     expect(mergeConfig([{ ...layer, rulesMarkdown: { label: 'r', text: rules } }]).rules).toEqual(
       [],
     )
+  })
+})
+
+describe('initRepository', () => {
+  it('creates .phada/ at the root of the repository and says which files it created', async () => {
+    const files = memoryFiles({ '/w/proj/.phada/rules.md': '# ours' }, [
+      '/w/proj/.git',
+      '/w/proj/src',
+    ])
+
+    const init = await initRepository({ cwd: '/w/proj/src', env: ENV, home: '/home/u', files })
+
+    expect(init).toEqual({
+      root: '/w/proj',
+      files: [
+        { path: '.phada/config.yml', created: true },
+        { path: '.phada/rules.md', created: false },
+      ],
+    })
+    expect(files.files.get('/w/proj/.phada/rules.md')).toBe('# ours')
   })
 })
 

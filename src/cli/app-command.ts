@@ -11,6 +11,7 @@ import { readAutomation } from '../app/read-automation.js'
 import type { AutomationReaders } from '../app/read-automation.js'
 import { readRepositories, readRepository } from '../app/read-repositories.js'
 import { readUserRepositories } from '../app/read-user-repositories.js'
+import { readRepositoryFolder } from '../app/repository-folder.js'
 import type { RepositoryReaders } from '../app/read-repositories.js'
 import { observedRepositories, phadaCacheDir, repositoryCache } from '../config/cache-paths.js'
 import { dataFiles } from '../config/data-paths.js'
@@ -50,6 +51,7 @@ import { ghTokenReader, readGitHubToken } from './github-token.js'
 import type { GhTokenReader, RunGh } from './github-token.js'
 import type { TextOutput } from './progress.js'
 import { indexForApp } from './app-index.js'
+import { initRepository } from './init.js'
 import type { AppIndexDeps } from './app-index.js'
 import { SLACK_APP_TOKEN, SLACK_BOT_TOKEN } from './review-event-sinks.js'
 import { terminalHandOff } from './terminal-hand-off.js'
@@ -226,6 +228,8 @@ async function appDeps(
     applyConfig: (plan: UserConfigPlan) => applyUserConfigPlan(plan, deps.files),
     indexRepository: (repo: string, options: IndexingOptions) =>
       indexForApp(repo, options, { ...deps, ghToken }),
+    readRepositoryFolder: () => readRepositoryFolder(deps.cwd, (path) => deps.files.exists(path)),
+    initRepository: () => initRepository(deps),
   }
   const language = await readLanguage().catch(() => undefined)
   return language === undefined ? base : { ...base, language }

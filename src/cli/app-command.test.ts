@@ -765,6 +765,46 @@ describe('the indexer', () => {
   })
 })
 
+describe('the repository of the folder', () => {
+  it('finds the repository the app runs in and creates its .phada/ when asked', async () => {
+    const seen: unknown[] = []
+    const { app, files } = deps({
+      during: async (appDeps) => {
+        seen.push(await appDeps.readRepositoryFolder())
+        seen.push(await appDeps.initRepository())
+        seen.push(await appDeps.readRepositoryFolder())
+      },
+    })
+    await files.makeDir('/home/ana/shop/.git')
+
+    await runApp(app)
+
+    expect(seen).toEqual([
+      { kind: 'unconfigured', root: '/home/ana/shop' },
+      {
+        root: '/home/ana/shop',
+        files: [
+          { path: '.phada/config.yml', created: true },
+          { path: '.phada/rules.md', created: true },
+        ],
+      },
+      { kind: 'configured', root: '/home/ana/shop' },
+    ])
+    expect(files.files.has('/home/ana/shop/.phada/rules.md')).toBe(true)
+  })
+
+  it('says the folder of the app is outside a git repository', async () => {
+    const seen: unknown[] = []
+    const { app } = deps({
+      during: async (appDeps) => {
+        seen.push(await appDeps.readRepositoryFolder())
+      },
+    })
+    await runApp(app)
+    expect(seen).toEqual([{ kind: 'outside' }])
+  })
+})
+
 describe('the provider and learnings readers', () => {
   it('read the provider chosen in the user config, its MCP servers and the checked providers', async () => {
     const seen: unknown[] = []

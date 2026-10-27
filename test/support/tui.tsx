@@ -200,6 +200,10 @@ export function fakeAppDeps(scheduler: Scheduler, overrides: Partial<AppDeps> = 
     }),
     applyConfig: async () => ({ ok: true, written: true }),
     indexRepository: async () => ({ kind: 'indexed', files: 0 }),
+    readRepositoryFolder: async () => ({ kind: 'outside' }),
+    initRepository: async () => {
+      throw new Error('no repository in this test')
+    },
     ...overrides,
   }
 }
