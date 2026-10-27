@@ -17,6 +17,7 @@ import { POLL_MS, usePolled } from './data-hooks.js'
 import { ErrorBoundary } from './error-boundary.js'
 import { Footer } from './footer.js'
 import { Help } from './help.js'
+import { LanguagePicker } from './language-picker.js'
 import { createLoadCache, LoadCacheContext } from './load-cache.js'
 import type { UiMessages } from './i18n/messages.js'
 import { uiMessagesFor } from './i18n/messages.js'
@@ -24,6 +25,7 @@ import { Palette } from './palette.js'
 import type { PaletteEntry } from './palette.js'
 import { SCREENS } from './screens.js'
 import { Setup } from './setup/setup.js'
+import { SubView } from './sub-view.js'
 import type { ScreenDefinition } from './screens.js'
 import { TabBar } from './tab-bar.js'
 import { isTooSmall, useTerminalSize } from './terminal-size.js'
@@ -44,9 +46,11 @@ export interface AppProps {
 }
 
 type Overlay = 'none' | 'help' | 'palette'
+type Takeover = 'setup' | 'language'
 
 const SHELL_ROWS = 3
 const SETUP_ID = 'setup'
+const LANGUAGE_ID = 'language'
 
 export function App({ deps, size, onExit, screens = SCREENS }: AppProps) {
   const theme = useMemo(() => resolveTheme(colorLevel(deps.env)), [deps.env])
@@ -113,7 +117,9 @@ function Shell({
   const size = useTerminalSize(source)
   const tooSmall = isTooSmall(size)
   const [active, setActive] = useState(0)
-  const [inSetup, setInSetup] = useState(start === 'setup')
+  const [takeover, setTakeover] = useState<Takeover | undefined>(
+    start === 'setup' ? 'setup' : undefined,
+  )
   const [overlay, setOverlay] = useState<Overlay>('none')
   const [screenKeys, setScreenKeys] = useState<readonly KeyHint[]>([])
   const [typing, setTypingState] = useState(false)
@@ -127,12 +133,12 @@ function Shell({
   const quit = () => onExit({ kind: 'quit' })
   const show = (index: number) => {
     back.current = undefined
-    setInSetup(false)
+    setTakeover(undefined)
     setActive((index + screens.length) % screens.length)
   }
-  const openSetup = () => {
+  const open = (next: Takeover) => {
     back.current = undefined
-    setInSetup(true)
+    setTakeover(next)
   }
   const leaveSetup = () =>
     show(
@@ -173,7 +179,7 @@ function Shell({
     if (input === 'q') return quit()
     if (input === '?') return setOverlay('help')
     if (input === '/') return setOverlay('palette')
-    if (inSetup) return
+    if (takeover !== undefined) return
     if (/^[1-9]$/.test(input)) {
       const index = Number(input) - 1
       if (index < screens.length) show(index)
@@ -186,8 +192,10 @@ function Shell({
   if (tooSmall) return <TooSmall size={size} />
 
   const current = screens[active]
-  const global = globalKeys(messages, screens.length, inSetup)
+  const global = globalKeys(messages, screens.length, takeover !== undefined)
   const setupTitle = messages.setup.title
+  const languageTitle = { full: messages.language.title, short: messages.language.title }
+  const takeoverTitle = takeover === 'language' ? languageTitle : setupTitle
   const paletteEntries: PaletteEntry[] = [
     ...screens.map((screen, index) => {
       const title = titles[index] ?? screen.title(messages)
@@ -203,6 +211,11 @@ function Shell({
       label: setupTitle.full,
       names: [setupTitle.full, setupTitle.short, english.setup.title.full],
     },
+    {
+      id: LANGUAGE_ID,
+      label: languageTitle.full,
+      names: [languageTitle.full, english.language.title],
+    },
   ]
   const footerKeys =
     overlay === 'palette'
@@ -215,12 +228,12 @@ function Shell({
         ? [{ keys: 'Esc', label: messages.keys.close }]
         : typing
           ? screenKeys
-          : [...screenKeys, ...footerGlobals(messages, inSetup)]
+          : [...screenKeys, ...footerGlobals(messages, takeover !== undefined)]
 
   return (
     <Box flexDirection="column" width={size.columns} height={size.rows}>
-      {inSetup ? (
-        <TabBar titles={[setupTitle]} active={0} width={size.columns} />
+      {takeover !== undefined ? (
+        <TabBar titles={[takeoverTitle]} active={0} width={size.columns} />
       ) : (
         <TabBar titles={titles} active={active} width={size.columns} />
       )}
@@ -229,7 +242,7 @@ function Shell({
           <Help
             global={global}
             screen={screenKeys}
-            screenName={inSetup ? setupTitle.full : (titles[active]?.full ?? '')}
+            screenName={takeover !== undefined ? takeoverTitle.full : (titles[active]?.full ?? '')}
           />
         )}
         {overlay === 'palette' && (
@@ -238,15 +251,20 @@ function Shell({
             onClose={() => setOverlay('none')}
             onPick={(id) => {
               setOverlay('none')
-              if (id === SETUP_ID) openSetup()
+              if (id === SETUP_ID) open('setup')
+              else if (id === LANGUAGE_ID) open('language')
               else show(screens.findIndex((screen) => screen.id === id))
             }}
           />
         )}
         <Box flexDirection="column" display={overlay === 'none' ? 'flex' : 'none'}>
           <ScreenContext.Provider value={controls}>
-            {inSetup ? (
+            {takeover === 'setup' ? (
               <Setup onClose={leaveSetup} />
+            ) : takeover === 'language' ? (
+              <SubView onLeave={() => show(active)}>
+                <LanguagePicker onDone={() => show(active)} />
+              </SubView>
             ) : (
               current !== undefined && <current.Screen key={current.id} />
             )}
@@ -262,18 +280,18 @@ function Shell({
   )
 }
 
-function footerGlobals(messages: UiMessages, inSetup: boolean): KeyHint[] {
+function footerGlobals(messages: UiMessages, takenOver: boolean): KeyHint[] {
   return [
-    ...(inSetup ? [] : [{ keys: '←/→', label: messages.keys.screens }]),
+    ...(takenOver ? [] : [{ keys: '←/→', label: messages.keys.screens }]),
     { keys: '/', label: messages.keys.palette },
     { keys: '?', label: messages.keys.help },
     { keys: 'q', label: messages.keys.quit },
   ]
 }
 
-function globalKeys(messages: UiMessages, screens: number, inSetup: boolean): KeyHint[] {
+function globalKeys(messages: UiMessages, screens: number, takenOver: boolean): KeyHint[] {
   return [
-    ...(inSetup
+    ...(takenOver
       ? []
       : [
           { keys: '←/→ Tab', label: messages.keys.cycle },

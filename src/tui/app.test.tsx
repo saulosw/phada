@@ -324,6 +324,78 @@ describe('the palette', () => {
   })
 })
 
+describe('/language', () => {
+  function openWithLanguage() {
+    let language: string | undefined
+    const writes: unknown[] = []
+    const app = renderApp({
+      deps: {
+        readLanguage: async () => language,
+        planConfig: async (changes) => {
+          const [change] = changes
+          const after = change?.kind === 'set' ? change.value : null
+          return {
+            ok: true,
+            plan: {
+              path: '/home/ana/.config/phada/config.yml',
+              exists: true,
+              before: '# mine\n',
+              text: `# mine\nlanguage: ${after}\n`,
+              changes: [{ key: 'language', before: language ?? null, after }],
+            },
+          }
+        },
+        applyConfig: async (plan) => {
+          writes.push(plan)
+          const [change] = plan.changes
+          if (change?.key === 'language') language = change.after ?? undefined
+          return { ok: true, written: true }
+        },
+      },
+      size: { columns: 80, rows: 24 },
+    })
+    return { ...app, writes }
+  }
+
+  it('opens the language choice from the palette, writes it and goes back speaking it', async () => {
+    const { footer, frame, press, showing, type, writes } = openWithLanguage()
+    await showing('Phada v1.2.3')
+    await press('2')
+    await showing('No config yet.')
+    expect(frame()).toContain('No config yet.')
+    await press('/')
+    await type('language')
+    await showing('❯ Language')
+    await press(KEYS.enter)
+    await showing('❯ English', 'Español')
+    expect(lines(frame())[0]).toContain('Language')
+    expect(footer()).toContain('Esc back')
+    await press(KEYS.down, KEYS.enter)
+    await showing('Save ~/.config/phada/config.yml?')
+    expect(frame()).toMatch(/language +\(not set\) → pt/)
+    await press(KEYS.enter)
+    await showing('Nenhuma config ainda.')
+    expect(frame()).toContain('Nenhuma config ainda.')
+    expect(writes).toHaveLength(1)
+  })
+
+  it('goes back to the screen it came from on Esc, without writing', async () => {
+    const { exits, frame, press, showing, type, writes } = openWithLanguage()
+    await showing('Phada v1.2.3')
+    await press('/')
+    await type('lang')
+    await showing('❯ Language')
+    await press(KEYS.enter)
+    await showing('❯ English')
+    expect(frame()).toContain('Español')
+    await press(KEYS.escape)
+    await showing('Phada v1.2.3')
+    expect(frame()).not.toContain('Español')
+    expect(writes).toEqual([])
+    expect(exits).toEqual([])
+  })
+})
+
 describe('Esc and q', () => {
   it('closes the open detail of a screen before quitting', async () => {
     const { frame, press, showing, exits } = openApp({ screens: [detailScreen()] })

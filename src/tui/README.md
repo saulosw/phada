@@ -106,7 +106,9 @@ a screen. The screen keeps only a mode and draws either its view or the picker i
 it holds it (a change shown, a model list), else to `onLeave()`, and the footer shows `Esc back`
 then. The view and the picker are separate components, so each one has its own
 `useScreenKeys`/`useScreenInput`; on return the view reads again what the picker changed
-(`reload()` of `useLoaded`, which a `usePolled` read does by itself on mount).
+(`reload()` of `useLoaded`, which a `usePolled` read does by itself on mount). The shell draws the
+`LanguagePicker` the same way in place of the tabs for `/language` in the palette, and goes back
+to the screen it came from.
 
 ## The setup (`setup/`)
 

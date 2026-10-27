@@ -323,9 +323,10 @@ src/
     app.tsx              #   App: theme, catalog of the language read every 2 s and at once after
                          #   a config write (the last good one kept), working signal, load cache
                          #   and error boundary around the shell — tabs, the active screen, or
-                         #   the setup in their place (AppDeps.start, /setup), footer, ? help,
-                         #   / palette, Esc (a screen's back first), q, 1–9, ←/→, Tab (not in the
-                         #   setup), Ctrl-C; the size warning below 80×24
+                         #   the setup in their place (AppDeps.start, /setup) or the
+                         #   LanguagePicker (/language, back to the screen it came from), footer,
+                         #   ? help, / palette, Esc (a screen's back first), q, 1–9, ←/→, Tab
+                         #   (not in the setup), Ctrl-C; the size warning below 80×24
     app-context.ts       #   AppDeps (version, start, cwd, home, env, scheduler, language, now,
                          #   readLanguage, readQueue, readReviews, readReviewDetail, readRepositories,
                          #   readRepository, readAutomation, readProviderSetup, readProviders,
@@ -447,7 +448,7 @@ src/
                          #   tab-layout.ts: layoutTabs(): full › short › a window with ‹ ›; tabText())
     footer.tsx           #   Footer (+ key-hints.ts: fitHints(): the keys that fit, then "? more")
     help.tsx             #   Help: the screen's keys and the global ones
-    palette.tsx          #   Palette: screens and the setup filtered by name (the catalog's and
+    palette.tsx          #   Palette: screens, the setup and the language filtered by name (the catalog's and
                          #   English, without accents), ↑/↓, Enter, Esc; matchEntries()
     mascot.tsx           #   Mascot: the two frames, flapping on the scheduler while working
     terminal-size.ts     #   SizeSource, outputSize() (columns, rows, 'resize'), useTerminalSize(),
