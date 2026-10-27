@@ -73,7 +73,7 @@ export const portuguese: UiMessages = {
       githubToken: 'O Phada precisa de um token do GitHub: faça login no gh ou defina GITHUB_TOKEN',
       githubRefused: (source) =>
         `O GitHub recusou o token de ${source}: faça login de novo ou use outro token`,
-      init: 'Crie sua config e depois adicione os repositórios a observar',
+      setup: 'Configure o Phada: GitHub, a IA, o idioma e os repositórios a observar',
       ai: {
         install: (provider) => `Instale o ${provider}`,
         login: (provider) => `Faça login no ${provider}`,

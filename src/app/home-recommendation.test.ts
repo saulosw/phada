@@ -138,10 +138,10 @@ describe('recommend', () => {
     ).toEqual({ kind: 'github-refused', source: 'GH_TOKEN', command: 'gh auth login' })
   })
 
-  it('asks for the user config after the token', () => {
+  it('points to the setup without a user config, after the token', () => {
     expect(home(noConfig, claudeLoggedOut, paused)).toEqual({
-      kind: 'init',
-      command: 'phada init --global',
+      kind: 'setup',
+      command: 'phada setup',
     })
   })
 
@@ -323,7 +323,7 @@ describe('recommend', () => {
     it('still gives the advice it outranks', () => {
       expect(home(githubLoading, aiLoading, invalidConfig)).toMatchObject({ kind: 'fix-config' })
       expect(home(aiLoading, noToken)).toMatchObject({ kind: 'github-token' })
-      expect(home(aiLoading, noConfig)).toMatchObject({ kind: 'init' })
+      expect(home(aiLoading, noConfig)).toMatchObject({ kind: 'setup' })
     })
   })
 

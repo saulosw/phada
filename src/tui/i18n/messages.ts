@@ -91,7 +91,7 @@ export interface HomeMessages {
     fixConfig(file: string): string
     githubToken: string
     githubRefused(source: string): string
-    init: string
+    setup: string
     ai: Readonly<Record<NextStep['kind'], (provider: string) => string>>
     paused(until: string, relative: string, reason: string): string
     failedJobs(count: number, ref: string, error: string | null): string

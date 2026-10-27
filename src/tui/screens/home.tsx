@@ -296,8 +296,8 @@ function recommendationText(
       return m.githubToken
     case 'github-refused':
       return m.githubRefused(messages.home.github.sources[recommendation.source])
-    case 'init':
-      return m.init
+    case 'setup':
+      return m.setup
     case 'ai':
       return m.ai[recommendation.step.kind](PROVIDER_NAMES[recommendation.provider])
     case 'paused': {

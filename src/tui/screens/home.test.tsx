@@ -231,6 +231,13 @@ describe('the Home screen', () => {
     expectFits(text, 80)
   })
 
+  it('recommends the setup without a user config', async () => {
+    const { frame, showing } = openHome({ automation: async () => emptyAutomation() })
+    await showing('phada setup')
+    expect(frame()).toContain('Set up Phada')
+    expect(frame()).not.toContain('phada init --global')
+  })
+
   it('names the invalid config file and its error', async () => {
     const { frame } = openHome({
       automation: async () => ({
