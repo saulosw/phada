@@ -630,6 +630,7 @@ export const portuguese: UiMessages = {
     publish: { on: 'publica', off: 'não publica' },
     planning: 'Lendo o arquivo de config…',
     writing: 'Gravando…',
+    reformatted: 'O arquivo é regravado num formato padrão: os espaços e o recuo podem mudar.',
     keys: { save: 'gravar', cancel: 'cancelar', again: 'ver a mudança de novo' },
     invalidConfig: (message) =>
       `Seu arquivo de config tem um erro, então o Phada não o altera: ${message}`,

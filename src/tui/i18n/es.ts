@@ -631,6 +631,8 @@ export const spanish: UiMessages = {
     publish: { on: 'publica', off: 'no publica' },
     planning: 'Leyendo el archivo de configuración…',
     writing: 'Guardando…',
+    reformatted:
+      'El archivo se reescribe con un formato estándar: los espacios y la sangría pueden cambiar.',
     keys: { save: 'guardar', cancel: 'cancelar', again: 'ver el cambio de nuevo' },
     invalidConfig: (message) =>
       `Tu archivo de configuración tiene un error, así que Phada no lo cambia: ${message}`,

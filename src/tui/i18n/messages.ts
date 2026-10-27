@@ -184,6 +184,7 @@ export interface ConfigMessages {
   publish: { on: string; off: string }
   planning: string
   writing: string
+  reformatted: string
   keys: { save: string; cancel: string; again: string }
   invalidConfig(message: string): string
   invalidResult(message: string): string

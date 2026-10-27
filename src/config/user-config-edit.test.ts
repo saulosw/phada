@@ -272,3 +272,93 @@ describe('planUserConfigEdit', () => {
     })
   })
 })
+
+describe('planUserConfigEdit on a config written by hand', () => {
+  const MINE = `# Your own Phada config. It applies to every review you run, on top of the
+# repository's .phada/ folder; a repos/<owner>/<repo>/ folder next to it applies
+# to one repository only and wins over this file.
+
+# AI provider and model for your reviews.
+provider: claude             # claude, codex or ollama
+model: opus
+
+# Review options. Flags given on the command line win.
+language: pt-BR              # language of the review, e.g. pt-BR or es
+minConfidence: 60            # findings below this confidence go to "worth checking"
+# verify: true                 # check every finding with a second call to the AI
+ci:
+  read: true                 # read the checks of the head: CI for the AI and the CI line
+  wait: 15m                  # how long the watch waits for pending checks (0s: no wait)
+  checks: [test, "lint/*"]   # the checks that count, by name or glob (default: all)
+
+# Rules the review enforces. Each one is sent to the AI as an instruction.
+rules:
+  - id: orm-only             # optional; lets a subfolder or your config disable it
+    rule: Use the ORM for every query; never build SQL by hand.
+    scope: ["**/*.py"]        # optional; which files it applies to
+    severity: P1             # optional; the lowest severity of a finding that breaks it
+disabledRules: [no-console]  # ids of rules from other config files to turn off
+
+# Files left out of the diff, on top of lockfiles, minified files and source maps.
+ignore: ["**/*.snap", "src/generated/**"]
+
+# MCP servers the AI may use during reviews.
+mcp:
+  - linear
+  - name: tickets
+    command: npx
+    args: [-y, '@acme/tickets-mcp']
+    env: { TICKETS_TOKEN: '\${TICKETS_TOKEN}' }
+    description: The ticket cited in the pull request title
+
+watch:
+  # how often the watch looks for new pull requests
+  interval: 5m   # often
+  repos:
+    - acme/api   # the main one
+    - repo: acme/web
+      publish: false
+`
+
+  const replaced = (from: string, to: string) => {
+    expect(MINE).toContain(from)
+    return MINE.replace(from, to)
+  }
+
+  it('changes only the line of the value, keeping its comment where it was', () => {
+    const result = planned(MINE, [{ kind: 'set', key: 'language', value: 'es' }])
+
+    expect(result.text).toBe(
+      replaced(
+        'language: pt-BR              # language',
+        'language: es                 # language',
+      ),
+    )
+  })
+
+  it('adds a watched repository as one line, leaving every other line as it was', () => {
+    const result = planned(MINE, [{ kind: 'watch', repo: 'acme/new' }])
+
+    expect(result.text).toBe(
+      replaced('      publish: false\n', '      publish: false\n    - acme/new\n'),
+    )
+  })
+
+  it('turns publishing back on in the entry of the repository alone', () => {
+    const result = planned(MINE, [{ kind: 'publish', repo: 'acme/web', publish: true }])
+
+    expect(result.text).toBe(
+      replaced('    - repo: acme/web\n      publish: false\n', '    - acme/web\n'),
+    )
+    expect(result.reformatted).toBeUndefined()
+  })
+
+  it('says when the file is written in its own layout because the old one cannot be kept', () => {
+    const current = 'watch:\n    repos:\n        - acme/api\n'
+
+    const result = planned(current, [{ kind: 'watch', repo: 'acme/new' }])
+
+    expect(result.reformatted).toBe(true)
+    expect(result.text).toBe('watch:\n  repos:\n    - acme/api\n    - acme/new\n')
+  })
+})

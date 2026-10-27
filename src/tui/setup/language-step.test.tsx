@@ -112,6 +112,24 @@ describe('the language step', () => {
     expect(writes).toEqual([])
   })
 
+  it('says when the file is rewritten in a standard layout', async () => {
+    const { frame, press, reach, seeing } = openLanguageStep({
+      planned: [
+        {
+          ok: true,
+          plan: {
+            ...planOf([{ kind: 'set', key: 'language', value: 'pt' }], 'en'),
+            reformatted: true,
+          },
+        },
+      ],
+    })
+    await reach()
+    await press(KEYS.down, KEYS.enter)
+    await seeing('en → pt', 'The file is rewritten in a standard layout')
+    expectFits(frame())
+  })
+
   it('shows why the config file cannot be changed', async () => {
     const { press, reach, seeing, writes } = openLanguageStep({
       planned: [{ ok: false, reason: 'invalid-config', message: 'watch.interval: expected 5m' }],

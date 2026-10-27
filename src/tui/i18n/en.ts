@@ -619,6 +619,8 @@ export const english: UiMessages = {
     publish: { on: 'publishes', off: 'does not publish' },
     planning: 'Reading the config file…',
     writing: 'Writing…',
+    reformatted:
+      'The file is rewritten in a standard layout: its spacing and indentation may change.',
     keys: { save: 'save', cancel: 'cancel', again: 'see the change again' },
     invalidConfig: (message) =>
       `Your config file has an error, so Phada leaves it as is: ${message}`,

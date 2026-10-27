@@ -397,7 +397,8 @@ src/
     config-change.tsx    #   useConfigChange(onSaved): propose(changes) → AppDeps.planConfig →
                          #   the before → after to confirm (Enter writes, cancel() on Esc) or the
                          #   refusal; a file changed since the plan planned again on Enter;
-                         #   configChangeLines(), valueChangeLines() (one line per value)
+                         #   configChangeLines(), valueChangeLines() (one line per value, and a
+                         #   line when the file is rewritten in a standard layout)
     setting-lines.tsx    #   settingLines(), settingValue(): config settings as key, value and
                          #   origin rows; ruleLines(): the user's rules as name, text and origin
                          #   rows; indented()
@@ -489,9 +490,14 @@ src/
     user-config-edit.ts  #   planUserConfigEdit(): changes (provider, model, language, watch.repos,
                          #   publish of a watched repository) on the text of a user config with its
                          #   comments and order → the new text (a new file on top of the template)
-                         #   and the changes by value, checked with the schema; an invalid config,
-                         #   ollama without a model, or the last watched repository while other
-                         #   watch settings remain, refused
+                         #   and the changes by value, checked with the schema; the lines the
+                         #   change leaves alone kept as written (keepLayout()), else the file
+                         #   rewritten and marked reformatted; an invalid config, ollama without a
+                         #   model in a change of provider or model, or the last watched repository
+                         #   while other watch settings remain, refused
+    keep-layout.ts       #   keepLayout(): a YAML text rendered again → the lines it did not change
+                         #   as written (spacing, flow padding), a changed line keeping the column
+                         #   of its comment; reformatted when a line could not be kept
     layer-label.ts       #   userLayerLabel(), layerOrigin(): the label of a user config file
                          #   (user:…, user:repos/<owner>/<repo>/…) and back to global, repository
                          #   or a file of the repository, with its name

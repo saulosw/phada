@@ -1,5 +1,7 @@
+import { isDeepStrictEqual } from 'node:util'
 import { isMap, isScalar, isSeq, parseDocument } from 'yaml'
 import type { Document, Node, Scalar, YAMLMap, YAMLSeq } from 'yaml'
+import { keepLayout } from './keep-layout.js'
 import { parseConfigText } from './parse-config.js'
 import type { ConfigFile } from './schema.js'
 
@@ -23,6 +25,7 @@ export interface UserConfigPlan {
   before: string | null
   text: string
   changes: ValueChange[]
+  reformatted?: true
 }
 
 type ChangeRefusal =
@@ -44,6 +47,7 @@ export interface UserConfigEdit {
 
 const SETTING_KEYS: readonly SettingKey[] = ['provider', 'model', 'language']
 const WATCH_REPOS = ['watch', 'repos']
+const RENDER = { lineWidth: 0, flowCollectionPadding: false } as const
 
 export function planUserConfigEdit(edit: UserConfigEdit): PlannedUserConfig {
   const { path, current } = edit
@@ -57,7 +61,7 @@ export function planUserConfigEdit(edit: UserConfigEdit): PlannedUserConfig {
     const refusal = applyChange(doc, change)
     if (refusal !== undefined) return refusal
   }
-  const rendered = doc.toString({ lineWidth: 0, flowCollectionPadding: false })
+  const rendered = doc.toString(RENDER)
   const parsedAfter = parseConfigText(rendered)
   if (!parsedAfter.ok) {
     return { ok: false, reason: 'invalid-result', message: parsedAfter.message }
@@ -66,16 +70,35 @@ export function planUserConfigEdit(edit: UserConfigEdit): PlannedUserConfig {
     return { ok: false, reason: 'ollama-without-model' }
   }
   const changes = valueChanges(parsedBefore.config, parsedAfter.config)
+  if (current === null) {
+    return {
+      ok: true,
+      plan: { path, exists: false, before: null, text: withTemplate(rendered), changes },
+    }
+  }
+  if (changes.length === 0) {
+    return { ok: true, plan: { path, exists: true, before: current, text: current, changes } }
+  }
+  const { text, reformatted } = writtenText(current, rendered, parsedAfter.config)
   return {
     ok: true,
     plan: {
       path,
-      exists: current !== null,
+      exists: true,
       before: current,
-      text: changes.length === 0 && current !== null ? current : withTemplate(rendered),
+      text,
       changes,
+      ...(reformatted ? { reformatted: true } : {}),
     },
   }
+}
+
+function writtenText(current: string, rendered: string, config: ConfigFile) {
+  const kept = keepLayout(current, parseDocument(current).toString(RENDER), rendered)
+  const parsed = parseConfigText(kept.text)
+  return parsed.ok && isDeepStrictEqual(parsed.config, config)
+    ? kept
+    : { text: rendered, reformatted: true }
 }
 
 function applyChange(doc: Document, change: UserConfigChange): ChangeRefusal | undefined {

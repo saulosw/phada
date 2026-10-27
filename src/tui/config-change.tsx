@@ -129,6 +129,9 @@ export function configChangeLines(state: ConfigChangeState, draw: ConfigDraw): R
       return [
         <Text bold>{plan.exists ? m.save(path) : m.create(path)}</Text>,
         ...valueChangeLines(plan.changes, draw),
+        ...(plan.reformatted === true
+          ? wrapText(m.reformatted, width).map((line) => <Text color={colors.warn}>{line}</Text>)
+          : []),
         ...(state.kind === 'writing' ? [<Text color={colors.dim}>{m.writing}</Text>] : []),
       ]
     }
