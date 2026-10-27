@@ -49,7 +49,7 @@ export function Setup({ onClose }: { onClose(): void }) {
     })
   const skip = () => {
     const skipped = SETUP_STEPS[indexNow.current]
-    if (skipped === undefined || !skipped.skippable) return
+    if (skipped === undefined || !skipped.skippable || stepBack.current !== undefined) return
     advance((current) => ({ ...current, skipped: [...current.skipped, skipped.id] }))
   }
 
@@ -74,7 +74,9 @@ export function Setup({ onClose }: { onClose(): void }) {
         ]
       : [
           ...stepKeys,
-          ...(step.skippable && !outer.typing ? [{ keys: 's', label: m.skip }] : []),
+          ...(step.skippable && !stepHasBack && !outer.typing
+            ? [{ keys: 's', label: m.skip }]
+            : []),
           ...(stepHasBack || outer.typing ? [] : [{ keys: 'Esc', label: m.leave }]),
         ],
   )

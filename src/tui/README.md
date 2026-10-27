@@ -102,7 +102,8 @@ language is read again at once and `onSaved(plan)` runs; a proposal that changes
 
 The setup takes the place of the tabs (`AppDeps.start`, `/setup`). Each step is a component of
 `SETUP_STEPS` (`setup-steps.ts`) with `{ progress, next }`; `next(result)` goes on and records
-what the step did, `s` skips a `skippable` step. A step is written as a screen: `useScreenKeys`,
+what the step did, `s` skips a `skippable` step while the step leaves `Esc` to the setup (a step
+that is indexing or showing a change finishes or backs out first). A step is written as a screen: `useScreenKeys`,
 `useScreenInput`, `useBack` and `useScreenSize` reach the setup, which adds `s` and `Esc`, asks
 before leaving and silences the step meanwhile.
 

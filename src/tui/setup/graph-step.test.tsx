@@ -113,6 +113,21 @@ describe('the graph step', () => {
     await seeing('Step 6 of 7')
   })
 
+  it('offers no skip while indexing, so the summary keeps what was indexed', async () => {
+    const { call, calls, footer, press, reach, seeing, until } = openGraphStep()
+    await reach()
+    await seeing('acme/shop')
+    await press(KEYS.enter)
+    await until(() => calls.length === 1)
+    call(0).onProgress({ phase: 'extracting', done: 2, total: 40 })
+    await seeing(/acme\/shop · 2 of 40 files/)
+    expect(footer()).not.toContain('s skip')
+    await press('s')
+    call(0).finish({ kind: 'indexed', files: 40 })
+    await seeing(/acme\/shop · 40 files indexed/, 'Step 5 of 7')
+    expect(call(0).signal.aborted).toBe(false)
+  })
+
   it('stops on Esc: the current one is cancelled, the rest is left for later', async () => {
     const { call, calls, frame, press, reach, seeing, until } = openGraphStep({
       repositories: [listed('acme/shop'), listed('ana/ink'), listed('ana/web')],
@@ -165,14 +180,17 @@ describe('the graph step', () => {
     expect(calls).toEqual([])
   })
 
-  it('cancels the indexing when the step is left', async () => {
-    const { call, calls, press, reach, seeing, until } = openGraphStep()
+  it('cancels the indexing when the setup is left for another screen', async () => {
+    const { call, calls, frame, press, reach, seeing, type, until } = openGraphStep()
     await reach()
     await seeing('acme/shop')
     await press(KEYS.enter)
     await until(() => calls.length === 1)
-    await press('s')
-    await seeing('Step 6 of 7')
+    await press('/')
+    await type('queue')
+    await press(KEYS.enter)
+    await seeing('No watch has run here yet.')
+    expect(frame()).not.toContain('Step 5 of 7')
     await until(() => call(0).signal.aborted)
     call(0).finish({ kind: 'cancelled', extracted: 0, total: 10 })
     expect(calls).toHaveLength(1)
