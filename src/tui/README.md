@@ -110,7 +110,10 @@ A step can be a component another screen also uses: the AI step is `ProviderPick
 (`provider-picker.tsx`), which checks the AIs, logs in through `useHandOff()`, pulls an Ollama model
 with `useModelPull()` (`model-pull.tsx`: `start(model)`, `cancel()` on `Esc`, aborted on unmount)
 and proposes the provider and model through `useConfigChange()`; it calls `onSaved(plan)` once
-written.
+written. The repositories step is `RepositoryPicker` (`repository-picker.tsx`): the repositories
+of the token owner (`AppDeps.readUserRepositories`, loaded under `user-repos`) with `watch.repos`
+marked, a filter on `f`, `Space` to mark, `a` for a typed `owner/repo`, and `Enter` proposing the
+`watch`/`unwatch` changes; `onContinue` runs when nothing changed or there is no token.
 
 ## Growing `AppDeps`
 

@@ -92,6 +92,10 @@ src/
                          #   the watch filters, the index, the related
                          #   repositories declared and the last reviews; an invalid config as a
                          #   message
+    read-user-repositories.ts # readUserRepositories(): the repositories of the token owner joined
+                         #   with watch.repos (marked, watched first, the ones GitHub does not
+                         #   list kept); no token → no-token, a failed listing → its error with
+                         #   the watched ones
     read-automation.ts   #   readAutomation(): the watch, the CI wait, the request sources (Slack
                          #   with its channels and its token variables, each set or not), the
                          #   hooks and
@@ -350,7 +354,9 @@ src/
                          #   github-step.tsx (where the token comes from and its owner; no token
                          #   or a gh token refused → Enter runs gh auth login and checks again;
                          #   gh missing → install it or export GITHUB_TOKEN), ai-step.tsx (the
-                         #   ProviderPicker → the change → written), language-step.tsx
+                         #   ProviderPicker → the change → written), repositories-step.tsx (the
+                         #   RepositoryPicker → the change → written; no token → Enter goes
+                         #   on), language-step.tsx
                          #   (en, pt, es → the change → written, the app speaking it at once),
                          #   summary-step.tsx (the values written and their file, the steps
                          #   skipped, phada watch and phada review; Enter → Home),
@@ -371,6 +377,11 @@ src/
                          #   model (model unset) or a typed one, a running Ollama → an installed
                          #   model, the suggested one or a typed one (pulled first when missing)
                          #   → the change of provider and model (useConfigChange); Esc goes back
+    repository-picker.tsx #  RepositoryPicker: AppDeps.readUserRepositories (loaded, r) as a list
+                         #   with watch.repos marked; f filters it, Space marks, a adds a typed
+                         #   owner/repo; Enter → watch and unwatch changes (useConfigChange), or
+                         #   onContinue when nothing changed; a failed listing in one line, the
+                         #   typed field still there
     model-pull.tsx       #   useModelPull(onPulled): AppDeps.pullModel with an AbortController
                          #   (cancel(), aborted on unmount); modelPullLines(): the status, a bar
                          #   with bytes and percent, and how it ended
@@ -518,6 +529,9 @@ src/
     job-log.ts           #   fetchJobLog(): the end of an Actions job log, the redirect followed
                          #   without the token, the last 512 KB by Range, 10 MB at most
     user.ts              #   fetchAuthenticatedUser(): the login of the token owner (GET /user)
+    user-repositories.ts #   listUserRepositories(): the repositories of the token owner (owner,
+                         #   collaborator, organization member) by push date, 10 pages of 100 at
+                         #   most, without the archived ones; a 403 names metadata:read
   gh-facade/             # the gh a native skill runs: answered by Phada, writes captured
     gh-command.ts        #   parseGhCommand(), filesToRead(): gh argv → command
     gh-jq.ts             #   applyJq(): --jq with paths only
