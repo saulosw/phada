@@ -133,13 +133,14 @@ src/
                          #   checks → the recommendation; GitHubAccess (where the token comes
                          #   from and its owner, never the token)
     home-recommendation.ts # recommend(): the one next step of the Home with its command — invalid
-                         #   config › no token (or refused) › no user config › the chosen AI ›
+                         #   config › no token (or refused) › no user config (phada setup) ›
+                         #   the chosen AI ›
                          #   paused › failed in the last day › skipped for CI › watched without
                          #   index › Slack tokens missing (no watch running) › watch stopped ›
                          #   review; "checking" while a slow fact it
                          #   could be outranked by is loading; recentFailures()
   cli/                   # terminal edge
-    args.ts              #   parseCliArgs(): `review` (--dry-run, --force, --verify/--no-verify,
+    args.ts              #   parseCliArgs(): `setup` (--debug), `review` (--dry-run, --force, --verify/--no-verify,
                          #   --investigate/--no-investigate, --no-resolve, --no-conversation,
                          #   --no-ci, --wait-ci, --skill), `init`, `index` (--ref, --format
                          #   text|json), `rules` (--format text|json), `prompt` (--default,
@@ -147,12 +148,14 @@ src/
                          #   --backfill, --status) and `history` (--since, --limit, --stats,
                          #   --refresh, prune --older-than), `enqueue` (--publish, --format) and
                          #   `mcp` commands, --help, --version, no command (the app, --debug);
-                         #   USAGE, REVIEW_USAGE, INIT_USAGE,
+                         #   USAGE, SETUP_USAGE, REVIEW_USAGE, INIT_USAGE,
                          #   INDEX_USAGE, RULES_USAGE, PROMPT_USAGE, WATCH_USAGE, ENQUEUE_USAGE,
                          #   MCP_USAGE, HISTORY_USAGE
     app-command.ts       #   runApp(): the app when stdin and stdout are TTYs (assertAppTerminal():
                          #   else the missing command error, or --debug alone refused as an
-                         #   unknown option), only the color variables of the environment, the
+                         #   unknown option; phada setup without them a usage error), started
+                         #   on the setup for phada setup or while the user's config.yml does
+                         #   not exist, on the Home otherwise (AppDeps.start), only the color variables of the environment, the
                          #   language of the user config at open and readLanguage (read on each
                          #   poll), src/tui/ loaded by import() only here
                          #   (loadApp), setInterval as the scheduler; quit 0, interrupted 130,
@@ -169,7 +172,8 @@ src/
                          #   readGitHub (readGitHubAccess()) and rulesReaders() of app-rules.ts
                          #   with one token reader that asks gh again on each load (runGh and
                          #   fetchUser injectable); handOff and the signals through
-                         #   terminalHandOff()
+                         #   terminalHandOff(); planConfig and applyConfig (planUserConfig() with
+                         #   USER_CONFIG_TEMPLATE, applyUserConfigPlan() on the local files)
     terminal-hand-off.ts #   terminalHandOff(): handOff (a command, or a file in $VISUAL › $EDITOR
                          #   › vi split on spaces, run in the app's folder with its environment;
                          #   runInteractive injectable) and the app's signals: SIGINT ignored
@@ -299,18 +303,20 @@ src/
                          #   injected), Ctrl-C handled by the app, SIGINT/SIGTERM through
                          #   host.onSignal → unmount → AppResult (quit, interrupted, terminated,
                          #   failed with the error)
-    app.tsx              #   App: theme, catalog of the language read every 2 s (the last good
-                         #   one kept), working signal, load cache and error boundary around the
-                         #   shell — tabs, the active screen, footer, ? help, / palette, Esc
-                         #   (a screen's back first), q, 1–9, ←/→, Tab, Ctrl-C; the size warning
-                         #   below 80×24
-    app-context.ts       #   AppDeps (version, cwd, home, env, scheduler, language, now,
+    app.tsx              #   App: theme, catalog of the language read every 2 s and at once after
+                         #   a config write (the last good one kept), working signal, load cache
+                         #   and error boundary around the shell — tabs, the active screen, or
+                         #   the setup in their place (AppDeps.start, /setup), footer, ? help,
+                         #   / palette, Esc (a screen's back first), q, 1–9, ←/→, Tab (not in the
+                         #   setup), Ctrl-C; the size warning below 80×24
+    app-context.ts       #   AppDeps (version, start, cwd, home, env, scheduler, language, now,
                          #   readLanguage, readQueue, readReviews, readReviewDetail, readRepositories,
                          #   readRepository, readAutomation, readProviderSetup, readProviders,
                          #   readLearnings, readGitHub, readLocalRules, readRepositoryRules,
-                         #   readPullRequestRules, handOff), HandOffTarget, HandOffResult,
-                         #   Scheduler, KeyHint;
-                         #   useAppDeps(), useTheme(), useMessages(), useWorking(),
+                         #   readPullRequestRules, handOff, planConfig, applyConfig), AppStart,
+                         #   HandOffTarget, HandOffResult, Scheduler, KeyHint;
+                         #   useAppDeps(), useTheme(), useMessages(), useConfigWritten() (the
+                         #   language read again at once), useWorking(),
                          #   useIsWorking(), useScreenKeys(), useBack(), useScreenInput() (quiet
                          #   while a text field is focused), useScreenSize()
     screens.ts           #   ScreenDefinition (id, title from the catalog, Screen) and SCREENS,
@@ -335,6 +341,22 @@ src/
                          #   user's rules at once, .phada/ and docs of the default branch on open
                          #   and on r; p and a number → the loaded rules of that pull request and
                          #   its prompt: each pass, its data blocks and instructions)
+    setup/               #   the setup, outside the tabs: setup.tsx (Setup: "step n of 7" and the
+                         #   step's title, s skips, Esc asks to leave (a step's back first),
+                         #   y/Enter → Home; each step drawn as a screen in a smaller area, its
+                         #   keys and back gathered by the setup), setup-steps.ts (SETUP_STEPS
+                         #   in order, SetupStep, SetupStepProps: progress and next(written)),
+                         #   github-step.tsx (where the token comes from and its owner; no token
+                         #   or a gh token refused → Enter runs gh auth login and checks again;
+                         #   gh missing → install it or export GITHUB_TOKEN), language-step.tsx
+                         #   (en, pt, es → the change → written, the app speaking it at once),
+                         #   summary-step.tsx (the values written and their file, the steps
+                         #   skipped, phada watch and phada review; Enter → Home),
+                         #   pending-step.tsx (a step still to come: only skipped)
+    config-change.tsx    #   useConfigChange(onSaved): propose(changes) → AppDeps.planConfig →
+                         #   the before → after to confirm (Enter writes, cancel() on Esc) or the
+                         #   refusal; a file changed since the plan planned again on Enter;
+                         #   configChangeLines(), valueChangeLines() (one line per value)
     setting-lines.tsx    #   settingLines(), settingValue(): config settings as key, value and
                          #   origin rows; ruleLines(): the user's rules as name, text and origin
                          #   rows; indented()
@@ -370,8 +392,8 @@ src/
                          #   tab-layout.ts: layoutTabs(): full › short › a window with ‹ ›; tabText())
     footer.tsx           #   Footer (+ key-hints.ts: fitHints(): the keys that fit, then "? more")
     help.tsx             #   Help: the screen's keys and the global ones
-    palette.tsx          #   Palette: screens filtered by name (the catalog's and English, without
-                         #   accents), ↑/↓, Enter, Esc; matchEntries()
+    palette.tsx          #   Palette: screens and the setup filtered by name (the catalog's and
+                         #   English, without accents), ↑/↓, Enter, Esc; matchEntries()
     mascot.tsx           #   Mascot: the two frames, flapping on the scheduler while working
     terminal-size.ts     #   SizeSource, outputSize() (columns, rows, 'resize'), useTerminalSize(),
                          #   MIN_SIZE, isTooSmall()

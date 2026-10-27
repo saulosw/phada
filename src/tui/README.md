@@ -85,6 +85,27 @@ the key while `running`. Data that the command changes is read again on return: 
 `useLoaded` forces a slow load past `FRESH_MS`. An exit code other than 0 is a cancel or a failure
 to show in one line; the app keeps working.
 
+## Changing the user config (`config-change.tsx`)
+
+The app writes only the user's own `config.yml`, and only after showing the change.
+**`useConfigChange(onSaved)`** gives `propose(changes)` (the `UserConfigChange` operations of
+`src/config/user-config-edit.ts`), `cancel()`, `open`, `keys` and `state`. A proposal is planned
+through `AppDeps.planConfig`; draw `configChangeLines(state, draw)` under the screen's lines: the
+file (under `~`) and one line per value, before → after. The hook takes `Enter` itself (write, or
+plan again when the file changed since the plan); the screen wires `Esc` with
+`useBack(change.open ? change.cancel : …)`, ignores its own keys while `open` and shows `keys` in
+`useScreenKeys`. A refusal or a failed write is one line from the catalogs. After a write the
+language is read again at once and `onSaved(plan)` runs; a proposal that changes nothing calls
+`onSaved` without writing. `valueChangeLines()` draws a list of written values.
+
+## The setup (`setup/`)
+
+The setup takes the place of the tabs (`AppDeps.start`, `/setup`). Each step is a component of
+`SETUP_STEPS` (`setup-steps.ts`) with `{ progress, next }`; `next(plan)` goes on and records what
+was written, `s` skips a `skippable` step. A step is written as a screen: `useScreenKeys`,
+`useScreenInput`, `useBack` and `useScreenSize` reach the setup, which adds `s` and `Esc`, asks
+before leaving and silences the step meanwhile.
+
 ## Growing `AppDeps`
 
 A screen reads only through `AppDeps` (`app-context.ts`): a function returning the data of a use
