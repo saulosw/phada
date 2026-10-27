@@ -1,7 +1,6 @@
 import { Text } from 'ink'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import { errorMessage } from '../../app/error-message.js'
 import { loginCommand } from '../../app/read-provider.js'
 import type { ProviderReport, ProviderSetup, ReportedProvider } from '../../app/read-provider.js'
 import {
@@ -18,6 +17,8 @@ import { failedText } from '../data-view.js'
 import { useHandOff } from '../hand-off.js'
 import type { HandOffOutcome } from '../hand-off.js'
 import { PROVIDER_NAMES } from '../provider-names.js'
+import { loginOutcomeLines, nextStepLine, stateIcon, statusParts } from '../provider-lines.js'
+import type { LoginProvider } from '../provider-lines.js'
 import type { UiMessages } from '../i18n/messages.js'
 import { ScrollText } from '../scroll-list.js'
 import { textWidth } from '../tab-layout.js'
@@ -26,8 +27,6 @@ import { fit, namesText, oneLine, shortenHome, wrapText } from '../text-fit.js'
 
 const MODELS_SHOWN = 5
 const MAX_MCP_NAME = 24
-
-type LoginProvider = 'claude' | 'codex'
 
 interface LoginAttempt {
   provider: LoginProvider
@@ -65,7 +64,9 @@ export function ProviderScreen() {
     ...choiceLines(setup, draw),
     <Text> </Text>,
     ...providerLines(checked, draw),
-    ...loginLines(login, draw),
+    ...(login === undefined
+      ? []
+      : loginOutcomeLines(login.provider, login.outcome, messages, theme)),
     ...(setup.status === 'ready' ? [<Text> </Text>, ...mcpLines(setup.value, draw)] : []),
   ]
   useScreenKeys([
@@ -144,17 +145,7 @@ function providerLines(checked: DataState<ProviderReport>, draw: Draw): ReactNod
                 {m.models(models.length, namesText(models, MODELS_SHOWN))}
               </Text>,
             ]),
-        ...(status.next === null
-          ? []
-          : [
-              <Text>
-                {'    → '}
-                {m.steps[status.next.kind]}{' '}
-                <Text bold color={colors.accent}>
-                  {oneLine(status.next.command)}
-                </Text>
-              </Text>,
-            ]),
+        ...nextStepLine(status, messages, theme),
       ]
     }),
   ]
@@ -165,33 +156,6 @@ function loginTarget({ providers }: ProviderReport): LoginProvider | undefined {
     status.provider !== 'ollama' && status.next?.kind === 'login' ? [status] : [],
   )
   return (waiting.find(({ chosen }) => chosen) ?? waiting[0])?.provider
-}
-
-function loginLines(login: LoginAttempt | undefined, draw: Draw): ReactNode[] {
-  if (login === undefined) return []
-  const { colors } = draw.theme
-  const { messages } = draw
-  const { outcome } = login
-  switch (outcome.kind) {
-    case 'exited':
-      return outcome.exitCode === 0
-        ? []
-        : [
-            <Text color={colors.warn}>
-              {messages.provider.loginNotCompleted(PROVIDER_NAMES[login.provider])}
-            </Text>,
-          ]
-    case 'not-found':
-      return [
-        <Text color={colors.warn}>{messages.handOff.notFound(oneLine(outcome.command))}</Text>,
-      ]
-    case 'failed':
-      return [
-        <Text color={colors.error}>
-          {messages.handOff.failed(oneLine(errorMessage(outcome.error)))}
-        </Text>,
-      ]
-  }
 }
 
 function mcpLines({ mcp }: ProviderSetup, draw: Draw): ReactNode[] {
@@ -217,45 +181,6 @@ function mcpLines({ mcp }: ProviderSetup, draw: Draw): ReactNode[] {
       </Text>
     )),
   ]
-}
-
-function statusParts(status: ReportedProvider, messages: UiMessages): string[] {
-  const m = messages.provider
-  if (status.provider === 'ollama') {
-    const { server } = status
-    const state =
-      server.state === 'running'
-        ? [
-            m.running(server.version === null ? null : oneLine(server.version)),
-            ...(server.models.length === 0 ? [m.noModels] : []),
-          ]
-        : server.state === 'stopped'
-          ? [m.stopped]
-          : [m.serverUnknown(m.problems[server.problem])]
-    return [...state, ...(status.baseUrl === null ? [] : [oneLine(status.baseUrl)])]
-  }
-  const { install, login } = status
-  if (install.state === 'missing') return [m.notInstalled]
-  const installPart =
-    install.state === 'installed'
-      ? m.installed(install.version === null ? null : oneLine(install.version))
-      : m.installUnknown(m.problems[install.problem])
-  if (login.state === 'logged-in') {
-    return [installPart, m.loggedIn(login.method === null ? null : oneLine(login.method))]
-  }
-  if (login.state === 'logged-out') return [installPart, m.loggedOut]
-  return login.problem === 'not-installed'
-    ? [installPart]
-    : [installPart, m.loginUnknown(m.problems[login.problem])]
-}
-
-function stateIcon(status: ReportedProvider, { colors }: Theme): ReactNode {
-  if (status.next !== null) return <Text color={colors.warn}>○</Text>
-  const ready =
-    status.provider === 'ollama'
-      ? status.server.state === 'running'
-      : status.install.state === 'installed' && status.login.state === 'logged-in'
-  return ready ? <Text color={colors.ok}>●</Text> : <Text color={colors.dim}>?</Text>
 }
 
 function modelsOf(status: ReportedProvider): string[] {

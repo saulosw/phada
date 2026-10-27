@@ -361,6 +361,8 @@ src/
                          #   origin rows; ruleLines(): the user's rules as name, text and origin
                          #   rows; indented()
     provider-names.ts    #   PROVIDER_NAMES: the name of each AI provider as the screens show it
+    provider-lines.tsx   #   statusParts(), stateIcon(), nextStepLine(): an AI provider as checked;
+                         #   loginOutcomeLines(): the end of a login handed to its CLI
     units.ts             #   durationText(), bytesText()
     run-text.ts          #   runKey(), verdictLabel(), verdictColor(): a run of the history as the
                          #   screens list it
