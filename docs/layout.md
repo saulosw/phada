@@ -349,7 +349,8 @@ src/
                          #   in order, SetupStep, SetupStepProps: progress and next(written)),
                          #   github-step.tsx (where the token comes from and its owner; no token
                          #   or a gh token refused → Enter runs gh auth login and checks again;
-                         #   gh missing → install it or export GITHUB_TOKEN), language-step.tsx
+                         #   gh missing → install it or export GITHUB_TOKEN), ai-step.tsx (the
+                         #   ProviderPicker → the change → written), language-step.tsx
                          #   (en, pt, es → the change → written, the app speaking it at once),
                          #   summary-step.tsx (the values written and their file, the steps
                          #   skipped, phada watch and phada review; Enter → Home),
@@ -362,9 +363,18 @@ src/
                          #   origin rows; ruleLines(): the user's rules as name, text and origin
                          #   rows; indented()
     provider-names.ts    #   PROVIDER_NAMES: the name of each AI provider as the screens show it
-    provider-lines.tsx   #   statusParts(), stateIcon(), nextStepLine(): an AI provider as checked;
-                         #   loginOutcomeLines(): the end of a login handed to its CLI
-    units.ts             #   durationText(), bytesText()
+    provider-lines.tsx   #   statusParts(), stateIcon(), modelsLine(), nextStepLine(): an AI
+                         #   provider as checked; loginOutcomeLines(): the end of a login handed
+                         #   to its CLI
+    provider-picker.tsx  #   ProviderPicker: the AIs as checked (r) → ↑/↓ Enter: a logged-out CLI
+                         #   logs in (handed over, checked again), a ready CLI → its default
+                         #   model (model unset) or a typed one, a running Ollama → an installed
+                         #   model, the suggested one or a typed one (pulled first when missing)
+                         #   → the change of provider and model (useConfigChange); Esc goes back
+    model-pull.tsx       #   useModelPull(onPulled): AppDeps.pullModel with an AbortController
+                         #   (cancel(), aborted on unmount); modelPullLines(): the status, a bar
+                         #   with bytes and percent, and how it ended
+    units.ts             #   durationText(), bytesText(), modelSizeText() (decimal, as Ollama)
     run-text.ts          #   runKey(), verdictLabel(), verdictColor(): a run of the history as the
                          #   screens list it
     data-hooks.ts        #   usePolled() (local data, at once, every 2 s on the scheduler and when

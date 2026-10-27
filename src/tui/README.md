@@ -106,6 +106,12 @@ was written, `s` skips a `skippable` step. A step is written as a screen: `useSc
 `useScreenInput`, `useBack` and `useScreenSize` reach the setup, which adds `s` and `Esc`, asks
 before leaving and silences the step meanwhile.
 
+A step can be a component another screen also uses: the AI step is `ProviderPicker`
+(`provider-picker.tsx`), which checks the AIs, logs in through `useHandOff()`, pulls an Ollama model
+with `useModelPull()` (`model-pull.tsx`: `start(model)`, `cancel()` on `Esc`, aborted on unmount)
+and proposes the provider and model through `useConfigChange()`; it calls `onSaved(plan)` once
+written.
+
 ## Growing `AppDeps`
 
 A screen reads only through `AppDeps` (`app-context.ts`): a function returning the data of a use
