@@ -16,7 +16,7 @@ import {
 import type { KeyHint } from './app-context.js'
 import { configChangeLines, useConfigChange } from './config-change.js'
 import { useLoaded } from './data-hooks.js'
-import { failedText } from './data-view.js'
+import { failedLines } from './data-view.js'
 import { useHandOff } from './hand-off.js'
 import type { UiMessages } from './i18n/messages.js'
 import { modelPullLines, useModelPull } from './model-pull.js'
@@ -209,12 +209,12 @@ export function ProviderPicker({
   ]
   if (checked.status !== 'ready') {
     const state =
-      checked.status === 'loading' ? (
-        <Text color={theme.colors.dim}>{messages.provider.checking}</Text>
-      ) : (
-        <Text color={theme.colors.error}>{failedText(messages, checked.error)}</Text>
-      )
-    return <ScrollText lines={[...head, state]} rows={size.rows} active={false} />
+      checked.status === 'loading'
+        ? [<Text color={theme.colors.dim}>{messages.provider.checking}</Text>]
+        : failedLines(messages, checked.error, size.columns).map((line) => (
+            <Text color={theme.colors.error}>{line}</Text>
+          ))
+    return <ScrollText lines={[...head, ...state]} rows={size.rows} active={false} />
   }
   const nameWidth = Math.max(...Object.values(PROVIDER_NAMES).map(textWidth))
   if (mode === 'providers' || selected === undefined) {

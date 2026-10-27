@@ -13,7 +13,7 @@ import {
 import type { HandOffTarget } from '../app-context.js'
 import { useLoaded } from '../data-hooks.js'
 import type { DataState } from '../data-hooks.js'
-import { failedText } from '../data-view.js'
+import { failedLines } from '../data-view.js'
 import { useHandOff } from '../hand-off.js'
 import type { HandOffOutcome } from '../hand-off.js'
 import { loginOutcomeLines } from '../login-lines.js'
@@ -74,7 +74,9 @@ function accessLines(
     wrapText(text, width).map((line) => <Text color={color}>{line}</Text>)
   if (state.status === 'loading') return [<Text color={colors.dim}>{m.checking}</Text>]
   if (state.status === 'failed') {
-    return wrapped(failedText(messages, state.error), colors.error)
+    return failedLines(messages, state.error, width).map((line) => (
+      <Text color={colors.error}>{line}</Text>
+    ))
   }
   const access = state.value
   if (access.source === null) {

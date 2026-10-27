@@ -12,7 +12,7 @@ import {
   useWorking,
 } from '../app-context.js'
 import type { DataState } from '../data-hooks.js'
-import { failedText } from '../data-view.js'
+import { failedLines } from '../data-view.js'
 import { settle } from '../load-cache.js'
 import { ScrollText } from '../scroll-list.js'
 import { fit, oneLine, shortenHome, wrapText } from '../text-fit.js'
@@ -70,7 +70,11 @@ export function RepositoryStep({ next }: SetupStepProps) {
     wrapText(text, size.columns).map((line) => <Text color={color}>{line}</Text>)
   const folderLines = (): ReactNode[] => {
     if (folder.status === 'loading') return [<Text color={colors.dim}>{m.checking}</Text>]
-    if (folder.status === 'failed') return wrapped(failedText(messages, folder.error), colors.error)
+    if (folder.status === 'failed') {
+      return failedLines(messages, folder.error, size.columns).map((line) => (
+        <Text color={colors.error}>{line}</Text>
+      ))
+    }
     const value = folder.value
     switch (value.kind) {
       case 'outside':
@@ -94,7 +98,12 @@ export function RepositoryStep({ next }: SetupStepProps) {
       case 'creating':
         return [<Text> </Text>, <Text color={colors.dim}>{m.creating}</Text>]
       case 'failed':
-        return [<Text> </Text>, ...wrapped(failedText(messages, init.error), colors.error)]
+        return [
+          <Text> </Text>,
+          ...failedLines(messages, init.error, size.columns).map((line) => (
+            <Text color={colors.error}>{line}</Text>
+          )),
+        ]
       case 'ready':
         return [
           <Text> </Text>,

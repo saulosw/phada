@@ -23,6 +23,9 @@ import {
   renderApp,
   visibleWidth,
   waitFor,
+  CONFIG_ERROR_REASON,
+  flatFrame,
+  LONG_CONFIG_ERROR,
 } from '../../../test/support/tui.js'
 import type { AppDeps, HandOffResult, HandOffTarget } from '../app-context.js'
 import type { TerminalSize } from '../terminal-size.js'
@@ -256,6 +259,22 @@ describe('RepositoriesScreen', () => {
     expect(frame).toContain('phada review owner/repo#N')
   })
 
+  it('shows a long config error whole and once, and no hint to add watch.repos', async () => {
+    const view = openRepositories({
+      readRepositories: async () => ({
+        ...emptyRepositories(),
+        configured: true,
+        configError: LONG_CONFIG_ERROR,
+      }),
+    })
+    await view.showing('Invalid config')
+
+    const frame = view.frame()
+    expect(flatFrame(frame)).toContain(CONFIG_ERROR_REASON)
+    expect(frame).not.toContain('Invalid config: Invalid config')
+    expectFits(frame, { columns: 80, rows: 24 })
+  })
+
   it('keeps the list when the config is invalid, with the error on top', async () => {
     const view = openRepositories({
       readRepositories: async () => ({
@@ -266,7 +285,7 @@ describe('RepositoriesScreen', () => {
     })
     await view.showing('acme/shop', 'Invalid config')
 
-    expect(view.frame()).toContain('Invalid config: Invalid config /cfg/config.yml')
+    expect(view.frame()).toContain('Could not load: Invalid config /cfg/config.yml')
   })
 
   it('fits a wide terminal and speaks Portuguese', async () => {

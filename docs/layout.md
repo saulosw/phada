@@ -448,8 +448,9 @@ src/
     hand-off.ts          #   useHandOff(): AppDeps.handOff inside Ink's suspendTerminal() (the
                          #   app leaves the alternate screen and raw mode, redraws on return);
                          #   one at a time, a throw as a failed outcome
-    data-view.tsx        #   DataView: loading, the error in one line, or the value; failedText():
-                         #   any error as one line without control characters
+    data-view.tsx        #   DataView: loading, the error wrapped, or the value; failedText():
+                         #   any error as one line without control characters; failedLines():
+                         #   that line wrapped over ERROR_LINES at most
     scroll-list.tsx      #   useSelection() (↑/↓, PgUp/PgDn, Home/End, Enter; follows the selected
                          #   key when the list changes), ScrollList (the rows that fit and
                          #   "n–m of N"), ScrollText (lines that scroll); listWindow()
@@ -458,7 +459,8 @@ src/
                          #   asked; emptyOnFocus opens it empty), TextFieldLine
     text-fit.ts          #   oneLine() (toTerminalText on one line), namesText() (the first names
                          #   and "+N"), fit() (pad or cut with …, at the end or the start),
-                         #   wrapText(), shortenHome() (a path under ~)
+                         #   wrapText() (at most maxLines, the last cut with …), errorLines()
+                         #   (an error over ERROR_LINES), shortenHome() (a path under ~)
     labeled-lines.tsx    #   labeledLines(): label and value rows of a detail, values wrapped
     relative-time.ts     #   relativeTime() ("2m ago", "in ~4m" for an estimate), absoluteTime();
                          #   TimeMessages

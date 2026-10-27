@@ -160,7 +160,9 @@ than `columns`. Long content goes through `ScrollList`/`ScrollText` and `useSele
   (`messages.ts`) and its text in `en.ts`, `pt.ts` and `es.ts`, read with `useMessages()`.
 - Every text from outside (names, paths, config values, what GitHub, git or an AI CLI answered)
   goes through `oneLine()`, or `wrapText()` when it spans lines; every error through
-  `failedText(messages, error)` or `<DataView>`. Both strip control and bidi characters.
+  `failedLines(messages, error, width)` (wrapped over `ERROR_LINES`, so a config error shows its
+  key and reason), `failedText(messages, error)` where one line is all there is, or `<DataView>`.
+  They strip control and bidi characters.
 
 ## Tests
 

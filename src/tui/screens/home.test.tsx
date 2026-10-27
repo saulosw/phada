@@ -25,6 +25,9 @@ import {
   renderApp,
   visibleWidth,
   waitFor,
+  CONFIG_ERROR_REASON,
+  flatFrame,
+  LONG_CONFIG_ERROR,
 } from '../../../test/support/tui.js'
 import type { AppDeps } from '../app-context.js'
 import { FLAP_MS } from '../mascot.js'
@@ -236,6 +239,26 @@ describe('the Home screen', () => {
     await showing('phada setup')
     expect(frame()).toContain('Set up Phada')
     expect(frame()).not.toContain('phada init --global')
+  })
+
+  it('shows a long config error whole, wrapped over a few lines, in 80×24', async () => {
+    const { frame } = openHome({
+      automation: async () => ({
+        ...emptyAutomation(),
+        configured: true,
+        configError: LONG_CONFIG_ERROR,
+      }),
+      deps: {
+        readProviderSetup: async () => {
+          throw new Error(LONG_CONFIG_ERROR)
+        },
+      },
+    })
+    await waitFor(() => flatFrame(frame()).includes(CONFIG_ERROR_REASON))
+    expect(flatFrame(frame())).toContain(CONFIG_ERROR_REASON)
+    expect(frame()).toContain('Fix the config file ~/.config/phada/config.yml')
+    expectFits(frame(), 80)
+    expect(frameLines(frame())).toHaveLength(24)
   })
 
   it('names the invalid config file and its error', async () => {

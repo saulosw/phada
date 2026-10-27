@@ -12,7 +12,7 @@ import {
 } from './app-context.js'
 import { configChangeLines, useConfigChange } from './config-change.js'
 import { usePolled } from './data-hooks.js'
-import { failedText } from './data-view.js'
+import { failedLines } from './data-view.js'
 import { ScrollText } from './scroll-list.js'
 import { fit, wrapText } from './text-fit.js'
 
@@ -73,7 +73,7 @@ export function LanguagePicker({ onDone }: { onDone(plan?: UserConfigPlan): void
     <Text> </Text>,
   ]
   if (read.status === 'failed') {
-    const error = wrapText(failedText(messages, read.error), size.columns).map((line) => (
+    const error = failedLines(messages, read.error, size.columns).map((line) => (
       <Text color={colors.error}>{line}</Text>
     ))
     return <ScrollText lines={[...intro, ...error]} rows={size.rows} />

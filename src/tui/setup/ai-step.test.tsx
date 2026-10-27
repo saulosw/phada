@@ -17,6 +17,9 @@ import {
   KEYS,
   renderApp,
   visibleWidth,
+  CONFIG_ERROR_REASON,
+  flatFrame,
+  LONG_CONFIG_ERROR,
 } from '../../../test/support/tui.js'
 import type { AppDeps, HandOffResult, HandOffTarget } from '../app-context.js'
 
@@ -192,6 +195,14 @@ describe('the AI step', () => {
     expect(plans).toEqual([])
     await press('s')
     await seeing(/Step 3 of 7 · Language/)
+  })
+
+  it('shows a long config error whole, wrapped over a few lines', async () => {
+    const { frame, reach, seeing } = openAiStep({ invalid: LONG_CONFIG_ERROR })
+    await reach()
+    await seeing('Could not load: Invalid config')
+    expect(flatFrame(frame())).toContain(CONFIG_ERROR_REASON)
+    expectFits(frame())
   })
 
   it("writes the provider with the CLI's default model after its before and after", async () => {

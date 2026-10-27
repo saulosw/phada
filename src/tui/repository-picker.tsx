@@ -15,7 +15,7 @@ import {
 import type { KeyHint } from './app-context.js'
 import { configChangeLines, useConfigChange } from './config-change.js'
 import { useLoaded } from './data-hooks.js'
-import { failedText } from './data-view.js'
+import { failedLines } from './data-view.js'
 import type { UiMessages } from './i18n/messages.js'
 import { relativeTime } from './relative-time.js'
 import { ScrollList, useSelection } from './scroll-list.js'
@@ -150,7 +150,9 @@ export function RepositoryPicker({
   if (read === undefined) {
     const status =
       state.status === 'failed'
-        ? wrapped(failedText(messages, state.error), colors.error)
+        ? failedLines(messages, state.error, size.columns).map((line) => (
+            <Text color={colors.error}>{line}</Text>
+          ))
         : [<Text color={colors.dim}>{m.listing}</Text>]
     return <Lines lines={[...head, ...status]} />
   }

@@ -12,7 +12,7 @@ import {
   useWorking,
 } from '../app-context.js'
 import type { DataState } from '../data-hooks.js'
-import { failedText } from '../data-view.js'
+import { failedLines } from '../data-view.js'
 import type { UiMessages } from '../i18n/messages.js'
 import { useIndexSeries } from '../index-series.js'
 import type { SeriesEntry, SeriesPhase } from '../index-series.js'
@@ -76,7 +76,9 @@ export function GraphStep({ next }: SetupStepProps) {
     watched.status === 'loading'
       ? [<Text color={colors.dim}>{m.reading}</Text>]
       : watched.status === 'failed'
-        ? wrapped(failedText(messages, watched.error), colors.error)
+        ? failedLines(messages, watched.error, size.columns).map((line) => (
+            <Text color={colors.error}>{line}</Text>
+          ))
         : repos.length === 0
           ? wrapped(m.none)
           : [

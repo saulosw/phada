@@ -10,8 +10,8 @@ Text Phada did not write (names, paths, config values, pull request titles and b
 GitHub, git or an AI CLI answered, error messages) can carry control and bidi characters that
 rewrite the terminal. It reaches the screen only through `toTerminalText()`
 (`src/app/terminal-text.ts`); in the app, through `oneLine()` or `wrapText()`
-(`src/tui/text-fit.ts`) and errors through `failedText()` or `<DataView>`. Check each value a
-change draws or prints, including the ones inside a message of the catalogs.
+(`src/tui/text-fit.ts`) and errors through `failedLines()`, `failedText()` or `<DataView>`. Check
+each value a change draws or prints, including the ones inside a message of the catalogs.
 
 ## The app only reads what is Phada's own
 

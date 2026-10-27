@@ -10,7 +10,7 @@ import { ScrollText } from '../scroll-list.js'
 import { indented, settingLines } from '../setting-lines.js'
 import { textWidth } from '../tab-layout.js'
 import type { Theme } from '../theme.js'
-import { fit, oneLine, shortenHome, wrapText } from '../text-fit.js'
+import { errorLines, fit, oneLine, shortenHome, wrapText } from '../text-fit.js'
 import { durationText } from '../units.js'
 
 const GAP = '  '
@@ -47,7 +47,7 @@ function AutomationLines({ view }: { view: AutomationView }) {
   const head: ReactNode[] = [
     ...(view.configError === null
       ? []
-      : wrapText(messages.settings.invalid(view.configError), size.columns).map((line) => (
+      : errorLines(messages.settings.invalid(view.configError), size.columns).map((line) => (
           <Text color={colors.error}>{line}</Text>
         ))),
     ...(view.configured

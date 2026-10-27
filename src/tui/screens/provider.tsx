@@ -12,7 +12,7 @@ import {
 } from '../app-context.js'
 import { useLoaded, usePolled } from '../data-hooks.js'
 import type { DataState } from '../data-hooks.js'
-import { failedText } from '../data-view.js'
+import { failedLines } from '../data-view.js'
 import { useHandOff } from '../hand-off.js'
 import { LanguagePicker, languageName } from '../language-picker.js'
 import { ProviderPicker } from '../provider-picker.js'
@@ -138,7 +138,9 @@ function choiceLines(setup: DataState<ProviderSetup>, draw: Draw): ReactNode[] {
   const m = messages.provider
   if (setup.status === 'loading') return [<Text color={colors.dim}>{messages.loading}</Text>]
   if (setup.status === 'failed') {
-    return [<Text color={colors.error}>{failedText(messages, setup.error)}</Text>]
+    return failedLines(messages, setup.error, width).map((line) => (
+      <Text color={colors.error}>{line}</Text>
+    ))
   }
   const { provider, model, origin } = setup.value.choice
   const modelText =
@@ -174,7 +176,12 @@ function providerLines(checked: DataState<ProviderReport>, draw: Draw): ReactNod
   const header = <Text bold>{m.providers}</Text>
   if (checked.status === 'loading') return [header, <Text color={colors.dim}>{m.checking}</Text>]
   if (checked.status === 'failed') {
-    return [header, <Text color={colors.error}>{failedText(messages, checked.error)}</Text>]
+    return [
+      header,
+      ...failedLines(messages, checked.error, draw.width).map((line) => (
+        <Text color={colors.error}>{line}</Text>
+      )),
+    ]
   }
   const nameWidth = Math.max(...Object.values(PROVIDER_NAMES).map(textWidth))
   const chosenWidth = textWidth(m.chosen)

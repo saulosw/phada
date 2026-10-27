@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fit, namesText, oneLine, shortenHome, wrapText } from './text-fit.js'
+import { errorLines, fit, namesText, oneLine, shortenHome, wrapText } from './text-fit.js'
 
 describe('oneLine', () => {
   it('strips control and bidi characters and keeps the text on one line', () => {
@@ -39,6 +39,22 @@ describe('wrapText', () => {
     ])
     expect(wrapText('abcdefghij', 4)).toEqual(['abcd', 'efgh', 'ij'])
     expect(wrapText('bad\u0007 bell', 20)).toEqual(['bad bell'])
+  })
+
+  it('keeps at most the lines asked for, the last one cut with an ellipsis', () => {
+    expect(wrapText('one two three four five six', 9, 2)).toEqual(['one two', 'three fo…'])
+    expect(wrapText('one two', 9, 2)).toEqual(['one two'])
+  })
+})
+
+describe('errorLines', () => {
+  it('wraps an error on one paragraph over four lines at most', () => {
+    expect(errorLines('Invalid config\n  a: b c d e f g h i j k l m n', 6)).toEqual([
+      'Invali',
+      'd',
+      'config',
+      'a: b …',
+    ])
   })
 })
 

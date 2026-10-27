@@ -8,7 +8,16 @@ import type {
   ValueChange,
 } from '../../config/user-config-edit.js'
 import type { HandOffResult, HandOffTarget } from '../app-context.js'
-import { frameLines, KEYS, renderApp, visibleWidth, waitFor } from '../../../test/support/tui.js'
+import {
+  CONFIG_ERROR_REASON,
+  flatFrame,
+  frameLines,
+  KEYS,
+  LONG_CONFIG_ERROR,
+  renderApp,
+  visibleWidth,
+  waitFor,
+} from '../../../test/support/tui.js'
 import { SCREENS } from '../screens.js'
 import type { TerminalSize } from '../terminal-size.js'
 import { ProviderScreen } from './provider.js'
@@ -240,6 +249,20 @@ describe('the Provider screen', () => {
     await showing('Could not load: Invalid config', 'Could not load: spawn failed')
     expect(frame()).toContain('Could not load: Invalid config')
     expect(frame()).toContain('Could not load: spawn failed')
+  })
+
+  it('shows a long config error whole, wrapped over a few lines, in 80×24', async () => {
+    const { frame, showing } = openProvider({
+      setup: async () => {
+        throw new Error(LONG_CONFIG_ERROR)
+      },
+      providers: async () => {
+        throw new Error(LONG_CONFIG_ERROR)
+      },
+    })
+    await showing('Could not load: Invalid config')
+    expect(flatFrame(frame())).toContain(CONFIG_ERROR_REASON)
+    expectFits(frame(), { columns: 80, rows: 24 })
   })
 
   it('draws an error and the model names it read on one line, without control characters', async () => {

@@ -18,7 +18,7 @@ import { absoluteTime, relativeTime } from '../relative-time.js'
 import { textWidth } from '../tab-layout.js'
 import type { Theme } from '../theme.js'
 import { runKey, verdictColor, verdictLabel } from '../run-text.js'
-import { fit, oneLine, shortenHome } from '../text-fit.js'
+import { errorLines, fit, oneLine, shortenHome } from '../text-fit.js'
 
 const BOX_CHROME = 22
 const BOX_ROWS = 6
@@ -252,7 +252,7 @@ function graphStatus({ repositories }: HomeSnapshot, { messages }: Draw): Status
 }
 
 function recommendationLines(recommendation: Recommendation, draw: Draw): ReactNode[] {
-  const { messages, theme, home, now } = draw
+  const { messages, theme, home, now, width } = draw
   const { colors } = theme
   const m = messages.home.recommendations
   if (recommendation.kind === 'checking') {
@@ -268,10 +268,12 @@ function recommendationLines(recommendation: Recommendation, draw: Draw): ReactN
   if (recommendation.kind === 'fix-config') {
     return [
       headline(m.fixConfig(oneLine(shortenHome(recommendation.file, home)))),
-      <Text color={colors.error}>
-        {GAP}
-        {oneLine(recommendation.error)}
-      </Text>,
+      ...errorLines(recommendation.error, width - GAP.length).map((line) => (
+        <Text color={colors.error}>
+          {GAP}
+          {line}
+        </Text>
+      )),
     ]
   }
   return [

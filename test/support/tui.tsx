@@ -254,6 +254,15 @@ export function frameLines(frame: string): string[] {
   return frame.split('\n')
 }
 
+export function flatFrame(frame: string): string {
+  return frame.replace(/\s+/g, ' ')
+}
+
+export const LONG_CONFIG_ERROR =
+  'Invalid config /home/ana/projects/a-rather-long-folder-name/phada-settings/config/config.yml: minConfidence: Too big: expected number to be <=100'
+
+export const CONFIG_ERROR_REASON = 'minConfidence: Too big: expected number to be <=100'
+
 export function visibleWidth(line: string): number {
   return [...line.replace(/\u001B\[[0-9;]*m/g, '')].length
 }
