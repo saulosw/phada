@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -58,6 +58,44 @@ describe('nodeFileSystem', () => {
       { path: join(dir, 'notes', 'sub', 'a.MD'), size: 1 },
     ])
     expect(await nodeFileSystem.listDocs(join(dir, 'missing'))).toBeNull()
+  })
+})
+
+describe('nodeFileSystem.writeAtomic', () => {
+  it('writes a file in a folder it creates', async () => {
+    const path = join(dir, 'phada', 'config.yml')
+
+    await nodeFileSystem.writeAtomic(path, 'provider: claude\n')
+
+    expect(await readFile(path, 'utf8')).toBe('provider: claude\n')
+    expect(await readdir(join(dir, 'phada'))).toEqual(['config.yml'])
+  })
+
+  it('replaces a file whole with its mode, leaving no temporary file behind', async () => {
+    const path = join(dir, 'config.yml')
+    await writeFile(path, 'provider: claude\n', { mode: 0o600 })
+
+    await nodeFileSystem.writeAtomic(path, 'provider: codex\n')
+
+    expect(await readFile(path, 'utf8')).toBe('provider: codex\n')
+    expect((await stat(path)).mode & 0o777).toBe(0o600)
+    expect(await readdir(dir)).toEqual(['config.yml'])
+  })
+
+  it('rejects a folder it may not write, keeping the file as it was', async () => {
+    const path = join(dir, 'config.yml')
+    await writeFile(path, 'provider: claude\n')
+    await chmod(dir, 0o500)
+
+    try {
+      await expect(nodeFileSystem.writeAtomic(path, 'provider: codex\n')).rejects.toMatchObject({
+        code: 'EACCES',
+      })
+    } finally {
+      await chmod(dir, 0o700)
+    }
+    expect(await readFile(path, 'utf8')).toBe('provider: claude\n')
+    expect(await readdir(dir)).toEqual(['config.yml'])
   })
 })
 

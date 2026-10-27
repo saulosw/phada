@@ -1,5 +1,6 @@
-import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
 
 export interface LocalDoc {
   path: string
@@ -10,6 +11,7 @@ export interface LocalFileSystem {
   readText(path: string): Promise<string | null>
   exists(path: string): Promise<boolean>
   writeNew(path: string, text: string): Promise<boolean>
+  writeAtomic(path: string, text: string): Promise<void>
   makeDir(path: string): Promise<void>
   listDocs(path: string): Promise<LocalDoc[] | null>
   listDir(path: string): Promise<string[] | null>
@@ -39,6 +41,19 @@ export const nodeFileSystem: LocalFileSystem = {
       return true
     } catch (error) {
       if (hasCode(error, 'EEXIST')) return false
+      throw error
+    }
+  },
+  async writeAtomic(path, text) {
+    const dir = dirname(path)
+    await mkdir(dir, { recursive: true })
+    const mode = await existingMode(path)
+    const temporary = join(dir, `.${basename(path)}.${randomUUID()}.tmp`)
+    try {
+      await writeFile(temporary, text, { flag: 'wx', ...(mode === undefined ? {} : { mode }) })
+      await rename(temporary, path)
+    } catch (error) {
+      await rm(temporary, { force: true })
       throw error
     }
   },
@@ -73,6 +88,15 @@ export const nodeFileSystem: LocalFileSystem = {
       throw error
     }
   },
+}
+
+async function existingMode(path: string): Promise<number | undefined> {
+  try {
+    return (await stat(path)).mode & 0o777
+  } catch (error) {
+    if (isMissing(error)) return undefined
+    throw error
+  }
 }
 
 function isMissing(error: unknown): boolean {
