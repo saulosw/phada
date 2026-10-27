@@ -131,7 +131,6 @@ export interface SetupMessages {
     replace(variable: string): string
     unreachable(message: string): string
     notInstalled: string
-    notCompleted: string
   }
   ai: { intro: string }
   repositories: { intro: string; noToken: string }

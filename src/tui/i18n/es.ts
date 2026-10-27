@@ -561,7 +561,6 @@ export const spanish: UiMessages = {
       unreachable: (message) => `No se pudo contactar con GitHub: ${message}`,
       notInstalled:
         'gh no está instalado. Instálalo desde https://cli.github.com, o exporta GITHUB_TOKEN con un token tuyo.',
-      notCompleted: 'Inicio de sesión en gh no completado.',
     },
     ai: {
       intro:

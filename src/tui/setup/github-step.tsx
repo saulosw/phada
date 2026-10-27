@@ -1,7 +1,6 @@
 import { Text } from 'ink'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import { errorMessage } from '../../app/error-message.js'
 import type { GitHubAccess } from '../../app/read-home.js'
 import {
   useAppDeps,
@@ -17,6 +16,8 @@ import type { DataState } from '../data-hooks.js'
 import { failedText } from '../data-view.js'
 import { useHandOff } from '../hand-off.js'
 import type { HandOffOutcome } from '../hand-off.js'
+import { loginOutcomeLines } from '../login-lines.js'
+import type { LoginDraw } from '../login-lines.js'
 import type { UiMessages } from '../i18n/messages.js'
 import { ScrollText } from '../scroll-list.js'
 import { oneLine, wrapText } from '../text-fit.js'
@@ -47,7 +48,7 @@ export function GitHubStep({ next }: SetupStepProps) {
   const m = messages.setup
   const lines = [
     ...accessLines(state, messages, theme, size.columns),
-    ...loginLines(login, messages, theme, size.columns),
+    ...loginLines(login, { messages, theme, width: size.columns }),
   ]
   useScreenKeys([
     ...(state.status === 'loading'
@@ -99,27 +100,8 @@ function accessLines(
   }
 }
 
-function loginLines(
-  login: HandOffOutcome | undefined,
-  messages: UiMessages,
-  { colors }: Theme,
-  width: number,
-): ReactNode[] {
+function loginLines(login: HandOffOutcome | undefined, draw: LoginDraw): ReactNode[] {
   if (login === undefined) return []
-  const m = messages.setup.github
-  const text =
-    login.kind === 'exited'
-      ? login.exitCode === 0
-        ? undefined
-        : m.notCompleted
-      : login.kind === 'not-found'
-        ? m.notInstalled
-        : messages.handOff.failed(oneLine(errorMessage(login.error)))
-  if (text === undefined) return []
-  return [
-    <Text> </Text>,
-    ...wrapText(text, width).map((line) => (
-      <Text color={login.kind === 'failed' ? colors.error : colors.warn}>{line}</Text>
-    )),
-  ]
+  const lines = loginOutcomeLines('gh', login, draw, draw.messages.setup.github.notInstalled)
+  return lines.length === 0 ? [] : [<Text> </Text>, ...lines]
 }

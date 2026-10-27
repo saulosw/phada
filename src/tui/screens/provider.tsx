@@ -1,7 +1,7 @@
 import { Text } from 'ink'
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { ProviderReport, ProviderSetup, ReportedProvider } from '../../app/read-provider.js'
+import type { ProviderReport, ProviderSetup } from '../../app/read-provider.js'
 import {
   useAppDeps,
   useMessages,
@@ -18,13 +18,8 @@ import { LanguagePicker, languageName } from '../language-picker.js'
 import { ProviderPicker } from '../provider-picker.js'
 import type { HandOffOutcome } from '../hand-off.js'
 import { PROVIDER_NAMES } from '../provider-names.js'
-import {
-  loginOutcomeLines,
-  modelsLine,
-  nextStepLine,
-  stateIcon,
-  statusParts,
-} from '../provider-lines.js'
+import { loginOutcomeLines } from '../login-lines.js'
+import { modelsLine, nextStepLine, stateIcon, statusParts } from '../provider-lines.js'
 import type { LoginProvider } from '../provider-lines.js'
 import type { UiMessages } from '../i18n/messages.js'
 import { ScrollText } from '../scroll-list.js'
@@ -124,7 +119,7 @@ function ProviderView({
     ...providerLines(checked, draw),
     ...(login === undefined
       ? []
-      : loginOutcomeLines(login.provider, login.outcome, messages, theme)),
+      : loginOutcomeLines(PROVIDER_NAMES[login.provider], login.outcome, draw)),
     ...(setup.status === 'ready' ? [<Text> </Text>, ...mcpLines(setup.value, draw)] : []),
   ]
   useScreenKeys([

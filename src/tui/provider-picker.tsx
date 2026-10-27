@@ -1,8 +1,8 @@
-import { Text } from 'ink'
+import { Box, Text } from 'ink'
 import { useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { hasModel, SUGGESTED_OLLAMA_MODEL } from '../app/read-provider.js'
-import type { ProviderChoiceView, ProviderReport, ReportedProvider } from '../app/read-provider.js'
+import type { ProviderChoiceView, ReportedProvider } from '../app/read-provider.js'
 import type { UserConfigChange, UserConfigPlan } from '../config/user-config-edit.js'
 import {
   useAppDeps,
@@ -21,16 +21,11 @@ import { useHandOff } from './hand-off.js'
 import type { HandOffOutcome } from './hand-off.js'
 import type { UiMessages } from './i18n/messages.js'
 import { modelPullLines, useModelPull } from './model-pull.js'
-import {
-  loginOutcomeLines,
-  modelsLine,
-  nextStepLine,
-  stateIcon,
-  statusParts,
-} from './provider-lines.js'
+import { loginOutcomeLines } from './login-lines.js'
+import { modelsLine, nextStepLine, stateIcon, statusParts } from './provider-lines.js'
 import type { LoginProvider } from './provider-lines.js'
 import { PROVIDER_NAMES } from './provider-names.js'
-import { listWindow, ScrollText } from './scroll-list.js'
+import { ScrollList, ScrollText } from './scroll-list.js'
 import { textWidth } from './tab-layout.js'
 import { TextFieldLine, useTextField } from './text-field.js'
 import type { Theme } from './theme.js'
@@ -81,7 +76,6 @@ export function ProviderPicker({
   const providerNow = useRef<number | undefined>(undefined)
   const [modelPick, setModelPick] = useState<number>()
   const modelNow = useRef<number | undefined>(undefined)
-  const modelStart = useRef(0)
 
   const chosenIndex = Math.max(
     providers.findIndex(({ chosen }) => chosen),
@@ -243,7 +237,10 @@ export function ProviderPicker({
         : []),
       ...(login === undefined
         ? []
-        : [<Text> </Text>, ...loginOutcomeLines(login.provider, login.outcome, messages, theme)]),
+        : [
+            <Text> </Text>,
+            ...loginOutcomeLines(PROVIDER_NAMES[login.provider], login.outcome, draw),
+          ]),
       ...tail,
     ]
     return <ScrollText lines={lines} rows={size.rows} active={false} />
@@ -260,26 +257,27 @@ export function ProviderPicker({
     <Text bold>{m.modelFor(PROVIDER_NAMES[selected.provider])}</Text>,
   ]
   const room = Math.max(size.rows - top.length - tail.length, 2)
-  const window = listWindow(options.length, modelPick ?? modelAt(), room, modelStart.current)
-  modelStart.current = window.start
-  const at = modelPick ?? modelAt()
-  const lines = [
-    ...top,
-    ...options.slice(window.start, window.end).map((option, offset) => {
-      const index = window.start + offset
-      return optionRow(option, index === at, index === currentModel, draw)
-    }),
-    ...(window.overflow
-      ? [
-          <Text color={theme.colors.dim}>
-            {NO_CURSOR}
-            {messages.list.range(window.start + 1, window.end, options.length)}
-          </Text>,
-        ]
-      : []),
-    ...tail,
-  ]
-  return <ScrollText lines={lines} rows={size.rows} active={false} />
+  return (
+    <Box flexDirection="column">
+      <Lines lines={top} />
+      <ScrollList
+        items={options}
+        index={modelPick ?? modelAt()}
+        rows={room}
+        keyOf={optionKey}
+        renderItem={(option) => optionText(option, options.indexOf(option) === currentModel, draw)}
+      />
+      <Lines lines={tail} />
+    </Box>
+  )
+}
+
+function Lines({ lines }: { lines: readonly ReactNode[] }) {
+  return lines.map((line, index) => (
+    <Text key={index} wrap="truncate-end">
+      {line}
+    </Text>
+  ))
 }
 
 function providerAction(status: ReportedProvider): 'models' | 'login' | undefined {
@@ -355,12 +353,13 @@ function currentOption(
   )
 }
 
-function optionRow(
-  option: ModelOption,
-  selected: boolean,
-  current: boolean,
-  { messages, theme }: Draw,
-): ReactNode {
+function optionKey(option: ModelOption): string {
+  return option.kind === 'installed' || option.kind === 'suggested'
+    ? `${option.kind}:${option.name}`
+    : option.kind
+}
+
+function optionText(option: ModelOption, current: boolean, { messages, theme }: Draw): ReactNode {
   const { colors } = theme
   const m = messages.provider.pick
   const [name, note] =
@@ -373,11 +372,10 @@ function optionRow(
           : [option.name, m.suggested(modelSizeText(option.bytes))]
   const notes = [...(note === undefined ? [] : [note]), ...(current ? [m.current] : [])]
   return (
-    <Text bold={selected}>
-      {selected ? <Text color={colors.accent}>{CURSOR}</Text> : NO_CURSOR}
+    <>
       {name}
       {notes.length === 0 ? '' : <Text color={colors.dim}> · {notes.join(' · ')}</Text>}
-    </Text>
+    </>
   )
 }
 

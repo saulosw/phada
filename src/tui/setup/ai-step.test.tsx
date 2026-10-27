@@ -407,6 +407,27 @@ describe('the AI step', () => {
     ])
   })
 
+  it('scrolls a long list of models within 80×24, keeping the one picked in view', async () => {
+    const models = Array.from({ length: 30 }, (_, index) => `model-${index + 1}:7b`)
+    const { frame, press, reach, seeing, plans } = openAiStep({
+      reports: [report(ollamaWith(models))],
+    })
+    await reach()
+    await seeing('30 models')
+    await press(KEYS.down, KEYS.down, KEYS.enter)
+    await seeing('Model for Ollama', '❯ model-1:7b', /1–\d+ of 31/)
+    await press(...Array.from({ length: 24 }, () => KEYS.down))
+    await seeing('❯ model-25:7b')
+    expect(frame()).not.toContain('model-1:7b')
+    expectFits(frame())
+    await press(KEYS.up)
+    await seeing('❯ model-24:7b')
+    expect(frame()).toContain('model-25:7b')
+    await press(KEYS.enter)
+    await seeing(/model +\(not set\) → model-24:7b/)
+    expect(plans).toHaveLength(1)
+  })
+
   it('pulls a typed model Ollama does not have', async () => {
     const pull = controlledPull()
     const { press, reach, seeing, type } = openAiStep({

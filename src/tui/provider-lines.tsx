@@ -1,10 +1,7 @@
 import { Text } from 'ink'
 import type { ReactNode } from 'react'
-import { errorMessage } from '../app/error-message.js'
 import type { ReportedProvider } from '../app/read-provider.js'
-import type { HandOffOutcome } from './hand-off.js'
 import type { UiMessages } from './i18n/messages.js'
-import { PROVIDER_NAMES } from './provider-names.js'
 import type { Theme } from './theme.js'
 import { namesText, oneLine } from './text-fit.js'
 
@@ -82,32 +79,4 @@ export function nextStepLine(
       </Text>
     </Text>,
   ]
-}
-
-export function loginOutcomeLines(
-  provider: LoginProvider,
-  outcome: HandOffOutcome,
-  messages: UiMessages,
-  { colors }: Theme,
-): ReactNode[] {
-  switch (outcome.kind) {
-    case 'exited':
-      return outcome.exitCode === 0
-        ? []
-        : [
-            <Text color={colors.warn}>
-              {messages.provider.loginNotCompleted(PROVIDER_NAMES[provider])}
-            </Text>,
-          ]
-    case 'not-found':
-      return [
-        <Text color={colors.warn}>{messages.handOff.notFound(oneLine(outcome.command))}</Text>,
-      ]
-    case 'failed':
-      return [
-        <Text color={colors.error}>
-          {messages.handOff.failed(oneLine(errorMessage(outcome.error)))}
-        </Text>,
-      ]
-  }
 }

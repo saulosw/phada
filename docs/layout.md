@@ -403,13 +403,15 @@ src/
                          #   rows; indented()
     provider-names.ts    #   PROVIDER_NAMES: the name of each AI provider as the screens show it
     provider-lines.tsx   #   statusParts(), stateIcon(), modelsLine(), nextStepLine(): an AI
-                         #   provider as checked; loginOutcomeLines(): the end of a login handed
-                         #   to its CLI
+                         #   provider as checked
+    login-lines.tsx      #   loginOutcomeLines(): the end of a login handed to its CLI (an AI CLI
+                         #   or gh) as wrapped lines
     provider-picker.tsx  #   ProviderPicker: the AIs as checked (r) → ↑/↓ Enter: a logged-out CLI
                          #   logs in (handed over, checked again), a ready CLI → its default
                          #   model (model unset) or a typed one, a running Ollama → an installed
-                         #   model, the suggested one or a typed one (pulled first when missing)
-                         #   → the change of provider and model (useConfigChange); Esc goes back
+                         #   model, the suggested one or a typed one (pulled first when missing,
+                         #   the models in a ScrollList) → the change of provider and model
+                         #   (useConfigChange); Esc goes back
     repository-picker.tsx #  RepositoryPicker: AppDeps.readUserRepositories (loaded, r) as a list
                          #   with watch.repos marked; f filters it, Space marks, a adds a typed
                          #   owner/repo; Enter → watch and unwatch changes (useConfigChange), or

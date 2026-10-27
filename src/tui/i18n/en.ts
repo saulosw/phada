@@ -551,7 +551,6 @@ export const english: UiMessages = {
       unreachable: (message) => `Could not reach GitHub: ${message}`,
       notInstalled:
         'gh is not installed. Install it from https://cli.github.com, or export GITHUB_TOKEN with a token of yours.',
-      notCompleted: 'gh login not completed.',
     },
     ai: {
       intro: 'Phada reviews with an AI CLI you are logged into, or with a model served by Ollama.',
