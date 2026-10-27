@@ -118,7 +118,9 @@ src/
     read-provider.ts     #   providerSetup(): the provider and model of the user config (or the
                          #   default) and its MCP servers by name and kind, never their command,
                          #   env, URL or headers; readProviders(): the choice and every provider
-                         #   checked with its nextStep() (install, login, ollama serve, ollama pull)
+                         #   checked with its nextStep() (install, login, ollama serve, ollama pull);
+                         #   loginCommand(): the login of Claude Code or Codex as command and
+                         #   arguments
     edit-user-config.ts  #   planUserConfig(): the user's own config.yml read (injected) →
                          #   planUserConfigEdit(); applyUserConfigPlan(): written atomically only
                          #   if the file did not change since the plan; failures as data
@@ -166,7 +168,13 @@ src/
                          #   readLearnings (the observed files of the cache, read only),
                          #   readGitHub (readGitHubAccess()) and rulesReaders() of app-rules.ts
                          #   with one token reader that asks gh again on each load (runGh and
-                         #   fetchUser injectable)
+                         #   fetchUser injectable); handOff and the signals through
+                         #   terminalHandOff()
+    terminal-hand-off.ts #   terminalHandOff(): handOff (a command, or a file in $VISUAL › $EDITOR
+                         #   › vi split on spaces, run in the app's folder with its environment;
+                         #   runInteractive injectable) and the app's signals: SIGINT ignored
+                         #   while the command runs (Ctrl-C is the command's), SIGTERM ends the
+                         #   command and the app
     app-rules.ts         #   rulesReaders(): readLocalRules (the user config), readRepositoryRules
                          #   (the default branch) and readPullRequestRules (readRules at the base
                          #   and pullRequestPrompt(), the pull request and the repository files
@@ -300,7 +308,8 @@ src/
                          #   readLanguage, readQueue, readReviews, readReviewDetail, readRepositories,
                          #   readRepository, readAutomation, readProviderSetup, readProviders,
                          #   readLearnings, readGitHub, readLocalRules, readRepositoryRules,
-                         #   readPullRequestRules), Scheduler, KeyHint;
+                         #   readPullRequestRules, handOff), HandOffTarget, HandOffResult,
+                         #   Scheduler, KeyHint;
                          #   useAppDeps(), useTheme(), useMessages(), useWorking(),
                          #   useIsWorking(), useScreenKeys(), useBack(), useScreenInput() (quiet
                          #   while a text field is focused), useScreenSize()
@@ -319,7 +328,8 @@ src/
                          #   related repositories and last reviews), automation.tsx (one page:
                          #   watch, CI wait, request sources, hooks, when), provider.tsx (the
                          #   choice and its origin, each AI checked on open and on r with its next
-                         #   step, the MCP servers), learnings.tsx (each
+                         #   step, l to log in to a logged-out CLI (the chosen one first) and
+                         #   checked again on return, the MCP servers), learnings.tsx (each
                          #   repository's relations and feedback → its feedback per rule and its
                          #   relations), rules.tsx (a repository → the lens and who set it, the
                          #   user's rules at once, .phada/ and docs of the default branch on open
@@ -339,6 +349,9 @@ src/
     load-cache.ts        #   createLoadCache(): the app's last slow loads by name (GitHub, the AI
                          #   checks, rules per repository and pull request), a running load
                          #   joined, fresh for FRESH_MS on the app's clock; LoadCacheContext
+    hand-off.ts          #   useHandOff(): AppDeps.handOff inside Ink's suspendTerminal() (the
+                         #   app leaves the alternate screen and raw mode, redraws on return);
+                         #   one at a time, a throw as a failed outcome
     data-view.tsx        #   DataView: loading, the error in one line, or the value; failedText():
                          #   any error as one line without control characters
     scroll-list.tsx      #   useSelection() (↑/↓, PgUp/PgDn, Home/End, Enter; follows the selected
@@ -527,6 +540,9 @@ src/
   process/               # safe subprocess runner (stdin, timeout, typed errors)
     run-command.ts       #   runCommand(), runCommandBytes(): return the exit code, never interpret it;
                          #   detached children in their own process group, killDetachedChildren()
+    run-interactive.ts   #   runInteractive(): a command with stdio inherited (the terminal is
+                         #   its own), its exit code (128 + n for a signal), not found, ended by
+                         #   an AbortSignal; spawn injectable
     work-dirs.ts         #   openWorkDir(), closeWorkDir(), removeOpenWorkDirs() (Ctrl-C),
                          #   sweepOrphanWorkDirs(): the phada-native-* folders
   providers/             # ReviewProvider and its implementations
