@@ -1,10 +1,22 @@
 import { Text } from 'ink'
+import { useState } from 'react'
 import type { ReactNode } from 'react'
+import { errorMessage } from '../../app/error-message.js'
+import { loginCommand } from '../../app/read-provider.js'
 import type { ProviderReport, ProviderSetup, ReportedProvider } from '../../app/read-provider.js'
-import { useAppDeps, useMessages, useScreenKeys, useScreenSize, useTheme } from '../app-context.js'
+import {
+  useAppDeps,
+  useMessages,
+  useScreenInput,
+  useScreenKeys,
+  useScreenSize,
+  useTheme,
+} from '../app-context.js'
 import { useLoaded, usePolled } from '../data-hooks.js'
 import type { DataState } from '../data-hooks.js'
 import { failedText } from '../data-view.js'
+import { useHandOff } from '../hand-off.js'
+import type { HandOffOutcome } from '../hand-off.js'
 import { PROVIDER_NAMES } from '../provider-names.js'
 import type { UiMessages } from '../i18n/messages.js'
 import { ScrollText } from '../scroll-list.js'
@@ -14,6 +26,13 @@ import { fit, namesText, oneLine, shortenHome, wrapText } from '../text-fit.js'
 
 const MODELS_SHOWN = 5
 const MAX_MCP_NAME = 24
+
+type LoginProvider = 'claude' | 'codex'
+
+interface LoginAttempt {
+  provider: LoginProvider
+  outcome: HandOffOutcome
+}
 
 interface Draw {
   messages: UiMessages
@@ -28,16 +47,32 @@ export function ProviderScreen() {
   const theme = useTheme()
   const size = useScreenSize()
   const setup = usePolled(readProviderSetup)
-  const { state: checked } = useLoaded('providers', readProviders)
+  const { state: checked, reload } = useLoaded('providers', readProviders)
+  const handOff = useHandOff()
+  const [login, setLogin] = useState<LoginAttempt>()
+  const target = checked.status === 'ready' ? loginTarget(checked.value) : undefined
+  useScreenInput((input) => {
+    if (input !== 'l' || target === undefined || handOff.running) return
+    setLogin(undefined)
+    void handOff.run({ kind: 'command', ...loginCommand(target) }).then((outcome) => {
+      if (outcome === undefined) return
+      reload()
+      setLogin({ provider: target, outcome })
+    })
+  })
   const draw: Draw = { messages, theme, home, width: size.columns }
   const lines = [
     ...choiceLines(setup, draw),
     <Text> </Text>,
     ...providerLines(checked, draw),
+    ...loginLines(login, draw),
     ...(setup.status === 'ready' ? [<Text> </Text>, ...mcpLines(setup.value, draw)] : []),
   ]
   useScreenKeys([
     { keys: 'r', label: messages.keys.refresh },
+    ...(target === undefined
+      ? []
+      : [{ keys: 'l', label: messages.provider.logIn(PROVIDER_NAMES[target]) }]),
     ...(lines.length > size.rows ? [{ keys: '↑/↓', label: messages.list.scroll }] : []),
   ])
   return <ScrollText lines={lines} rows={size.rows} />
@@ -123,6 +158,40 @@ function providerLines(checked: DataState<ProviderReport>, draw: Draw): ReactNod
       ]
     }),
   ]
+}
+
+function loginTarget({ providers }: ProviderReport): LoginProvider | undefined {
+  const waiting = providers.flatMap((status) =>
+    status.provider !== 'ollama' && status.next?.kind === 'login' ? [status] : [],
+  )
+  return (waiting.find(({ chosen }) => chosen) ?? waiting[0])?.provider
+}
+
+function loginLines(login: LoginAttempt | undefined, draw: Draw): ReactNode[] {
+  if (login === undefined) return []
+  const { colors } = draw.theme
+  const { messages } = draw
+  const { outcome } = login
+  switch (outcome.kind) {
+    case 'exited':
+      return outcome.exitCode === 0
+        ? []
+        : [
+            <Text color={colors.warn}>
+              {messages.provider.loginNotCompleted(PROVIDER_NAMES[login.provider])}
+            </Text>,
+          ]
+    case 'not-found':
+      return [
+        <Text color={colors.warn}>{messages.handOff.notFound(oneLine(outcome.command))}</Text>,
+      ]
+    case 'failed':
+      return [
+        <Text color={colors.error}>
+          {messages.handOff.failed(oneLine(errorMessage(outcome.error)))}
+        </Text>,
+      ]
+  }
 }
 
 function mcpLines({ mcp }: ProviderSetup, draw: Draw): ReactNode[] {

@@ -1,6 +1,7 @@
 import { cleanup } from 'ink-testing-library'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ProviderReport, ProviderSetup, ReportedProvider } from '../../app/read-provider.js'
+import type { HandOffResult, HandOffTarget } from '../app-context.js'
 import { frameLines, renderApp, visibleWidth, waitFor } from '../../../test/support/tui.js'
 import { SCREENS } from '../screens.js'
 import type { TerminalSize } from '../terminal-size.js'
@@ -64,12 +65,14 @@ function openProvider(
     providers?: () => Promise<ProviderReport>
     size?: TerminalSize
     language?: string
+    handOff?: (target: HandOffTarget) => Promise<HandOffResult>
   } = {},
 ) {
   return renderApp({
     deps: {
       readProviderSetup: options.setup ?? (async () => setup()),
       readProviders: options.providers ?? (async () => report([claude(), codex(), ollama()])),
+      ...(options.handOff === undefined ? {} : { handOff: options.handOff }),
       ...(options.language === undefined ? {} : { language: options.language }),
     },
     size: options.size ?? { columns: 80, rows: 24 },
@@ -246,6 +249,107 @@ describe('the Provider screen', () => {
     expect(frame()).toContain('Could not load: Invalid config: provider[2Jollama')
     expect(frame()).toContain('Could not load: spawn failed: ]0;titledone')
     expect(frame()).not.toMatch(/[\u0007\u202E]|\u001B\[2J|\u001B\]/)
+  })
+
+  describe('logging in to an AI CLI', () => {
+    const loggedOut = (provider: typeof claude) =>
+      provider({
+        login: { state: 'logged-out' },
+        next: {
+          kind: 'login',
+          command: provider === claude ? 'claude auth login' : 'codex login',
+        },
+      })
+
+    function loginFlow(result: HandOffResult | Error, reports: ProviderReport[]) {
+      const targets: HandOffTarget[] = []
+      let checks = 0
+      const opened = openProvider({
+        providers: async () => reports[Math.min(checks++, reports.length - 1)] as ProviderReport,
+        handOff: async (target) => {
+          targets.push(target)
+          if (result instanceof Error) throw result
+          return result
+        },
+      })
+      return { ...opened, targets, checks: () => checks }
+    }
+
+    it('hands the terminal to the login of the chosen CLI with l and shows it logged in on return', async () => {
+      const { frame, footer, press, showing, targets, checks } = loginFlow(
+        { kind: 'exited', exitCode: 0 },
+        [report([loggedOut(claude), codex(), ollama()]), report([claude(), codex(), ollama()])],
+      )
+      await showing('→ log in with claude auth login')
+      expect(footer()).toContain('l log in to Claude Code')
+      await press('l')
+      await showing('logged in (claude.ai)')
+      expect(targets).toEqual([{ kind: 'command', command: 'claude', args: ['auth', 'login'] }])
+      expect(checks()).toBe(2)
+      expect(frame()).not.toContain('claude auth login')
+      expect(frame()).not.toContain('not completed')
+      expectFits(frame(), { columns: 80, rows: 24 })
+    })
+
+    it('logs in to Codex when it is the CLI logged out', async () => {
+      const { footer, press, showing, targets } = loginFlow({ kind: 'exited', exitCode: 0 }, [
+        report([claude(), loggedOut(codex), ollama()]),
+      ])
+      await showing('→ log in with codex login')
+      expect(footer()).toContain('l log in to Codex')
+      await press('l')
+      await waitFor(() => targets.length === 1)
+      expect(targets).toEqual([{ kind: 'command', command: 'codex', args: ['login'] }])
+    })
+
+    it('says the login was not completed when it ends with an error, checks again and keeps working', async () => {
+      const { frame, press, showing, targets, checks } = loginFlow(
+        { kind: 'exited', exitCode: 130 },
+        [report([loggedOut(claude), codex(), ollama()])],
+      )
+      await showing('→ log in with claude auth login')
+      await press('l')
+      await showing('Claude Code login not completed.')
+      expect(frame()).toContain('Claude Code login not completed.')
+      expect(checks()).toBe(2)
+      expect(frame()).toContain('→ log in with claude auth login')
+      expectFits(frame(), { columns: 80, rows: 24 })
+      await press('l')
+      await waitFor(() => targets.length === 2)
+      expect(targets).toHaveLength(2)
+    })
+
+    it('names a login command it could not find', async () => {
+      const { frame, press, showing } = loginFlow({ kind: 'not-found', command: 'claude' }, [
+        report([loggedOut(claude), codex(), ollama()]),
+      ])
+      await showing('→ log in with claude auth login')
+      await press('l')
+      await showing('claude was not found.')
+      expect(frame()).toContain('claude was not found.')
+      expect(frame()).not.toContain('not completed')
+    })
+
+    it('shows a hand-off that failed on one line', async () => {
+      const { frame, press, showing } = loginFlow(new Error('spawn EACCES\nclaude'), [
+        report([loggedOut(claude), codex(), ollama()]),
+      ])
+      await showing('→ log in with claude auth login')
+      await press('l')
+      await showing('Could not run: spawn EACCES claude')
+      expect(frame()).toContain('Could not run: spawn EACCES claude')
+    })
+
+    it('offers no login when every CLI is logged in', async () => {
+      const { footer, press, showing, targets } = loginFlow({ kind: 'exited', exitCode: 0 }, [
+        report([claude(), codex(), ollama()]),
+      ])
+      await showing('logged in (claude.ai)')
+      expect(footer()).not.toContain('log in')
+      await press('l', 'r')
+      await waitFor(() => targets.length > 0)
+      expect(targets).toEqual([])
+    })
   })
 
   it('fits a wide terminal', async () => {

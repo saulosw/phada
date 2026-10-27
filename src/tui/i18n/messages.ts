@@ -42,6 +42,7 @@ export interface UiMessages {
   time: TimeMessages
   list: { range(first: number, last: number, total: number): string; scroll: string }
   field: { apply: string; cancel: string }
+  handOff: { notFound(command: string): string; failed(message: string): string }
   requests: {
     sources: Readonly<Record<RequestSource, string>>
     publish: Readonly<Record<QueueJob['requests'][number]['publish'], string>>
@@ -298,6 +299,8 @@ export interface ProviderMessages {
   mcpNone: string
   mcpKinds: Readonly<Record<McpServerKind, string>>
   tools(names: string): string
+  logIn(name: string): string
+  loginNotCompleted(name: string): string
 }
 
 export interface LearningsMessages {

@@ -104,6 +104,10 @@ export const spanish: UiMessages = {
   },
   list: { range: (first, last, total) => `${first}–${last} de ${total}`, scroll: 'desplazar' },
   field: { apply: 'aplicar', cancel: 'cancelar' },
+  handOff: {
+    notFound: (command) => `No se encontró ${command}.`,
+    failed: (message) => `No se pudo ejecutar: ${message}`,
+  },
   requests: {
     sources: {
       watch: 'watch',
@@ -362,6 +366,8 @@ export const spanish: UiMessages = {
       http: 'por HTTP',
     },
     tools: (names) => `herramientas: ${names}`,
+    logIn: (name) => `iniciar sesión en ${name}`,
+    loginNotCompleted: (name) => `Inicio de sesión en ${name} no completado.`,
   },
   learnings: {
     title: (repos) =>

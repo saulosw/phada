@@ -104,6 +104,10 @@ export const portuguese: UiMessages = {
   },
   list: { range: (first, last, total) => `${first}–${last} de ${total}`, scroll: 'rolar' },
   field: { apply: 'aplicar', cancel: 'cancelar' },
+  handOff: {
+    notFound: (command) => `${command} não foi encontrado.`,
+    failed: (message) => `Não foi possível executar: ${message}`,
+  },
   requests: {
     sources: {
       watch: 'watch',
@@ -360,6 +364,8 @@ export const portuguese: UiMessages = {
       http: 'por HTTP',
     },
     tools: (names) => `ferramentas: ${names}`,
+    logIn: (name) => `entrar no ${name}`,
+    loginNotCompleted: (name) => `Login no ${name} não concluído.`,
   },
   learnings: {
     title: (repos) =>

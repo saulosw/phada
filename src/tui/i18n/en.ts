@@ -103,6 +103,10 @@ export const english: UiMessages = {
   },
   list: { range: (first, last, total) => `${first}–${last} of ${total}`, scroll: 'scroll' },
   field: { apply: 'apply', cancel: 'cancel' },
+  handOff: {
+    notFound: (command) => `${command} was not found.`,
+    failed: (message) => `Could not run: ${message}`,
+  },
   requests: {
     sources: {
       watch: 'watch',
@@ -359,6 +363,8 @@ export const english: UiMessages = {
       http: 'over HTTP',
     },
     tools: (names) => `tools: ${names}`,
+    logIn: (name) => `log in to ${name}`,
+    loginNotCompleted: (name) => `${name} login not completed.`,
   },
   learnings: {
     title: (repos) =>
