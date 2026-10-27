@@ -23,3 +23,15 @@ export function bytesText(bytes: number): string {
   }
   return `${scaled.toFixed(1)} ${BYTE_UNITS[unit]}`
 }
+
+const DECIMAL_UNITS = [
+  { size: 1e9, unit: 'GB', digits: 1 },
+  { size: 1e6, unit: 'MB', digits: 0 },
+  { size: 1e3, unit: 'KB', digits: 0 },
+]
+
+export function modelSizeText(bytes: number): string {
+  const scale = DECIMAL_UNITS.find(({ size }) => bytes >= size)
+  if (scale === undefined) return `${bytes} B`
+  return `${(bytes / scale.size).toFixed(scale.digits)} ${scale.unit}`
+}

@@ -365,6 +365,26 @@ export const english: UiMessages = {
     tools: (names) => `tools: ${names}`,
     logIn: (name) => `log in to ${name}`,
     loginNotCompleted: (name) => `${name} login not completed.`,
+    pick: {
+      choose: 'choose',
+      modelFor: (name) => `Model for ${name}`,
+      cliDefault: "The CLI's default model (no model in your config)",
+      typeModel: 'Type a model name',
+      modelField: 'Model',
+      installed: 'installed',
+      current: 'current',
+      suggested: (size) => `suggested · pulled first, about ${size}`,
+      pull: 'pull',
+      serveHint: 'Start Ollama in another terminal, then press r to check again.',
+      pulling: (model) => `Pulling ${model}…`,
+      progress: (done, total, percent) => `${done} of ${total} · ${percent}%`,
+      pulled: (model) => `${model} pulled.`,
+      cancelled: (model) => `Pull of ${model} cancelled.`,
+      failed: (model, message) => `Could not pull ${model}: ${message}`,
+      ended: (model) => `Ollama ended the pull of ${model} before it finished.`,
+      stopped: 'Ollama is not running: start it with ollama serve, then press r.',
+      cancelPull: 'cancel the pull',
+    },
   },
   learnings: {
     title: (repos) =>
@@ -499,6 +519,9 @@ export const english: UiMessages = {
       notInstalled:
         'gh is not installed. Install it from https://cli.github.com, or export GITHUB_TOKEN with a token of yours.',
       notCompleted: 'gh login not completed.',
+    },
+    ai: {
+      intro: 'Phada reviews with an AI CLI you are logged into, or with a model served by Ollama.',
     },
     language: {
       intro: 'The language of this app and of the reviews Phada writes.',

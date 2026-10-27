@@ -366,6 +366,26 @@ export const portuguese: UiMessages = {
     tools: (names) => `ferramentas: ${names}`,
     logIn: (name) => `entrar no ${name}`,
     loginNotCompleted: (name) => `Login no ${name} não concluído.`,
+    pick: {
+      choose: 'escolher',
+      modelFor: (name) => `Modelo do ${name}`,
+      cliDefault: 'O modelo padrão da CLI (sem model na sua config)',
+      typeModel: 'Digitar o nome de um modelo',
+      modelField: 'Modelo',
+      installed: 'instalado',
+      current: 'atual',
+      suggested: (size) => `sugerido · baixado antes, cerca de ${size}`,
+      pull: 'baixar',
+      serveHint: 'Suba o Ollama em outro terminal e aperte r para checar de novo.',
+      pulling: (model) => `Baixando ${model}…`,
+      progress: (done, total, percent) => `${done} de ${total} · ${percent}%`,
+      pulled: (model) => `${model} baixado.`,
+      cancelled: (model) => `Download de ${model} cancelado.`,
+      failed: (model, message) => `Não foi possível baixar ${model}: ${message}`,
+      ended: (model) => `O Ollama encerrou o download de ${model} antes do fim.`,
+      stopped: 'O Ollama não está rodando: suba com ollama serve e aperte r.',
+      cancelPull: 'cancelar o download',
+    },
   },
   learnings: {
     title: (repos) =>
@@ -506,6 +526,10 @@ export const portuguese: UiMessages = {
       notInstalled:
         'O gh não está instalado. Instale-o de https://cli.github.com, ou exporte GITHUB_TOKEN com um token seu.',
       notCompleted: 'Login no gh não concluído.',
+    },
+    ai: {
+      intro:
+        'O Phada revisa com uma AI CLI em que você está logado ou com um modelo servido pelo Ollama.',
     },
     language: {
       intro: 'O idioma deste app e dos reviews que o Phada escreve.',

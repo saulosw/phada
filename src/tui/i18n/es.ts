@@ -368,6 +368,26 @@ export const spanish: UiMessages = {
     tools: (names) => `herramientas: ${names}`,
     logIn: (name) => `iniciar sesión en ${name}`,
     loginNotCompleted: (name) => `Inicio de sesión en ${name} no completado.`,
+    pick: {
+      choose: 'elegir',
+      modelFor: (name) => `Modelo de ${name}`,
+      cliDefault: 'El modelo por defecto de la CLI (sin model en tu config)',
+      typeModel: 'Escribir el nombre de un modelo',
+      modelField: 'Modelo',
+      installed: 'instalado',
+      current: 'actual',
+      suggested: (size) => `sugerido · se descarga antes, unos ${size}`,
+      pull: 'descargar',
+      serveHint: 'Inicia Ollama en otra terminal y pulsa r para comprobar de nuevo.',
+      pulling: (model) => `Descargando ${model}…`,
+      progress: (done, total, percent) => `${done} de ${total} · ${percent}%`,
+      pulled: (model) => `${model} descargado.`,
+      cancelled: (model) => `Descarga de ${model} cancelada.`,
+      failed: (model, message) => `No se pudo descargar ${model}: ${message}`,
+      ended: (model) => `Ollama terminó la descarga de ${model} antes del final.`,
+      stopped: 'Ollama no está en marcha: inícialo con ollama serve y pulsa r.',
+      cancelPull: 'cancelar la descarga',
+    },
   },
   learnings: {
     title: (repos) =>
@@ -508,6 +528,10 @@ export const spanish: UiMessages = {
       notInstalled:
         'gh no está instalado. Instálalo desde https://cli.github.com, o exporta GITHUB_TOKEN con un token tuyo.',
       notCompleted: 'Inicio de sesión en gh no completado.',
+    },
+    ai: {
+      intro:
+        'Phada revisa con una AI CLI en la que tienes sesión iniciada o con un modelo servido por Ollama.',
     },
     language: {
       intro: 'El idioma de esta app y de las revisiones que Phada escribe.',

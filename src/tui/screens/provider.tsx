@@ -17,15 +17,20 @@ import { failedText } from '../data-view.js'
 import { useHandOff } from '../hand-off.js'
 import type { HandOffOutcome } from '../hand-off.js'
 import { PROVIDER_NAMES } from '../provider-names.js'
-import { loginOutcomeLines, nextStepLine, stateIcon, statusParts } from '../provider-lines.js'
+import {
+  loginOutcomeLines,
+  modelsLine,
+  nextStepLine,
+  stateIcon,
+  statusParts,
+} from '../provider-lines.js'
 import type { LoginProvider } from '../provider-lines.js'
 import type { UiMessages } from '../i18n/messages.js'
 import { ScrollText } from '../scroll-list.js'
 import { textWidth } from '../tab-layout.js'
 import type { Theme } from '../theme.js'
-import { fit, namesText, oneLine, shortenHome, wrapText } from '../text-fit.js'
+import { fit, oneLine, shortenHome, wrapText } from '../text-fit.js'
 
-const MODELS_SHOWN = 5
 const MAX_MCP_NAME = 24
 
 interface LoginAttempt {
@@ -128,7 +133,6 @@ function providerLines(checked: DataState<ProviderReport>, draw: Draw): ReactNod
   return [
     header,
     ...checked.value.providers.flatMap((status) => {
-      const models = modelsOf(status)
       return [
         <Text bold={status.chosen}>
           {stateIcon(status, theme)} {fit(PROVIDER_NAMES[status.provider], nameWidth)}
@@ -137,14 +141,7 @@ function providerLines(checked: DataState<ProviderReport>, draw: Draw): ReactNod
           {'  '}
           {statusParts(status, messages).join(' · ')}
         </Text>,
-        ...(models.length === 0
-          ? []
-          : [
-              <Text color={colors.dim}>
-                {'    '}
-                {m.models(models.length, namesText(models, MODELS_SHOWN))}
-              </Text>,
-            ]),
+        ...modelsLine(status, messages, theme),
         ...nextStepLine(status, messages, theme),
       ]
     }),
@@ -181,10 +178,4 @@ function mcpLines({ mcp }: ProviderSetup, draw: Draw): ReactNode[] {
       </Text>
     )),
   ]
-}
-
-function modelsOf(status: ReportedProvider): string[] {
-  return status.provider === 'ollama' && status.server.state === 'running'
-    ? status.server.models
-    : []
 }

@@ -133,6 +133,7 @@ export interface SetupMessages {
     notInstalled: string
     notCompleted: string
   }
+  ai: { intro: string }
   language: { intro: string; current: string; choose: string }
   summary: {
     written(path: string): string
@@ -360,6 +361,26 @@ export interface ProviderMessages {
   tools(names: string): string
   logIn(name: string): string
   loginNotCompleted(name: string): string
+  pick: {
+    choose: string
+    modelFor(name: string): string
+    cliDefault: string
+    typeModel: string
+    modelField: string
+    installed: string
+    current: string
+    suggested(size: string): string
+    pull: string
+    serveHint: string
+    pulling(model: string): string
+    progress(done: string, total: string, percent: number): string
+    pulled(model: string): string
+    cancelled(model: string): string
+    failed(model: string, message: string): string
+    ended(model: string): string
+    stopped: string
+    cancelPull: string
+  }
 }
 
 export interface LearningsMessages {

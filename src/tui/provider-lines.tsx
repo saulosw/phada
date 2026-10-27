@@ -6,9 +6,11 @@ import type { HandOffOutcome } from './hand-off.js'
 import type { UiMessages } from './i18n/messages.js'
 import { PROVIDER_NAMES } from './provider-names.js'
 import type { Theme } from './theme.js'
-import { oneLine } from './text-fit.js'
+import { namesText, oneLine } from './text-fit.js'
 
 export type LoginProvider = 'claude' | 'codex'
+
+const MODELS_SHOWN = 5
 
 export function statusParts(status: ReportedProvider, messages: UiMessages): string[] {
   const m = messages.provider
@@ -47,6 +49,22 @@ export function stateIcon(status: ReportedProvider, { colors }: Theme): ReactNod
       ? status.server.state === 'running'
       : status.install.state === 'installed' && status.login.state === 'logged-in'
   return ready ? <Text color={colors.ok}>●</Text> : <Text color={colors.dim}>?</Text>
+}
+
+export function modelsLine(
+  status: ReportedProvider,
+  messages: UiMessages,
+  { colors }: Theme,
+): ReactNode[] {
+  if (status.provider !== 'ollama' || status.server.state !== 'running') return []
+  const { models } = status.server
+  if (models.length === 0) return []
+  return [
+    <Text color={colors.dim}>
+      {'    '}
+      {messages.provider.models(models.length, namesText(models.map(oneLine), MODELS_SHOWN))}
+    </Text>,
+  ]
 }
 
 export function nextStepLine(

@@ -141,6 +141,6 @@ function providerChoice({ layers, configPath }: ProviderConfigInput): ProviderCh
   }
 }
 
-function hasModel(models: readonly string[], model: string): boolean {
+export function hasModel(models: readonly string[], model: string): boolean {
   return models.some((name) => name === model || name === `${model}:latest`)
 }
