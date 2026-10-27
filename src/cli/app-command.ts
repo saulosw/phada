@@ -1,4 +1,5 @@
 import type { ProviderCheckers } from '../app/check-providers.js'
+import { applyUserConfigPlan, planUserConfig } from '../app/edit-user-config.js'
 import { readReviewDetail, readReviews } from '../app/read-history.js'
 import { readLearnings } from '../app/read-learnings.js'
 import type { ObservedRead } from '../app/read-learnings.js'
@@ -18,6 +19,7 @@ import {
   loadUserLayers,
   userConfigFile,
 } from '../config/user-config.js'
+import type { UserConfigChange, UserConfigPlan } from '../config/user-config-edit.js'
 import { resolveWatchSettings } from '../config/watch-settings.js'
 import type { WatchSettings } from '../config/watch-settings.js'
 import { checkClaudeStatus } from '../providers/claude-status.js'
@@ -38,6 +40,7 @@ import type { RulesReaderDeps } from './app-rules.js'
 import type { AppHistory } from './app-history.js'
 import { UsageError } from './errors.js'
 import { readGitHubAccess } from './github-access.js'
+import { USER_CONFIG_TEMPLATE } from './init-templates.js'
 import { ghTokenReader } from './github-token.js'
 import type { GhTokenReader, RunGh } from './github-token.js'
 import type { TextOutput } from './progress.js'
@@ -191,6 +194,12 @@ async function appDeps(
       }),
     ...rulesReaders({ ...deps, ghToken }),
     handOff: terminal.handOff,
+    planConfig: (changes: readonly UserConfigChange[]) =>
+      planUserConfig(
+        { env: deps.env, home: deps.home, template: USER_CONFIG_TEMPLATE, changes },
+        deps.files,
+      ),
+    applyConfig: (plan: UserConfigPlan) => applyUserConfigPlan(plan, deps.files),
   }
   const language = await readLanguage().catch(() => undefined)
   return language === undefined ? base : { ...base, language }

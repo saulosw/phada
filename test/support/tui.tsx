@@ -191,6 +191,12 @@ export function fakeAppDeps(scheduler: Scheduler, overrides: Partial<AppDeps> = 
     readRepositoryRules: async () => ({ status: 'no-token' }),
     readPullRequestRules: async () => ({ status: 'no-token' }),
     handOff: async () => ({ kind: 'exited', exitCode: 0 }),
+    planConfig: async () => ({
+      ok: false,
+      reason: 'unreadable',
+      message: 'no config in this test',
+    }),
+    applyConfig: async () => ({ ok: true, written: true }),
     ...overrides,
   }
 }

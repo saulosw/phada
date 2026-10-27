@@ -13,6 +13,7 @@ import type { AppDeps, AppHost, AppResult } from '../tui/open-app.js'
 import { runApp } from './app-command.js'
 import type { AppCommandDeps, StopSignal } from './app-command.js'
 import { UsageError } from './errors.js'
+import { USER_CONFIG_TEMPLATE } from './init-templates.js'
 import { pullRequestFixture } from '../../test/support/pull-request.js'
 import { reviewState } from '../../test/support/review-state.js'
 
@@ -157,6 +158,30 @@ describe('runApp', () => {
     const { app, opened } = deps({ config: 'language: pt\n' })
     await runApp(app, { setup: true })
     expect(opened[0]?.deps.start).toBe('setup')
+  })
+
+  it('plans a change to the user config and writes it with the commented template', async () => {
+    const results: unknown[] = []
+    const { app, files } = deps({
+      during: async (appDeps) => {
+        const planned = await appDeps.planConfig([{ kind: 'set', key: 'language', value: 'pt' }])
+        results.push(planned)
+        if (planned.ok) results.push(await appDeps.applyConfig(planned.plan))
+      },
+    })
+    await runApp(app)
+    expect(results).toEqual([
+      {
+        ok: true,
+        plan: expect.objectContaining({
+          path: '/cfg/config.yml',
+          exists: false,
+          changes: [{ key: 'language', before: null, after: 'pt' }],
+        }),
+      },
+      { ok: true, written: true },
+    ])
+    expect(files.files.get('/cfg/config.yml')).toBe(`language: pt\n\n${USER_CONFIG_TEMPLATE}`)
   })
 
   it('opens the app in a terminal with the version, the folder and the signals', async () => {

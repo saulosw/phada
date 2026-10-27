@@ -1,6 +1,7 @@
 import { useInput } from 'ink'
 import type { Key } from 'ink'
 import { createContext, useContext, useEffect, useRef } from 'react'
+import type { AppliedUserConfig, UserConfigPlanResult } from '../app/edit-user-config.js'
 import type { HistoryFilter, ListedRun, ReviewDetail } from '../app/read-history.js'
 import type { GitHubAccess } from '../app/read-home.js'
 import type { Learnings } from '../app/read-learnings.js'
@@ -9,6 +10,7 @@ import type { QueueView } from '../app/read-queue.js'
 import type { AutomationView } from '../app/read-automation.js'
 import type { BranchRules, LocalRules, PullRequestRules } from '../app/read-rules.js'
 import type { RepositoryDetail, RepositoryList } from '../app/read-repositories.js'
+import type { UserConfigChange, UserConfigPlan } from '../config/user-config-edit.js'
 import type { UiMessages } from './i18n/messages.js'
 import type { TerminalSize } from './terminal-size.js'
 import type { ColorEnv, Theme } from './theme.js'
@@ -49,6 +51,8 @@ export interface AppDeps {
   readRepositoryRules(repo: string): Promise<BranchRules>
   readPullRequestRules(repo: string, number: number): Promise<PullRequestRules>
   handOff(target: HandOffTarget): Promise<HandOffResult>
+  planConfig(changes: readonly UserConfigChange[]): Promise<UserConfigPlanResult>
+  applyConfig(plan: UserConfigPlan): Promise<AppliedUserConfig>
 }
 
 export interface KeyHint {
