@@ -47,8 +47,14 @@ src/
     feedback.ts          #   recordReviewFeedback(): the threads a run read and the comments it
                          #   published → the history; refreshFeedback(): read due pull requests
     index-repository.ts  #   indexRepository(): mirror → files left out and why → indexCommit();
-                         #   refreshIndex(): the same within a deadline (idle watch);
-                         #   indexCommit(): extract new blobs (optional deadline) → store the commit
+                         #   with a signal, a cancel stops between files (IndexCancelled), the
+                         #   blobs extracted kept for the next run; refreshIndex(): the same
+                         #   within a deadline (idle watch); indexCommit(): extract new blobs
+                         #   (optional deadline or signal) → store the commit; IndexingResult,
+                         #   IndexingProgress: indexing as the app sees it
+    repository-folder.ts #   findRepositoryRoot() (the nearest folder with .git, walking up),
+                         #   readRepositoryFolder(): outside a repository, or its root with or
+                         #   without .phada/; RepositoryInit
     related-repositories.ts # openRelatedRepositories(): metadata → selection → fetch of the default
                          #   branch → manifests and links → index of the linked ones (60 s in total)
     select-related.ts    #   selectCandidates() (access, empty, private on public, 20 at most),
@@ -178,7 +184,12 @@ src/
                          #   fetchUser injectable); handOff and the signals through
                          #   terminalHandOff(); planConfig and applyConfig (planUserConfig() with
                          #   USER_CONFIG_TEMPLATE, applyUserConfigPlan() on the local files);
-                         #   pullModel (pullOllamaModel() at OLLAMA_HOST, ollamaFetch injectable)
+                         #   pullModel (pullOllamaModel() at OLLAMA_HOST, ollamaFetch injectable);
+                         #   indexRepository (indexForApp()); readRepositoryFolder and
+                         #   initRepository (the app's folder, initRepository() of init.ts)
+    app-index.ts         #   indexForApp(): token, user layers, mirror and index of the cache as
+                         #   phada index uses them → indexRepository() with the signal and the
+                         #   progress (fetching, extracting); no token and failures as data
     terminal-hand-off.ts #   terminalHandOff(): handOff (a command, or a file in $VISUAL › $EDITOR
                          #   › vi split on spaces, run in the app's folder with its environment;
                          #   runInteractive injectable) and the app's signals: SIGINT ignored
@@ -193,7 +204,8 @@ src/
                          #   exists (looked for again while missing, never created), a newer,
                          #   older or unreadable file thrown on each read and looked at again
                          #   on the next
-    init.ts              #   runInit(): .phada/ in the repository, or the user's own config
+    init.ts              #   runInit(): .phada/ in the repository, or the user's own config;
+                         #   initRepository(): .phada/ at the root and each file created or kept
     init-templates.ts    #   the commented files phada init writes
     index-command.ts     #   runIndex(): token, cache folder, mirror, progress, the map's report
     rules-command.ts     #   runRules(): token, user config, readRules() for a pull request or
@@ -350,7 +362,8 @@ src/
                          #   step's title, s skips, Esc asks to leave (a step's back first),
                          #   y/Enter → Home; each step drawn as a screen in a smaller area, its
                          #   keys and back gathered by the setup), setup-steps.ts (SETUP_STEPS
-                         #   in order, SetupStep, SetupStepProps: progress and next(written)),
+                         #   in order, SetupStep, SetupStepProps: progress and next(result): the
+                         #   config written, the indexing and the init of the step),
                          #   github-step.tsx (where the token comes from and its owner; no token
                          #   or a gh token refused → Enter runs gh auth login and checks again;
                          #   gh missing → install it or export GITHUB_TOKEN), ai-step.tsx (the
@@ -358,9 +371,15 @@ src/
                          #   RepositoryPicker → the change → written; no token → Enter goes
                          #   on), language-step.tsx
                          #   (en, pt, es → the change → written, the app speaking it at once),
-                         #   summary-step.tsx (the values written and their file, the steps
-                         #   skipped, phada watch and phada review; Enter → Home),
-                         #   pending-step.tsx (a step still to come: only skipped)
+                         #   graph-step.tsx (the watched repositories of readRepositories;
+                         #   Enter indexes them in series with useIndexSeries, "N of M files",
+                         #   Esc stops; each one indexed, stopped, not started or failed in one
+                         #   line; none watched → Enter goes on), repository-step.tsx (the
+                         #   app's folder: in a repository without .phada/ Enter runs phada init
+                         #   and shows each file; outside one or with .phada/, Enter goes on),
+                         #   summary-step.tsx (the values written and their file, what was
+                         #   indexed, left for later or not, the files phada init created, the
+                         #   steps skipped, phada watch and phada review; Enter → Home)
     config-change.tsx    #   useConfigChange(onSaved): propose(changes) → AppDeps.planConfig →
                          #   the before → after to confirm (Enter writes, cancel() on Esc) or the
                          #   refusal; a file changed since the plan planned again on Enter;
@@ -382,6 +401,10 @@ src/
                          #   owner/repo; Enter → watch and unwatch changes (useConfigChange), or
                          #   onContinue when nothing changed; a failed listing in one line, the
                          #   typed field still there
+    index-series.ts      #   useIndexSeries(): AppDeps.indexRepository one repository after the
+                         #   other with an AbortController (stop() cancels the current one and
+                         #   starts no other; aborted on unmount), each one waiting, running with
+                         #   its progress or done
     model-pull.tsx       #   useModelPull(onPulled): AppDeps.pullModel with an AbortController
                          #   (cancel(), aborted on unmount); modelPullLines(): the status, a bar
                          #   with bytes and percent, and how it ended

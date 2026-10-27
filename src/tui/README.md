@@ -101,8 +101,8 @@ language is read again at once and `onSaved(plan)` runs; a proposal that changes
 ## The setup (`setup/`)
 
 The setup takes the place of the tabs (`AppDeps.start`, `/setup`). Each step is a component of
-`SETUP_STEPS` (`setup-steps.ts`) with `{ progress, next }`; `next(plan)` goes on and records what
-was written, `s` skips a `skippable` step. A step is written as a screen: `useScreenKeys`,
+`SETUP_STEPS` (`setup-steps.ts`) with `{ progress, next }`; `next(result)` goes on and records
+what the step did, `s` skips a `skippable` step. A step is written as a screen: `useScreenKeys`,
 `useScreenInput`, `useBack` and `useScreenSize` reach the setup, which adds `s` and `Esc`, asks
 before leaving and silences the step meanwhile.
 
@@ -113,7 +113,12 @@ and proposes the provider and model through `useConfigChange()`; it calls `onSav
 written. The repositories step is `RepositoryPicker` (`repository-picker.tsx`): the repositories
 of the token owner (`AppDeps.readUserRepositories`, loaded under `user-repos`) with `watch.repos`
 marked, a filter on `f`, `Space` to mark, `a` for a typed `owner/repo`, and `Enter` proposing the
-`watch`/`unwatch` changes; `onContinue` runs when nothing changed or there is no token.
+`watch`/`unwatch` changes; `onContinue` runs when nothing changed or there is no token. The graph
+step indexes the watched repositories one after the other with `useIndexSeries()`
+(`index-series.ts`: `AppDeps.indexRepository` with an `AbortController`, `stop()` on `Esc`,
+aborted on unmount), and the repository step offers `phada init` (`AppDeps.initRepository`) when
+the app's folder is a git repository without `.phada/`. A step ends with `next(result)`: the
+config it wrote (`written`), the indexing or the init, which the summary shows.
 
 ## Growing `AppDeps`
 
