@@ -10,8 +10,11 @@ uses — an AI CLI they are logged into (Claude Code, Codex) or a model served b
 the review as Markdown or JSON and publishes it on the pull request as the owner of the GitHub
 token. Phada is not the AI: it fetches the pull request, builds the prompt, runs the provider,
 validates and scores the answer, formats the result and posts it.
-`phada` with no command, in a terminal, opens a read-only app (`src/tui/`, Ink and React) that
-shows what Phada has set up, running and reviewed, over the same use cases the commands use.
+`phada` with no command, in a terminal, opens an app (`src/tui/`, Ink and React) that shows what
+Phada has set up, running and reviewed, over the same use cases the commands use. `phada setup`
+opens it on a step-by-step setup. The app writes only the user's own config (and the
+`repos/<owner>/<repo>/` files it opens in the editor), and, when asked, the index and a
+repository's `.phada/` (as `phada index` and `phada init` do).
 
 ## One engine, many callers
 
@@ -41,7 +44,8 @@ it when looking for a module.
 - `src/main.ts` — `run(argv, deps)`: the CLI flow and the wiring of the concrete implementations.
 - `src/architecture.test.ts` — the dependency rule below, enforced.
 - `src/app/` — use cases any caller runs (review and publish, watch, requests, indexing, the reads
-  the commands and the terminal app share), with injected readers; reports through events.
+  the commands and the terminal app share, the changes to the user config), with injected readers;
+  reports through events.
 - `src/cli/` — terminal edge: the commands, their wiring, and the review as text and JSON.
 - `src/tui/` — the app `phada` opens in a terminal (Ink + React): data in, frames out.
 - `src/config/` — the config files (`.phada/` in the repository and the user's own), the cache and
@@ -53,7 +57,8 @@ it when looking for a module.
 - `src/slack/` — Slack, and nothing else.
 - `src/graph/` — the repository graph, resolved on demand from the index of a commit.
 - `src/investigation/` — Phada's read-only tools the AI calls on the pull request head, and MCP.
-- `src/process/` — the subprocess runner and the work folders.
+- `src/process/` — the subprocess runners (output captured, or the terminal handed over) and the
+  work folders.
 - `src/providers/` — `ReviewProvider` and its implementations (Claude Code, Codex, Ollama).
 - `src/publish/` — pure: what to publish, data in, decision out.
 - `src/repository/` — the repository through git objects, in a persistent mirror.

@@ -501,9 +501,10 @@ src/
     layer-label.ts       #   userLayerLabel(), layerOrigin(): the label of a user config file
                          #   (user:…, user:repos/<owner>/<repo>/…) and back to global, repository
                          #   or a file of the repository, with its name
-    local-files.ts       #   LocalFileSystem and its node:fs implementation; writeAtomic(): a
-                         #   temporary file in the same folder renamed over the file (over the
-                         #   file a link points to, keeping the link)
+    local-files.ts       #   LocalFileSystem and its node:fs implementation; writeNew(): a file
+                         #   created only when missing; writeAtomic(): a temporary file in the
+                         #   same folder renamed over the file (over the file a link points to,
+                         #   keeping the link)
     cache-paths.ts       #   the cache folder (PHADA_CACHE_HOME › XDG › ~/.cache/phada),
                          #   repositoryCache(): mirror, index and observed paths; pathSize();
                          #   observedFile(); observedRepositories(): owner/repo of each observed
@@ -639,6 +640,7 @@ src/
       mcp-server.ts      #     the tools as a local MCP server (JSON-RPC over a socket)
       mcp-bridge.ts      #     what the AI CLI starts: stdio ↔ the socket of mcp-server.ts
   process/               # safe subprocess runner (stdin, timeout, typed errors)
+    errors.ts            #   CommandError: not found, timeout, aborted, output too large
     run-command.ts       #   runCommand(), runCommandBytes(): return the exit code, never interpret it;
                          #   detached children in their own process group, killDetachedChildren();
                          #   an AbortSignal stops the child (its group) like the timeout
