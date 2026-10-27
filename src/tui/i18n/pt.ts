@@ -291,6 +291,22 @@ export const portuguese: UiMessages = {
         shown === total ? `Últimos reviews (${total})` : `Últimos reviews (${shown} de ${total})`,
       noReviews: 'Nenhum review deste repositório ainda.',
     },
+    pick: {
+      listing: 'Listando seus repositórios no GitHub…',
+      count: (shown, total, marked) =>
+        `${shown === total ? '' : `${number(shown)} de `}${number(total)} ${total === 1 ? 'repositório' : 'repositórios'} · ${number(marked)} ${marked === 1 ? 'marcado' : 'marcados'}`,
+      noMatch: (text) => `Nenhum repositório corresponde a ${text}.`,
+      none: 'O GitHub não lista nenhum repositório para este token.',
+      failed: (message) => `Não foi possível listar seus repositórios: ${message}`,
+      typeHint: 'a adiciona um repositório pelo owner/repo.',
+      filter: 'Filtro',
+      field: 'owner/repo',
+      invalid: (value) => `${value} não é owner/repo.`,
+      private: 'privado',
+      fork: 'fork',
+      notListed: 'fora da sua lista',
+      keys: { space: 'Espaço', mark: 'marcar', filter: 'filtrar', add: 'adicionar owner/repo' },
+    },
   },
   automation: {
     watch: 'Watch',
@@ -530,6 +546,12 @@ export const portuguese: UiMessages = {
     ai: {
       intro:
         'O Phada revisa com uma AI CLI em que você está logado ou com um modelo servido pelo Ollama.',
+    },
+    repositories: {
+      intro:
+        'Marque os repositórios que o phada watch revisa: eles vão para watch.repos da sua config.',
+      noToken:
+        'Este passo precisa de um token do GitHub para listar seus repositórios: configure-o no passo GitHub (phada setup de novo), ou pule este.',
     },
     language: {
       intro: 'O idioma deste app e dos reviews que o Phada escreve.',

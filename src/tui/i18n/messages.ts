@@ -134,6 +134,7 @@ export interface SetupMessages {
     notCompleted: string
   }
   ai: { intro: string }
+  repositories: { intro: string; noToken: string }
   language: { intro: string; current: string; choose: string }
   summary: {
     written(path: string): string
@@ -297,6 +298,23 @@ export interface RepositoriesMessages {
     reviews(shown: number, total: number): string
     noReviews: string
   }
+  pick: RepositoryPickMessages
+}
+
+export interface RepositoryPickMessages {
+  listing: string
+  count(shown: number, total: number, marked: number): string
+  noMatch(text: string): string
+  none: string
+  failed(message: string): string
+  typeHint: string
+  filter: string
+  field: string
+  invalid(value: string): string
+  private: string
+  fork: string
+  notListed: string
+  keys: { space: string; mark: string; filter: string; add: string }
 }
 
 export interface AutomationMessages {

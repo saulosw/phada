@@ -306,6 +306,7 @@ const APP: Boundary = {
     '../github/issue-comments.js',
     '../github/pull-request.js',
     '../github/repository.js',
+    '../github/user-repositories.js',
     '../graph/packages.js',
     '../graph/report.js',
     '../graph/repository-links.js',

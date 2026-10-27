@@ -5,6 +5,7 @@ import { AiStep } from './ai-step.js'
 import { GitHubStep } from './github-step.js'
 import { LanguageStep } from './language-step.js'
 import { PendingStep } from './pending-step.js'
+import { RepositoriesStep } from './repositories-step.js'
 import { SummaryStep } from './summary-step.js'
 
 export interface SetupProgress {
@@ -27,7 +28,7 @@ export const SETUP_STEPS: readonly SetupStep[] = [
   { id: 'github', skippable: true, Step: GitHubStep },
   { id: 'ai', skippable: true, Step: AiStep },
   { id: 'language', skippable: true, Step: LanguageStep },
-  { id: 'repositories', skippable: true, Step: PendingStep },
+  { id: 'repositories', skippable: true, Step: RepositoriesStep },
   { id: 'graph', skippable: true, Step: PendingStep },
   { id: 'repository', skippable: true, Step: PendingStep },
   { id: 'summary', skippable: false, Step: SummaryStep },

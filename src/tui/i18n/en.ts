@@ -290,6 +290,22 @@ export const english: UiMessages = {
         shown === total ? `Last reviews (${total})` : `Last reviews (${shown} of ${total})`,
       noReviews: 'No review of this repository yet.',
     },
+    pick: {
+      listing: 'Listing your repositories on GitHub…',
+      count: (shown, total, marked) =>
+        `${shown === total ? '' : `${number(shown)} of `}${number(total)} ${total === 1 ? 'repository' : 'repositories'} · ${number(marked)} marked`,
+      noMatch: (text) => `No repository matches ${text}.`,
+      none: 'GitHub lists no repository for this token.',
+      failed: (message) => `Could not list your repositories: ${message}`,
+      typeHint: 'a adds a repository by its owner/repo.',
+      filter: 'Filter',
+      field: 'owner/repo',
+      invalid: (value) => `${value} is not owner/repo.`,
+      private: 'private',
+      fork: 'fork',
+      notListed: 'not in your list',
+      keys: { space: 'Space', mark: 'mark', filter: 'filter', add: 'add owner/repo' },
+    },
   },
   automation: {
     watch: 'Watch',
@@ -522,6 +538,11 @@ export const english: UiMessages = {
     },
     ai: {
       intro: 'Phada reviews with an AI CLI you are logged into, or with a model served by Ollama.',
+    },
+    repositories: {
+      intro: 'Mark the repositories phada watch reviews: they go to watch.repos in your config.',
+      noToken:
+        'This step needs a GitHub token to list your repositories: set it up in the GitHub step (phada setup again), or skip this one.',
     },
     language: {
       intro: 'The language of this app and of the reviews Phada writes.',

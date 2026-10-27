@@ -293,6 +293,22 @@ export const spanish: UiMessages = {
           : `Últimas revisiones (${shown} de ${total})`,
       noReviews: 'Todavía no hay revisiones de este repositorio.',
     },
+    pick: {
+      listing: 'Listando tus repositorios en GitHub…',
+      count: (shown, total, marked) =>
+        `${shown === total ? '' : `${number(shown)} de `}${number(total)} ${total === 1 ? 'repositorio' : 'repositorios'} · ${number(marked)} ${marked === 1 ? 'marcado' : 'marcados'}`,
+      noMatch: (text) => `Ningún repositorio coincide con ${text}.`,
+      none: 'GitHub no lista ningún repositorio para este token.',
+      failed: (message) => `No se pudieron listar tus repositorios: ${message}`,
+      typeHint: 'a añade un repositorio por su owner/repo.',
+      filter: 'Filtro',
+      field: 'owner/repo',
+      invalid: (value) => `${value} no es owner/repo.`,
+      private: 'privado',
+      fork: 'fork',
+      notListed: 'fuera de tu lista',
+      keys: { space: 'Espacio', mark: 'marcar', filter: 'filtrar', add: 'añadir owner/repo' },
+    },
   },
   automation: {
     watch: 'Watch',
@@ -532,6 +548,11 @@ export const spanish: UiMessages = {
     ai: {
       intro:
         'Phada revisa con una AI CLI en la que tienes sesión iniciada o con un modelo servido por Ollama.',
+    },
+    repositories: {
+      intro: 'Marca los repositorios que phada watch revisa: van a watch.repos de tu config.',
+      noToken:
+        'Este paso necesita un token de GitHub para listar tus repositorios: configúralo en el paso GitHub (phada setup de nuevo), u omite este.',
     },
     language: {
       intro: 'El idioma de esta app y de las revisiones que Phada escribe.',
