@@ -76,8 +76,6 @@ export const portuguese: Messages = {
   },
   github: {
     skillBody: (skill) => `Revisão da skill ${skill}`,
-    heading: 'Revisão do Phada 🦋',
-    generatedWith: 'Gerado com Phada 🦋',
     inlineComments: (bySeverity, value) =>
       `**${bySeverity} como ${value === 1 ? 'comentário na linha' : 'comentários na linha'}**`,
     stillOpenCount: (value) =>

@@ -41,8 +41,6 @@ export interface Messages {
   }
   github: {
     skillBody(skill: string): string
-    heading: string
-    generatedWith: string
     inlineComments(bySeverity: string, count: number): string
     stillOpenCount(count: number): string
     stillOpen: string

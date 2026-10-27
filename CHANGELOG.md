@@ -25,6 +25,9 @@ output can change between minor versions.
 
 ### Changed
 
+- The published review starts with only the butterfly and the score
+  (`## 🦋 3/5 (implementation issues)`) and has no footer: it no longer names Phada, the
+  provider, the model or the verification.
 - The message for a missing GitHub token says to run `gh auth login` or set `GITHUB_TOKEN`.
 
 ## 0.9.0 - 2026-10-25

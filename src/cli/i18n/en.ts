@@ -62,8 +62,6 @@ export const english: Messages = {
   },
   github: {
     skillBody: (skill) => `Review by skill ${skill}`,
-    heading: '🦋 Phada review',
-    generatedWith: 'Generated with Phada 🦋',
     inlineComments: (bySeverity, count) =>
       `**${bySeverity} as ${count === 1 ? 'inline comment' : 'inline comments'}**`,
     stillOpenCount: (count) => `${count} still open from previous reviews`,

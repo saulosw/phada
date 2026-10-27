@@ -84,10 +84,10 @@ function plan(
 }
 
 describe('formatGitHubReview body', () => {
-  it('writes the score, summary, files, counts, worth checking, drops, footer and marker', () => {
+  it('writes the score, summary, files, counts, worth checking, drops and marker', () => {
     expect(formatGitHubReview(RESULT, PLAN).body).toBe(
       [
-        '## 🦋 Phada review: 3/5 (implementation issues)',
+        '## 🦋 3/5 (implementation issues)',
         '',
         '2 P1 findings (shop.ts:3, shop.ts:20)',
         '',
@@ -115,9 +115,6 @@ describe('formatGitHubReview body', () => {
         '',
         '1 dropped (1 outside the diff)',
         '',
-        '---',
-        '<sub>Generated with Phada 🦋 · fake-cli (claude-fake-1) · verified · a1b2c3d</sub>',
-        '',
         MARKER,
       ].join('\n'),
     )
@@ -136,7 +133,7 @@ describe('formatGitHubReview body', () => {
     )
 
     expect(lines.slice(0, 5)).toEqual([
-      '## 🦋 Phada review: 3/5 (implementation issues)',
+      '## 🦋 3/5 (implementation issues)',
       '',
       'CI: 2 of 7 checks failing (test, lint) · 1 pending',
       '',
@@ -208,7 +205,7 @@ describe('formatGitHubReview body', () => {
     const body = formatGitHubReview(RESULT, plan([], [OPEN]), undefined, messagesFor('en'), ci).body
 
     expect(body.split('\n\n').slice(0, 2)).toEqual([
-      '## 🦋 Phada review: no new findings',
+      '## 🦋 no new findings',
       'CI: 1 of 2 checks pending (e2e)',
     ])
   })
@@ -283,12 +280,9 @@ describe('formatGitHubReview body', () => {
     expect(review.comments).toEqual([])
     expect(review.body).toBe(
       [
-        '## 🦋 Phada review: no new findings',
+        '## 🦋 no new findings',
         '',
         'No new problems in a1b2c3d. 6 Phada comments from previous reviews are still open: resolve them to get a full review of this commit.',
-        '',
-        '---',
-        '<sub>Generated with Phada 🦋 · fake-cli (claude-fake-1) · verified · a1b2c3d</sub>',
         '',
         MARKER,
       ].join('\n'),
@@ -303,12 +297,9 @@ describe('formatGitHubReview body', () => {
       messagesFor('pt'),
     )
 
-    expect(body).toContain('## Revisão do Phada 🦋: nenhum problema novo')
+    expect(body).toContain('## 🦋 nenhum problema novo')
     expect(body).toContain(
       '1 comentário do Phada de revisões anteriores continua aberto: resolva-o',
-    )
-    expect(body).toContain(
-      '<sub>Gerado com Phada 🦋 · fake-cli (claude-fake-1) · verificado · a1b2c3d</sub>',
     )
   })
 
@@ -316,21 +307,17 @@ describe('formatGitHubReview body', () => {
     expect(formatGitHubReview(RESULT, plan([P1])).body).toContain('**1 P1 as inline comment**')
   })
 
-  it('omits the verification and the model when there are none', () => {
-    const body = formatGitHubReview(
-      result({ verification: undefined, model: undefined }),
-      PLAN,
-    ).body
+  it('ends with the marker, without a footer naming Phada, the provider, the model or the verification', () => {
+    for (const messages of [messagesFor('en'), messagesFor('pt'), messagesFor('es')]) {
+      const { body } = formatGitHubReview(RESULT, PLAN, GITHUB_BODY_LIMIT, messages)
 
-    expect(body).toContain('<sub>Generated with Phada 🦋 · fake-cli · a1b2c3d</sub>')
-  })
-
-  it('says when no finding could be verified', () => {
-    const verification = { ...RESULT.verification!, confirmed: 0, unverified: 3 }
-
-    expect(formatGitHubReview(result({ verification }), PLAN).body).toContain(
-      '· not verified (3 unchecked) ·',
-    )
+      expect(body.startsWith('## 🦋 3/5 (')).toBe(true)
+      expect(body).not.toContain('Phada 🦋')
+      expect(body).not.toContain('fake-cli')
+      expect(body).not.toContain('claude-fake-1')
+      expect(body).not.toContain('<sub>')
+      expect(body.endsWith(`\n\n${MARKER}`)).toBe(true)
+    }
   })
 
   it('counts findings worth checking beyond the listed ones', () => {
@@ -407,24 +394,15 @@ describe('formatGitHubReview body', () => {
     expect(body.endsWith(MARKER)).toBe(true)
   })
 
-  it('cuts an oversized model label to keep the whole body inside the limit', () => {
-    const body = formatGitHubReview(result({ model: 'm'.repeat(1_000) }), plan([]), 500).body
-
-    expect(body.length).toBeLessThanOrEqual(500)
-    expect(body).toContain('… (truncated)')
-    expect(body.endsWith(MARKER)).toBe(true)
-  })
-
   it('writes the whole review artifact in Brazilian Portuguese', () => {
     const review = formatGitHubReview(RESULT, PLAN, GITHUB_BODY_LIMIT, messagesFor('pt-BR'))
 
-    expect(review.body).toContain('## Revisão do Phada 🦋: 3/5 (problemas de implementação)')
+    expect(review.body).toContain('## 🦋 3/5 (problemas de implementação)')
     expect(review.body).toContain('### Resumo')
     expect(review.body).toContain('<details><summary>Arquivos (1)</summary>')
     expect(review.body).toContain('| Arquivo | Alteração | Problemas |')
     expect(review.body).toContain('### Ainda pendentes de revisões anteriores')
     expect(review.body).toContain('### Vale verificar (confiança abaixo de 60)')
-    expect(review.body).toContain('Gerado com Phada 🦋 · fake-cli (claude-fake-1) · verificado')
     expect(review.comments[0]?.body).toContain('· confiança 90')
     expect(review.comments[0]?.body).toContain('**Correção sugerida:**')
     expect(review.body).not.toContain('### Summary')
@@ -443,7 +421,7 @@ describe('formatGitHubReview body', () => {
 
     expect(review.body).toBe(
       [
-        '## Revisión de Phada 🦋: 3/5 (problemas de implementación)',
+        '## 🦋 3/5 (problemas de implementación)',
         '',
         'CI: 1 de 3 checks fallido (test) · 1 pendiente',
         '',
@@ -474,9 +452,6 @@ describe('formatGitHubReview body', () => {
         '- **P2** · src/shop.ts:15: Balance may be stale (confianza 55)',
         '',
         '2 descartados (1 fuera del diff, 1 duplicado)',
-        '',
-        '---',
-        '<sub>Generado con Phada 🦋 · fake-cli (claude-fake-1) · verificado · a1b2c3d</sub>',
         '',
         MARKER,
       ].join('\n'),
@@ -739,10 +714,9 @@ describe('formatIgnoredOnlyReview', () => {
   it('posts a short note that names the files left out and counts zero findings', () => {
     expect(formatIgnoredOnlyReview(SHA, ['package-lock.json', 'app.min.js'])).toEqual({
       body: [
-        '## 🦋 Phada review: nothing to review',
+        '## 🦋 nothing to review',
         'Every changed file in a1b2c3d was left out of the review, so the AI did not look at this commit.',
         'Left out of the review: `package-lock.json` · `app.min.js`',
-        '---\n<sub>Generated with Phada 🦋 · a1b2c3d</sub>',
         `<!-- phada:review sha=${SHA} findings=0 -->`,
       ].join('\n\n'),
       comments: [],
@@ -752,7 +726,7 @@ describe('formatIgnoredOnlyReview', () => {
   it('writes the note in the language of the review', () => {
     const { body } = formatIgnoredOnlyReview(SHA, ['yarn.lock'], messagesFor('pt-BR'))
 
-    expect(body).toContain('## Revisão do Phada 🦋: nada para revisar')
+    expect(body).toContain('## 🦋 nada para revisar')
     expect(body).toContain('Todos os arquivos alterados em a1b2c3d ficaram fora do review')
     expect(body).toContain('Fora do review: `yarn.lock`')
   })

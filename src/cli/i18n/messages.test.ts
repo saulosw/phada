@@ -18,18 +18,8 @@ describe('messagesFor', () => {
   )
 })
 
-describe.each([
-  ['en', 'Phada review', 'Generated with Phada'],
-  ['pt', 'Revisão do Phada', 'Gerado com Phada'],
-  ['es', 'Revisión de Phada', 'Generado con Phada'],
-])('the %s catalog', (language, heading, generated) => {
+describe.each(['en', 'pt', 'es'])('the %s catalog', (language) => {
   const messages = messagesFor(language)
-
-  it('puts the butterfly on the outer side of the name Phada', () => {
-    const butterfly = (text: string) => (text.startsWith('Phada') ? `🦋 ${text}` : `${text} 🦋`)
-    expect(messages.github.heading).toBe(butterfly(heading))
-    expect(messages.github.generatedWith).toBe(butterfly(generated))
-  })
 
   it('writes the score reason from the focus of the score', () => {
     expect(messages.scoreReason(undefined)).not.toBe('')

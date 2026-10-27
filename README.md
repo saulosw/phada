@@ -167,8 +167,9 @@ on the commit it reviewed, as the owner of the token:
 
 - every finding becomes a comment on its line, with severity, title, confidence, why it matters
   and the suggested fix;
-- the review body has the score, the summary, the changed files, how many findings were posted,
-  the findings worth checking, what was dropped and the provider and model;
+- the review body starts with the butterfly and the score (`## 🦋 3/5 (implementation issues)`)
+  and has the summary, the changed files, how many findings were posted, the findings worth
+  checking and what was dropped; it names neither Phada nor the provider and model;
 - a pull request without changes gets nothing.
 
 Phada reads its earlier reviews and threads on the pull request first, and only counts the ones

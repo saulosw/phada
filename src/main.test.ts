@@ -613,7 +613,7 @@ describe('run', () => {
     expect(h.prompts[0]?.instructions).toContain(
       'Write summary, change, title, why and fix in pt-BR;',
     )
-    expect(h.posts[0]?.body).toContain('## Revisão do Phada 🦋: 5/5 (pronto para merge)')
+    expect(h.posts[0]?.body).toContain('## 🦋 5/5 (pronto para merge)')
     expect(h.posts[0]?.body).toContain('### Resumo')
     expect(h.stdout()).toContain(
       '**Nota de confiança: 5/5** (pronto para merge): nenhum problema encontrado',
@@ -1268,7 +1268,7 @@ describe('run publishing', () => {
     expect(await run([...REVIEW, '--dry-run'], h.deps)).toBe(0)
     expect(h.prompts).toHaveLength(1)
     expect(h.posts).toHaveLength(0)
-    expect(h.stdout()).toContain('## 🦋 Phada review: 3/5 (implementation issues)')
+    expect(h.stdout()).toContain('## 🦋 3/5 (implementation issues)')
     expect(h.stdout()).toContain('===== Inline comment 1/1 · src/shop.ts:3 =====')
     expect(h.stderr()).toContain(
       'Dry run: nothing was posted.\nWithout --dry-run: a1b2c3d already reviewed by Phada; 1 thread still open. Use --force to review again.\n',
@@ -1517,7 +1517,7 @@ describe('run with config and repository context', () => {
 
     expect(await run(['review', 'acme/shop#12', '--dry-run'], h.deps)).toBe(0)
     expect(h.posts).toEqual([])
-    expect(h.stdout()).toContain('## 🦋 Phada review: nothing to review')
+    expect(h.stdout()).toContain('## 🦋 nothing to review')
     expect(h.stdout()).toContain('Left out of the review: `package-lock.json`')
     expect(h.stderr()).toContain('Dry run: nothing was posted.')
   })

@@ -80,8 +80,6 @@ export const spanish: Messages = {
   },
   github: {
     skillBody: (skill) => `Revisión de la skill ${skill}`,
-    heading: 'Revisión de Phada 🦋',
-    generatedWith: 'Generado con Phada 🦋',
     inlineComments: (bySeverity, value) =>
       `**${bySeverity} como ${value === 1 ? 'comentario en línea' : 'comentarios en línea'}**`,
     stillOpenCount: (value) =>
