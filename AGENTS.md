@@ -65,6 +65,10 @@ it when looking for a module.
 - `test/` — fake AI CLIs, trimmed GitHub responses and shared helpers; each test sits next to the
   code it tests.
 
+## Guides
+
+- **Creating or changing a screen of the app:** read [src/tui/README.md](src/tui/README.md) first.
+
 ## Dependency rule
 
 Only `src/main.ts` wires concrete implementations, and `src/bin.ts` passes it the real `process`
