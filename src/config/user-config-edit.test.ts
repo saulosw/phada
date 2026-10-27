@@ -65,6 +65,15 @@ describe('planUserConfigEdit', () => {
     })
   })
 
+  it.each([null, '', '# only notes\n'])('removes nothing from an empty config (%j)', (current) => {
+    const result = planned(current, [
+      { kind: 'unset', key: 'model' },
+      { kind: 'unwatch', repo: 'acme/api' },
+    ])
+
+    expect(result.changes).toEqual([])
+  })
+
   it('starts a new file with the chosen values on top of the commented template', () => {
     const result = planned(null, [
       { kind: 'set', key: 'provider', value: 'ollama' },

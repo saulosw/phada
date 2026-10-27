@@ -84,7 +84,7 @@ function applyChange(doc: Document, change: UserConfigChange): ChangeRefusal | u
       doc.set(change.key, change.value)
       return undefined
     case 'unset':
-      doc.delete(change.key)
+      if (isMap(doc.contents)) doc.delete(change.key)
       return undefined
     case 'watch':
       return watch(doc, change.repo)
