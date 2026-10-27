@@ -209,6 +209,56 @@ describe('indexRepository', () => {
     expect(changed.read).toEqual([['src/a.ts']])
   })
 
+  it('stops when cancelled, keeps what it extracted, and the next run extracts only the rest', async () => {
+    const path = storePath()
+    const threeFiles = () =>
+      fakeMirror({
+        'src/a.ts': { content: 'export function a() {}\n' },
+        'src/b.ts': { content: 'export function b() {}\n' },
+        'src/c.ts': { content: 'export function c() {}\n' },
+      })
+    const cancel = new AbortController()
+    const first = deps(threeFiles().mirror, path)
+    first.deps.events.extracted = (done, total) => {
+      first.events.push(`extracted ${done}/${total}`)
+      if (done === 1) cancel.abort()
+    }
+
+    const stopped = await indexRepository({ ...INPUT, signal: cancel.signal }, first.deps)
+
+    expect(stopped).toEqual({ cancelled: true, extracted: 1, total: 3 })
+    expect(first.events).toEqual(['extracting 3', 'extracted 1/3'])
+    expect(first.closed).toHaveLength(1)
+
+    const again = threeFiles()
+    const second = deps(again.mirror, path)
+    const report = await indexRepository(
+      { ...INPUT, signal: new AbortController().signal },
+      second.deps,
+    )
+    expect('cancelled' in report ? report : report.files).toEqual({
+      total: 3,
+      indexed: 3,
+      extracted: 2,
+      reused: 1,
+    })
+    expect(again.read).toEqual([['src/b.ts', 'src/c.ts']])
+  })
+
+  it('extracts nothing when cancelled before it starts', async () => {
+    const { mirror, read } = fakeMirror({ 'src/a.ts': { content: 'export const a = 1\n' } })
+    const cancel = new AbortController()
+    cancel.abort()
+
+    const result = await indexRepository(
+      { ...INPUT, signal: cancel.signal },
+      deps(mirror, storePath()).deps,
+    )
+
+    expect(result).toEqual({ cancelled: true, extracted: 0, total: 1 })
+    expect(read).toEqual([])
+  })
+
   it('extracts a blob shared by two paths once and counts both files', async () => {
     const { mirror, read } = fakeMirror({
       'a/x.ts': { content: 'export function x() {}\n' },

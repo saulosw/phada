@@ -58,6 +58,13 @@ export interface IndexRepositoryInput {
   repo: string
   ref?: string
   userLayers: readonly ConfigLayer[]
+  signal?: AbortSignal
+}
+
+export interface IndexCancelled {
+  cancelled: true
+  extracted: number
+  total: number
 }
 
 export interface IndexRepositoryEvents {
@@ -96,6 +103,7 @@ export interface IndexCommitInput {
   files: readonly TreeFile[]
   ignore: (path: string) => boolean
   deadline?: number
+  signal?: AbortSignal
 }
 
 export interface IndexCommitDeps {
@@ -106,10 +114,18 @@ export interface IndexCommitDeps {
   events: IndexRepositoryEvents
 }
 
+export function indexRepository(
+  input: IndexRepositoryInput & { signal: AbortSignal },
+  deps: IndexRepositoryDeps,
+): Promise<IndexReport | IndexCancelled>
+export function indexRepository(
+  input: IndexRepositoryInput,
+  deps: IndexRepositoryDeps,
+): Promise<IndexReport>
 export async function indexRepository(
   input: IndexRepositoryInput,
   deps: IndexRepositoryDeps,
-): Promise<IndexReport> {
+): Promise<IndexReport | IndexCancelled> {
   const started = deps.now()
   const ref = input.ref ?? 'HEAD'
   const sha = await deps.mirror.fetch(ref, INDEX_REF)
@@ -120,10 +136,19 @@ export async function indexRepository(
   const store = await deps.openStore()
   try {
     const result = await indexCommit(
-      { sha, ref, files, ignore: isIgnored },
+      {
+        sha,
+        ref,
+        files,
+        ignore: isIgnored,
+        ...(input.signal === undefined ? {} : { signal: input.signal }),
+      },
       { mirror: deps.mirror, store, extractor: deps.extractor, now: deps.now, events: deps.events },
     )
-    if (!result.complete) throw new Error('indexing stopped without a deadline')
+    if (!result.complete) {
+      if (input.signal?.aborted !== true) throw new Error('indexing stopped without a cancel')
+      return { cancelled: true, extracted: result.extracted, total: result.total }
+    }
     store.prune(KEEP_COMMITS)
     const leftOut = result.commitFiles
       .filter(
@@ -221,7 +246,9 @@ export async function indexCommit(
 
   const fresh = new Map<string, BlobStatus>()
   const total = [...wanted.values()].reduce((sum, entry) => sum + entry.languages.size, 0)
+  const cancelled = () => input.signal?.aborted === true
   deps.events.extracting(total)
+  if (cancelled()) return { complete: false, extracted: 0, total }
   let done = 0
   const toRead = [...wanted.values()].map((entry) => entry.file)
   for await (const blob of deps.mirror.readBlobs(toRead)) {
@@ -231,7 +258,8 @@ export async function indexCommit(
       done += 1
       deps.events.extracted(done, total)
     }
-    if (input.deadline !== undefined && done < total && deps.now() > input.deadline) {
+    const pastDeadline = input.deadline !== undefined && deps.now() > input.deadline
+    if (done < total && (pastDeadline || cancelled())) {
       return { complete: false, extracted: done, total }
     }
   }
