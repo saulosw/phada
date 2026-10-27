@@ -486,7 +486,7 @@ export const portuguese: UiMessages = {
       summary: 'Resumo',
     },
     skip: 'pular',
-    leave: 'sair',
+    leave: 'sair do setup',
     stay: 'ficar',
     leaveQuestion: 'Sair do setup?',
     leaveHint: 'O que você confirmou já está gravado. phada setup abre o setup de novo.',

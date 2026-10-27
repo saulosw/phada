@@ -1,5 +1,5 @@
 import { Text } from 'ink'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   useAppDeps,
   useBack,
@@ -32,20 +32,25 @@ export function LanguageStep({ next }: SetupStepProps) {
   const read = usePolled(readLanguage)
   const current = read.status === 'ready' ? baseOf(read.value) : DEFAULT_LANGUAGE
   const [picked, setPicked] = useState<number>()
-  const selected =
-    picked ??
-    Math.max(
-      LANGUAGES.findIndex(({ tag }) => tag === current),
-      0,
-    )
+  const pickedNow = useRef<number | undefined>(undefined)
+  const currentIndex = Math.max(
+    LANGUAGES.findIndex(({ tag }) => tag === current),
+    0,
+  )
+  const selected = picked ?? currentIndex
   const change = useConfigChange((plan) => next(plan))
   useBack(change.open ? change.cancel : undefined)
+  const pick = (index: number) => {
+    pickedNow.current = index
+    setPicked(index)
+  }
   useScreenInput((_input, key) => {
     if (change.open) return
-    if (key.upArrow) return setPicked(Math.max(selected - 1, 0))
-    if (key.downArrow) return setPicked(Math.min(selected + 1, LANGUAGES.length - 1))
+    const at = pickedNow.current ?? currentIndex
+    if (key.upArrow) return pick(Math.max(at - 1, 0))
+    if (key.downArrow) return pick(Math.min(at + 1, LANGUAGES.length - 1))
     if (!key.return) return
-    const tag = LANGUAGES[selected]?.tag ?? DEFAULT_LANGUAGE
+    const tag = LANGUAGES[at]?.tag ?? DEFAULT_LANGUAGE
     if (tag === current) return next()
     change.propose([{ kind: 'set', key: 'language', value: tag }])
   })

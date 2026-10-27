@@ -488,7 +488,7 @@ export const spanish: UiMessages = {
       summary: 'Resumen',
     },
     skip: 'omitir',
-    leave: 'salir',
+    leave: 'dejar la configuración',
     stay: 'quedarse',
     leaveQuestion: '¿Salir de la configuración?',
     leaveHint: 'Lo que confirmaste ya está guardado. phada setup la abre de nuevo.',
