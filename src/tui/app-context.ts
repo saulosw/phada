@@ -82,6 +82,7 @@ export const WorkingContext = createContext<WorkingSignal>({
   working: false,
   start: () => () => {},
 })
+export const ConfigWrittenContext = createContext<() => void>(() => {})
 export const ScreenContext = createContext<ScreenControls>({
   inputActive: false,
   typing: false,
@@ -106,6 +107,10 @@ export function useMessages(): UiMessages {
   const messages = useContext(MessagesContext)
   if (messages === undefined) throw new Error('useMessages() outside the app')
   return messages
+}
+
+export function useConfigWritten(): () => void {
+  return useContext(ConfigWrittenContext)
 }
 
 export function useIsWorking(): boolean {

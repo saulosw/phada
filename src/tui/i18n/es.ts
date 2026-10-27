@@ -509,6 +509,31 @@ export const spanish: UiMessages = {
         'gh no está instalado. Instálalo desde https://cli.github.com, o exporta GITHUB_TOKEN con un token tuyo.',
       notCompleted: 'Inicio de sesión en gh no completado.',
     },
+    language: {
+      intro: 'El idioma de esta app y de las revisiones que Phada escribe.',
+      current: 'actual',
+      choose: 'elegir',
+    },
+  },
+  config: {
+    create: (path) => `¿Crear ${path}?`,
+    save: (path) => `¿Guardar en ${path}?`,
+    unset: '(sin definir)',
+    publish: { on: 'publica', off: 'no publica' },
+    planning: 'Leyendo el archivo de configuración…',
+    writing: 'Guardando…',
+    keys: { save: 'guardar', cancel: 'cancelar', again: 'ver el cambio de nuevo' },
+    invalidConfig: (message) =>
+      `Tu archivo de configuración tiene un error, así que Phada no lo cambia: ${message}`,
+    invalidResult: (message) =>
+      `El cambio dejaría inválido el archivo de configuración: ${message}`,
+    ollamaWithoutModel: 'Ollama necesita un modelo: elígelo junto con Ollama.',
+    lastWatchedRepo: (repo, settings) =>
+      `${repo} es el último repositorio observado, y watch también define ${settings}: edita el archivo para quitarlo.`,
+    notWatched: (repo) => `${repo} no está observado.`,
+    unreadable: (message) => `No se pudo leer el archivo de configuración: ${message}`,
+    failed: (message) => `No se pudo guardar el archivo de configuración: ${message}`,
+    changed: 'El archivo de configuración cambió desde entonces: Enter muestra el cambio de nuevo.',
   },
 }
 

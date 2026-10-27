@@ -500,6 +500,30 @@ export const english: UiMessages = {
         'gh is not installed. Install it from https://cli.github.com, or export GITHUB_TOKEN with a token of yours.',
       notCompleted: 'gh login not completed.',
     },
+    language: {
+      intro: 'The language of this app and of the reviews Phada writes.',
+      current: 'current',
+      choose: 'choose',
+    },
+  },
+  config: {
+    create: (path) => `Create ${path}?`,
+    save: (path) => `Save to ${path}?`,
+    unset: '(not set)',
+    publish: { on: 'publishes', off: 'does not publish' },
+    planning: 'Reading the config file…',
+    writing: 'Writing…',
+    keys: { save: 'save', cancel: 'cancel', again: 'see the change again' },
+    invalidConfig: (message) =>
+      `Your config file has an error, so Phada leaves it as is: ${message}`,
+    invalidResult: (message) => `The change would make the config file invalid: ${message}`,
+    ollamaWithoutModel: 'Ollama needs a model: choose it together with Ollama.',
+    lastWatchedRepo: (repo, settings) =>
+      `${repo} is the last watched repository, and watch also sets ${settings}: edit the file to remove it.`,
+    notWatched: (repo) => `${repo} is not watched.`,
+    unreadable: (message) => `Could not read the config file: ${message}`,
+    failed: (message) => `Could not write the config file: ${message}`,
+    changed: 'The config file changed since: Enter shows the change again.',
   },
 }
 

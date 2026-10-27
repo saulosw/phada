@@ -25,6 +25,7 @@ export function Setup({ onClose }: { onClose(): void }) {
   const [leaving, setLeaving] = useState(false)
   const [stepKeys, setStepKeys] = useState<readonly KeyHint[]>([])
   const stepBack = useRef<(() => void) | undefined>(undefined)
+  const [stepHasBack, setStepHasBack] = useState(false)
   const step = SETUP_STEPS[index] ?? SETUP_STEPS[0]
   if (step === undefined) throw new Error('the setup has no steps')
 
@@ -63,7 +64,7 @@ export function Setup({ onClose }: { onClose(): void }) {
       : [
           ...stepKeys,
           ...(step.skippable ? [{ keys: 's', label: m.skip }] : []),
-          { keys: 'Esc', label: m.leave },
+          ...(stepHasBack ? [] : [{ keys: 'Esc', label: m.leave }]),
         ],
   )
 
@@ -78,6 +79,7 @@ export function Setup({ onClose }: { onClose(): void }) {
       setKeys: setStepKeys,
       setBack: (back) => {
         stepBack.current = back
+        setStepHasBack(back !== undefined)
       },
     }),
     [outer, leaving],

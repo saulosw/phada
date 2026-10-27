@@ -61,6 +61,7 @@ export interface UiMessages {
   learnings: LearningsMessages
   rules: RulesMessages
   setup: SetupMessages
+  config: ConfigMessages
 }
 
 export interface HomeMessages {
@@ -132,6 +133,25 @@ export interface SetupMessages {
     notInstalled: string
     notCompleted: string
   }
+  language: { intro: string; current: string; choose: string }
+}
+
+export interface ConfigMessages {
+  create(path: string): string
+  save(path: string): string
+  unset: string
+  publish: { on: string; off: string }
+  planning: string
+  writing: string
+  keys: { save: string; cancel: string; again: string }
+  invalidConfig(message: string): string
+  invalidResult(message: string): string
+  ollamaWithoutModel: string
+  lastWatchedRepo(repo: string, settings: string): string
+  notWatched(repo: string): string
+  unreadable(message: string): string
+  failed(message: string): string
+  changed: string
 }
 
 type RequestSource = QueueJob['requests'][number]['source']

@@ -3,6 +3,7 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   AppDepsContext,
+  ConfigWrittenContext,
   MessagesContext,
   ScreenContext,
   ThemeContext,
@@ -12,7 +13,7 @@ import {
   useTheme,
 } from './app-context.js'
 import type { AppDeps, KeyHint, ScreenControls, WorkingSignal } from './app-context.js'
-import { usePolled } from './data-hooks.js'
+import { POLL_MS, usePolled } from './data-hooks.js'
 import { ErrorBoundary } from './error-boundary.js'
 import { Footer } from './footer.js'
 import { Help } from './help.js'
@@ -62,15 +63,19 @@ export function App({ deps, size, onExit, screens = SCREENS }: AppProps) {
   const working = useMemo<WorkingSignal>(() => ({ working: workers > 0, start }), [workers, start])
   const fail = useCallback((error: unknown) => onExit({ kind: 'failed', error }), [onExit])
   const loads = useMemo(() => createLoadCache(() => deps.now().getTime()), [deps])
+  const [configRound, setConfigRound] = useState(0)
+  const configWritten = useCallback(() => setConfigRound((round) => round + 1), [])
   return (
     <ErrorBoundary onError={fail}>
       <AppDepsContext.Provider value={deps}>
         <ThemeContext.Provider value={theme}>
           <WorkingContext.Provider value={working}>
             <LoadCacheContext.Provider value={loads}>
-              <Localized>
-                <Shell size={size} screens={screens} onExit={onExit} />
-              </Localized>
+              <ConfigWrittenContext.Provider value={configWritten}>
+                <Localized configRound={configRound}>
+                  <Shell size={size} screens={screens} onExit={onExit} />
+                </Localized>
+              </ConfigWrittenContext.Provider>
             </LoadCacheContext.Provider>
           </WorkingContext.Provider>
         </ThemeContext.Provider>
@@ -79,15 +84,15 @@ export function App({ deps, size, onExit, screens = SCREENS }: AppProps) {
   )
 }
 
-function Localized({ children }: { children: ReactNode }) {
-  const language = useLanguage()
+function Localized({ configRound, children }: { configRound: number; children: ReactNode }) {
+  const language = useLanguage(configRound)
   const messages = useMemo(() => uiMessagesFor(language), [language])
   return <MessagesContext.Provider value={messages}>{children}</MessagesContext.Provider>
 }
 
-function useLanguage(): string | undefined {
+function useLanguage(configRound: number): string | undefined {
   const deps = useAppDeps()
-  const polled = usePolled(deps.readLanguage)
+  const polled = usePolled(deps.readLanguage, POLL_MS, String(configRound))
   const last = useRef(deps.language)
   if (polled.status === 'ready') last.current = polled.value
   return last.current
