@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 
 export interface LocalDoc {
@@ -45,13 +45,13 @@ export const nodeFileSystem: LocalFileSystem = {
     }
   },
   async writeAtomic(path, text) {
-    const dir = dirname(path)
-    await mkdir(dir, { recursive: true })
-    const mode = await existingMode(path)
-    const temporary = join(dir, `.${basename(path)}.${randomUUID()}.tmp`)
+    await mkdir(dirname(path), { recursive: true })
+    const target = await realTarget(path)
+    const mode = await existingMode(target)
+    const temporary = join(dirname(target), `.${basename(target)}.${randomUUID()}.tmp`)
     try {
       await writeFile(temporary, text, { flag: 'wx', ...(mode === undefined ? {} : { mode }) })
-      await rename(temporary, path)
+      await rename(temporary, target)
     } catch (error) {
       await rm(temporary, { force: true })
       throw error
@@ -88,6 +88,15 @@ export const nodeFileSystem: LocalFileSystem = {
       throw error
     }
   },
+}
+
+async function realTarget(path: string): Promise<string> {
+  try {
+    return await realpath(path)
+  } catch (error) {
+    if (isMissing(error)) return path
+    throw error
+  }
 }
 
 async function existingMode(path: string): Promise<number | undefined> {

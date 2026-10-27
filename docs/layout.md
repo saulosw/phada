@@ -493,7 +493,8 @@ src/
                          #   (user:…, user:repos/<owner>/<repo>/…) and back to global, repository
                          #   or a file of the repository, with its name
     local-files.ts       #   LocalFileSystem and its node:fs implementation; writeAtomic(): a
-                         #   temporary file in the same folder renamed over the file
+                         #   temporary file in the same folder renamed over the file (over the
+                         #   file a link points to, keeping the link)
     cache-paths.ts       #   the cache folder (PHADA_CACHE_HOME › XDG › ~/.cache/phada),
                          #   repositoryCache(): mirror, index and observed paths; pathSize();
                          #   observedFile(); observedRepositories(): owner/repo of each observed
