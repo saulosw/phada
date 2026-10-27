@@ -68,6 +68,8 @@ it when looking for a module.
 ## Guides
 
 - **Creating or changing a screen of the app:** read [src/tui/README.md](src/tui/README.md) first.
+- **Reviewing a change:** [CODING_STANDARDS.md](CODING_STANDARDS.md) holds the judgment rules a
+  review checks.
 
 ## Dependency rule
 
