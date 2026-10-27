@@ -297,9 +297,32 @@ describe('the Provider screen', () => {
       expectFits(frame(), { columns: 80, rows: 24 })
     })
 
-    it('logs in to Codex when it is the CLI logged out', async () => {
+    it('logs in again to the chosen CLI when it is logged in', async () => {
       const { footer, press, showing, targets } = loginFlow({ kind: 'exited', exitCode: 0 }, [
         report([claude(), loggedOut(codex), ollama()]),
+      ])
+      await showing('→ log in with codex login')
+      expect(footer()).toContain('l log in to Claude Code')
+      await press('l')
+      await waitFor(() => targets.length === 1)
+      expect(targets).toEqual([{ kind: 'ai-login', provider: 'claude' }])
+    })
+
+    it('offers no login when the chosen AI is Ollama and every CLI is logged in or missing', async () => {
+      const { footer, showing } = loginFlow({ kind: 'exited', exitCode: 0 }, [
+        report([
+          claude({ chosen: false }),
+          codex({ install: { state: 'missing' } }),
+          ollama({ chosen: true }),
+        ]),
+      ])
+      await showing('logged in (claude.ai)')
+      expect(footer()).not.toContain('log in to')
+    })
+
+    it('logs in to Codex when the chosen AI is Ollama and Codex is the CLI logged out', async () => {
+      const { footer, press, showing, targets } = loginFlow({ kind: 'exited', exitCode: 0 }, [
+        report([claude({ chosen: false }), loggedOut(codex), ollama({ chosen: true })]),
       ])
       await showing('→ log in with codex login')
       expect(footer()).toContain('l log in to Codex')
@@ -344,17 +367,6 @@ describe('the Provider screen', () => {
       await press('l')
       await showing('Could not run: spawn EACCES claude')
       expect(frame()).toContain('Could not run: spawn EACCES claude')
-    })
-
-    it('offers no login when every CLI is logged in', async () => {
-      const { footer, press, showing, targets } = loginFlow({ kind: 'exited', exitCode: 0 }, [
-        report([claude(), codex(), ollama()]),
-      ])
-      await showing('logged in (claude.ai)')
-      expect(footer()).not.toContain('log in')
-      await press('l', 'r')
-      await waitFor(() => targets.length > 0)
-      expect(targets).toEqual([])
     })
   })
 

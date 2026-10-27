@@ -208,10 +208,11 @@ function providerLines(checked: DataState<ProviderReport>, draw: Draw): ReactNod
 }
 
 function loginTarget({ providers }: ProviderReport): LoginProvider | undefined {
-  const waiting = providers.flatMap((status) =>
-    status.provider !== 'ollama' && status.next?.kind === 'login' ? [status] : [],
+  const clis = providers.flatMap((status) =>
+    status.provider !== 'ollama' && status.install.state === 'installed' ? [status] : [],
   )
-  return (waiting.find(({ chosen }) => chosen) ?? waiting[0])?.provider
+  const chosen = clis.find((status) => status.chosen)
+  return (chosen ?? clis.find((status) => status.login.state === 'logged-out'))?.provider
 }
 
 function mcpLines({ mcp }: ProviderSetup, draw: Draw): ReactNode[] {

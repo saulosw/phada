@@ -362,8 +362,8 @@ src/
                          #   user config is invalid), automation.tsx (one page:
                          #   watch, CI wait, request sources, hooks, when), provider.tsx (the
                          #   choice and its origin, the language, each AI checked on open and on
-                         #   r with its next step, l to log in to a logged-out CLI (the chosen one
-                         #   first) and checked again on return, the MCP servers; c → the
+                         #   r with its next step, l to log in to the chosen CLI (again, when
+                         #   logged in), else to a logged-out CLI, and checked again on return, the MCP servers; c → the
                          #   ProviderPicker and L → the LanguagePicker in a SubView, back on save
                          #   or Esc with the AIs checked again; none while the config is
                          #   invalid), learnings.tsx (each
