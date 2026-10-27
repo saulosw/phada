@@ -86,6 +86,11 @@ export function LanguagePicker({ onDone }: { onDone(plan?: UserConfigPlan): void
   return <ScrollText lines={lines} rows={size.rows} />
 }
 
+export function languageName(language: string | undefined): string {
+  const tag = baseOf(language)
+  return LANGUAGES.find((entry) => entry.tag === tag)?.name ?? language ?? DEFAULT_LANGUAGE
+}
+
 function baseOf(language: string | undefined): string {
   return language?.split('-', 1)[0]?.toLowerCase() ?? DEFAULT_LANGUAGE
 }

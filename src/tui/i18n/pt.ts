@@ -382,6 +382,11 @@ export const portuguese: UiMessages = {
     tools: (names) => `ferramentas: ${names}`,
     logIn: (name) => `entrar no ${name}`,
     loginNotCompleted: (name) => `Login no ${name} não concluído.`,
+    change: 'trocar a IA',
+    changeIntro:
+      'Escolha a IA que revisa e o modelo. A escolha é gravada no seu arquivo de config.',
+    languageKey: 'idioma',
+    language: (name) => `Idioma: ${name}`,
     pick: {
       choose: 'escolher',
       modelFor: (name) => `Modelo do ${name}`,

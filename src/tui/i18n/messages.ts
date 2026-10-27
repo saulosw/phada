@@ -410,6 +410,10 @@ export interface ProviderMessages {
   tools(names: string): string
   logIn(name: string): string
   loginNotCompleted(name: string): string
+  change: string
+  changeIntro: string
+  languageKey: string
+  language(name: string): string
   pick: {
     choose: string
     modelFor(name: string): string

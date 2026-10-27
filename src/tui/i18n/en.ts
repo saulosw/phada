@@ -381,6 +381,11 @@ export const english: UiMessages = {
     tools: (names) => `tools: ${names}`,
     logIn: (name) => `log in to ${name}`,
     loginNotCompleted: (name) => `${name} login not completed.`,
+    change: 'change the AI',
+    changeIntro:
+      'Choose the AI that reviews and its model. The choice is saved to your config file.',
+    languageKey: 'language',
+    language: (name) => `Language: ${name}`,
     pick: {
       choose: 'choose',
       modelFor: (name) => `Model for ${name}`,

@@ -384,6 +384,11 @@ export const spanish: UiMessages = {
     tools: (names) => `herramientas: ${names}`,
     logIn: (name) => `iniciar sesión en ${name}`,
     loginNotCompleted: (name) => `Inicio de sesión en ${name} no completado.`,
+    change: 'cambiar la IA',
+    changeIntro:
+      'Elige la IA que revisa y su modelo. La elección se guarda en tu archivo de configuración.',
+    languageKey: 'idioma',
+    language: (name) => `Idioma: ${name}`,
     pick: {
       choose: 'elegir',
       modelFor: (name) => `Modelo de ${name}`,

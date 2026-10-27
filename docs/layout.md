@@ -350,9 +350,12 @@ src/
                          #   review → its watch filters, index, user config with origins, rules,
                          #   related repositories and last reviews), automation.tsx (one page:
                          #   watch, CI wait, request sources, hooks, when), provider.tsx (the
-                         #   choice and its origin, each AI checked on open and on r with its next
-                         #   step, l to log in to a logged-out CLI (the chosen one first) and
-                         #   checked again on return, the MCP servers), learnings.tsx (each
+                         #   choice and its origin, the language, each AI checked on open and on
+                         #   r with its next step, l to log in to a logged-out CLI (the chosen one
+                         #   first) and checked again on return, the MCP servers; c → the
+                         #   ProviderPicker and L → the LanguagePicker in a SubView, back on save
+                         #   or Esc with the AIs checked again; none while the config is
+                         #   invalid), learnings.tsx (each
                          #   repository's relations and feedback → its feedback per rule and its
                          #   relations), rules.tsx (a repository → the lens and who set it, the
                          #   user's rules at once, .phada/ and docs of the default branch on open
@@ -402,7 +405,10 @@ src/
                          #   typed field still there
     language-picker.tsx  #   LanguagePicker: en, pt, es with the current one marked → the change
                          #   of language (useConfigChange) → onDone(plan), the app speaking it at
-                         #   once; the current one picked → onDone() without writing
+                         #   once; the current one picked → onDone() without writing;
+                         #   languageName()
+    sub-view.tsx         #   SubView: a picker shown in place of a screen's view, its keys and back
+                         #   gathered, Esc (when the picker does not hold it) → onLeave()
     index-series.ts      #   useIndexSeries(): AppDeps.indexRepository one repository after the
                          #   other with an AbortController (stop() cancels the current one and
                          #   starts no other; aborted on unmount), each one waiting, running with

@@ -98,6 +98,16 @@ plan again when the file changed since the plan); the screen wires `Esc` with
 language is read again at once and `onSaved(plan)` runs; a proposal that changes nothing calls
 `onSaved` without writing. `valueChangeLines()` draws a list of written values.
 
+## A picker inside a screen (`sub-view.tsx`)
+
+The pickers the setup uses (`ProviderPicker`, `RepositoryPicker`, `LanguagePicker`) also edit from
+a screen. The screen keeps only a mode and draws either its view or the picker inside
+**`<SubView onLeave>`**, which gathers the picker's keys and back: `Esc` goes to the picker while
+it holds it (a change shown, a model list), else to `onLeave()`, and the footer shows `Esc back`
+then. The view and the picker are separate components, so each one has its own
+`useScreenKeys`/`useScreenInput`; on return the view reads again what the picker changed
+(`reload()` of `useLoaded`, which a `usePolled` read does by itself on mount).
+
 ## The setup (`setup/`)
 
 The setup takes the place of the tabs (`AppDeps.start`, `/setup`). Each step is a component of

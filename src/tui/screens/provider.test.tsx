@@ -1,8 +1,14 @@
 import { cleanup } from 'ink-testing-library'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ProviderReport, ProviderSetup, ReportedProvider } from '../../app/read-provider.js'
+import type {
+  SettingKey,
+  UserConfigChange,
+  UserConfigPlan,
+  ValueChange,
+} from '../../config/user-config-edit.js'
 import type { HandOffResult, HandOffTarget } from '../app-context.js'
-import { frameLines, renderApp, visibleWidth, waitFor } from '../../../test/support/tui.js'
+import { frameLines, KEYS, renderApp, visibleWidth, waitFor } from '../../../test/support/tui.js'
 import { SCREENS } from '../screens.js'
 import type { TerminalSize } from '../terminal-size.js'
 import { ProviderScreen } from './provider.js'
@@ -379,5 +385,166 @@ describe('the Provider screen', () => {
     expect(frame()).toContain('Revisa com Claude Code · modelo opus')
     expect(frame()).toContain('→ faça login com claude auth login')
     expect(frame()).toContain('Servidores MCP (3)')
+  })
+
+  describe('changing the AI and the language', () => {
+    type Current = Partial<Record<SettingKey, string>>
+
+    function planOf(changes: readonly UserConfigChange[], current: Current): UserConfigPlan {
+      const values: Extract<ValueChange, { key: SettingKey }>[] = changes.flatMap((change) =>
+        change.kind === 'set' || change.kind === 'unset'
+          ? [
+              {
+                key: change.key,
+                before: current[change.key] ?? null,
+                after: change.kind === 'set' ? change.value : null,
+              },
+            ]
+          : [],
+      )
+      return {
+        path: CONFIG,
+        exists: true,
+        before: '# my notes\n',
+        text: '# my notes\n',
+        changes: values.filter(({ before, after }) => before !== after),
+      }
+    }
+
+    function openEditable(options: { invalid?: boolean; language?: string } = {}) {
+      const current: Current = {
+        provider: 'claude',
+        model: 'opus',
+        ...(options.language === undefined ? {} : { language: options.language }),
+      }
+      const writes: UserConfigPlan[] = []
+      let checks = 0
+      const choice = () => ({
+        provider: (current.provider ?? 'claude') as 'claude' | 'codex',
+        model: current.model ?? null,
+        origin: { kind: 'user-config' as const, path: CONFIG },
+      })
+      const app = renderApp({
+        deps: {
+          readProviderSetup: async () => {
+            if (options.invalid === true) {
+              throw new Error('Invalid config /home/ana/.config/phada/config.yml: watch')
+            }
+            return setup({ choice: choice(), mcp: [] })
+          },
+          readProviders: async () => {
+            checks++
+            return {
+              choice: choice(),
+              providers: [
+                claude({ chosen: current.provider === 'claude' }),
+                codex({ chosen: current.provider === 'codex' }),
+                ollama(),
+              ],
+            }
+          },
+          readLanguage: async () => current.language,
+          ...(options.language === undefined ? {} : { language: options.language }),
+          planConfig: async (changes) => ({ ok: true, plan: planOf(changes, current) }),
+          applyConfig: async (plan) => {
+            writes.push(plan)
+            for (const change of plan.changes) {
+              if (change.key === 'watch.repos' || change.key === 'publish') continue
+              if (change.after === null) delete current[change.key]
+              else current[change.key] = change.after
+            }
+            return { ok: true, written: true }
+          },
+        },
+        size: { columns: 80, rows: 24 },
+        screens: [{ id: 'provider', title: (m) => m.screens.provider, Screen: ProviderScreen }],
+      })
+      return { ...app, writes, checks: () => checks }
+    }
+
+    it('changes the provider and model with c, after their before and after, and shows them on return', async () => {
+      const { checks, exits, footer, frame, press, showing, until, writes } = openEditable()
+      await showing('Reviews with Claude Code · model opus', 'logged in (chatgpt)')
+      expect(footer()).toContain('c change the AI')
+      await press('c')
+      await showing('Choose the AI that reviews', '❯ ● Claude Code')
+      expect(footer()).toContain('Esc back')
+      await press(KEYS.down, KEYS.enter)
+      await showing('Model for Codex')
+      await press(KEYS.enter)
+      await showing('Save ~/.config/phada/config.yml?')
+      expect(frame()).toMatch(/provider +claude → codex/)
+      expect(frame()).toMatch(/model +opus → \(not set\)/)
+      expectFits(frame(), { columns: 80, rows: 24 })
+      const before = checks()
+      await press(KEYS.enter)
+      await showing("Reviews with Codex · the AI CLI's default model")
+      await until(() => checks() > before)
+      expect(row(frame(), 'Codex')).toMatch(/Codex\s+chosen/)
+      expect(writes).toHaveLength(1)
+      expect(exits).toEqual([])
+    })
+
+    it('leaves the change with Esc without writing', async () => {
+      const { exits, frame, press, showing, writes } = openEditable()
+      await showing('Reviews with Claude Code · model opus', 'logged in (chatgpt)')
+      await press('c')
+      await showing('Choose the AI that reviews')
+      await press(KEYS.down, KEYS.enter)
+      await showing('Model for Codex')
+      await press(KEYS.enter)
+      await showing('claude → codex')
+      await press(KEYS.escape)
+      await showing('Model for Codex')
+      expect(frame()).not.toContain('claude → codex')
+      await press(KEYS.escape)
+      await showing('Choose the AI that reviews')
+      await press(KEYS.escape)
+      await showing('Reviews with Claude Code · model opus', 'MCP')
+      expect(writes).toEqual([])
+      expect(exits).toEqual([])
+    })
+
+    it('changes the language with L and speaks it at once', async () => {
+      const { footer, frame, press, showing, writes } = openEditable()
+      await showing('Language: English', 'logged in (chatgpt)')
+      expect(footer()).toContain('L language')
+      await press('L')
+      await showing('❯ English', 'Português')
+      await press(KEYS.down, KEYS.enter)
+      await showing('Save ~/.config/phada/config.yml?')
+      expect(frame()).toMatch(/language +\(not set\) → pt/)
+      await press(KEYS.enter)
+      await showing('Idioma: Português', 'Revisa com Claude Code')
+      expect(writes).toHaveLength(1)
+      expectFits(frame(), { columns: 80, rows: 24 })
+    })
+
+    it('goes back without writing when the language picked is the current one, or on Esc', async () => {
+      const { exits, press, showing, writes } = openEditable({ language: 'pt-BR' })
+      await showing('Idioma: Português', 'Revisa com')
+      await press('L')
+      await showing('❯ Português')
+      await press(KEYS.enter)
+      await showing('Idioma: Português', 'Revisa com')
+      await press('L')
+      await showing('❯ Português')
+      await press(KEYS.escape)
+      await showing('Idioma: Português', 'Revisa com')
+      expect(writes).toEqual([])
+      expect(exits).toEqual([])
+    })
+
+    it('offers no change while the config is invalid', async () => {
+      const { footer, frame, press, showing, writes } = openEditable({ invalid: true })
+      await showing('Could not load: Invalid config', 'logged in (chatgpt)')
+      expect(footer()).not.toContain('change the AI')
+      expect(footer()).not.toContain('language')
+      await press('c', 'L')
+      await showing('Could not load: Invalid config')
+      expect(frame()).not.toContain('Choose the AI that reviews')
+      expect(frame()).not.toContain('Português')
+      expect(writes).toEqual([])
+    })
   })
 })

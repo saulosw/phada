@@ -1,5 +1,5 @@
 import { Text } from 'ink'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { loginCommand } from '../../app/read-provider.js'
 import type { ProviderReport, ProviderSetup, ReportedProvider } from '../../app/read-provider.js'
@@ -15,6 +15,8 @@ import { useLoaded, usePolled } from '../data-hooks.js'
 import type { DataState } from '../data-hooks.js'
 import { failedText } from '../data-view.js'
 import { useHandOff } from '../hand-off.js'
+import { LanguagePicker, languageName } from '../language-picker.js'
+import { ProviderPicker } from '../provider-picker.js'
 import type { HandOffOutcome } from '../hand-off.js'
 import { PROVIDER_NAMES } from '../provider-names.js'
 import {
@@ -27,6 +29,7 @@ import {
 import type { LoginProvider } from '../provider-lines.js'
 import type { UiMessages } from '../i18n/messages.js'
 import { ScrollText } from '../scroll-list.js'
+import { SubView } from '../sub-view.js'
 import { textWidth } from '../tab-layout.js'
 import type { Theme } from '../theme.js'
 import { fit, oneLine, shortenHome, wrapText } from '../text-fit.js'
@@ -45,18 +48,62 @@ interface Draw {
   width: number
 }
 
+type Mode = 'view' | 'change' | 'language'
+
 export function ProviderScreen() {
-  const { readProviderSetup, readProviders, home } = useAppDeps()
+  const messages = useMessages()
+  const [mode, setMode] = useState<Mode>('view')
+  const [returned, setReturned] = useState(false)
+  const back = () => {
+    setReturned(true)
+    setMode('view')
+  }
+  if (mode === 'change') {
+    return (
+      <SubView onLeave={back}>
+        <ProviderPicker intro={messages.provider.changeIntro} onSaved={back} />
+      </SubView>
+    )
+  }
+  if (mode === 'language') {
+    return (
+      <SubView onLeave={back}>
+        <LanguagePicker onDone={back} />
+      </SubView>
+    )
+  }
+  return <ProviderView checkAgain={returned} onEdit={setMode} />
+}
+
+function ProviderView({
+  checkAgain,
+  onEdit,
+}: {
+  checkAgain: boolean
+  onEdit(mode: Exclude<Mode, 'view'>): void
+}) {
+  const { readProviderSetup, readProviders, readLanguage, home } = useAppDeps()
   const messages = useMessages()
   const theme = useTheme()
   const size = useScreenSize()
   const setup = usePolled(readProviderSetup)
+  const language = usePolled(readLanguage)
   const { state: checked, reload } = useLoaded('providers', readProviders)
   const handOff = useHandOff()
   const [login, setLogin] = useState<LoginAttempt>()
   const target = checked.status === 'ready' ? loginTarget(checked.value) : undefined
+  const editable = setup.status === 'ready'
+  const checkedAgain = useRef(false)
+  useEffect(() => {
+    if (!checkAgain || checkedAgain.current) return
+    checkedAgain.current = true
+    reload()
+  }, [checkAgain, reload])
   useScreenInput((input) => {
-    if (input !== 'l' || target === undefined || handOff.running) return
+    if (handOff.running) return
+    if (editable && input === 'c') return onEdit('change')
+    if (editable && input === 'L') return onEdit('language')
+    if (input !== 'l' || target === undefined) return
     setLogin(undefined)
     void handOff.run({ kind: 'command', ...loginCommand(target) }).then((outcome) => {
       if (outcome === undefined) return
@@ -67,6 +114,13 @@ export function ProviderScreen() {
   const draw: Draw = { messages, theme, home, width: size.columns }
   const lines = [
     ...choiceLines(setup, draw),
+    ...(language.status === 'ready'
+      ? [
+          <Text color={theme.colors.soft}>
+            {messages.provider.language(oneLine(languageName(language.value)))}
+          </Text>,
+        ]
+      : []),
     <Text> </Text>,
     ...providerLines(checked, draw),
     ...(login === undefined
@@ -75,6 +129,12 @@ export function ProviderScreen() {
     ...(setup.status === 'ready' ? [<Text> </Text>, ...mcpLines(setup.value, draw)] : []),
   ]
   useScreenKeys([
+    ...(editable
+      ? [
+          { keys: 'c', label: messages.provider.change },
+          { keys: 'L', label: messages.provider.languageKey },
+        ]
+      : []),
     { keys: 'r', label: messages.keys.refresh },
     ...(target === undefined
       ? []
