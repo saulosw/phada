@@ -16,8 +16,12 @@ change draws or prints, including the ones inside a message of the catalogs.
 ## The app only reads what is Phada's own
 
 The history, the index and the observed relations belong to the commands that write them (review,
-watch, index). The app opens them read-only and shows a missing, older or newer file as a fact on
-the screen; it never creates, migrates, rebuilds or prunes them.
+watch, index). A read never creates or changes Phada's files: the app opens them read-only and
+shows a missing, older or newer file as a fact on the screen, never creating, migrating,
+rebuilding or pruning one as a side effect of reading. The app writes only the user config (and
+the files of `repos/<owner>/<repo>/` it is asked to open), and, when the person asks for it, the
+index (through the same use case as `phada index`) and the `.phada/` of a repository (as
+`phada init`).
 
 ## Shared code lives in a module, never in a screen
 
