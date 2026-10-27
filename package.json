@@ -36,6 +36,7 @@
     "build": "npm run clean && tsc -p tsconfig.build.json && tsx scripts/copy-grammars.ts",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "prepack": "npm run build",
+    "prepare": "node -e \"require('node:fs').existsSync('.githooks') && require('node:child_process').spawnSync('git', ['config', 'core.hooksPath', '.githooks'])\"",
     "smoke": "tsx scripts/smoke.ts",
     "test": "vitest run",
     "dev": "tsx src/bin.ts",
