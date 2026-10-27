@@ -1,4 +1,5 @@
-import chalk from 'chalk'
+import { createRequire } from 'node:module'
+import { pathToFileURL } from 'node:url'
 import { Text } from 'ink'
 import { cleanup } from 'ink-testing-library'
 import { useState } from 'react'
@@ -10,6 +11,15 @@ import { SCREENS } from './screens.js'
 import type { ScreenDefinition } from './screens.js'
 import { FLAP_MS, Mascot, MASCOT_FRAMES } from './mascot.js'
 import type { TerminalSize } from './terminal-size.js'
+
+const inkChalk = await chalkOfInk()
+
+async function chalkOfInk(): Promise<{ level: number }> {
+  const ink = createRequire(import.meta.url).resolve('ink')
+  const chalk = createRequire(ink).resolve('chalk')
+  const loaded = (await import(pathToFileURL(chalk).href)) as { default: { level: number } }
+  return loaded.default
+}
 
 function openApp(
   options: {
@@ -403,12 +413,12 @@ describe('the mascot', () => {
 })
 
 describe('colors', () => {
-  const level = chalk.level
+  const level = inkChalk.level
   beforeAll(() => {
-    chalk.level = 3
+    inkChalk.level = 3
   })
   afterAll(() => {
-    chalk.level = level
+    inkChalk.level = level
   })
 
   it('paints the Violeta accent in truecolor', async () => {
