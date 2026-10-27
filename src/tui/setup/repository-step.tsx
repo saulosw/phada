@@ -29,14 +29,15 @@ export function RepositoryStep({ next }: SetupStepProps) {
   const [folder, setFolder] = useState<DataState<RepositoryFolder>>({ status: 'loading' })
   const [init, setInit] = useState<InitState>({ status: 'idle' })
   const started = useRef(false)
+  const mounted = useRef(true)
   useWorking(folder.status === 'loading' || init.status === 'creating')
   useEffect(() => {
-    let mounted = true
+    mounted.current = true
     void settle(readRepositoryFolder).then((state) => {
-      if (mounted) setFolder(state)
+      if (mounted.current) setFolder(state)
     })
     return () => {
-      mounted = false
+      mounted.current = false
     }
   }, [readRepositoryFolder])
 
@@ -49,7 +50,9 @@ export function RepositoryStep({ next }: SetupStepProps) {
       if (started.current) return
       started.current = true
       setInit({ status: 'creating' })
-      void settle(initRepository).then(setInit)
+      void settle(initRepository).then((state) => {
+        if (mounted.current) setInit(state)
+      })
     } else if (goesOn) {
       next(init.status === 'ready' ? { init: init.value } : {})
     }
