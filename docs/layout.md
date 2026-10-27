@@ -120,7 +120,7 @@ src/
                          #   env, URL or headers; readProviders(): the choice and every provider
                          #   checked with its nextStep() (install, login, ollama serve, ollama pull);
                          #   loginCommand(): the login of Claude Code or Codex as command and
-                         #   arguments
+                         #   arguments; SUGGESTED_OLLAMA_MODEL (name and size)
     edit-user-config.ts  #   planUserConfig(): the user's own config.yml read (injected) →
                          #   planUserConfigEdit(); applyUserConfigPlan(): written atomically only
                          #   if the file did not change since the plan; failures as data
@@ -173,7 +173,8 @@ src/
                          #   with one token reader that asks gh again on each load (runGh and
                          #   fetchUser injectable); handOff and the signals through
                          #   terminalHandOff(); planConfig and applyConfig (planUserConfig() with
-                         #   USER_CONFIG_TEMPLATE, applyUserConfigPlan() on the local files)
+                         #   USER_CONFIG_TEMPLATE, applyUserConfigPlan() on the local files);
+                         #   pullModel (pullOllamaModel() at OLLAMA_HOST, ollamaFetch injectable)
     terminal-hand-off.ts #   terminalHandOff(): handOff (a command, or a file in $VISUAL › $EDITOR
                          #   › vi split on spaces, run in the app's folder with its environment;
                          #   runInteractive injectable) and the app's signals: SIGINT ignored
@@ -579,7 +580,8 @@ src/
     codex.ts             #   CodexCliProvider (+ codex-model.ts: model resolution; codex-mcp.ts:
                          #   named MCP servers as -c settings; mcp-env-launcher.ts: runs a server
                          #   with the env of a private file)
-    ollama.ts            #   OllamaProvider over HTTP (+ ollama-host.ts, node-http-fetch.ts)
+    ollama.ts            #   OllamaProvider over HTTP (+ ollama-host.ts; node-http-fetch.ts: fetch
+                         #   over node:http, the body streamed as it arrives)
     cli-status.ts        #   runStatusCommand(): a status command of an AI CLI (5 s, env without
                          #   GitHub tokens) → its result, missing or a problem; installOf(), loginOf()
     claude-status.ts     #   checkClaudeStatus(): `claude --version` + `claude auth status --json`
@@ -588,6 +590,9 @@ src/
                          #   (chatgpt or api-key, never the key)
     ollama-status.ts     #   checkOllamaStatus(): /api/version + /api/tags at OLLAMA_HOST → running
                          #   (version, models), stopped or a problem
+    ollama-pull.ts       #   pullOllamaModel(): POST /api/pull at OLLAMA_HOST, its NDJSON stream →
+                         #   progress (status, completed, total) and pulled, cancelled (the
+                         #   signal), stopped or failed (Ollama's error line, HTTP status)
   publish/               # pure: what to publish, data in, decision out
     markers.ts           #   the review (with the diff fingerprint), finding and resolved markers,
                          #   read only at the end of a body; findingTitle()

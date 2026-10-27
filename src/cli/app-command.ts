@@ -4,7 +4,7 @@ import { readReviewDetail, readReviews } from '../app/read-history.js'
 import { readLearnings } from '../app/read-learnings.js'
 import type { ObservedRead } from '../app/read-learnings.js'
 import { providerSetup, readProviders } from '../app/read-provider.js'
-import type { ProviderConfigInput } from '../app/read-provider.js'
+import type { ModelPullOptions, ProviderConfigInput } from '../app/read-provider.js'
 import { readQueue } from '../app/read-queue.js'
 import { readAutomation } from '../app/read-automation.js'
 import type { AutomationReaders } from '../app/read-automation.js'
@@ -24,6 +24,7 @@ import { resolveWatchSettings } from '../config/watch-settings.js'
 import type { WatchSettings } from '../config/watch-settings.js'
 import { checkClaudeStatus } from '../providers/claude-status.js'
 import { checkCodexStatus } from '../providers/codex-status.js'
+import { pullOllamaModel } from '../providers/ollama-pull.js'
 import { checkOllamaStatus } from '../providers/ollama-status.js'
 import type { runInteractive } from '../process/run-interactive.js'
 import { openExistingHistoryStore, openHistoryStore } from '../store/history-store.js'
@@ -72,6 +73,7 @@ export interface AppCommandDeps extends Omit<RulesReaderDeps, 'ghToken'> {
   runGh?: RunGh
   fetchUser?: (options: FetchUserOptions) => Promise<GitHubUser>
   runInteractive?: typeof runInteractive
+  ollamaFetch?: typeof globalThis.fetch
 }
 
 const EXIT_CODES: Readonly<Record<Exclude<AppResult['kind'], 'failed'>, number>> = {
@@ -194,6 +196,12 @@ async function appDeps(
       }),
     ...rulesReaders({ ...deps, ghToken }),
     handOff: terminal.handOff,
+    pullModel: (model: string, options: ModelPullOptions) =>
+      pullOllamaModel(model, {
+        env: deps.env,
+        ...options,
+        ...(deps.ollamaFetch === undefined ? {} : { fetch: deps.ollamaFetch }),
+      }),
     planConfig: (changes: readonly UserConfigChange[]) =>
       planUserConfig(
         { env: deps.env, home: deps.home, template: USER_CONFIG_TEMPLATE, changes },

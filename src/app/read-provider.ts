@@ -1,7 +1,7 @@
 import { userMcp } from '../config/mcp-servers.js'
 import { resolveProvider } from '../config/merge-config.js'
 import type { ConfigLayer } from '../config/types.js'
-import type { ProviderName } from '../providers/types.js'
+import type { OllamaPullProgress, OllamaPullResult, ProviderName } from '../providers/types.js'
 import { checkProviders } from './check-providers.js'
 import type { CheckedProvider, ProviderCheckers } from './check-providers.js'
 
@@ -38,6 +38,15 @@ export interface NextStep {
   kind: 'install' | 'login' | 'serve' | 'pull'
   command: string
 }
+
+export type { OllamaPullProgress, OllamaPullResult }
+
+export interface ModelPullOptions {
+  signal: AbortSignal
+  onProgress(progress: OllamaPullProgress): void
+}
+
+export const SUGGESTED_OLLAMA_MODEL = { name: 'qwen2.5-coder:7b', bytes: 4_683_087_332 }
 
 export interface ProviderConfigInput {
   layers: readonly ConfigLayer[]

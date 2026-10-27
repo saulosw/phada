@@ -38,6 +38,7 @@ function deps(
     github?: FakeGitHub
     during?: (deps: AppDeps, host: AppHost) => Promise<void>
     runInteractive?: AppCommandDeps['runInteractive']
+    ollamaFetch?: AppCommandDeps['ollamaFetch']
     ghToken?: string
     dataHome?: string
   } = {},
@@ -107,6 +108,7 @@ function deps(
     },
     ...(options.github ?? fakeGitHub()).readers,
     ...(options.runInteractive === undefined ? {} : { runInteractive: options.runInteractive }),
+    ...(options.ollamaFetch === undefined ? {} : { ollamaFetch: options.ollamaFetch }),
   }
   app.env.PHADA_DATA_HOME = options.dataHome ?? '/data'
   const send = (signal: StopSignal) => {
@@ -608,6 +610,29 @@ describe('the provider and learnings readers', () => {
         ['ollama', false],
       ],
     ])
+  })
+
+  it('pulls an Ollama model from the server OLLAMA_HOST names, with its progress', async () => {
+    const urls: string[] = []
+    const seen: unknown[] = []
+    const { app } = deps({
+      env: { OLLAMA_HOST: 'gpu-box:9000' },
+      ollamaFetch: async (input) => {
+        urls.push(String(input))
+        return new Response('{"status":"pulling manifest"}\n{"status":"success"}\n')
+      },
+      during: async (appDeps) => {
+        seen.push(
+          await appDeps.pullModel('qwen2.5-coder:7b', {
+            signal: new AbortController().signal,
+            onProgress: ({ status }) => seen.push(status),
+          }),
+        )
+      },
+    })
+    await runApp(app)
+    expect(urls).toEqual(['http://gpu-box:9000/api/pull'])
+    expect(seen).toEqual(['pulling manifest', 'success', { kind: 'pulled' }])
   })
 
   it('read the observed files of the cache folder, each by its own path', async () => {

@@ -5,7 +5,12 @@ import type { AppliedUserConfig, UserConfigPlanResult } from '../app/edit-user-c
 import type { HistoryFilter, ListedRun, ReviewDetail } from '../app/read-history.js'
 import type { GitHubAccess } from '../app/read-home.js'
 import type { Learnings } from '../app/read-learnings.js'
-import type { ProviderReport, ProviderSetup } from '../app/read-provider.js'
+import type {
+  ModelPullOptions,
+  OllamaPullResult,
+  ProviderReport,
+  ProviderSetup,
+} from '../app/read-provider.js'
 import type { QueueView } from '../app/read-queue.js'
 import type { AutomationView } from '../app/read-automation.js'
 import type { BranchRules, LocalRules, PullRequestRules } from '../app/read-rules.js'
@@ -51,6 +56,7 @@ export interface AppDeps {
   readRepositoryRules(repo: string): Promise<BranchRules>
   readPullRequestRules(repo: string, number: number): Promise<PullRequestRules>
   handOff(target: HandOffTarget): Promise<HandOffResult>
+  pullModel(model: string, options: ModelPullOptions): Promise<OllamaPullResult>
   planConfig(changes: readonly UserConfigChange[]): Promise<UserConfigPlanResult>
   applyConfig(plan: UserConfigPlan): Promise<AppliedUserConfig>
 }
