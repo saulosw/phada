@@ -22,6 +22,7 @@ import { uiMessagesFor } from './i18n/messages.js'
 import { Palette } from './palette.js'
 import type { PaletteEntry } from './palette.js'
 import { SCREENS } from './screens.js'
+import { Setup } from './setup/setup.js'
 import type { ScreenDefinition } from './screens.js'
 import { TabBar } from './tab-bar.js'
 import { isTooSmall, useTerminalSize } from './terminal-size.js'
@@ -44,6 +45,7 @@ export interface AppProps {
 type Overlay = 'none' | 'help' | 'palette'
 
 const SHELL_ROWS = 3
+const SETUP_ID = 'setup'
 
 export function App({ deps, size, onExit, screens = SCREENS }: AppProps) {
   const theme = useMemo(() => resolveTheme(colorLevel(deps.env)), [deps.env])
@@ -101,10 +103,12 @@ function Shell({
   onExit(result: AppResult): void
 }) {
   const messages = useMessages()
+  const { start } = useAppDeps()
   const english = useMemo(() => uiMessagesFor('en'), [])
   const size = useTerminalSize(source)
   const tooSmall = isTooSmall(size)
   const [active, setActive] = useState(0)
+  const [inSetup, setInSetup] = useState(start === 'setup')
   const [overlay, setOverlay] = useState<Overlay>('none')
   const [screenKeys, setScreenKeys] = useState<readonly KeyHint[]>([])
   const [typing, setTypingState] = useState(false)
@@ -118,8 +122,20 @@ function Shell({
   const quit = () => onExit({ kind: 'quit' })
   const show = (index: number) => {
     back.current = undefined
+    setInSetup(false)
     setActive((index + screens.length) % screens.length)
   }
+  const openSetup = () => {
+    back.current = undefined
+    setInSetup(true)
+  }
+  const leaveSetup = () =>
+    show(
+      Math.max(
+        screens.findIndex(({ id }) => id === 'home'),
+        0,
+      ),
+    )
 
   const controls = useMemo<ScreenControls>(
     () => ({
@@ -152,6 +168,7 @@ function Shell({
     if (input === 'q') return quit()
     if (input === '?') return setOverlay('help')
     if (input === '/') return setOverlay('palette')
+    if (inSetup) return
     if (/^[1-9]$/.test(input)) {
       const index = Number(input) - 1
       if (index < screens.length) show(index)
@@ -164,16 +181,24 @@ function Shell({
   if (tooSmall) return <TooSmall size={size} />
 
   const current = screens[active]
-  const global = globalKeys(messages, screens.length)
-  const paletteEntries: PaletteEntry[] = screens.map((screen, index) => {
-    const title = titles[index] ?? screen.title(messages)
-    const englishTitle = screen.title(english)
-    return {
-      index,
-      label: title.full,
-      names: [title.full, title.short, englishTitle.full, englishTitle.short],
-    }
-  })
+  const global = globalKeys(messages, screens.length, inSetup)
+  const setupTitle = messages.setup.title
+  const paletteEntries: PaletteEntry[] = [
+    ...screens.map((screen, index) => {
+      const title = titles[index] ?? screen.title(messages)
+      const englishTitle = screen.title(english)
+      return {
+        id: screen.id,
+        label: title.full,
+        names: [title.full, title.short, englishTitle.full, englishTitle.short],
+      }
+    }),
+    {
+      id: SETUP_ID,
+      label: setupTitle.full,
+      names: [setupTitle.full, setupTitle.short, english.setup.title.full],
+    },
+  ]
   const footerKeys =
     overlay === 'palette'
       ? [
@@ -185,28 +210,41 @@ function Shell({
         ? [{ keys: 'Esc', label: messages.keys.close }]
         : typing
           ? screenKeys
-          : [...screenKeys, ...footerGlobals(messages)]
+          : [...screenKeys, ...footerGlobals(messages, inSetup)]
 
   return (
     <Box flexDirection="column" width={size.columns} height={size.rows}>
-      <TabBar titles={titles} active={active} width={size.columns} />
+      {inSetup ? (
+        <TabBar titles={[setupTitle]} active={0} width={size.columns} />
+      ) : (
+        <TabBar titles={titles} active={active} width={size.columns} />
+      )}
       <Box flexDirection="column" flexGrow={1} marginTop={1} overflow="hidden">
         {overlay === 'help' && (
-          <Help global={global} screen={screenKeys} screenName={titles[active]?.full ?? ''} />
+          <Help
+            global={global}
+            screen={screenKeys}
+            screenName={inSetup ? setupTitle.full : (titles[active]?.full ?? '')}
+          />
         )}
         {overlay === 'palette' && (
           <Palette
             entries={paletteEntries}
             onClose={() => setOverlay('none')}
-            onPick={(index) => {
+            onPick={(id) => {
               setOverlay('none')
-              show(index)
+              if (id === SETUP_ID) openSetup()
+              else show(screens.findIndex((screen) => screen.id === id))
             }}
           />
         )}
         <Box flexDirection="column" display={overlay === 'none' ? 'flex' : 'none'}>
           <ScreenContext.Provider value={controls}>
-            {current !== undefined && <current.Screen key={current.id} />}
+            {inSetup ? (
+              <Setup onClose={leaveSetup} />
+            ) : (
+              current !== undefined && <current.Screen key={current.id} />
+            )}
           </ScreenContext.Provider>
         </Box>
       </Box>
@@ -219,19 +257,23 @@ function Shell({
   )
 }
 
-function footerGlobals(messages: UiMessages): KeyHint[] {
+function footerGlobals(messages: UiMessages, inSetup: boolean): KeyHint[] {
   return [
-    { keys: '←/→', label: messages.keys.screens },
+    ...(inSetup ? [] : [{ keys: '←/→', label: messages.keys.screens }]),
     { keys: '/', label: messages.keys.palette },
     { keys: '?', label: messages.keys.help },
     { keys: 'q', label: messages.keys.quit },
   ]
 }
 
-function globalKeys(messages: UiMessages, screens: number): KeyHint[] {
+function globalKeys(messages: UiMessages, screens: number, inSetup: boolean): KeyHint[] {
   return [
-    { keys: '←/→ Tab', label: messages.keys.cycle },
-    { keys: `1–${Math.min(screens, 9)}`, label: messages.keys.jump },
+    ...(inSetup
+      ? []
+      : [
+          { keys: '←/→ Tab', label: messages.keys.cycle },
+          { keys: `1–${Math.min(screens, 9)}`, label: messages.keys.jump },
+        ]),
     { keys: '/', label: messages.keys.palette },
     { keys: '?', label: messages.keys.help },
     { keys: 'Esc', label: messages.keys.back },

@@ -23,8 +23,11 @@ export type HandOffTarget =
 export type HandOffResult =
   { kind: 'exited'; exitCode: number } | { kind: 'not-found'; command: string }
 
+export type AppStart = 'home' | 'setup'
+
 export interface AppDeps {
   version: string
+  start: AppStart
   cwd: string
   home: string
   env: ColorEnv

@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { useMessages, useTheme } from './app-context.js'
 
 export interface PaletteEntry {
-  index: number
+  id: string
   label: string
   names: readonly string[]
 }
@@ -23,7 +23,7 @@ export function Palette({
   onClose,
 }: {
   entries: readonly PaletteEntry[]
-  onPick(index: number): void
+  onPick(id: string): void
   onClose(): void
 }) {
   const messages = useMessages()
@@ -37,7 +37,7 @@ export function Palette({
     if (key.escape) return onClose()
     if (key.return) {
       const pick = matches[current]
-      if (pick !== undefined) onPick(pick.index)
+      if (pick !== undefined) onPick(pick.id)
       return
     }
     if (key.upArrow) return setSelected(Math.max(current - 1, 0))
@@ -65,7 +65,7 @@ export function Palette({
         <Text color={colors.dim}>{messages.palette.empty}</Text>
       ) : (
         matches.map((entry, position) => (
-          <Text key={entry.index} bold={position === current}>
+          <Text key={entry.id} bold={position === current}>
             {position === current ? <Text color={colors.accent}>❯ </Text> : '  '}
             {entry.label}
           </Text>

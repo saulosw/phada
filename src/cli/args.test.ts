@@ -10,6 +10,7 @@ import {
   PROMPT_USAGE,
   REVIEW_USAGE,
   RULES_USAGE,
+  SETUP_USAGE,
   USAGE,
   WATCH_USAGE,
 } from './args.js'
@@ -54,7 +55,7 @@ describe('parseCliArgs', () => {
     ],
     [
       ['reveiw', 'acme/shop#12'],
-      'Unknown command "reveiw". Available: review, init, index, rules, prompt, watch, enqueue, mcp, history.',
+      'Unknown command "reveiw". Available: setup, review, init, index, rules, prompt, watch, enqueue, mcp, history.',
     ],
     [['--verify'], "Unknown option '--verify'."],
     [
@@ -539,6 +540,27 @@ describe('parseCliArgs history', () => {
     })
     expect(HISTORY_USAGE.startsWith('Usage: phada history [<owner/repo[#N]>] [options]')).toBe(true)
     expect(USAGE).toContain('history                Show past reviews and what happened to')
+  })
+})
+
+describe('setup', () => {
+  it.each([
+    [['setup'], false],
+    [['setup', '--debug'], true],
+  ])('opens the app on the setup for %j', (argv, debug) => {
+    expect(parseCliArgs(argv)).toEqual({ kind: 'setup', debug })
+  })
+
+  it('prints its help', () => {
+    expect(parseCliArgs(['setup', '--help'])).toEqual({ kind: 'help', text: SETUP_USAGE })
+    expect(SETUP_USAGE.startsWith('Usage: phada setup')).toBe(true)
+    expect(USAGE).toContain('setup                  Set up Phada step by step in the app')
+  })
+
+  it('refuses an argument', () => {
+    expect(() => parseCliArgs(['setup', 'acme/shop'])).toThrow(
+      new UsageError('phada setup takes no argument.'),
+    )
   })
 })
 

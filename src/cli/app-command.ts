@@ -30,7 +30,7 @@ import { readObservedEdges } from '../store/observed-store.js'
 import { splitRepoName } from '../github/pull-request-ref.js'
 import { fetchAuthenticatedUser } from '../github/user.js'
 import type { FetchUserOptions, GitHubUser } from '../github/user.js'
-import type { AppDeps, AppResult, openApp, Scheduler } from '../tui/open-app.js'
+import type { AppDeps, AppResult, AppStart, openApp, Scheduler } from '../tui/open-app.js'
 import type { ColorEnv } from '../tui/theme.js'
 import { appHistory } from './app-history.js'
 import { rulesReaders } from './app-rules.js'
@@ -79,6 +79,8 @@ const EXIT_CODES: Readonly<Record<Exclude<AppResult['kind'], 'failed'>, number>>
 
 const MISSING_COMMAND = 'Missing the command, e.g. phada review owner/repo#123.'
 
+const SETUP_NEEDS_TERMINAL = 'phada setup needs an interactive terminal.'
+
 const COLOR_VARIABLES = ['NO_COLOR', 'FORCE_COLOR', 'TERM', 'COLORTERM'] as const
 
 const INTERVALS: Scheduler = {
@@ -96,11 +98,18 @@ export function assertAppTerminal(
   throw new UsageError(command.debug ? "Unknown option '--debug'." : MISSING_COMMAND)
 }
 
-export async function runApp(deps: AppCommandDeps): Promise<number> {
+export async function runApp(
+  deps: AppCommandDeps,
+  options: { setup: boolean } = { setup: false },
+): Promise<number> {
   const { stdin, stdout } = deps
   if (!isTerminalInput(stdin) || !isTerminalOutput(stdout)) {
-    throw new UsageError(MISSING_COMMAND)
+    throw new UsageError(options.setup ? SETUP_NEEDS_TERMINAL : MISSING_COMMAND)
   }
+  const start: AppStart =
+    options.setup || !(await deps.files.exists(userConfigFile(deps.env, deps.home)))
+      ? 'setup'
+      : 'home'
   const { openApp } = await (deps.loadApp ?? (() => import('../tui/open-app.js')))()
   const files = dataFiles(deps.env, deps.home)
   const history = appHistory(files.history, (path) =>
@@ -111,7 +120,7 @@ export async function runApp(deps: AppCommandDeps): Promise<number> {
   )
   const terminal = terminalHandOff(deps)
   try {
-    const result = await openApp(await appDeps(deps, history, files.lock, terminal), {
+    const result = await openApp(await appDeps(deps, history, files.lock, terminal, start), {
       stdin,
       stdout,
       onSignal: terminal.onSignal,
@@ -128,6 +137,7 @@ async function appDeps(
   history: AppHistory,
   lock: string,
   terminal: TerminalHandOff,
+  start: AppStart,
 ): Promise<AppDeps> {
   let settings: WatchSettings | undefined
   const watchSettings = () =>
@@ -139,6 +149,7 @@ async function appDeps(
   const ghToken: GhTokenReader = () => ghTokenReader(deps.env, deps.runGh)()
   const base = {
     version: deps.version,
+    start,
     cwd: deps.cwd,
     home: deps.home,
     env: colorEnv(deps.env),

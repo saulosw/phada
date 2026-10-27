@@ -11,6 +11,9 @@ import { portuguese } from './pt.js'
 export type ScreenId =
   'home' | 'repositories' | 'rules' | 'reviews' | 'queue' | 'automation' | 'provider' | 'learnings'
 
+export type SetupStepId =
+  'github' | 'ai' | 'language' | 'repositories' | 'graph' | 'repository' | 'summary'
+
 export interface ScreenTitle {
   full: string
   short: string
@@ -33,7 +36,7 @@ export interface UiMessages {
     refresh: string
   }
   help: { title: string; global: string }
-  palette: { title: string; empty: string }
+  palette: { title: string; empty: string; setup: string }
   tooSmall(columns: number, rows: number): string
   tooSmallHint: string
   home: HomeMessages
@@ -57,6 +60,7 @@ export interface UiMessages {
   provider: ProviderMessages
   learnings: LearningsMessages
   rules: RulesMessages
+  setup: SetupMessages
 }
 
 export interface HomeMessages {
@@ -102,6 +106,18 @@ export interface HomeMessages {
     review: string
   }
   reviews: { title: string; none: string }
+}
+
+export interface SetupMessages {
+  title: ScreenTitle
+  step(number: number, total: number): string
+  steps: Readonly<Record<SetupStepId, string>>
+  skip: string
+  leave: string
+  stay: string
+  leaveQuestion: string
+  leaveHint: string
+  pending: string
 }
 
 type RequestSource = QueueJob['requests'][number]['source']

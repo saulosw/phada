@@ -164,6 +164,7 @@ export function fakeSize(initial: TerminalSize) {
 export function fakeAppDeps(scheduler: Scheduler, overrides: Partial<AppDeps> = {}): AppDeps {
   return {
     version: '1.2.3',
+    start: 'home',
     cwd: '/home/ana/code/shop',
     home: '/home/ana',
     env: { TERM: 'xterm-256color' },

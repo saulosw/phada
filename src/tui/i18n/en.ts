@@ -26,7 +26,7 @@ export const english: UiMessages = {
     refresh: 'refresh',
   },
   help: { title: 'Keys', global: 'Everywhere' },
-  palette: { title: 'Go to', empty: 'No screen matches.' },
+  palette: { title: 'Go to', empty: 'No screen matches.', setup: 'Setup' },
   tooSmall: (columns, rows) =>
     `The terminal is ${columns}×${rows}. Phada needs at least 80×24: make the window bigger.`,
   tooSmallHint: 'q quit',
@@ -466,6 +466,25 @@ export const english: UiMessages = {
     nativeMessage: (message) => `Message: ${message}`,
     dataBlocks: 'Data blocks',
     instructions: 'Instructions',
+  },
+  setup: {
+    title: { full: 'Setup', short: 'Setup' },
+    step: (number, total) => `Step ${number} of ${total}`,
+    steps: {
+      github: 'GitHub',
+      ai: 'AI',
+      language: 'Language',
+      repositories: 'Repositories',
+      graph: 'Graph',
+      repository: 'This repository',
+      summary: 'Summary',
+    },
+    skip: 'skip',
+    leave: 'leave',
+    stay: 'stay',
+    leaveQuestion: 'Leave the setup?',
+    leaveHint: 'What you confirmed is already written. phada setup opens the setup again.',
+    pending: 'Nothing to do in this step: s skips it.',
   },
 }
 

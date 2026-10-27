@@ -130,6 +130,35 @@ describe('runApp', () => {
     },
   )
 
+  it.each([
+    [false, true],
+    [true, false],
+  ])('refuses the setup when stdin is a TTY: %s, stdout: %s', async (stdin, stdout) => {
+    const { app, opened } = deps({ stdin, stdout })
+    await expect(runApp(app, { setup: true })).rejects.toEqual(
+      new UsageError('phada setup needs an interactive terminal.'),
+    )
+    expect(opened).toEqual([])
+  })
+
+  it('opens on the setup while the user config file does not exist', async () => {
+    const { app, opened } = deps()
+    await runApp(app)
+    expect(opened[0]?.deps.start).toBe('setup')
+  })
+
+  it('opens on the Home once the user config file exists, even empty', async () => {
+    const { app, opened } = deps({ config: '' })
+    await runApp(app)
+    expect(opened[0]?.deps.start).toBe('home')
+  })
+
+  it('opens on the setup when asked, with a user config', async () => {
+    const { app, opened } = deps({ config: 'language: pt\n' })
+    await runApp(app, { setup: true })
+    expect(opened[0]?.deps.start).toBe('setup')
+  })
+
   it('opens the app in a terminal with the version, the folder and the signals', async () => {
     const { app, opened } = deps()
     expect(await runApp(app)).toBe(0)

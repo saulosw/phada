@@ -25,6 +25,7 @@ export type CliCommand =
   | { kind: 'help'; text: string }
   | { kind: 'version' }
   | { kind: 'app'; debug: boolean }
+  | { kind: 'setup'; debug: boolean }
   | { kind: 'init'; global: boolean; repo?: RepositoryName }
   | { kind: 'index'; repo: RepositoryName; ref?: string; format: IndexFormat; debug: boolean }
   | { kind: 'rules'; target: RulesTarget; format: IndexFormat; debug: boolean }
@@ -93,6 +94,7 @@ command in a terminal to open the app: what Phada has set up, running and
 reviewed.
 
 Commands:
+  setup                  Set up Phada step by step in the app
   review <pull request>  Review a pull request and publish the review on it
   init                   Create config files for Phada
   index <owner/repo>     Build a map of a repository's code on this machine
@@ -109,6 +111,21 @@ Options:
 
 Run "phada review --help", "phada rules --help" and so on for the options of each
 command.`
+
+export const SETUP_USAGE = `Usage: phada setup
+
+Opens the app on the setup, one step at a time: the GitHub token, the AI
+provider, the language, the repositories to watch, their graph and the .phada/
+folder of this repository. Every step can be skipped, and nothing is written
+before you confirm it. Phada opens it by itself while your config file does not
+exist. Needs an interactive terminal.
+
+Options:
+  --debug              Show error details
+  -h, --help           Show this help
+
+Environment:
+  PHADA_CONFIG_HOME    Folder of your own config (default: ~/.config/phada)`
 
 export const ENQUEUE_USAGE = `Usage: phada enqueue <owner/repo#N | pull request URL> [options]
 
@@ -348,6 +365,7 @@ const REPOSITORY_NAME = /^([\w.-]+)\/([\w.-]+)$/
 
 export function parseCliArgs(argv: readonly string[]): CliCommand {
   const [command, ...rest] = argv
+  if (command === 'setup') return parseSetupArgs(rest)
   if (command === 'review') return parseReviewArgs(rest)
   if (command === 'init') return parseInitArgs(rest)
   if (command === 'index') return parseIndexArgs(rest)
@@ -376,7 +394,7 @@ function unknownCommand(command: string): UsageError {
     return new UsageError(`Unknown command "${command}". Did you mean "phada review ${command}"?`)
   }
   return new UsageError(
-    `Unknown command "${command}". Available: review, init, index, rules, prompt, watch, enqueue, mcp, history.`,
+    `Unknown command "${command}". Available: setup, review, init, index, rules, prompt, watch, enqueue, mcp, history.`,
   )
 }
 
@@ -608,6 +626,16 @@ function parseWatchArgs(argv: readonly string[]): CliCommand {
     format,
     debug: values.debug,
   }
+}
+
+function parseSetupArgs(argv: readonly string[]): CliCommand {
+  const { values, positionals } = parseOptions(argv, {
+    debug: { type: 'boolean', default: false },
+    help: { type: 'boolean', short: 'h', default: false },
+  })
+  if (values.help) return { kind: 'help', text: SETUP_USAGE }
+  if (positionals.length > 0) throw new UsageError('phada setup takes no argument.')
+  return { kind: 'setup', debug: values.debug }
 }
 
 function parseMcpArgs(argv: readonly string[]): CliCommand {

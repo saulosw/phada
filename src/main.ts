@@ -113,6 +113,10 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
       debug = command.debug
       return await runApp(deps)
     }
+    if (command.kind === 'setup') {
+      debug = command.debug
+      return await runApp(deps, { setup: true })
+    }
     debug = command.debug
     if (command.kind === 'index') {
       await runIndex(command, deps)

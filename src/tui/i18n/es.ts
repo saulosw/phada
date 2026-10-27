@@ -26,7 +26,7 @@ export const spanish: UiMessages = {
     refresh: 'actualizar',
   },
   help: { title: 'Teclas', global: 'En cualquier pantalla' },
-  palette: { title: 'Ir a', empty: 'Ninguna pantalla con ese nombre.' },
+  palette: { title: 'Ir a', empty: 'Ninguna pantalla con ese nombre.', setup: 'Configuración' },
   tooSmall: (columns, rows) =>
     `La terminal mide ${columns}×${rows}. Phada necesita al menos 80×24: agranda la ventana.`,
   tooSmallHint: 'q salir',
@@ -474,6 +474,25 @@ export const spanish: UiMessages = {
     nativeMessage: (message) => `Mensaje: ${message}`,
     dataBlocks: 'Bloques de datos',
     instructions: 'Instrucciones',
+  },
+  setup: {
+    title: { full: 'Configuración', short: 'Config.' },
+    step: (number, total) => `Paso ${number} de ${total}`,
+    steps: {
+      github: 'GitHub',
+      ai: 'IA',
+      language: 'Idioma',
+      repositories: 'Repositorios',
+      graph: 'Grafo',
+      repository: 'Este repositorio',
+      summary: 'Resumen',
+    },
+    skip: 'omitir',
+    leave: 'salir',
+    stay: 'quedarse',
+    leaveQuestion: '¿Salir de la configuración?',
+    leaveHint: 'Lo que confirmaste ya está guardado. phada setup la abre de nuevo.',
+    pending: 'Nada que hacer en este paso: s lo omite.',
   },
 }
 
