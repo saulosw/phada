@@ -236,7 +236,7 @@ describe('RepositoriesScreen', () => {
     const frame = view.frame()
     expect(frame).toContain('No index yet. Build it with phada index acme/api')
     expect(frame).toContain(
-      'Invalid config: Invalid config /cfg/config.yml: verify: expected boolean',
+      'Could not load: Invalid config /cfg/config.yml: verify: expected boolean',
     )
     expect(frame).toContain(`Not watched. Add it to watch.repos in ~/.config/phada/config.yml.`)
   })
@@ -272,6 +272,8 @@ describe('RepositoriesScreen', () => {
     const frame = view.frame()
     expect(flatFrame(frame)).toContain(CONFIG_ERROR_REASON)
     expect(frame).not.toContain('Invalid config: Invalid config')
+    expect(frame).not.toContain('watch.repos')
+    expect(frame).not.toContain('No repository yet')
     expectFits(frame, { columns: 80, rows: 24 })
   })
 

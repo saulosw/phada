@@ -3,14 +3,14 @@ import type { ReactNode } from 'react'
 import type { AutomationView } from '../../app/read-automation.js'
 import { useAppDeps, useMessages, useScreenKeys, useScreenSize, useTheme } from '../app-context.js'
 import { usePolled } from '../data-hooks.js'
-import { DataView } from '../data-view.js'
+import { DataView, failedLines } from '../data-view.js'
 import type { UiMessages } from '../i18n/messages.js'
 import { labeledLines } from '../labeled-lines.js'
 import { ScrollText } from '../scroll-list.js'
 import { indented, settingLines } from '../setting-lines.js'
 import { textWidth } from '../tab-layout.js'
 import type { Theme } from '../theme.js'
-import { errorLines, fit, oneLine, shortenHome, wrapText } from '../text-fit.js'
+import { fit, oneLine, shortenHome, wrapText } from '../text-fit.js'
 import { durationText } from '../units.js'
 
 const GAP = '  '
@@ -47,7 +47,7 @@ function AutomationLines({ view }: { view: AutomationView }) {
   const head: ReactNode[] = [
     ...(view.configError === null
       ? []
-      : errorLines(messages.settings.invalid(view.configError), size.columns).map((line) => (
+      : failedLines(messages, view.configError, size.columns).map((line) => (
           <Text color={colors.error}>{line}</Text>
         ))),
     ...(view.configured

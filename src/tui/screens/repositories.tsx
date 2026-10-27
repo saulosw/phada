@@ -261,7 +261,7 @@ function RepositoryListView({
         </Text>
       ))}
       {rows.length === 0 ? (
-        <EmptyRepositories list={list} />
+        list.configError === null && <EmptyRepositories list={list} />
       ) : (
         <>
           <Text color={colors.dim} wrap="truncate-end">
@@ -371,7 +371,7 @@ function RepositoryDetailLines({ detail }: { detail: RepositoryDetail }) {
     ...section(
       d.config,
       detail.config.status === 'invalid'
-        ? note(messages.settings.invalid(detail.config.error), colors.error)
+        ? note(failedText(messages, detail.config.error), colors.error)
         : [
             ...settingLines(detail.config.settings, messages, theme, size.columns),
             ...detail.config.warnings.flatMap((warning) => note(warning, colors.warn)),

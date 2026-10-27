@@ -178,7 +178,7 @@ describe('AutomationScreen', () => {
     await view.showing('Invalid config')
 
     expect(flat(view.frame())).toContain(
-      'Invalid config: Invalid config /cfg/config.yml: hooks.timeout: must be 10m at most',
+      'Could not load: Invalid config /cfg/config.yml: hooks.timeout: must be 10m at most',
     )
   })
 
