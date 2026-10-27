@@ -1302,7 +1302,7 @@ describe('run publishing', () => {
     expect(await run(REVIEW, h.deps)).toBe(0)
     expect(h.posts[0]?.comments).toEqual([])
     expect(h.posts[0]?.body).toContain(
-      'No new problems in a1b2c3d. 1 Phada comment from previous reviews is still open',
+      'No new problems in a1b2c3d. 1 comment from previous reviews is still open',
     )
     expect(h.stderr()).toContain(
       `Published the review: ${REVIEW_URL} (1 finding still open from previous reviews)`,

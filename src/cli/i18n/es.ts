@@ -94,8 +94,8 @@ export const spanish: Messages = {
     onlyStillOpenTitle: 'sin hallazgos nuevos',
     onlyStillOpen: (value, sha) =>
       value === 1
-        ? `No hay problemas nuevos en ${sha}. 1 comentario de Phada de revisiones anteriores sigue abierto: resuélvelo para recibir una revisión completa de este commit.`
-        : `No hay problemas nuevos en ${sha}. ${value} comentarios de Phada de revisiones anteriores siguen abiertos: resuélvelos para recibir una revisión completa de este commit.`,
+        ? `No hay problemas nuevos en ${sha}. 1 comentario de revisiones anteriores sigue abierto: resuélvelo para recibir una revisión completa de este commit.`
+        : `No hay problemas nuevos en ${sha}. ${value} comentarios de revisiones anteriores siguen abiertos: resuélvelos para recibir una revisión completa de este commit.`,
     preview: (index, total, place) =>
       `===== Comentario en línea ${index}/${total} · ${place} =====`,
     fixedThreads: (value, sha) =>

@@ -282,7 +282,7 @@ describe('formatGitHubReview body', () => {
       [
         '## 🦋 no new findings',
         '',
-        'No new problems in a1b2c3d. 6 Phada comments from previous reviews are still open: resolve them to get a full review of this commit.',
+        'No new problems in a1b2c3d. 6 comments from previous reviews are still open: resolve them to get a full review of this commit.',
         '',
         MARKER,
       ].join('\n'),
@@ -298,9 +298,7 @@ describe('formatGitHubReview body', () => {
     )
 
     expect(body).toContain('## 🦋 nenhum problema novo')
-    expect(body).toContain(
-      '1 comentário do Phada de revisões anteriores continua aberto: resolva-o',
-    )
+    expect(body).toContain('1 comentário de revisões anteriores continua aberto: resolva-o')
   })
 
   it('uses a singular for one inline comment', () => {

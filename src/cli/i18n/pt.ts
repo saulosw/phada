@@ -90,8 +90,8 @@ export const portuguese: Messages = {
     onlyStillOpenTitle: 'nenhum problema novo',
     onlyStillOpen: (value, sha) =>
       value === 1
-        ? `Nenhum problema novo em ${sha}. 1 comentário do Phada de revisões anteriores continua aberto: resolva-o para receber uma revisão completa deste commit.`
-        : `Nenhum problema novo em ${sha}. ${value} comentários do Phada de revisões anteriores continuam abertos: resolva-os para receber uma revisão completa deste commit.`,
+        ? `Nenhum problema novo em ${sha}. 1 comentário de revisões anteriores continua aberto: resolva-o para receber uma revisão completa deste commit.`
+        : `Nenhum problema novo em ${sha}. ${value} comentários de revisões anteriores continuam abertos: resolva-os para receber uma revisão completa deste commit.`,
     preview: (index, total, place) =>
       `===== Comentário na linha ${index}/${total} · ${place} =====`,
     fixedThreads: (value, sha) =>

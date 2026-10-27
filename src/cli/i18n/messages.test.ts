@@ -60,7 +60,7 @@ describe('Portuguese texts', () => {
 
   it('says only the earlier findings remain open', () => {
     expect(pt.github.onlyStillOpen(3, 'a1b2c3d')).toBe(
-      'Nenhum problema novo em a1b2c3d. 3 comentários do Phada de revisões anteriores continuam abertos: resolva-os para receber uma revisão completa deste commit.',
+      'Nenhum problema novo em a1b2c3d. 3 comentários de revisões anteriores continuam abertos: resolva-os para receber uma revisão completa deste commit.',
     )
   })
 })
@@ -113,10 +113,10 @@ describe('Spanish texts', () => {
 
   it('says only the earlier findings remain open', () => {
     expect(es.github.onlyStillOpen(1, 'a1b2c3d')).toBe(
-      'No hay problemas nuevos en a1b2c3d. 1 comentario de Phada de revisiones anteriores sigue abierto: resuélvelo para recibir una revisión completa de este commit.',
+      'No hay problemas nuevos en a1b2c3d. 1 comentario de revisiones anteriores sigue abierto: resuélvelo para recibir una revisión completa de este commit.',
     )
     expect(es.github.onlyStillOpen(3, 'a1b2c3d')).toBe(
-      'No hay problemas nuevos en a1b2c3d. 3 comentarios de Phada de revisiones anteriores siguen abiertos: resuélvelos para recibir una revisión completa de este commit.',
+      'No hay problemas nuevos en a1b2c3d. 3 comentarios de revisiones anteriores siguen abiertos: resuélvelos para recibir una revisión completa de este commit.',
     )
   })
 

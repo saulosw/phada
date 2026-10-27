@@ -74,8 +74,8 @@ export const english: Messages = {
     onlyStillOpenTitle: 'no new findings',
     onlyStillOpen: (count, sha) =>
       count === 1
-        ? `No new problems in ${sha}. 1 Phada comment from previous reviews is still open: resolve it to get a full review of this commit.`
-        : `No new problems in ${sha}. ${count} Phada comments from previous reviews are still open: resolve them to get a full review of this commit.`,
+        ? `No new problems in ${sha}. 1 comment from previous reviews is still open: resolve it to get a full review of this commit.`
+        : `No new problems in ${sha}. ${count} comments from previous reviews are still open: resolve them to get a full review of this commit.`,
     preview: (index, total, place) => `===== Inline comment ${index}/${total} · ${place} =====`,
     fixedThreads: (count, sha) =>
       count === 1
