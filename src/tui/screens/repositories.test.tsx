@@ -51,12 +51,14 @@ function busyList(): RepositoryList {
       {
         repo: 'acme/api',
         origins: ['watched'],
+        publish: 'pr',
         index: { file: null, indexedSha: null, checkedAt: null },
         lastReview: null,
       },
       {
         repo: 'acme/shop',
         origins: ['watched', 'own-config', 'history'],
+        publish: 'none',
         index: {
           file: { path: '/home/ana/.cache/phada/index/acme/shop.sqlite', bytes: 12_900_000 },
           indexedSha: 'f00dbabe1234',
@@ -67,6 +69,7 @@ function busyList(): RepositoryList {
       {
         repo: 'old-organization-with-a-long-name/legacy-monolith-service',
         origins: ['history'],
+        publish: null,
         index: { file: null, indexedSha: null, checkedAt: null },
         lastReview: review('old-organization-with-a-long-name/legacy-monolith-service', {
           verdict: 'blocking',

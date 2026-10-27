@@ -20,6 +20,7 @@ function listed(repo: string, origins: RepositoryOrigin[] = ['watched']): Listed
   return {
     repo,
     origins,
+    publish: origins.includes('watched') ? 'pr' : null,
     index: { file: null, indexedSha: null, checkedAt: null },
     lastReview: null,
   }

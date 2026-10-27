@@ -90,6 +90,7 @@ describe('the summary', () => {
         repositories: ['acme/shop', 'acme/gone', 'ana/ink', 'ana/web'].map((repo) => ({
           repo,
           origins: ['watched' as const],
+          publish: 'pr' as const,
           index: { file: null, indexedSha: null, checkedAt: null },
           lastReview: null,
         })),
