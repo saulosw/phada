@@ -119,6 +119,9 @@ src/
                          #   default) and its MCP servers by name and kind, never their command,
                          #   env, URL or headers; readProviders(): the choice and every provider
                          #   checked with its nextStep() (install, login, ollama serve, ollama pull)
+    edit-user-config.ts  #   planUserConfig(): the user's own config.yml read (injected) →
+                         #   planUserConfigEdit(); applyUserConfigPlan(): written atomically only
+                         #   if the file did not change since the plan; failures as data
     read-learnings.ts    #   readLearnings(): per repository, the observed relations (newest
                          #   first; none, read or unreadable) and the feedback of Phada's comments
                          #   per repository and per rule; readers injected
@@ -379,10 +382,17 @@ src/
                          #   userConfigFile(), loadUserLayers(), loadTopLevelUserLayers();
                          #   listUserRepoConfigs():
                          #   the repos/<owner>/<repo>/ folders with a config.yml or rules.md
+    user-config-edit.ts  #   planUserConfigEdit(): changes (provider, model, language, watch.repos,
+                         #   publish of a watched repository) on the text of a user config with its
+                         #   comments and order → the new text (a new file on top of the template)
+                         #   and the changes by value, checked with the schema; an invalid config,
+                         #   ollama without a model, or the last watched repository while other
+                         #   watch settings remain, refused
     layer-label.ts       #   userLayerLabel(), layerOrigin(): the label of a user config file
                          #   (user:…, user:repos/<owner>/<repo>/…) and back to global, repository
                          #   or a file of the repository, with its name
-    local-files.ts       #   LocalFileSystem and its node:fs implementation
+    local-files.ts       #   LocalFileSystem and its node:fs implementation; writeAtomic(): a
+                         #   temporary file in the same folder renamed over the file
     cache-paths.ts       #   the cache folder (PHADA_CACHE_HOME › XDG › ~/.cache/phada),
                          #   repositoryCache(): mirror, index and observed paths; pathSize();
                          #   observedFile(); observedRepositories(): owner/repo of each observed
