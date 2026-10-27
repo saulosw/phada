@@ -18,6 +18,7 @@ import type { BranchRules, LocalRules, PullRequestRules } from '../app/read-rule
 import type { RepositoryDetail, RepositoryList } from '../app/read-repositories.js'
 import type { UserRepositories } from '../app/read-user-repositories.js'
 import type { RepositoryFolder, RepositoryInit } from '../app/repository-folder.js'
+import type { UserRepoFile } from '../config/user-config.js'
 import type { UserConfigChange, UserConfigPlan } from '../config/user-config-edit.js'
 import type { UiMessages } from './i18n/messages.js'
 import type { TerminalSize } from './terminal-size.js'
@@ -66,6 +67,7 @@ export interface AppDeps {
   indexRepository(repo: string, options: IndexingOptions): Promise<IndexingResult>
   readRepositoryFolder(): Promise<RepositoryFolder>
   initRepository(): Promise<RepositoryInit>
+  ensureRepositoryFile(repo: string, file: UserRepoFile): Promise<string>
 }
 
 export interface KeyHint {

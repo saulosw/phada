@@ -13,7 +13,7 @@ import type { AppDeps, AppHost, AppResult } from '../tui/open-app.js'
 import { runApp } from './app-command.js'
 import type { AppCommandDeps, StopSignal } from './app-command.js'
 import { UsageError } from './errors.js'
-import { USER_CONFIG_TEMPLATE } from './init-templates.js'
+import { RULES_TEMPLATE, USER_CONFIG_TEMPLATE } from './init-templates.js'
 import { pullRequestFixture } from '../../test/support/pull-request.js'
 import { memoryMirror } from '../../test/support/memory-mirror.js'
 import { createExtractor } from '../repo-map/extract.js'
@@ -802,6 +802,50 @@ describe('the repository of the folder', () => {
     })
     await runApp(app)
     expect(seen).toEqual([{ kind: 'outside' }])
+  })
+})
+
+describe('the files of a repository in the user config folder', () => {
+  it('creates config.yml with a commented header and rules.md with the rules template when missing', async () => {
+    const seen: string[] = []
+    const { app, files } = deps({
+      during: async (appDeps) => {
+        seen.push(await appDeps.ensureRepositoryFile('Acme/Shop', 'config.yml'))
+        seen.push(await appDeps.ensureRepositoryFile('acme/shop', 'rules.md'))
+      },
+    })
+    await runApp(app)
+    expect(seen).toEqual(['/cfg/repos/acme/shop/config.yml', '/cfg/repos/acme/shop/rules.md'])
+    const config = files.files.get('/cfg/repos/acme/shop/config.yml') ?? ''
+    expect(config).toMatch(/^# .*acme\/shop/)
+    expect(config.split('\n').every((line) => line === '' || line.startsWith('#'))).toBe(true)
+    expect(files.files.get('/cfg/repos/acme/shop/rules.md')).toBe(RULES_TEMPLATE)
+  })
+
+  it('leaves a file that exists as it is', async () => {
+    const { app, files } = deps({
+      files: { '/cfg/repos/acme/shop/config.yml': 'verify: false\n' },
+      during: async (appDeps) => {
+        await appDeps.ensureRepositoryFile('acme/shop', 'config.yml')
+      },
+    })
+    await files.makeDir('/cfg/repos/acme/shop')
+    await runApp(app)
+    expect(files.files.get('/cfg/repos/acme/shop/config.yml')).toBe('verify: false\n')
+  })
+
+  it('refuses a name that would leave the folder of the repository', async () => {
+    const errors: unknown[] = []
+    const { app, files } = deps({
+      during: async (appDeps) => {
+        for (const repo of ['../etc', 'acme/..', 'acme/shop/extra', 'acme']) {
+          await appDeps.ensureRepositoryFile(repo, 'rules.md').catch((error) => errors.push(error))
+        }
+      },
+    })
+    await runApp(app)
+    expect(errors).toHaveLength(4)
+    expect([...files.files.keys()]).toEqual([])
   })
 })
 

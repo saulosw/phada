@@ -22,6 +22,7 @@ import {
   loadUserLayers,
   userConfigFile,
 } from '../config/user-config.js'
+import type { UserRepoFile } from '../config/user-config.js'
 import type { UserConfigChange, UserConfigPlan } from '../config/user-config-edit.js'
 import { resolveWatchSettings } from '../config/watch-settings.js'
 import type { WatchSettings } from '../config/watch-settings.js'
@@ -55,6 +56,7 @@ import { initRepository } from './init.js'
 import type { AppIndexDeps } from './app-index.js'
 import { SLACK_APP_TOKEN, SLACK_BOT_TOKEN } from './review-event-sinks.js'
 import { terminalHandOff } from './terminal-hand-off.js'
+import { ensureUserRepoFile } from './user-repo-file.js'
 import type { TerminalHandOff } from './terminal-hand-off.js'
 
 export type StopSignal = 'SIGINT' | 'SIGTERM'
@@ -230,6 +232,8 @@ async function appDeps(
       indexForApp(repo, options, { ...deps, ghToken }),
     readRepositoryFolder: () => readRepositoryFolder(deps.cwd, (path) => deps.files.exists(path)),
     initRepository: () => initRepository(deps),
+    ensureRepositoryFile: (repo: string, file: UserRepoFile) =>
+      ensureUserRepoFile(repo, file, deps),
   }
   const language = await readLanguage().catch(() => undefined)
   return language === undefined ? base : { ...base, language }

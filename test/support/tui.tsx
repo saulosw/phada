@@ -204,6 +204,7 @@ export function fakeAppDeps(scheduler: Scheduler, overrides: Partial<AppDeps> = 
     initRepository: async () => {
       throw new Error('no repository in this test')
     },
+    ensureRepositoryFile: async (repo, file) => `/home/ana/.config/phada/repos/${repo}/${file}`,
     ...overrides,
   }
 }

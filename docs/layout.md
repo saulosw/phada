@@ -206,7 +206,11 @@ src/
                          #   on the next
     init.ts              #   runInit(): .phada/ in the repository, or the user's own config;
                          #   initRepository(): .phada/ at the root and each file created or kept
-    init-templates.ts    #   the commented files phada init writes
+    init-templates.ts    #   the commented files phada init writes; userRepoConfigTemplate(): the
+                         #   header of a repository's own config.yml the app creates
+    user-repo-file.ts    #   ensureUserRepoFile(): repos/<owner>/<repo>/config.yml or rules.md of
+                         #   the user config folder, created from its template when missing (a
+                         #   name that is not owner/repo refused), for the app's editor
     index-command.ts     #   runIndex(): token, cache folder, mirror, progress, the map's report
     rules-command.ts     #   runRules(): token, user config, readRules() for a pull request or
                          #   the default branch, printed as text or JSON
@@ -331,7 +335,8 @@ src/
                          #   readLanguage, readQueue, readReviews, readReviewDetail, readRepositories,
                          #   readRepository, readAutomation, readProviderSetup, readProviders,
                          #   readLearnings, readGitHub, readLocalRules, readRepositoryRules,
-                         #   readPullRequestRules, handOff, planConfig, applyConfig), AppStart,
+                         #   readPullRequestRules, handOff, planConfig, applyConfig,
+                         #   ensureRepositoryFile), AppStart,
                          #   HandOffTarget, HandOffResult, Scheduler, KeyHint;
                          #   useAppDeps(), useTheme(), useMessages(), useConfigWritten() (the
                          #   language read again at once), useWorking(),
