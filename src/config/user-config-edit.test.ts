@@ -336,6 +336,32 @@ watch:
     )
   })
 
+  it('keeps the comment column of a changed line when the line next to it goes', () => {
+    const current = [
+      '# My own Phada config.',
+      'provider: claude   # the AI CLI I am logged into',
+      'model: sonnet      # fast enough for small pull requests',
+      '',
+      'language: en',
+      '',
+    ].join('\n')
+
+    const result = planned(current, [
+      { kind: 'set', key: 'provider', value: 'codex' },
+      { kind: 'unset', key: 'model' },
+    ])
+
+    expect(result.text).toBe(
+      [
+        '# My own Phada config.',
+        'provider: codex    # the AI CLI I am logged into',
+        '',
+        'language: en',
+        '',
+      ].join('\n'),
+    )
+  })
+
   it('adds a watched repository as one line, leaving every other line as it was', () => {
     const result = planned(MINE, [{ kind: 'watch', repo: 'acme/new' }])
 

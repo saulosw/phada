@@ -25,11 +25,16 @@ export function keepLayout(original: string, baseline: string, changed: string):
   let removedFrom = 0
   let addedFrom = 0
   for (const [stays, staysAs] of [...unchanged, [before.length, after.length] as const]) {
-    const removed = stays - removedFrom
+    const removed = Array.from({ length: stays - removedFrom }, (_, offset) =>
+      kept(removedFrom + offset),
+    )
     const added = after.slice(addedFrom, staysAs)
     lines.push(
       ...added.map((line, offset) =>
-        removed === added.length ? alignComment(line, kept(removedFrom + offset)) : line,
+        alignComment(
+          line,
+          removed.length === added.length ? removed[offset] : sameComment(line, removed),
+        ),
       ),
     )
     if (stays < before.length) lines.push(kept(stays) ?? '')
@@ -62,6 +67,15 @@ function layoutKey(line: string): string {
     }
   }
   return `${indent}${key}`
+}
+
+function sameComment(
+  line: string,
+  candidates: readonly (string | undefined)[],
+): string | undefined {
+  const comment = COMMENTED.exec(line)?.[3]
+  if (comment === undefined) return undefined
+  return candidates.find((candidate) => COMMENTED.exec(candidate ?? '')?.[3] === comment)
 }
 
 function alignComment(line: string, original: string | undefined): string {
