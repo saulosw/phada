@@ -583,6 +583,72 @@ describe('the GitHub reader', () => {
   })
 })
 
+describe('the user repositories reader', () => {
+  it('lists the repositories of the token owner with the ones the user config watches', async () => {
+    const seen: unknown[] = []
+    const tokens: string[] = []
+    const { app } = deps({
+      config: 'watch:\n  repos:\n    - Acme/Shop\n    - other/lib\n',
+      env: { GITHUB_TOKEN: 'ghp_env' },
+      during: async (appDeps) => {
+        seen.push(await appDeps.readUserRepositories())
+      },
+    })
+    app.listRepositories = async ({ token }) => {
+      tokens.push(token)
+      return [
+        { name: 'ana/ink', private: false, fork: true, pushedAt: null },
+        { name: 'acme/shop', private: true, fork: false, pushedAt: '2026-10-26T18:00:00Z' },
+      ]
+    }
+
+    await runApp(app)
+
+    expect(tokens).toEqual(['ghp_env'])
+    expect(seen).toEqual([
+      {
+        status: 'listed',
+        repositories: [
+          {
+            name: 'acme/shop',
+            private: true,
+            fork: false,
+            pushedAt: '2026-10-26T18:00:00Z',
+            watched: true,
+            listed: true,
+          },
+          { name: 'other/lib', watched: true, listed: false },
+          {
+            name: 'ana/ink',
+            private: false,
+            fork: true,
+            pushedAt: null,
+            watched: false,
+            listed: true,
+          },
+        ],
+      },
+    ])
+    expect(JSON.stringify(seen)).not.toContain('ghp_env')
+  })
+
+  it('says there is no token without listing', async () => {
+    const seen: unknown[] = []
+    const { app } = deps({
+      during: async (appDeps) => {
+        seen.push(await appDeps.readUserRepositories())
+      },
+    })
+    app.listRepositories = async () => {
+      throw new Error('listed without a token')
+    }
+
+    await runApp(app)
+
+    expect(seen).toEqual([{ status: 'no-token', repositories: [] }])
+  })
+})
+
 describe('the provider and learnings readers', () => {
   it('read the provider chosen in the user config, its MCP servers and the checked providers', async () => {
     const seen: unknown[] = []

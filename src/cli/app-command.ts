@@ -9,6 +9,7 @@ import { readQueue } from '../app/read-queue.js'
 import { readAutomation } from '../app/read-automation.js'
 import type { AutomationReaders } from '../app/read-automation.js'
 import { readRepositories, readRepository } from '../app/read-repositories.js'
+import { readUserRepositories } from '../app/read-user-repositories.js'
 import type { RepositoryReaders } from '../app/read-repositories.js'
 import { observedRepositories, phadaCacheDir, repositoryCache } from '../config/cache-paths.js'
 import { dataFiles } from '../config/data-paths.js'
@@ -32,6 +33,8 @@ import type { HistoryStore } from '../store/history-store.js'
 import { readObservedEdges } from '../store/observed-store.js'
 import { splitRepoName } from '../github/pull-request-ref.js'
 import { fetchAuthenticatedUser } from '../github/user.js'
+import { listUserRepositories } from '../github/user-repositories.js'
+import type { UserRepository } from '../github/user-repositories.js'
 import type { FetchUserOptions, GitHubUser } from '../github/user.js'
 import type { AppDeps, AppResult, AppStart, openApp, Scheduler } from '../tui/open-app.js'
 import type { ColorEnv } from '../tui/theme.js'
@@ -42,7 +45,7 @@ import type { AppHistory } from './app-history.js'
 import { UsageError } from './errors.js'
 import { readGitHubAccess } from './github-access.js'
 import { USER_CONFIG_TEMPLATE } from './init-templates.js'
-import { ghTokenReader } from './github-token.js'
+import { ghTokenReader, readGitHubToken } from './github-token.js'
 import type { GhTokenReader, RunGh } from './github-token.js'
 import type { TextOutput } from './progress.js'
 import { SLACK_APP_TOKEN, SLACK_BOT_TOKEN } from './review-event-sinks.js'
@@ -72,6 +75,7 @@ export interface AppCommandDeps extends Omit<RulesReaderDeps, 'ghToken'> {
   }
   runGh?: RunGh
   fetchUser?: (options: FetchUserOptions) => Promise<GitHubUser>
+  listRepositories?: (options: FetchUserOptions) => Promise<UserRepository[]>
   runInteractive?: typeof runInteractive
   ollamaFetch?: typeof globalThis.fetch
 }
@@ -193,6 +197,14 @@ async function appDeps(
         env: deps.env,
         ghToken,
         fetchUser: deps.fetchUser ?? fetchAuthenticatedUser,
+      }),
+    readUserRepositories: () =>
+      readUserRepositories({
+        token: () => readGitHubToken({ env: deps.env, ghToken }),
+        listRepositories: (token) => (deps.listRepositories ?? listUserRepositories)({ token }),
+        watchedRepos: async () =>
+          resolveWatchSettings(await loadTopLevelUserLayers(deps))?.repos.map(({ repo }) => repo) ??
+          [],
       }),
     ...rulesReaders({ ...deps, ghToken }),
     handOff: terminal.handOff,

@@ -187,6 +187,7 @@ export function fakeAppDeps(scheduler: Scheduler, overrides: Partial<AppDeps> = 
     }),
     readLearnings: async () => ({ recorded: false, repos: [] }),
     readGitHub: async () => ({ source: null }),
+    readUserRepositories: async () => ({ status: 'no-token', repositories: [] }),
     readLocalRules: async () => ({ lens: { kind: 'built-in' }, rules: [], warnings: [] }),
     readRepositoryRules: async () => ({ status: 'no-token' }),
     readPullRequestRules: async () => ({ status: 'no-token' }),

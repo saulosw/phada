@@ -15,6 +15,7 @@ import type { QueueView } from '../app/read-queue.js'
 import type { AutomationView } from '../app/read-automation.js'
 import type { BranchRules, LocalRules, PullRequestRules } from '../app/read-rules.js'
 import type { RepositoryDetail, RepositoryList } from '../app/read-repositories.js'
+import type { UserRepositories } from '../app/read-user-repositories.js'
 import type { UserConfigChange, UserConfigPlan } from '../config/user-config-edit.js'
 import type { UiMessages } from './i18n/messages.js'
 import type { TerminalSize } from './terminal-size.js'
@@ -52,6 +53,7 @@ export interface AppDeps {
   readProviders(): Promise<ProviderReport>
   readLearnings(): Promise<Learnings>
   readGitHub(): Promise<GitHubAccess>
+  readUserRepositories(): Promise<UserRepositories>
   readLocalRules(repo: string): Promise<LocalRules>
   readRepositoryRules(repo: string): Promise<BranchRules>
   readPullRequestRules(repo: string, number: number): Promise<PullRequestRules>
