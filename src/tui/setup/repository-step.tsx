@@ -75,6 +75,7 @@ export function RepositoryStep({ next }: SetupStepProps) {
       case 'configured':
         return wrapped(m.configured(shown(value.root)))
       case 'unconfigured':
+        if (init.status === 'ready') return wrapped(m.initialized(shown(init.value.root)))
         return [
           ...wrapped(m.offer(shown(value.root)), colors.warn),
           <Text> </Text>,

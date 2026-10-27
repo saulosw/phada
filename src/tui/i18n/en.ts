@@ -570,6 +570,7 @@ export const english: UiMessages = {
       offer: (root) => `${root} has no .phada/ folder.`,
       why: 'phada init creates it with a commented config.yml and a rules.md: the rules every review of this repository follows, for your team to edit and commit.',
       create: 'create .phada/',
+      initialized: (root) => `phada init ran in ${root}:`,
       creating: 'Creating .phada/…',
       created: (path) => `Created ${path}`,
       kept: (path) => `${path} exists, left unchanged`,

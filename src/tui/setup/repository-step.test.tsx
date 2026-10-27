@@ -67,6 +67,8 @@ describe('the repository step', () => {
     expectFits(frame())
     await press(KEYS.enter)
     await seeing('Created .phada/config.yml', '.phada/rules.md exists, left unchanged')
+    expect(frame()).toContain('phada init ran in ~/code/shop:')
+    expect(frame()).not.toContain('has no .phada/ folder')
     expect(inits()).toBe(1)
     expect(footer()).toContain('Enter continue')
     expectFits(frame())

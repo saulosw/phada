@@ -157,6 +157,7 @@ export interface SetupMessages {
     offer(root: string): string
     why: string
     create: string
+    initialized(root: string): string
     creating: string
     created(path: string): string
     kept(path: string): string

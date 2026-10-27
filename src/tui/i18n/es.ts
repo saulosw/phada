@@ -580,6 +580,7 @@ export const spanish: UiMessages = {
       offer: (root) => `${root} no tiene una carpeta .phada/.`,
       why: 'phada init la crea con un config.yml comentado y un rules.md: las reglas que sigue cada revisión de este repositorio, para que tu equipo las edite y las suba.',
       create: 'crear .phada/',
+      initialized: (root) => `phada init se ejecutó en ${root}:`,
       creating: 'Creando .phada/…',
       created: (path) => `Creado ${path}`,
       kept: (path) => `${path} ya existe, sin cambios`,
