@@ -144,14 +144,14 @@ describe('AutomationScreen', () => {
     expect(flat(end)).toContain('PHADA_SLACK_BOT_TOKEN set · PHADA_SLACK_APP_TOKEN set')
   })
 
-  it('points a fresh machine to phada init --global and shows everything off', async () => {
+  it('points a fresh machine to phada setup and shows everything off', async () => {
     const view = openAutomation({
       readAutomation: async () => ({ ...emptyAutomation(), ci: DEFAULT_CI }),
     })
     await view.showing('No config yet', /ci\.wait\s+15m\s+default/)
 
     const frame = view.frame()
-    expect(frame).toContain('Create your own config with phada init --global')
+    expect(frame).toContain('Create your own config with phada setup')
     expect(flat(frame)).toContain(
       `Off. Add watch.repos to ~/.config/phada/config.yml, then run phada watch.`,
     )

@@ -55,7 +55,7 @@ function AutomationLines({ view }: { view: AutomationView }) {
       : [
           <Text>{messages.settings.noConfig}</Text>,
           <Text color={colors.dim}>
-            {messages.settings.initHint} {command('phada init --global')}
+            {messages.settings.initHint} {command('phada setup')}
           </Text>,
         ]),
   ]
