@@ -49,8 +49,6 @@ export type {
   FindingFilter,
   FindingRecord,
   PublishedFinding,
-  PullState,
-  SignalRecord,
   SignalSource,
 } from './history-feedback.js'
 
