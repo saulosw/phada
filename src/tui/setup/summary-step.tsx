@@ -12,8 +12,8 @@ import {
 import { valueChangeLines } from '../config-change.js'
 import type { ConfigDraw } from '../config-change.js'
 import { ScrollText } from '../scroll-list.js'
-import { oneLine, shortenHome, wrapText } from '../text-fit.js'
-import type { SetupStepProps } from './setup-steps.js'
+import { namesText, oneLine, shortenHome, wrapText } from '../text-fit.js'
+import type { IndexOutcome, SetupProgress, SetupStepProps } from './setup-steps.js'
 
 const COMMANDS = ['watch', 'review'] as const
 
@@ -36,8 +36,12 @@ export function SummaryStep({ progress, next }: SetupStepProps) {
   const draw: ConfigDraw = { messages, theme, home, width: size.columns }
   const wrapped = (text: string, color?: string) =>
     wrapText(text, size.columns).map((line) => <Text color={color}>{line}</Text>)
+  const doneTexts = doneLines(progress, draw)
+  const done =
+    doneTexts.length === 0 ? [] : [<Text> </Text>, ...doneTexts.flatMap((text) => wrapped(text))]
   const lines: ReactNode[] = [
     ...writtenLines(progress.written, draw),
+    ...done,
     ...(progress.skipped.length === 0
       ? []
       : [
@@ -65,6 +69,30 @@ export function SummaryStep({ progress, next }: SetupStepProps) {
     ]),
   ]
   return <ScrollText lines={lines} rows={size.rows} />
+}
+
+const SHOWN_NAMES = 5
+
+function doneLines({ indexing = [], init }: SetupProgress, draw: ConfigDraw): string[] {
+  const m = draw.messages.setup.summary
+  const named = (kinds: readonly IndexOutcome['kind'][]) =>
+    namesText(
+      indexing.filter(({ outcome }) => kinds.includes(outcome.kind)).map(({ repo }) => repo),
+      SHOWN_NAMES,
+    )
+  const created = (init?.files ?? []).filter((file) => file.created).map(({ path }) => path)
+  return [
+    ...(
+      [
+        [m.indexed, named(['indexed'])],
+        [m.notIndexed, named(['failed', 'no-token'])],
+        [m.left, named(['cancelled', 'not-started'])],
+      ] as const
+    ).flatMap(([text, names]) => (names === '' ? [] : [text(names)])),
+    ...(init === undefined || created.length === 0
+      ? []
+      : [m.created(shortenHome(oneLine(init.root), draw.home), namesText(created, SHOWN_NAMES))]),
+  ]
 }
 
 function writtenLines(written: readonly UserConfigPlan[], draw: ConfigDraw): ReactNode[] {

@@ -520,7 +520,6 @@ export const english: UiMessages = {
     stay: 'stay',
     leaveQuestion: 'Leave the setup?',
     leaveHint: 'What you confirmed is already written. phada setup opens the setup again.',
-    pending: 'Nothing to do in this step: s skips it.',
     continue: 'continue',
     github: {
       checking: 'Checking the GitHub token…',
@@ -562,6 +561,19 @@ export const english: UiMessages = {
       later:
         'phada watch indexes what was left when it is idle; phada index owner/repo indexes one now.',
     },
+    repository: {
+      checking: 'Looking for the git repository of this folder…',
+      outside: (folder) =>
+        `${folder} is not inside a git repository: there is no .phada/ folder to create here. Run phada init inside a repository to add one.`,
+      configured: (root) =>
+        `${root} already has a .phada/ folder: every review of this repository reads its config.yml and rules.md.`,
+      offer: (root) => `${root} has no .phada/ folder.`,
+      why: 'phada init creates it with a commented config.yml and a rules.md: the rules every review of this repository follows, for your team to edit and commit.',
+      create: 'create .phada/',
+      creating: 'Creating .phada/…',
+      created: (path) => `Created ${path}`,
+      kept: (path) => `${path} exists, left unchanged`,
+    },
     language: {
       intro: 'The language of this app and of the reviews Phada writes.',
       current: 'current',
@@ -571,6 +583,10 @@ export const english: UiMessages = {
       written: (path) => `Written to ${path}:`,
       nothing: 'Nothing was written to your config.',
       skipped: (steps) => `Skipped: ${steps}`,
+      indexed: (names) => `Indexed: ${names}`,
+      left: (names) => `Left for later: ${names}. phada watch indexes them when it is idle.`,
+      notIndexed: (names) => `Not indexed: ${names}`,
+      created: (root, files) => `Created in ${root}: ${files}`,
       now: 'What to do now',
       watch: 'reviews the new pull requests of the watched repositories',
       review: 'reviews one pull request',

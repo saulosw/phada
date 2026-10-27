@@ -1,14 +1,23 @@
 import { cleanup } from 'ink-testing-library'
 import { afterEach, describe, expect, it } from 'vitest'
+import type { IndexingResult } from '../../app/index-repository.js'
 import type { UserConfigChange, UserConfigPlan } from '../../config/user-config-edit.js'
-import { frameLines, KEYS, renderApp, visibleWidth } from '../../../test/support/tui.js'
+import type { AppDeps } from '../app-context.js'
+import {
+  emptyRepositories,
+  frameLines,
+  KEYS,
+  renderApp,
+  visibleWidth,
+} from '../../../test/support/tui.js'
 
 const CONFIG = '/home/ana/.config/phada/config.yml'
 
-function openSetup(language?: string) {
+function openSetup(language?: string, deps: Partial<AppDeps> = {}) {
   let current = language
   const app = renderApp({
     deps: {
+      ...deps,
       start: 'setup',
       ...(language === undefined ? {} : { language }),
       readLanguage: async () => current,
@@ -67,6 +76,58 @@ describe('the summary', () => {
     await press(KEYS.enter)
     await seeing('Last reviews')
     expect(frame()).not.toContain('Summary')
+  })
+
+  it('says what was indexed, what was left for later and what phada init created', async () => {
+    const results: IndexingResult[] = [
+      { kind: 'indexed', files: 12 },
+      { kind: 'failed', message: 'Could not fetch HEAD from acme/gone' },
+      { kind: 'cancelled', extracted: 3, total: 90 },
+    ]
+    const { frame, press, seeing } = openSetup(undefined, {
+      readRepositories: async () => ({
+        ...emptyRepositories(),
+        repositories: ['acme/shop', 'acme/gone', 'ana/ink', 'ana/web'].map((repo) => ({
+          repo,
+          origins: ['watched' as const],
+          index: { file: null, indexedSha: null, checkedAt: null },
+          lastReview: null,
+        })),
+      }),
+      indexRepository: (_repo, { signal }) => {
+        const result = results.shift() ?? { kind: 'indexed', files: 0 }
+        if (result.kind !== 'cancelled') return Promise.resolve(result)
+        return new Promise((resolve) => signal.addEventListener('abort', () => resolve(result)))
+      },
+      readRepositoryFolder: async () => ({ kind: 'unconfigured', root: '/home/ana/code/shop' }),
+      initRepository: async () => ({
+        root: '/home/ana/code/shop',
+        files: [
+          { path: '.phada/config.yml', created: true },
+          { path: '.phada/rules.md', created: false },
+        ],
+      }),
+    })
+    await seeing('Step 1 of 7')
+    await press('s', 's', 's', 's')
+    await seeing('Step 5 of 7 · Graph', 'ana/web')
+    await press(KEYS.enter)
+    await seeing(/ana\/ink · fetching/)
+    await press(KEYS.escape)
+    await seeing(/ana\/web · not started/)
+    await press(KEYS.enter)
+    await seeing('Step 6 of 7', 'has no .phada/ folder')
+    await press(KEYS.enter)
+    await seeing('Created .phada/config.yml')
+    await press(KEYS.enter)
+    await seeing('Step 7 of 7 · Summary', 'Indexed: acme/shop')
+    expect(frame()).toContain('Not indexed: acme/gone')
+    expect(frame()).toContain('Left for later: ana/ink, ana/web')
+    expect(frame()).toContain('phada watch indexes them when it is idle')
+    expect(frame()).toContain('Created in ~/code/shop: .phada/config.yml')
+    expect(frame()).not.toContain('rules.md')
+    expect(frame()).toContain('Skipped: GitHub, AI, Language, Repositories')
+    expectFits(frame())
   })
 
   it('says nothing was written when every step was skipped', async () => {

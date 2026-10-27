@@ -118,7 +118,6 @@ export interface SetupMessages {
   stay: string
   leaveQuestion: string
   leaveHint: string
-  pending: string
   continue: string
   github: {
     checking: string
@@ -151,11 +150,26 @@ export interface SetupMessages {
     noToken: string
     later: string
   }
+  repository: {
+    checking: string
+    outside(folder: string): string
+    configured(root: string): string
+    offer(root: string): string
+    why: string
+    create: string
+    creating: string
+    created(path: string): string
+    kept(path: string): string
+  }
   language: { intro: string; current: string; choose: string }
   summary: {
     written(path: string): string
     nothing: string
     skipped(steps: string): string
+    indexed(names: string): string
+    left(names: string): string
+    notIndexed(names: string): string
+    created(root: string, files: string): string
     now: string
     watch: string
     review: string

@@ -526,7 +526,6 @@ export const portuguese: UiMessages = {
     stay: 'ficar',
     leaveQuestion: 'Sair do setup?',
     leaveHint: 'O que você confirmou já está gravado. phada setup abre o setup de novo.',
-    pending: 'Nada a fazer neste passo: s pula.',
     continue: 'continuar',
     github: {
       checking: 'Verificando o token do GitHub…',
@@ -571,6 +570,19 @@ export const portuguese: UiMessages = {
       later:
         'O phada watch indexa o que faltou quando estiver ocioso; phada index owner/repo indexa um agora.',
     },
+    repository: {
+      checking: 'Procurando o repositório git desta pasta…',
+      outside: (folder) =>
+        `${folder} não está dentro de um repositório git: não há pasta .phada/ a criar aqui. Rode phada init dentro de um repositório para criar uma.`,
+      configured: (root) =>
+        `${root} já tem uma pasta .phada/: todo review deste repositório lê o config.yml e o rules.md dela.`,
+      offer: (root) => `${root} não tem uma pasta .phada/.`,
+      why: 'O phada init a cria com um config.yml comentado e um rules.md: as regras que todo review deste repositório segue, para o seu time editar e commitar.',
+      create: 'criar .phada/',
+      creating: 'Criando .phada/…',
+      created: (path) => `Criado ${path}`,
+      kept: (path) => `${path} já existe, mantido`,
+    },
     language: {
       intro: 'O idioma deste app e dos reviews que o Phada escreve.',
       current: 'atual',
@@ -580,6 +592,11 @@ export const portuguese: UiMessages = {
       written: (path) => `Gravado em ${path}:`,
       nothing: 'Nada foi gravado na sua config.',
       skipped: (steps) => `Pulados: ${steps}`,
+      indexed: (names) => `Indexados: ${names}`,
+      left: (names) =>
+        `Ficaram para depois: ${names}. O phada watch os indexa quando estiver ocioso.`,
+      notIndexed: (names) => `Não indexados: ${names}`,
+      created: (root, files) => `Criados em ${root}: ${files}`,
       now: 'O que fazer agora',
       watch: 'revisa os pull requests novos dos repositórios observados',
       review: 'revisa um pull request',

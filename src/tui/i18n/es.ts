@@ -528,7 +528,6 @@ export const spanish: UiMessages = {
     stay: 'quedarse',
     leaveQuestion: '¿Salir de la configuración?',
     leaveHint: 'Lo que confirmaste ya está guardado. phada setup la abre de nuevo.',
-    pending: 'Nada que hacer en este paso: s lo omite.',
     continue: 'continuar',
     github: {
       checking: 'Comprobando el token de GitHub…',
@@ -572,6 +571,19 @@ export const spanish: UiMessages = {
       later:
         'phada watch indexa lo que faltó cuando está inactivo; phada index owner/repo indexa uno ahora.',
     },
+    repository: {
+      checking: 'Buscando el repositorio git de esta carpeta…',
+      outside: (folder) =>
+        `${folder} no está dentro de un repositorio git: no hay carpeta .phada/ que crear aquí. Ejecuta phada init dentro de un repositorio para crear una.`,
+      configured: (root) =>
+        `${root} ya tiene una carpeta .phada/: cada revisión de este repositorio lee su config.yml y su rules.md.`,
+      offer: (root) => `${root} no tiene una carpeta .phada/.`,
+      why: 'phada init la crea con un config.yml comentado y un rules.md: las reglas que sigue cada revisión de este repositorio, para que tu equipo las edite y las suba.',
+      create: 'crear .phada/',
+      creating: 'Creando .phada/…',
+      created: (path) => `Creado ${path}`,
+      kept: (path) => `${path} ya existe, sin cambios`,
+    },
     language: {
       intro: 'El idioma de esta app y de las revisiones que Phada escribe.',
       current: 'actual',
@@ -581,6 +593,11 @@ export const spanish: UiMessages = {
       written: (path) => `Guardado en ${path}:`,
       nothing: 'No se guardó nada en tu configuración.',
       skipped: (steps) => `Omitidos: ${steps}`,
+      indexed: (names) => `Indexados: ${names}`,
+      left: (names) =>
+        `Quedaron para después: ${names}. phada watch los indexa cuando está inactivo.`,
+      notIndexed: (names) => `Sin indexar: ${names}`,
+      created: (root, files) => `Creados en ${root}: ${files}`,
       now: 'Qué hacer ahora',
       watch: 'revisa los pull requests nuevos de los repositorios observados',
       review: 'revisa un pull request',
