@@ -20,12 +20,12 @@ import type { DataState } from '../data-hooks.js'
 import { DataView, failedText } from '../data-view.js'
 import type { UiMessages } from '../i18n/messages.js'
 import { ScrollList, ScrollText, useSelection } from '../scroll-list.js'
+import { ruleLines } from '../setting-lines.js'
 import { textWidth } from '../tab-layout.js'
 import { TextFieldLine, useTextField } from '../text-field.js'
 import type { Theme } from '../theme.js'
 import { fit, oneLine, shortenHome, wrapText } from '../text-fit.js'
 import { bytesText } from '../units.js'
-import { ruleLines } from './repositories.js'
 
 const GAP = '  '
 const SHORT_SHA = 7

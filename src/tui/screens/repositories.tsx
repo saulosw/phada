@@ -8,7 +8,6 @@ import type {
   RepositoryIndex,
   RepositoryList,
   RepositoryOrigin,
-  UserRule,
 } from '../../app/read-repositories.js'
 import {
   useAppDeps,
@@ -25,7 +24,7 @@ import { labeledLines } from '../labeled-lines.js'
 import { absoluteTime, relativeTime } from '../relative-time.js'
 import { verdictColor, verdictLabel } from '../run-text.js'
 import { ScrollList, ScrollText, useSelection } from '../scroll-list.js'
-import { indented, settingLines } from '../setting-lines.js'
+import { indented, ruleLines, settingLines } from '../setting-lines.js'
 import { textWidth } from '../tab-layout.js'
 import type { Theme } from '../theme.js'
 import { fit, oneLine, shortenHome, wrapText } from '../text-fit.js'
@@ -34,7 +33,6 @@ import { bytesText } from '../units.js'
 const GAP = '  '
 const MIN_NAME_WIDTH = 16
 const SHORT_SHA = 7
-const KEY_SHARE = 0.3
 
 const repoKey = ({ repo }: ListedRepository) => repo
 
@@ -393,30 +391,6 @@ function reviewLines(
       <Text color={theme.colors.dim}>{fit(cell.when, columns.when)}</Text>
       {GAP}
       {oneLine(cell.run.title ?? '')}
-    </Text>
-  ))
-}
-
-export function ruleLines(
-  rules: readonly UserRule[],
-  messages: UiMessages,
-  { colors }: Theme,
-  columns: number,
-): ReactNode[] {
-  const keys = rules.map(({ name }) => oneLine(name))
-  const keyWidth = Math.min(Math.max(0, ...keys.map(textWidth)), Math.floor(columns * KEY_SHARE))
-  const originWidth = Math.max(...Object.values(messages.settings.origins).map(textWidth))
-  const texts = rules.map(({ text }) => oneLine(text))
-  const room = columns - 2 - keyWidth - originWidth - GAP.length * 2
-  const textColumn = Math.max(Math.min(room, Math.max(0, ...texts.map(textWidth))), 1)
-  return rules.map((rule, index) => (
-    <Text>
-      {'  '}
-      <Text color={colors.soft}>{fit(keys[index] ?? '', keyWidth)}</Text>
-      {GAP}
-      {fit(texts[index] ?? '', textColumn)}
-      {GAP}
-      <Text color={colors.dim}>{messages.settings.origins[rule.origin]}</Text>
     </Text>
   ))
 }

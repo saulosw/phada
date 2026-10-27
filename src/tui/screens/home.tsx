@@ -13,12 +13,12 @@ import type { DataState } from '../data-hooks.js'
 import { DataView, failedText } from '../data-view.js'
 import type { UiMessages } from '../i18n/messages.js'
 import { Mascot } from '../mascot.js'
+import { PROVIDER_NAMES } from '../provider-names.js'
 import { absoluteTime, relativeTime } from '../relative-time.js'
 import { textWidth } from '../tab-layout.js'
 import type { Theme } from '../theme.js'
 import { runKey, verdictColor, verdictLabel } from '../run-text.js'
 import { fit, oneLine, shortenHome } from '../text-fit.js'
-import { PROVIDER_NAMES } from './provider.js'
 
 const BOX_CHROME = 22
 const BOX_ROWS = 6

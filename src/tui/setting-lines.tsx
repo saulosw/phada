@@ -1,6 +1,6 @@
 import { Text } from 'ink'
 import type { ReactNode } from 'react'
-import type { ConfigSetting, SettingOrigin } from '../app/read-repositories.js'
+import type { ConfigSetting, SettingOrigin, UserRule } from '../app/read-repositories.js'
 import type { UiMessages } from './i18n/messages.js'
 import { textWidth } from './tab-layout.js'
 import type { Theme } from './theme.js'
@@ -9,6 +9,7 @@ import { durationText } from './units.js'
 
 const GAP = '  '
 const INDENT = '  '
+const KEY_SHARE = 0.3
 
 export function settingLines(
   settings: readonly ConfigSetting[],
@@ -32,6 +33,30 @@ export function settingLines(
       <Text color={originColor(setting.origin, theme)} bold={setting.origin === 'repository'}>
         {messages.settings.origins[setting.origin]}
       </Text>
+    </Text>
+  ))
+}
+
+export function ruleLines(
+  rules: readonly UserRule[],
+  messages: UiMessages,
+  { colors }: Theme,
+  columns: number,
+): ReactNode[] {
+  const keys = rules.map(({ name }) => oneLine(name))
+  const keyWidth = Math.min(Math.max(0, ...keys.map(textWidth)), Math.floor(columns * KEY_SHARE))
+  const originWidth = Math.max(...Object.values(messages.settings.origins).map(textWidth))
+  const texts = rules.map(({ text }) => oneLine(text))
+  const room = columns - INDENT.length - keyWidth - originWidth - GAP.length * 2
+  const textColumn = Math.max(Math.min(room, Math.max(0, ...texts.map(textWidth))), 1)
+  return rules.map((rule, index) => (
+    <Text>
+      {INDENT}
+      <Text color={colors.soft}>{fit(keys[index] ?? '', keyWidth)}</Text>
+      {GAP}
+      {fit(texts[index] ?? '', textColumn)}
+      {GAP}
+      <Text color={colors.dim}>{messages.settings.origins[rule.origin]}</Text>
     </Text>
   ))
 }

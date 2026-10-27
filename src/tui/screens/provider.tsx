@@ -5,17 +5,12 @@ import { useAppDeps, useMessages, useScreenKeys, useScreenSize, useTheme } from 
 import { useLoaded, usePolled } from '../data-hooks.js'
 import type { DataState } from '../data-hooks.js'
 import { failedText } from '../data-view.js'
+import { PROVIDER_NAMES } from '../provider-names.js'
 import type { UiMessages } from '../i18n/messages.js'
 import { ScrollText } from '../scroll-list.js'
 import { textWidth } from '../tab-layout.js'
 import type { Theme } from '../theme.js'
 import { fit, namesText, oneLine, shortenHome, wrapText } from '../text-fit.js'
-
-export const PROVIDER_NAMES: Readonly<Record<ReportedProvider['provider'], string>> = {
-  claude: 'Claude Code',
-  codex: 'Codex',
-  ollama: 'Ollama',
-}
 
 const MODELS_SHOWN = 5
 const MAX_MCP_NAME = 24
