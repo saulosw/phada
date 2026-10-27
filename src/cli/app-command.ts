@@ -23,6 +23,7 @@ import type { WatchSettings } from '../config/watch-settings.js'
 import { checkClaudeStatus } from '../providers/claude-status.js'
 import { checkCodexStatus } from '../providers/codex-status.js'
 import { checkOllamaStatus } from '../providers/ollama-status.js'
+import type { runInteractive } from '../process/run-interactive.js'
 import { openExistingHistoryStore, openHistoryStore } from '../store/history-store.js'
 import type { HistoryStore } from '../store/history-store.js'
 import { readObservedEdges } from '../store/observed-store.js'
@@ -41,6 +42,8 @@ import { ghTokenReader } from './github-token.js'
 import type { GhTokenReader, RunGh } from './github-token.js'
 import type { TextOutput } from './progress.js'
 import { SLACK_APP_TOKEN, SLACK_BOT_TOKEN } from './review-event-sinks.js'
+import { terminalHandOff } from './terminal-hand-off.js'
+import type { TerminalHandOff } from './terminal-hand-off.js'
 
 export type StopSignal = 'SIGINT' | 'SIGTERM'
 
@@ -65,6 +68,7 @@ export interface AppCommandDeps extends Omit<RulesReaderDeps, 'ghToken'> {
   }
   runGh?: RunGh
   fetchUser?: (options: FetchUserOptions) => Promise<GitHubUser>
+  runInteractive?: typeof runInteractive
 }
 
 const EXIT_CODES: Readonly<Record<Exclude<AppResult['kind'], 'failed'>, number>> = {
@@ -105,11 +109,12 @@ export async function runApp(deps: AppCommandDeps): Promise<number> {
       open: deps.openHistoryReader ?? ((path) => openHistoryStore(path, { readOnly: true })),
     }),
   )
+  const terminal = terminalHandOff(deps)
   try {
-    const result = await openApp(await appDeps(deps, history, files.lock), {
+    const result = await openApp(await appDeps(deps, history, files.lock, terminal), {
       stdin,
       stdout,
-      onSignal: deps.onSignal,
+      onSignal: terminal.onSignal,
     })
     if (result.kind === 'failed') throw result.error
     return EXIT_CODES[result.kind]
@@ -118,7 +123,12 @@ export async function runApp(deps: AppCommandDeps): Promise<number> {
   }
 }
 
-async function appDeps(deps: AppCommandDeps, history: AppHistory, lock: string): Promise<AppDeps> {
+async function appDeps(
+  deps: AppCommandDeps,
+  history: AppHistory,
+  lock: string,
+  terminal: TerminalHandOff,
+): Promise<AppDeps> {
   let settings: WatchSettings | undefined
   const watchSettings = () =>
     loadTopLevelUserLayers(deps).then(
@@ -169,6 +179,7 @@ async function appDeps(deps: AppCommandDeps, history: AppHistory, lock: string):
         fetchUser: deps.fetchUser ?? fetchAuthenticatedUser,
       }),
     ...rulesReaders({ ...deps, ghToken }),
+    handOff: terminal.handOff,
   }
   const language = await readLanguage().catch(() => undefined)
   return language === undefined ? base : { ...base, language }

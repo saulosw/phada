@@ -189,6 +189,7 @@ export function fakeAppDeps(scheduler: Scheduler, overrides: Partial<AppDeps> = 
     readLocalRules: async () => ({ lens: { kind: 'built-in' }, rules: [], warnings: [] }),
     readRepositoryRules: async () => ({ status: 'no-token' }),
     readPullRequestRules: async () => ({ status: 'no-token' }),
+    handOff: async () => ({ kind: 'exited', exitCode: 0 }),
     ...overrides,
   }
 }

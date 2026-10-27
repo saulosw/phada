@@ -17,6 +17,12 @@ export interface Scheduler {
   every(ms: number, tick: () => void): () => void
 }
 
+export type HandOffTarget =
+  { kind: 'command'; command: string; args: readonly string[] } | { kind: 'editor'; file: string }
+
+export type HandOffResult =
+  { kind: 'exited'; exitCode: number } | { kind: 'not-found'; command: string }
+
 export interface AppDeps {
   version: string
   cwd: string
@@ -39,6 +45,7 @@ export interface AppDeps {
   readLocalRules(repo: string): Promise<LocalRules>
   readRepositoryRules(repo: string): Promise<BranchRules>
   readPullRequestRules(repo: string, number: number): Promise<PullRequestRules>
+  handOff(target: HandOffTarget): Promise<HandOffResult>
 }
 
 export interface KeyHint {

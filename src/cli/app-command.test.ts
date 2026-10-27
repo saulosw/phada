@@ -11,7 +11,7 @@ import { HistoryOutdatedError, openHistoryStore } from '../store/history-store.j
 import type { HistoryStore, RunRecord } from '../store/history-store.js'
 import type { AppDeps, AppHost, AppResult } from '../tui/open-app.js'
 import { runApp } from './app-command.js'
-import type { AppCommandDeps } from './app-command.js'
+import type { AppCommandDeps, StopSignal } from './app-command.js'
 import { UsageError } from './errors.js'
 import { pullRequestFixture } from '../../test/support/pull-request.js'
 import { reviewState } from '../../test/support/review-state.js'
@@ -35,7 +35,8 @@ function deps(
     holder?: number
     observed?: AppCommandDeps['observed']
     github?: FakeGitHub
-    during?: (deps: AppDeps) => Promise<void>
+    during?: (deps: AppDeps, host: AppHost) => Promise<void>
+    runInteractive?: AppCommandDeps['runInteractive']
     ghToken?: string
     dataHome?: string
   } = {},
@@ -44,6 +45,7 @@ function deps(
   const userTokens: string[] = []
   const opened: { deps: AppDeps; host: AppHost }[] = []
   const historyPaths: string[] = []
+  const signalHandlers: ((signal?: StopSignal) => void)[] = []
   const files = memoryFiles({
     ...(options.config === undefined ? {} : { '/cfg/config.yml': options.config }),
     ...options.files,
@@ -56,11 +58,13 @@ function deps(
     files,
     stdin: terminal(options.stdin ?? true).stdin,
     stdout: terminal(options.stdout ?? true).stdout,
-    onSignal: () => {},
+    onSignal: (handler) => {
+      signalHandlers.push(handler)
+    },
     loadApp: async () => ({
       openApp: async (appDeps, host) => {
         opened.push({ deps: appDeps, host })
-        await options.during?.(appDeps)
+        await options.during?.(appDeps, host)
         return options.result ?? { kind: 'quit' }
       },
     }),
@@ -101,9 +105,13 @@ function deps(
       return { login: 'ana' }
     },
     ...(options.github ?? fakeGitHub()).readers,
+    ...(options.runInteractive === undefined ? {} : { runInteractive: options.runInteractive }),
   }
   app.env.PHADA_DATA_HOME = options.dataHome ?? '/data'
-  return { app, opened, files, historyPaths, ghCalls, userTokens }
+  const send = (signal: StopSignal) => {
+    for (const handler of signalHandlers) handler(signal)
+  }
+  return { app, opened, files, historyPaths, ghCalls, userTokens, send }
 }
 
 const MISSING = new UsageError('Missing the command, e.g. phada review owner/repo#123.')
@@ -135,7 +143,6 @@ describe('runApp', () => {
     expect(opened[0]?.deps).not.toHaveProperty('language')
     expect(opened[0]?.host.stdin).toBe(app.stdin)
     expect(opened[0]?.host.stdout).toBe(app.stdout)
-    expect(opened[0]?.host.onSignal).toBe(app.onSignal)
   })
 
   it('hands the app only the variables of the colors, never a token', async () => {
@@ -309,6 +316,113 @@ describe('runApp', () => {
     })
     await runApp(app)
     expect(historyPaths).toEqual([])
+  })
+})
+
+describe('handing the terminal over', () => {
+  type Run = NonNullable<AppCommandDeps['runInteractive']>
+  type RunCall = { command: string; args: readonly string[]; options: Parameters<Run>[2] }
+
+  function runner(result: (call: RunCall) => ReturnType<Run>) {
+    const calls: RunCall[] = []
+    const run: Run = (command, args, options) => {
+      const call = { command, args, options }
+      calls.push(call)
+      return result(call)
+    }
+    return { run, calls }
+  }
+
+  function pending() {
+    let finish: (exitCode: number) => void = () => {}
+    const promise = new Promise<{ kind: 'exited'; exitCode: number }>((resolve) => {
+      finish = (exitCode) => resolve({ kind: 'exited', exitCode })
+    })
+    return { promise, finish }
+  }
+
+  it('runs the command in the folder of the app with its environment, and gives back how it ended', async () => {
+    const { run, calls } = runner(async () => ({ kind: 'exited', exitCode: 1 }))
+    const results: unknown[] = []
+    const { app } = deps({
+      env: { GITHUB_TOKEN: 'ghp_x' },
+      runInteractive: run,
+      during: async (appDeps) => {
+        results.push(
+          await appDeps.handOff({ kind: 'command', command: 'claude', args: ['auth', 'login'] }),
+        )
+      },
+    })
+    await runApp(app)
+    expect(results).toEqual([{ kind: 'exited', exitCode: 1 }])
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({
+      command: 'claude',
+      args: ['auth', 'login'],
+      options: { cwd: '/home/ana/shop', env: app.env },
+    })
+  })
+
+  it.each([
+    [{ VISUAL: 'code --wait', EDITOR: 'nano' }, 'code', ['--wait']],
+    [{ VISUAL: '  ', EDITOR: ' nano  -w ' }, 'nano', ['-w']],
+    [{ EDITOR: 'emacs' }, 'emacs', []],
+    [{}, 'vi', []],
+  ])('opens a file in VISUAL, else EDITOR, else vi: %j', async (env, command, args) => {
+    const { run, calls } = runner(async ({ command }) => ({ kind: 'not-found', command }))
+    const results: unknown[] = []
+    const { app } = deps({
+      env,
+      runInteractive: run,
+      during: async (appDeps) => {
+        results.push(await appDeps.handOff({ kind: 'editor', file: '/cfg/config.yml' }))
+      },
+    })
+    await runApp(app)
+    expect(calls.map(({ command, args }) => [command, args])).toEqual([
+      [command, [...args, '/cfg/config.yml']],
+    ])
+    expect(results).toEqual([{ kind: 'not-found', command }])
+  })
+
+  it('leaves Ctrl-C to the command while it runs, and ends the app on it afterwards', async () => {
+    const child = pending()
+    const { run } = runner(() => child.promise)
+    const received: (StopSignal | undefined)[] = []
+    const { app, send } = deps({
+      runInteractive: run,
+      during: async (appDeps, host) => {
+        host.onSignal((signal) => received.push(signal))
+        const handOff = appDeps.handOff({ kind: 'command', command: 'codex', args: ['login'] })
+        send('SIGINT')
+        expect(received).toEqual([])
+        child.finish(130)
+        await handOff
+        send('SIGINT')
+      },
+    })
+    await runApp(app)
+    expect(received).toEqual(['SIGINT'])
+  })
+
+  it('ends the app and the command on SIGTERM while the command runs', async () => {
+    const child = pending()
+    const { run, calls } = runner(() => child.promise)
+    const received: (StopSignal | undefined)[] = []
+    const { app, send } = deps({
+      runInteractive: run,
+      during: async (appDeps, host) => {
+        host.onSignal((signal) => received.push(signal))
+        const handOff = appDeps.handOff({ kind: 'command', command: 'codex', args: ['login'] })
+        expect(calls[0]?.options.signal?.aborted).toBe(false)
+        send('SIGTERM')
+        expect(received).toEqual(['SIGTERM'])
+        expect(calls[0]?.options.signal?.aborted).toBe(true)
+        child.finish(143)
+        await handOff
+      },
+    })
+    await runApp(app)
   })
 })
 
