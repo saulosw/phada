@@ -107,6 +107,45 @@ describe('nodeHttpFetch', () => {
     expect(error).toMatchObject({ name: 'TimeoutError' })
   })
 
+  it('hands over the body as it arrives, before the server ends it', async () => {
+    let finish = () => {}
+    const url = await listen((_request, response) => {
+      response.writeHead(200)
+      response.write('{"status":"pulling"}\n')
+      finish = () => response.end('{"status":"success"}\n')
+    })
+
+    const response = await nodeHttpFetch(`${url}/api/pull`, { method: 'POST', body: '{}' })
+    const reader = response.body?.getReader()
+    const first = await reader?.read()
+
+    expect(new TextDecoder().decode(first?.value)).toBe('{"status":"pulling"}\n')
+    finish()
+    const rest = await reader?.read()
+    expect(new TextDecoder().decode(rest?.value)).toBe('{"status":"success"}\n')
+    expect((await reader?.read())?.done).toBe(true)
+  })
+
+  it('rejects the read of the body with the reason of the signal when it aborts', async () => {
+    const url = await listen((_request, response) => {
+      response.writeHead(200)
+      response.write('{"status":"pulling"}\n')
+    })
+    const controller = new AbortController()
+
+    const response = await nodeHttpFetch(`${url}/api/pull`, {
+      method: 'POST',
+      body: '{}',
+      signal: controller.signal,
+    })
+    const reader = response.body?.getReader()
+    await reader?.read()
+    const reading = reader?.read()
+    controller.abort(new DOMException('stopped', 'AbortError'))
+
+    expect(await rejection(reading ?? Promise.resolve())).toMatchObject({ name: 'AbortError' })
+  })
+
   it('rejects like fetch, keeping the error code as the cause, when nothing listens', async () => {
     const url = await closedPortUrl()
 

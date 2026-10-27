@@ -30,18 +30,13 @@ export const nodeHttpFetch: typeof globalThis.fetch = (input, init) =>
       headers: requestHeaders(init?.headers, body),
     })
     const onAbort = () => outgoing.destroy(signal?.reason)
-    const fail = (error: unknown) => {
-      signal?.removeEventListener('abort', onAbort)
-      reject(signal?.aborted ? signal.reason : new TypeError('fetch failed', { cause: error }))
-    }
+    const release = () => signal?.removeEventListener('abort', onAbort)
     signal?.addEventListener('abort', onAbort, { once: true })
-    outgoing.on('error', fail)
-    outgoing.on('response', (incoming) => {
-      readText(incoming).then((text) => {
-        signal?.removeEventListener('abort', onAbort)
-        resolve(toResponse(incoming, text))
-      }, fail)
+    outgoing.on('error', (error) => {
+      release()
+      reject(signal?.aborted ? signal.reason : new TypeError('fetch failed', { cause: error }))
     })
+    outgoing.on('response', (incoming) => resolve(toResponse(incoming, signal, release)))
     outgoing.end(body)
   })
 
@@ -55,16 +50,44 @@ function requestHeaders(headers: RequestInit['headers'], body: string | undefine
   return result
 }
 
-async function readText(incoming: IncomingMessage): Promise<string> {
-  const chunks: Buffer[] = []
-  for await (const chunk of incoming) chunks.push(chunk as Buffer)
-  return Buffer.concat(chunks).toString('utf8')
+function toResponse(
+  incoming: IncomingMessage,
+  signal: AbortSignal | undefined,
+  release: () => void,
+): Response {
+  const status = incoming.statusCode ?? 0
+  const init = { status, statusText: incoming.statusMessage ?? '' }
+  if (NULL_BODY_STATUSES.has(status)) {
+    incoming.resume()
+    incoming.once('end', release)
+    return new Response(null, init)
+  }
+  return new Response(bodyOf(incoming, signal, release), init)
 }
 
-function toResponse(incoming: IncomingMessage, text: string): Response {
-  const status = incoming.statusCode ?? 0
-  return new Response(NULL_BODY_STATUSES.has(status) ? null : text, {
-    status,
-    statusText: incoming.statusMessage ?? '',
+function bodyOf(
+  incoming: IncomingMessage,
+  signal: AbortSignal | undefined,
+  release: () => void,
+): ReadableStream<Uint8Array> {
+  const chunks = incoming[Symbol.asyncIterator]()
+  return new ReadableStream({
+    async pull(controller) {
+      try {
+        const next = (await chunks.next()) as IteratorResult<Buffer>
+        if (!next.done) return controller.enqueue(new Uint8Array(next.value))
+        release()
+        controller.close()
+      } catch (error) {
+        release()
+        controller.error(
+          signal?.aborted ? signal.reason : new TypeError('terminated', { cause: error }),
+        )
+      }
+    },
+    cancel() {
+      release()
+      incoming.destroy()
+    },
   })
 }
