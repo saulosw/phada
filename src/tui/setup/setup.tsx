@@ -29,10 +29,12 @@ export function Setup({ onClose }: { onClose(): void }) {
   const step = SETUP_STEPS[index] ?? SETUP_STEPS[0]
   if (step === undefined) throw new Error('the setup has no steps')
 
+  const indexNow = useRef(0)
   const advance = (update: (progress: SetupProgress) => SetupProgress) => {
     setProgress(update)
-    if (index === SETUP_STEPS.length - 1) onClose()
-    else setIndex(index + 1)
+    if (indexNow.current === SETUP_STEPS.length - 1) return onClose()
+    indexNow.current += 1
+    setIndex(indexNow.current)
   }
   const next: SetupStepProps['next'] = (written) =>
     advance((current) =>
@@ -40,7 +42,11 @@ export function Setup({ onClose }: { onClose(): void }) {
         ? current
         : { ...current, written: [...current.written, written] },
     )
-  const skip = () => advance((current) => ({ ...current, skipped: [...current.skipped, step.id] }))
+  const skip = () => {
+    const skipped = SETUP_STEPS[indexNow.current]
+    if (skipped === undefined || !skipped.skippable) return
+    advance((current) => ({ ...current, skipped: [...current.skipped, skipped.id] }))
+  }
 
   useBack(() => {
     if (leaving) setLeaving(false)
@@ -53,7 +59,7 @@ export function Setup({ onClose }: { onClose(): void }) {
       else if (input === 'n') setLeaving(false)
       return
     }
-    if (input === 's' && step.skippable) skip()
+    if (input === 's') skip()
   })
   useScreenKeys(
     leaving
