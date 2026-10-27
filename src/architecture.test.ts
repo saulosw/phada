@@ -597,6 +597,44 @@ describe('tui boundary rules', () => {
   })
 })
 
+const SCREENS_DIR = 'tui/screens'
+
+function screenImports(code: string): string[] {
+  return [...code.matchAll(STATIC_MODULE), ...code.matchAll(DYNAMIC_MODULE)]
+    .map((match) => match.at(-1) ?? '')
+    .filter((specifier) => specifier.startsWith('.'))
+    .filter((specifier) => posix.dirname(posix.join(SCREENS_DIR, specifier)) === SCREENS_DIR)
+    .map((specifier) => `imports the screen '${specifier}'`)
+}
+
+describe('screen imports', () => {
+  it('accepts the shared modules of the terminal app and the use cases', () => {
+    const code = [
+      "import { PROVIDER_NAMES } from '../provider-names.js'",
+      "import { ruleLines } from '../setting-lines.js'",
+      "import type { ReadRules } from '../../app/read-rules.js'",
+    ].join('\n')
+
+    expect(screenImports(code)).toEqual([])
+  })
+
+  it.each([
+    ['a sibling screen', "import { PROVIDER_NAMES } from './provider.js'"],
+    ['a type of a sibling screen', "import type { Draw } from './repositories.js'"],
+    [
+      'a screen through the parent folder',
+      "import { ruleLines } from '../screens/repositories.js'",
+    ],
+    ['a dynamic import of a screen', "const rules = await import('./rules.js')"],
+  ])('flags %s', (_case, code) => {
+    expect(screenImports(code)).not.toEqual([])
+  })
+
+  it.each(sourcesOf({ ...TUI, dir: SCREENS_DIR }))('$name imports no other screen', ({ code }) => {
+    expect(screenImports(code)).toEqual([])
+  })
+})
+
 describe('repository boundary rules', () => {
   it.each([
     [
