@@ -330,6 +330,18 @@ export interface RepositoriesMessages {
     noReviews: string
   }
   pick: RepositoryPickMessages
+  edit: {
+    watch: string
+    unwatch: string
+    publishOn: string
+    publishOff: string
+    add: string
+    config: string
+    rules: string
+    addIntro: string
+    noToken: string
+    editorFailed(code: number): string
+  }
 }
 
 export interface RepositoryPickMessages {

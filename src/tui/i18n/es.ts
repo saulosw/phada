@@ -309,6 +309,20 @@ export const spanish: UiMessages = {
       notListed: 'fuera de tu lista',
       keys: { space: 'Espacio', mark: 'marcar', filter: 'filtrar', add: 'añadir owner/repo' },
     },
+    edit: {
+      watch: 'observar',
+      unwatch: 'no observar',
+      publishOn: 'publicar',
+      publishOff: 'no publicar',
+      add: 'añadir',
+      config: 'config',
+      rules: 'reglas',
+      addIntro:
+        'Marca los repositorios que phada watch revisa: van a watch.repos de tu configuración.',
+      noToken:
+        'Listar tus repositorios necesita un token de GitHub: gh auth login o GITHUB_TOKEN, y luego r.',
+      editorFailed: (code) => `El editor terminó con el código ${code}.`,
+    },
   },
   automation: {
     watch: 'Watch',

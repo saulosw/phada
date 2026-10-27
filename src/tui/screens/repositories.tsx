@@ -9,22 +9,29 @@ import type {
   RepositoryList,
   RepositoryOrigin,
 } from '../../app/read-repositories.js'
+import type { UserRepoFile } from '../../config/user-config.js'
 import {
   useAppDeps,
   useBack,
   useMessages,
+  useScreenInput,
   useScreenKeys,
   useScreenSize,
   useTheme,
 } from '../app-context.js'
+import { configChangeLines, useConfigChange } from '../config-change.js'
 import { usePolled } from '../data-hooks.js'
-import { DataView } from '../data-view.js'
+import { DataView, failedText } from '../data-view.js'
+import { useHandOff } from '../hand-off.js'
+import type { HandOffOutcome } from '../hand-off.js'
 import type { UiMessages } from '../i18n/messages.js'
 import { labeledLines } from '../labeled-lines.js'
 import { absoluteTime, relativeTime } from '../relative-time.js'
+import { RepositoryPicker } from '../repository-picker.js'
 import { verdictColor, verdictLabel } from '../run-text.js'
 import { ScrollList, ScrollText, useSelection } from '../scroll-list.js'
 import { indented, ruleLines, settingLines } from '../setting-lines.js'
+import { SubView } from '../sub-view.js'
 import { textWidth } from '../tab-layout.js'
 import type { Theme } from '../theme.js'
 import { fit, oneLine, shortenHome, wrapText } from '../text-fit.js'
@@ -37,38 +44,152 @@ const SHORT_SHA = 7
 const repoKey = ({ repo }: ListedRepository) => repo
 
 export function RepositoriesScreen() {
-  const { readRepositories } = useAppDeps()
   const messages = useMessages()
-  const state = usePolled(readRepositories)
+  const [adding, setAdding] = useState(false)
+  const m = messages.repositories.edit
+  if (adding) {
+    return (
+      <SubView onLeave={() => setAdding(false)}>
+        <RepositoryPicker intro={m.addIntro} noToken={m.noToken} onSaved={() => setAdding(false)} />
+      </SubView>
+    )
+  }
+  return <RepositoryBrowser onAdd={() => setAdding(true)} />
+}
+
+function RepositoryBrowser({ onAdd }: { onAdd(): void }) {
+  const { readRepositories, ensureRepositoryFile, home } = useAppDeps()
+  const messages = useMessages()
+  const theme = useTheme()
+  const size = useScreenSize()
+  const [round, setRound] = useState(0)
+  const readAgain = () => setRound((current) => current + 1)
+  const state = usePolled(readRepositories, undefined, String(round))
   const [open, setOpen] = useState<string | undefined>()
-  const repositories = state.status === 'ready' ? state.value.repositories : []
+  const handOff = useHandOff()
+  const [edited, setEdited] = useState<HandOffOutcome>()
+  const change = useConfigChange(readAgain)
+  const list = state.status === 'ready' ? state.value : undefined
+  const repositories = list?.repositories ?? []
+  const listing = open === undefined && list !== undefined
   const selection = useSelection(repositories, repoKey, {
-    active: open === undefined,
+    active: open === undefined && !change.open,
     onOpen: (entry) => setOpen(entry.repo),
   })
-  useBack(open === undefined ? undefined : () => setOpen(undefined))
+  const item = listing ? selection.item : undefined
+  const configEditable = listing && list.configError === null
+  const watched = item?.origins.includes('watched') ?? false
+  const publishes = item?.publish === 'pr'
+
+  const editFile = async (repo: string, file: UserRepoFile) => {
+    setEdited(undefined)
+    let outcome: HandOffOutcome | undefined
+    try {
+      outcome = await handOff.run({ kind: 'editor', file: await ensureRepositoryFile(repo, file) })
+    } catch (error) {
+      outcome = { kind: 'failed', error }
+    }
+    if (outcome === undefined) return
+    readAgain()
+    setEdited(outcome)
+  }
+
+  useBack(change.open ? change.cancel : open === undefined ? undefined : () => setOpen(undefined))
+  useScreenInput((input) => {
+    if (!listing || change.open || handOff.running) return
+    if (configEditable && input === 'a') return onAdd()
+    if (item === undefined) return
+    if (configEditable && input === 'w') {
+      return change.propose([{ kind: watched ? 'unwatch' : 'watch', repo: item.repo }])
+    }
+    if (configEditable && watched && input === 'p') {
+      return change.propose([{ kind: 'publish', repo: item.repo, publish: !publishes }])
+    }
+    if (input === 'e') void editFile(item.repo, 'config.yml')
+    if (input === 'R') void editFile(item.repo, 'rules.md')
+  })
+  const e = messages.repositories.edit
   useScreenKeys(
-    open === undefined
-      ? repositories.length === 0
-        ? []
-        : [
-            { keys: '↑/↓', label: messages.keys.select },
-            { keys: 'Enter', label: messages.keys.open },
-          ]
-      : [
+    open !== undefined
+      ? [
           { keys: '↑/↓', label: messages.list.scroll },
           { keys: 'Esc', label: messages.keys.back },
-        ],
+        ]
+      : change.open
+        ? change.keys
+        : [
+            ...(repositories.length === 0
+              ? []
+              : [
+                  { keys: '↑/↓', label: messages.keys.select },
+                  { keys: 'Enter', label: messages.keys.open },
+                ]),
+            ...(configEditable && item !== undefined
+              ? [{ keys: 'w', label: watched ? e.unwatch : e.watch }]
+              : []),
+            ...(configEditable && watched
+              ? [{ keys: 'p', label: publishes ? e.publishOff : e.publishOn }]
+              : []),
+            ...(configEditable ? [{ keys: 'a', label: e.add }] : []),
+            ...(item === undefined
+              ? []
+              : [
+                  { keys: 'e', label: e.config },
+                  { keys: 'R', label: e.rules },
+                ]),
+          ],
   )
   if (open !== undefined) return <RepositoryDetailView repo={open} />
+  const draw = { messages, theme, home, width: size.columns }
+  const tail = [
+    ...(edited === undefined ? [] : editorOutcomeLines(edited, messages, theme)),
+    ...configChangeLines(change.state, draw),
+  ]
   return (
     <DataView state={state}>
-      {(list) => <RepositoryListView list={list} selected={selection.index} />}
+      {(loaded) => (
+        <RepositoryListView
+          list={loaded}
+          selected={selection.index}
+          tail={tail.length === 0 ? [] : [<Text> </Text>, ...tail]}
+        />
+      )}
     </DataView>
   )
 }
 
-function RepositoryListView({ list, selected }: { list: RepositoryList; selected: number }) {
+function editorOutcomeLines(
+  outcome: HandOffOutcome,
+  messages: UiMessages,
+  { colors }: Theme,
+): ReactNode[] {
+  switch (outcome.kind) {
+    case 'exited':
+      return outcome.exitCode === 0
+        ? []
+        : [
+            <Text color={colors.warn}>
+              {messages.repositories.edit.editorFailed(outcome.exitCode)}
+            </Text>,
+          ]
+    case 'not-found':
+      return [
+        <Text color={colors.warn}>{messages.handOff.notFound(oneLine(outcome.command))}</Text>,
+      ]
+    case 'failed':
+      return [<Text color={colors.error}>{failedText(messages, outcome.error)}</Text>]
+  }
+}
+
+function RepositoryListView({
+  list,
+  selected,
+  tail,
+}: {
+  list: RepositoryList
+  selected: number
+  tail: readonly ReactNode[]
+}) {
   const messages = useMessages()
   const theme = useTheme()
   const { colors } = theme
@@ -153,7 +274,7 @@ function RepositoryListView({ list, selected }: { list: RepositoryList; selected
           <ScrollList
             items={rows}
             index={selected}
-            rows={Math.max(size.rows - head.length - 1, 1)}
+            rows={Math.max(size.rows - head.length - 1 - tail.length, 1)}
             keyOf={({ entry }) => repoKey(entry)}
             renderItem={(row) => (
               <>
@@ -171,6 +292,11 @@ function RepositoryListView({ list, selected }: { list: RepositoryList; selected
           />
         </>
       )}
+      {tail.map((node, position) => (
+        <Text key={`tail-${position}`} wrap="truncate-end">
+          {node}
+        </Text>
+      ))}
     </Box>
   )
 }
@@ -189,7 +315,7 @@ function EmptyRepositories({ list }: { list: RepositoryList }) {
       <Box flexDirection="column" marginTop={1}>
         <Text>{messages.settings.noConfig}</Text>
         <Text color={colors.dim}>
-          {messages.settings.initHint} {command('phada init --global')}
+          {messages.settings.initHint} {command('phada setup')}
         </Text>
       </Box>
     )

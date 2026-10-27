@@ -354,7 +354,11 @@ src/
                          #   review with findings, publication, CI and feedback),
                          #   repositories.tsx (each repository with its origins, index and last
                          #   review → its watch filters, index, user config with origins, rules,
-                         #   related repositories and last reviews), automation.tsx (one page:
+                         #   related repositories and last reviews; on the selected one w
+                         #   watches or unwatches, p turns publish on or off, e and R open its
+                         #   own config.yml and rules.md in the editor (ensureRepositoryFile),
+                         #   a → the RepositoryPicker in a SubView; w, p and a hidden while the
+                         #   user config is invalid), automation.tsx (one page:
                          #   watch, CI wait, request sources, hooks, when), provider.tsx (the
                          #   choice and its origin, the language, each AI checked on open and on
                          #   r with its next step, l to log in to a logged-out CLI (the chosen one

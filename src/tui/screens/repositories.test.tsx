@@ -1,7 +1,17 @@
 import { cleanup } from 'ink-testing-library'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { ListedRun } from '../../app/read-history.js'
-import type { RepositoryDetail, RepositoryList } from '../../app/read-repositories.js'
+import type {
+  ListedRepository,
+  RepositoryDetail,
+  RepositoryList,
+} from '../../app/read-repositories.js'
+import type { UserRepoFile } from '../../config/user-config.js'
+import type {
+  UserConfigChange,
+  UserConfigPlan,
+  ValueChange,
+} from '../../config/user-config-edit.js'
 import {
   CONFIG_FILE,
   emptyRepositories,
@@ -14,7 +24,7 @@ import {
   visibleWidth,
   waitFor,
 } from '../../../test/support/tui.js'
-import type { AppDeps } from '../app-context.js'
+import type { AppDeps, HandOffResult, HandOffTarget } from '../app-context.js'
 import type { TerminalSize } from '../terminal-size.js'
 import { RepositoriesScreen } from './repositories.js'
 
@@ -228,11 +238,11 @@ describe('RepositoriesScreen', () => {
     expect(frame).toContain(`Not watched. Add it to watch.repos in ~/.config/phada/config.yml.`)
   })
 
-  it('points a fresh machine to phada init --global', async () => {
+  it('points a fresh machine to phada setup', async () => {
     const view = openRepositories({ readRepositories: async () => emptyRepositories() })
     await waitFor(() => view.frame().includes('No config yet'))
 
-    expect(view.frame()).toContain('Create your own config with phada init --global')
+    expect(view.frame()).toContain('Create your own config with phada setup')
   })
 
   it('tells a configured user how to watch a repository', async () => {
@@ -273,4 +283,300 @@ describe('RepositoriesScreen', () => {
     expect(frame).toContain('observado, config própria, histórico')
     expectFits(frame, size)
   })
+
+  describe('changing the repositories', () => {
+    interface Watched {
+      repo: string
+      publish: boolean
+    }
+
+    function editable(
+      options: {
+        watched?: Watched[]
+        others?: string[]
+        configError?: string
+        configured?: boolean
+        handOff?: (target: HandOffTarget) => Promise<HandOffResult>
+        size?: TerminalSize
+        language?: string
+      } = {},
+    ) {
+      let watched = options.watched ?? [
+        { repo: 'acme/api', publish: true },
+        { repo: 'acme/shop', publish: false },
+      ]
+      const others = options.others ?? ['old/blog']
+      const plans: (readonly UserConfigChange[])[] = []
+      const writes: UserConfigPlan[] = []
+      const ensured: [string, UserRepoFile][] = []
+      const targets: HandOffTarget[] = []
+      let reads = 0
+      const listed = (repo: string, publish: boolean | null): ListedRepository => ({
+        repo,
+        origins: publish === null ? ['history'] : ['watched'],
+        publish: publish === null ? null : publish ? 'pr' : 'none',
+        index: { file: null, indexedSha: null, checkedAt: null },
+        lastReview: null,
+      })
+      const planOf = (changes: readonly UserConfigChange[]): UserConfigPlan => {
+        const values: ValueChange[] = changes.flatMap((change): ValueChange[] => {
+          if (change.kind === 'watch')
+            return [{ key: 'watch.repos', added: [change.repo], removed: [] }]
+          if (change.kind === 'unwatch')
+            return [{ key: 'watch.repos', added: [], removed: [change.repo] }]
+          if (change.kind === 'publish') {
+            const before = watched.find(({ repo }) => repo === change.repo)?.publish ?? true
+            return [{ key: 'publish', repo: change.repo, before, after: change.publish }]
+          }
+          return []
+        })
+        return {
+          path: CONFIG_FILE,
+          exists: true,
+          before: '# mine\n',
+          text: '# mine\n',
+          changes: values,
+        }
+      }
+      const view = openRepositories(
+        {
+          readRepositories: async () => {
+            reads++
+            return {
+              ...emptyRepositories(),
+              configured: options.configured ?? true,
+              configError: options.configError ?? null,
+              watching: watched.length > 0,
+              repositories: [
+                ...watched.map(({ repo, publish }) => listed(repo, publish)),
+                ...others
+                  .filter((repo) => !watched.some((entry) => entry.repo === repo))
+                  .map((repo) => listed(repo, null)),
+              ],
+            }
+          },
+          readUserRepositories: async () => ({
+            status: 'listed',
+            repositories: ['ana/ink', ...watched.map(({ repo }) => repo)].map((name) => ({
+              name,
+              private: false,
+              fork: false,
+              pushedAt: null,
+              listed: true as const,
+              watched: watched.some((entry) => entry.repo === name),
+            })),
+          }),
+          planConfig: async (changes) => {
+            plans.push(changes)
+            return { ok: true, plan: planOf(changes) }
+          },
+          applyConfig: async (plan) => {
+            writes.push(plan)
+            for (const change of plan.changes) {
+              if (change.key === 'watch.repos') {
+                watched = [
+                  ...watched.filter(({ repo }) => !change.removed.includes(repo)),
+                  ...change.added.map((repo) => ({ repo, publish: true })),
+                ]
+              }
+              if (change.key === 'publish') {
+                watched = watched.map((entry) =>
+                  entry.repo === change.repo ? { ...entry, publish: change.after } : entry,
+                )
+              }
+            }
+            return { ok: true, written: true }
+          },
+          ensureRepositoryFile: async (repo, file) => {
+            ensured.push([repo, file])
+            return `/home/ana/.config/phada/repos/${repo}/${file}`
+          },
+          handOff: async (target) => {
+            targets.push(target)
+            return options.handOff === undefined
+              ? { kind: 'exited', exitCode: 0 }
+              : options.handOff(target)
+          },
+        },
+        {
+          ...(options.size === undefined ? {} : { size: options.size }),
+          ...(options.language === undefined ? {} : { language: options.language }),
+        },
+      )
+      return { ...view, plans, writes, ensured, targets, reads: () => reads }
+    }
+
+    it('stops watching the selected repository with w after its before and after, and lists it again', async () => {
+      const { footer, frame, press, showing, writes } = editable()
+      await showing('3 repositories · 2 watched', 'acme/api')
+      expect(footer()).toContain('w unwatch')
+      await press('w')
+      await showing('Save ~/.config/phada/config.yml?')
+      expect(frame()).toMatch(/watch\.repos +− acme\/api/)
+      expect(footer()).toContain('Enter save')
+      expectFits(frame(), { columns: 80, rows: 24 })
+      await press(KEYS.enter)
+      await showing('2 repositories · 1 watched')
+      expect(frame()).toContain('2 repositories · 1 watched')
+      expect(writes).toHaveLength(1)
+      expect(selectedRow(frame())).toContain('acme/shop')
+    })
+
+    it('watches a repository it does not watch with w', async () => {
+      const { footer, frame, plans, press, showing } = editable()
+      await showing('3 repositories · 2 watched', 'old/blog')
+      await press(KEYS.end)
+      await showing('w watch')
+      expect(footer()).not.toContain('publish')
+      await press('w')
+      await showing('Save ~/.config/phada/config.yml?')
+      expect(plans).toEqual([[{ kind: 'watch', repo: 'old/blog' }]])
+      expect(frame()).toMatch(/watch\.repos +\+ old\/blog/)
+      await press(KEYS.enter)
+      await showing('3 repositories · 3 watched')
+      expect(frame()).toContain('3 repositories · 3 watched')
+    })
+
+    it('turns publishing off and on with p for a watched repository', async () => {
+      const { frame, plans, press, showing, writes } = editable()
+      await showing('3 repositories · 2 watched', 'p publish off')
+      await press('p')
+      await showing('Save ~/.config/phada/config.yml?')
+      expect(plans).toEqual([[{ kind: 'publish', repo: 'acme/api', publish: false }]])
+      expect(frame()).toMatch(/acme\/api +publishes → does not publish/)
+      await press(KEYS.enter)
+      await showing('p publish on')
+      await press('p')
+      await showing('does not publish → publishes')
+      await press(KEYS.enter)
+      await showing('p publish off')
+      expect(writes).toHaveLength(2)
+    })
+
+    it('cancels a change with Esc without writing or leaving the list', async () => {
+      const { exits, frame, press, showing, writes } = editable()
+      await showing('3 repositories · 2 watched', 'acme/api')
+      await press('w')
+      await showing('− acme/api')
+      await press(KEYS.escape)
+      await showing('w unwatch')
+      expect(frame()).not.toContain('− acme/api')
+      expect(frame()).toContain('3 repositories · 2 watched')
+      expect(writes).toEqual([])
+      expect(exits).toEqual([])
+    })
+
+    it('adds repositories with a from the list of GitHub, back on the screen once saved', async () => {
+      const { footer, frame, press, showing, writes } = editable()
+      await showing('3 repositories · 2 watched', 'a add')
+      await press('a')
+      await showing('[ ] ana/ink', '[x] acme/api')
+      expect(footer()).toContain('Space mark')
+      expectFits(frame(), { columns: 80, rows: 24 })
+      await press(' ', KEYS.enter)
+      await showing('+ ana/ink')
+      await press(KEYS.enter)
+      await showing('4 repositories · 3 watched', 'ana/ink')
+      expect(frame()).toContain('4 repositories · 3 watched')
+      expect(writes).toHaveLength(1)
+    })
+
+    it('goes back from adding with Esc without writing', async () => {
+      const { exits, frame, press, showing, writes } = editable()
+      await showing('3 repositories · 2 watched')
+      await press('a')
+      await showing('[ ] ana/ink')
+      await press(KEYS.escape)
+      await showing('3 repositories · 2 watched')
+      expect(frame()).toContain('3 repositories · 2 watched')
+      expect(writes).toEqual([])
+      expect(exits).toEqual([])
+    })
+
+    it('opens the config.yml of the repository with e and its rules.md with R in the editor, created first', async () => {
+      const { ensured, footer, press, reads, showing, targets, until } = editable()
+      await showing('3 repositories · 2 watched', 'acme/api')
+      expect(footer()).toContain('e config')
+      const before = reads()
+      await press('e')
+      await until(() => targets.length === 1 && reads() > before)
+      expect(ensured).toEqual([['acme/api', 'config.yml']])
+      expect(targets).toEqual([
+        { kind: 'editor', file: '/home/ana/.config/phada/repos/acme/api/config.yml' },
+      ])
+      expect(reads()).toBeGreaterThan(before)
+      await press(KEYS.down, 'R')
+      await until(() => targets.length === 2)
+      expect(ensured).toEqual([
+        ['acme/api', 'config.yml'],
+        ['acme/shop', 'rules.md'],
+      ])
+      expect(targets[1]).toEqual({
+        kind: 'editor',
+        file: '/home/ana/.config/phada/repos/acme/shop/rules.md',
+      })
+    })
+
+    it('says when the editor ended with an error or was not found', async () => {
+      const outcomes: HandOffResult[] = [
+        { kind: 'exited', exitCode: 1 },
+        { kind: 'not-found', command: 'nvim' },
+      ]
+      const { frame, press, showing } = editable({
+        handOff: async () => outcomes.shift() ?? { kind: 'exited', exitCode: 0 },
+      })
+      await showing('3 repositories · 2 watched')
+      await press('e')
+      await showing('The editor ended with exit code 1.')
+      expect(frame()).toContain('The editor ended with exit code 1.')
+      expectFits(frame(), { columns: 80, rows: 24 })
+      await press('e')
+      await showing('nvim was not found.')
+      expect(frame()).toContain('nvim was not found.')
+      expect(frame()).not.toContain('exit code 1')
+    })
+
+    it('offers no change of the config while it is invalid, only the files of the repository', async () => {
+      const { footer, frame, plans, press, showing } = editable({
+        configError: 'Invalid config /cfg/config.yml: watch.interval: expected 5m',
+      })
+      await showing('Invalid config', 'acme/api')
+      expect(footer()).not.toContain('watch')
+      expect(footer()).not.toContain('publish')
+      expect(footer()).not.toContain('a add')
+      expect(footer()).toContain('e config')
+      await press('w', 'p', 'a')
+      await showing('Invalid config', 'acme/api')
+      expect(frame()).not.toContain('Save')
+      expect(frame()).not.toContain('ana/ink')
+      expect(plans).toEqual([])
+    })
+
+    it('offers to add the first repository on a fresh machine, and points to phada setup', async () => {
+      const { footer, frame, press, showing } = editable({
+        watched: [],
+        others: [],
+        configured: false,
+      })
+      await showing('No config yet', 'a add')
+      expect(frame()).toContain('Create your own config with phada setup')
+      expect(footer()).not.toContain('watch')
+      await press('a')
+      await showing('[ ] ana/ink')
+      expect(frame()).toContain('[ ] ana/ink')
+    })
+
+    it('speaks Portuguese', async () => {
+      const { footer, frame, press, showing } = editable({ language: 'pt' })
+      await showing('3 repositórios · 2 observados', 'w não observar')
+      expect(footer()).toContain('w não observar')
+      await press('p')
+      await showing('publica → não publica')
+      expectFits(frame(), { columns: 80, rows: 24 })
+    })
+  })
 })
+
+function selectedRow(frame: string): string {
+  return frameLines(frame).find((line) => line.includes('❯')) ?? ''
+}

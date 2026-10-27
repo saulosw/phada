@@ -306,6 +306,19 @@ export const english: UiMessages = {
       notListed: 'not in your list',
       keys: { space: 'Space', mark: 'mark', filter: 'filter', add: 'add owner/repo' },
     },
+    edit: {
+      watch: 'watch',
+      unwatch: 'unwatch',
+      publishOn: 'publish on',
+      publishOff: 'publish off',
+      add: 'add',
+      config: 'config',
+      rules: 'rules',
+      addIntro: 'Mark the repositories phada watch reviews: they go to watch.repos in your config.',
+      noToken:
+        'Listing your repositories needs a GitHub token: gh auth login or set GITHUB_TOKEN, then r.',
+      editorFailed: (code) => `The editor ended with exit code ${code}.`,
+    },
   },
   automation: {
     watch: 'Watch',
