@@ -90,25 +90,28 @@ was when you quit.
 phada
 ```
 
-| Screen       | What it shows                                                                                                                                                                                                                                                                                                        |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Home         | One line each for GitHub (where the token comes from and whose it is), the AI (installed and logged in), the watch, the queue and the repository maps; the last reviews; and what to do next, with the command                                                                                                       |
-| Repositories | The watched repositories, the ones with a config of their own and the ones in the history → the settings of each with where every value comes from, its watch filters, its map, its related repositories and its last reviews (and, for a watched one, whether it publishes); `w`, `p`, `a`, `e` and `R` change them |
-| Rules        | The reviewer lens and your rules at once; the repository's `.phada/` and the rules and docs a review of the default branch reads; `p` and a pull request number show what a review of it reads and its prompt                                                                                                        |
-| Reviews      | The history, with `f` to filter → one review with its score, findings, what was published, the CI line and what happened to each comment                                                                                                                                                                             |
-| Queue        | The watch running in another terminal (or not), its last and next cycle, the job running, the jobs queued, waiting for CI, skipped for failing CI or failed, a pause, and the reviews this hour → a job with its requests                                                                                            |
-| Automation   | The watch, the CI wait, the request sources that are on (pull request comments, `phada enqueue`, `phada mcp`, Slack), the hooks and the `when` commands                                                                                                                                                              |
-| Provider     | The provider and model you chose and where they come from, the language, each AI checked (installed, logged in, Ollama running and its models) with the command that fixes it, and your MCP servers; `c`, `L` and `l` change them                                                                                    |
-| Learnings    | Per repository, the relations learned from reviews and what happened to Phada's comments, per repository and per rule                                                                                                                                                                                                |
+| Screen       | What it shows                                                                                                                                                                                                                                                                                                                             |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Home         | One line each for GitHub (where the token comes from and whose it is), the AI (installed and logged in), the watch, the queue and the repository maps; the last reviews; and what to do next, with the command                                                                                                                            |
+| Repositories | The watched repositories, the ones with a config of their own and the ones in the history → the settings of each with where every value comes from, its watch filters, its map, its related repositories and its last reviews (and, for a watched one, whether it publishes); `w`, `p`, `a`, `e` and `R` change them, `i` indexes it      |
+| Rules        | The reviewer lens and your rules at once; the repository's `.phada/` and the rules and docs a review of the default branch reads; `p` and a pull request number show what a review of it reads and its prompt                                                                                                                             |
+| Reviews      | The history, with `f` to filter → one review with its score, findings, what was published, the CI line and what happened to each comment                                                                                                                                                                                                  |
+| Queue        | The watch running in another terminal (or not), its last and next cycle, the job running, the jobs queued, waiting for CI, skipped for failing CI or failed, a pause, and the reviews this hour → a job with its requests                                                                                                                 |
+| Automation   | The watch, the CI wait, the request sources that are on (pull request comments, `phada enqueue`, `phada mcp`, Slack), the hooks and the `when` commands                                                                                                                                                                                   |
+| Provider     | The provider and model you chose and where they come from, the language, each AI checked (installed, logged in, Ollama running and its models) with the command that fixes it, and your MCP servers; `c`, `L` and `l` change them                                                                                                         |
+| Graph        | The [map](#repository-map) of each repository of the Repositories screen: whether it is indexed, its commit, files, symbols and size → its commit and branch, when it was indexed and how long it took, its files per language, its symbols by kind, its imports, exports, calls and uses, and the files left out and why; `i` indexes it |
+| Learnings    | Per repository, the relations learned from reviews and what happened to Phada's comments, per repository and per rule                                                                                                                                                                                                                     |
 
-Keys: `←`/`→` or `Tab` move between screens, `1`–`8` jump to one, `/` finds a screen by name (and
-`/setup` the setup, `/language` the language), `?` lists every key, `↑`/`↓` and `Enter` open an
+Keys: `←`/`→` or `Tab` move between screens, `1`–`9` jump to one, `/` finds a screen by name (and
+`/setup` the setup, `/language` the language, `/index` the Graph), `?` lists every key, `↑`/`↓` and `Enter` open an
 item, `Esc` goes back, `r` reads again what comes from GitHub or the AI CLIs, and `q` quits. The footer lists the keys of the screen you are on.
 
 What is on your machine (the config, the history, the queue) is read every 2 seconds; what comes
 from GitHub or the AI CLIs is read when a screen opens and on `r`. The app writes only what
 [Changing your config from the app](#changing-your-config-from-the-app) lists, and never the
-history (it does not even create its file). It needs a terminal of at least 80×24 and says so
+history (it does not even create its file). It reads each map without changing it: a map that is
+missing, made by another version of Phada or that cannot be read is shown as such on the Graph
+screen, until you index it. It needs a terminal of at least 80×24 and says so
 when it is smaller. It follows the `language` of your config (English,
 Portuguese and Spanish), uses the full colors your terminal supports (down to 16), and none with
 `NO_COLOR` or `TERM=dumb`. `q` exits with 0, Ctrl-C with 130 and `SIGTERM` with 143. Outside a
@@ -160,6 +163,9 @@ cancels it.
 - **Provider**: `c` changes the AI and its model (the choice of the setup's AI step, with the
   login or the model pull there), `L` changes the language and `l` logs in to the chosen AI CLI
   again (or to one that is not logged in). `/language` changes the language from any screen.
+- **Graph** and **Repositories**: `i` indexes the selected (or open) repository, or indexes it
+  again, with `N of M files` as it goes; `Esc` stops it, and the screen reads the map again when
+  it ends. Leaving the screen stops it too.
 - **Repositories**: on the selected repository, `w` watches or unwatches it, `p` turns its
   `publish` on or off, `a` adds repositories from your GitHub list or typed, and `e` and `R` open
   its own `repos/<owner>/<repo>/config.yml` and `rules.md` (in your config folder) in `$VISUAL`,
@@ -173,8 +179,9 @@ The app writes:
   values on top and the commented template of `phada init --global` below them);
 - the `repos/<owner>/<repo>/config.yml` and `rules.md` you open in the editor, created when they
   do not exist and never overwritten;
-- the [map](#repository-map) of a repository when you index it in the setup, in the cache, as
-  `phada index` does;
+- the [map](#repository-map) of a repository when you index it in the setup or with `i` on the
+  Graph and Repositories screens, in the cache, as `phada index` does (on its default branch,
+  replacing a map made by another version of Phada or that cannot be read);
 - a repository's `.phada/` only through `phada init`, in the setup's step 6.
 
 Comments, the order of the keys and the lines a change does not touch stay as you wrote them. When

@@ -7,6 +7,16 @@ output can change between minor versions.
 
 ## Unreleased
 
+### Added
+
+- A Graph screen in the app (between Provider and Learnings, so Learnings is now `9`): the map of
+  each repository of the Repositories screen, whether it is indexed, missing, made by another
+  version of Phada or unreadable, with its commit, files, symbols and size → its branch, when it
+  was indexed, its files per language, its symbols by kind, its imports, exports, calls and uses,
+  and the files left out and why. `i` indexes the selected repository (or indexes it again) with
+  its progress, there and on the Repositories screen; `Esc` stops it. `/index` in the palette
+  opens the Graph. The app reads each map without creating, migrating or removing it.
+
 ## 0.10.0 - 2026-10-27
 
 ### Added

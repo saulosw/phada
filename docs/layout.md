@@ -145,6 +145,12 @@ src/
     edit-user-config.ts  #   planUserConfig(): the user's own config.yml read (injected) →
                          #   planUserConfigEdit(); applyUserConfigPlan(): written atomically only
                          #   if the file did not change since the plan; failures as data
+    read-index.ts        #   readIndexes(): each repository of the screens with its index read
+                         #   only (missing, other version with both, unreadable with the reason,
+                         #   empty, or indexed: the latest snapshot of the default branch, its
+                         #   summary, the files left out per reason with their extensions, the
+                         #   size), each index closed; extensionCounts() (also phada index's);
+                         #   readers injected
     read-learnings.ts    #   readLearnings(): per repository, the observed relations (newest
                          #   first; none, read or unreadable) and the feedback of Phada's comments
                          #   per repository and per rule; readers injected
@@ -190,7 +196,9 @@ src/
                          #   missing), readProviderSetup (the user config read each time),
                          #   readProviders (the status checkers of src/providers/, injectable),
                          #   readLearnings (the observed files of the cache, read only),
-                         #   readGitHub (readGitHubAccess()) and rulesReaders() of app-rules.ts
+                         #   readIndexes (the repositories of readRepositories, each index of the
+                         #   cache opened with openExistingIndexStore(), openIndexReader
+                         #   injectable), readGitHub (readGitHubAccess()) and rulesReaders() of app-rules.ts
                          #   with one token reader that asks gh again on each load (runGh and
                          #   fetchUser injectable); handOff and the signals through
                          #   terminalHandOff(); planConfig and applyConfig (planUserConfig() with
@@ -349,13 +357,14 @@ src/
                          #   a config write (the last good one kept), working signal, load cache
                          #   and error boundary around the shell — tabs, the active screen, or
                          #   the setup in their place (AppDeps.start, /setup from its first step) or the
-                         #   LanguagePicker (/language, back to the screen it came from), footer,
+                         #   LanguagePicker (/language, back to the screen it came from), /index
+                         #   to the Graph tab, footer,
                          #   ? help, / palette, Esc (a screen's back first), q, 1–9, ←/→, Tab
                          #   (not in the setup), Ctrl-C; the size warning below 80×24
     app-context.ts       #   AppDeps (version, start, cwd, home, env, scheduler, language, now,
                          #   readLanguage, readQueue, readReviews, readReviewDetail, readRepositories,
-                         #   readRepository, readAutomation, readProviderSetup, readProviders,
-                         #   readLearnings, readGitHub, readLocalRules, readRepositoryRules,
+                         #   readRepository, readAutomation, readIndexes, readProviderSetup,
+                         #   readProviders, readLearnings, readGitHub, readLocalRules, readRepositoryRules,
                          #   readPullRequestRules, handOff, planConfig, applyConfig,
                          #   ensureRepositoryFile), AppStart,
                          #   HandOffTarget, HandOffResult, Scheduler, KeyHint;
@@ -379,7 +388,13 @@ src/
                          #   watches or unwatches, p turns publish on or off, e and R open its
                          #   own config.yml and rules.md in the editor (ensureRepositoryFile),
                          #   a → the RepositoryPicker in a SubView; w, p and a hidden while the
-                         #   user config is invalid), automation.tsx (one page:
+                         #   user config is invalid; i indexes the selected or open one),
+                         #   graph.tsx (each repository's index state, commit, files, symbols
+                         #   and size from readIndexes (loaded, r, read again after indexing) →
+                         #   its index section: when, commit and branch, duration, files per
+                         #   language, symbols by kind, links, files left out, file; missing,
+                         #   other version, unreadable or empty as a line; i indexes or indexes
+                         #   again, Esc stops), automation.tsx (one page:
                          #   watch, CI wait, request sources, hooks, when), provider.tsx (the
                          #   choice and its origin, the language, each AI checked on open and on
                          #   r with its next step, l to log in to the chosen CLI (again, when
@@ -451,7 +466,11 @@ src/
     index-series.ts      #   useIndexSeries(): AppDeps.indexRepository one repository after the
                          #   other with an AbortController (stop() cancels the current one and
                          #   starts no other; aborted on unmount), each one waiting, running with
-                         #   its progress or done
+                         #   its progress or done; a new series once the last one ended
+    repository-indexing.tsx # useRepositoryIndexing(onEnded): one repository indexed through
+                         #   useIndexSeries (start, stop, busy, the Esc key while busy, its line);
+                         #   indexEntryLine(): a repository of a series in one line (also the
+                         #   setup's graph step)
     model-pull.tsx       #   useModelPull(onPulled): AppDeps.pullModel with an AbortController
                          #   (cancel(), aborted on unmount); modelPullLines(): the status, a bar
                          #   with bytes and percent, and how it ended
@@ -744,7 +763,11 @@ src/
     types.ts             #   FileMap, ExtractedSymbol, SymbolKind, …
   store/                 # the map in SQLite (node:sqlite), one file per repository
     schema.ts            #   tables and SCHEMA_VERSION (another version is rebuilt)
-    index-store.ts       #   openIndexStore(): blobs, commits, summary, prune, reader()
+    index-store.ts       #   openIndexStore(): blobs, commits, summary, prune, reader();
+                         #   openExistingIndexStore(): read-only — missing, other version (found
+                         #   and expected), unreadable or open (the latest snapshot of the
+                         #   default branch, else the latest; summary, files left out, reader),
+                         #   never creating, migrating or removing the file; RELATED_REF
     index-reader.ts      #   IndexReader: the files, symbols, calls and uses of one commit
     observed-store.ts    #   openObservedStore(): relations learned from reviews (own schema);
                          #   readObservedEdges(): read only, missing or unreadable as data,

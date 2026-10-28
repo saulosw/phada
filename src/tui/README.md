@@ -101,6 +101,14 @@ plan again when the file changed since the plan); the screen wires `Esc` with
 language is read again at once and `onSaved(plan)` runs; a proposal that changes nothing calls
 `onSaved` without writing. `valueChangeLines()` draws a list of written values.
 
+## Indexing from a screen (`repository-indexing.tsx`)
+
+**`useRepositoryIndexing(onEnded)`** indexes one repository through `useIndexSeries()`:
+`start(repo)` (ignored while `busy`), `stop()`, `keys` (`Esc` while busy) and `lines(width)` (the
+repository with its progress, then how it ended). The screen wires `Esc` with
+`useBack(indexing.busy ? indexing.stop : …)`, draws the lines under its own and reads its data
+again in `onEnded` (`reload()` of `useLoaded`). Leaving the screen aborts the indexing.
+
 ## A picker inside a screen (`sub-view.tsx`)
 
 The pickers the setup uses (`ProviderPicker`, `RepositoryPicker`, `LanguagePicker`) also edit from
