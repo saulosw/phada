@@ -17,7 +17,7 @@ import { RECHECK_JSON_SCHEMA } from '../review/recheck-schema.js'
 import { VERIFICATION_JSON_SCHEMA } from '../review/verification-schema.js'
 import { verdictFixture, verificationJson } from '../../test/support/verification.js'
 import { diffFingerprint } from '../review/diff-fingerprint.js'
-import { reviewAndPublish } from './review-and-publish.js'
+import { reviewAndPublish, ReviewCancelledError } from './review-and-publish.js'
 import type { ReviewAndPublishDeps, ReviewAndPublishInput } from './review-and-publish.js'
 import type { NativeRunnerInput } from './native-skill.js'
 import type { CiReaders } from './read-ci.js'
@@ -574,6 +574,147 @@ describe('reviewAndPublish', () => {
       publication: { status: 'failed', error },
     })
     expect(calls.reviews).toBe(1)
+  })
+})
+
+describe('reviewAndPublish cancelled', () => {
+  const stages: [string, (cancel: () => void) => Partial<ReviewAndPublishDeps>][] = [
+    [
+      'fetching the pull request',
+      (cancel) => ({
+        fetchPullRequest: async () => {
+          cancel()
+          return PR
+        },
+      }),
+    ],
+    [
+      'reading the review state',
+      (cancel) => ({
+        fetchReviewState: async () => {
+          cancel()
+          return state()
+        },
+      }),
+    ],
+    [
+      'comparing the commits of earlier comments',
+      (cancel) => ({
+        fetchReviewState: earlierComments(),
+        compare: async () => {
+          cancel()
+          return []
+        },
+      }),
+    ],
+    [
+      'reading the conversation',
+      (cancel) => ({
+        fetchPullComments: async () => {
+          cancel()
+          return []
+        },
+      }),
+    ],
+    [
+      'reading the checks',
+      (cancel) => {
+        const { deps } = setup()
+        return {
+          ci: {
+            ...deps.ci,
+            checkRuns: async () => {
+              cancel()
+              return []
+            },
+          },
+        }
+      },
+    ],
+    [
+      'checking the head before publishing',
+      (cancel) => ({
+        checkHead: async () => {
+          cancel()
+          return 'current'
+        },
+      }),
+    ],
+  ]
+
+  it.each(stages)('stops after %s and posts nothing', async (_stage, during) => {
+    const controller = new AbortController()
+    const { deps, calls } = setup(during(() => controller.abort()))
+
+    await expect(
+      reviewAndPublish({ ...INPUT, signal: controller.signal }, deps),
+    ).rejects.toBeInstanceOf(ReviewCancelledError)
+    expect(calls.posts).toEqual([])
+    expect(calls.replies).toEqual([])
+    expect(calls.events).not.toContain('publishing')
+  })
+
+  it('stops after the AI answers, and turns the error of an AI stopped by the cancel into the cancellation', async () => {
+    const answered = new AbortController()
+    const answering = setup({}, PR, undefined, () => {
+      answered.abort()
+      return REPORT
+    })
+    const killed = new AbortController()
+    const dying = setup({}, PR, undefined, () => {
+      killed.abort()
+      throw new Error('Claude Code ended without an exit code (SIGTERM).')
+    })
+
+    await expect(
+      reviewAndPublish({ ...INPUT, signal: answered.signal }, answering.deps),
+    ).rejects.toBeInstanceOf(ReviewCancelledError)
+    await expect(
+      reviewAndPublish({ ...INPUT, signal: killed.signal }, dying.deps),
+    ).rejects.toBeInstanceOf(ReviewCancelledError)
+    expect([answering.calls.reviews, answering.calls.posts]).toEqual([1, []])
+    expect(dying.calls.posts).toEqual([])
+  })
+
+  it('does not start when it was cancelled before', async () => {
+    const controller = new AbortController()
+    controller.abort()
+    const { deps, calls } = setup()
+
+    await expect(
+      reviewAndPublish({ ...INPUT, signal: controller.signal }, deps),
+    ).rejects.toBeInstanceOf(ReviewCancelledError)
+    expect(calls.events).toEqual([])
+  })
+
+  it('finishes publishing once it started, resolving and posting', async () => {
+    const controller = new AbortController()
+    const { deps, calls } = setup({
+      fetchReviewState: earlierComments(),
+      replyAndResolve: async (threadId, body) => {
+        controller.abort()
+        calls.replies.push(body)
+        calls.log.push(`resolve ${threadId}`)
+      },
+    })
+
+    const run = await reviewAndPublish({ ...INPUT, signal: controller.signal }, deps)
+
+    expect(run).toMatchObject({
+      status: 'reviewed',
+      publication: { status: 'published', url: URL },
+    })
+    expect(calls.log.slice(-2)).toEqual(['resolve T1', 'post'])
+  })
+
+  it('throws a failure that is not a cancellation as it is', async () => {
+    const controller = new AbortController()
+    const error = new Error('GitHub 502')
+    const { deps } = setup({ fetchReviewState: () => Promise.reject(error) })
+
+    await expect(reviewAndPublish({ ...INPUT, signal: controller.signal }, deps)).rejects.toBe(
+      error,
+    )
   })
 })
 
