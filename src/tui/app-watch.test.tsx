@@ -187,10 +187,11 @@ describe('the watch of the app', () => {
   })
 
   it('says a watch of another terminal runs there and leaves it alone on w', async () => {
-    const { frame, press, showing, watch } = openWatch({
+    const { footer, frame, press, showing, watch } = openWatch({
       queue: () => ({ ...emptyQueue(), recorded: true, holder: { pid: 4242 } }),
     })
     await showing('Watch running in another terminal · PID 4242')
+    expect(footer()).not.toContain('start the watch')
     await press('w')
     await showing('The watch is running in another terminal (PID 4242).')
     expect(frame()).toContain('The watch is running in another terminal (PID 4242).')

@@ -58,12 +58,14 @@ const rowKey = ({ kind, entry }: QueueRow) => `${kind}:${entry.job.id}`
 type QueueMode = { kind: 'list' } | { kind: 'job'; key: string } | { kind: 'log' }
 
 export function QueueScreen() {
-  const { readQueue } = useAppDeps()
+  const { readQueue, pid } = useAppDeps()
   const messages = useMessages()
   const watch = useAppWatch()
   const state = usePolled(readQueue)
   const [mode, setMode] = useState<QueueMode>({ kind: 'list' })
   const rows = state.status === 'ready' ? queueRows(state.value) : []
+  const holder = state.status === 'ready' ? state.value.holder?.pid : undefined
+  const heldElsewhere = holder !== undefined && holder !== pid
   const listing = mode.kind === 'list'
   const selection = useSelection(rows, rowKey, {
     active: listing && !watch.asking,
@@ -81,13 +83,13 @@ export function QueueScreen() {
       return
     }
     if (input === 'w') {
-      watch.toggle(state.status === 'ready' ? state.value.holder?.pid : undefined)
+      watch.toggle(holder)
     } else if (input === 'l' && watch.log.length > 0) setMode({ kind: 'log' })
   })
   const watchKeys =
     watch.phase === 'running'
       ? [{ keys: 'w', label: w.stop }]
-      : watch.phase === 'idle'
+      : watch.phase === 'idle' && !heldElsewhere
         ? [{ keys: 'w', label: w.start }]
         : []
   useScreenKeys(
