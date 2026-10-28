@@ -33,7 +33,12 @@ output can change between minor versions.
   publish it; follow each step live (the fetch, context, conversation, CI, indexing, related
   repositories, impact, each run of the AI with its time, publishing, warnings); and read the
   result in the same detail as the Reviews screen. It is the same review as `phada review`, saved
-  in the history unless `history: false`, with the AI CLI in its own process group.
+  in the history unless `history: false`, with the AI CLI in its own process group. `Esc` while
+  it runs asks before cancelling: the AI CLI is stopped, nothing is posted and nothing is saved;
+  once it publishes, it no longer cancels. `q` and `Ctrl-C` ask before quitting while a review
+  runs (a second `Ctrl-C` cancels and quits at once; a `SIGTERM` cancels it without asking). While
+  a `phada watch` runs, **Review and publish** becomes **Put in the queue**, as `phada enqueue
+--publish pr`, showing the job or why the queue refused it, with `Enter` to the Queue.
 - The review detail of the Reviews screen shows the text of each finding, and for a dry run that
   nothing was posted, how many threads it would resolve and why it would skip.
 

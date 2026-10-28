@@ -135,9 +135,26 @@ the flow (a step may remember what was picked in it, as the mode, so going back 
 The step that runs calls the `AppDeps` function once on mount with a sink for its progress
 events (`ReviewProgress`), folds them into lines (`review-steps.ts`), redraws its elapsed times
 from `scheduler.every()` and `now()`, marks the app as working (`useWorking`, so the mascot flaps)
-and ignores `Esc` while it runs (`useBack` with a no-op, never `undefined`, which would quit the
-app). When it ends, `Esc` leaves the flow; the result is drawn with the module the screen that
-lists such results also uses (`reviewDetailLines()` of `review-detail.tsx`).
+and passes an `AbortSignal` it aborts on unmount. While it runs, `Esc` asks before cancelling
+(`useBack` never `undefined` there, which would quit the app): `Enter` aborts the signal, `Esc`
+keeps it running; once it publishes, `Esc` does nothing. It holds a quit guard while it runs. When
+it ends, `Esc` leaves the flow; the result is drawn with the module the screen that lists such
+results also uses (`reviewDetailLines()` of `review-detail.tsx`). With a watch holding the lock
+(`readQueue`), publishing becomes a request in the queue (`AppDeps.enqueueReview`), and `Enter`
+on its result opens the Queue.
+
+## Quitting while something runs (`useQuitGuard`)
+
+A screen or flow that runs something the person may lose by quitting (a review, the watch) holds
+a **`QuitGuard`** while it runs: `useQuitGuard({ question, stop, abort })`, or `undefined` once it
+ended. While any guard is held, `q`, `Esc` at the top and `Ctrl-C` show its `question` (one line
+from the catalogs) in place of the screen: `Enter` calls `stop()` on each guard, shows
+"Stopping…" while a returned promise is pending and quits once they settled (`quit` for `q` and
+`Esc`, `interrupted` for `Ctrl-C`); `Esc` stays. A second `Ctrl-C`, asking or stopping, calls
+`abort()` on each and exits `interrupted` at once. `SIGINT` and `SIGTERM` call `abort()` without
+asking and exit `interrupted` or `terminated`. `stop()` is the gentle end (cancel before
+publishing, or finish the job under way) and `abort()` the immediate one; both keep the screen
+mounted until the app exits.
 
 ## A picker inside a screen (`sub-view.tsx`)
 

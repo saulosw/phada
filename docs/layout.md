@@ -30,7 +30,10 @@ src/
                          #   (readCi, unless ci.read is off) → reviewPullRequest → plan → render
                          #   (injected, with the CI summary) → [checkHead] → reply and resolve
                          #   the fixed threads → createReview; never prints (the conversation
-                         #   and the CI it read go out as events)
+                         #   and the CI it read go out as events); an aborted signal stops it
+                         #   between stages and right before publishing, never once publishing
+                         #   started (ReviewCancelledError, also for what a stage threw after
+                         #   the abort)
     review-progress.ts   #   ReviewProgress: each step of a review as data (fetched, conversation
                          #   and CI read, CI wait, context, indexing, related, impact, passes, the
                          #   AI running a review, verify, recheck or skill run, publishing,
@@ -38,7 +41,8 @@ src/
                          #   decorator that reports when the AI starts and finishes a run
     requested-review.ts  #   a review the person asks for in the app: ReviewMode (look, publish),
                          #   PullRequestTarget, OpenPullRequests, HistorySave, RequestedReview
-                         #   (the review detail and how the history kept it, or no token)
+                         #   (the review detail and how the history kept it, cancelled, or no
+                         #   token), EnqueuedReview (what submitRequest() answered, or no token)
     watch-repositories.ts # watchRepositories(): the watch loop — discovery with ETags, planCycle
                          #   (asking the when command before queueing), /phada review comments,
                          #   the next job through the CI gate (readCi: waiting jobs read again
@@ -238,10 +242,14 @@ src/
     app-review.ts        #   appReview(): parsePullRequest (owner/repo#N or a URL, else
                          #   undefined), readOpenPullRequests (number, title, author, draft;
                          #   no token as data) and reviewPullRequest (target, look or publish,
-                         #   progress sink): the same prepareReview() and runManualReview() as
-                         #   phada review, the AI detached, never a write to the terminal →
-                         #   the review detail (reviewDetailOf() of the run's JSON) and how the
-                         #   history kept it
+                         #   progress sink, signal): the same prepareReview() and
+                         #   runManualReview() as phada review, the AI detached, never a write
+                         #   to the terminal → the review detail (reviewDetailOf() of the run's
+                         #   JSON) and how the history kept it; an abort kills the detached
+                         #   children (killDetachedChildren, injectable) and ends as cancelled,
+                         #   with no history row; enqueueReview: the watch settings
+                         #   (requireWatchSettings()), the token and submitRequest() (source
+                         #   enqueue, publish pr) over the history, as phada enqueue
     app-index.ts         #   indexForApp(): token, user layers, mirror and index of the cache as
                          #   phada index uses them → indexRepository() with the signal and the
                          #   progress (fetching, extracting); no token and failures as data
@@ -343,7 +351,8 @@ src/
                          #   shared by review, watch and prompt
     manual-review.ts     #   prepareReview(): user layers, provider and model (flags › config),
                          #   MCP servers resolved and their names checked; runManualReview():
-                         #   reviewAndPublish() (mode manual) with its deps and progress, then
+                         #   reviewAndPublish() (mode manual, the signal also cutting the CI
+                         #   wait) with its deps and progress, then
                          #   the run saved in the history when it is on, with its feedback
                          #   (HistorySave); shared by phada review and the app
     history-run.ts       #   historyRun(), watchRun(): a run, a failure or a ci-failing skip →
@@ -396,8 +405,8 @@ src/
   tui/                   # the app `phada` opens in a terminal (Ink + React), data in, frames out
     open-app.tsx         #   openApp(deps, host): renders <App> on the alternate screen (render
                          #   injected), Ctrl-C handled by the app, SIGINT/SIGTERM through
-                         #   host.onSignal → unmount → AppResult (quit, interrupted, terminated,
-                         #   failed with the error)
+                         #   host.onSignal → the quit guards aborted → unmount → AppResult (quit,
+                         #   interrupted, terminated, failed with the error)
     app.tsx              #   App: theme, catalog of the language read every 2 s and at once after
                          #   a config write (the last good one kept), working signal, load cache
                          #   and error boundary around the shell — tabs, the active screen, or
@@ -407,7 +416,11 @@ src/
                          #   useStartReview(), back to the screen it came from), /index
                          #   to the Graph tab, footer,
                          #   ? help, / palette, Esc (a screen's back first), q, 1–9, ←/→, Tab
-                         #   (not in the setup), Ctrl-C; the size warning below 80×24
+                         #   (not in the setup), Ctrl-C; the quit guard: with a guard held, q,
+                         #   Esc at the top and Ctrl-C ask its question (Enter stops each guard
+                         #   and quits once they stopped, Esc stays, a second Ctrl-C aborts and
+                         #   exits interrupted), a signal aborts them; the size warning below
+                         #   80×24
     app-context.ts       #   AppDeps (version, start, cwd, home, env, scheduler, language, now,
                          #   readLanguage, readQueue, readReviews, readReviewDetail, readRepositories,
                          #   readRepository, readAutomation, readIndexes, readConnections,
@@ -415,12 +428,13 @@ src/
                          #   readProviders, readLearnings, readGitHub, readLocalRules, readRepositoryRules,
                          #   readPullRequestRules, handOff, planConfig, applyConfig,
                          #   ensureRepositoryFile, parsePullRequest, readOpenPullRequests,
-                         #   reviewPullRequest), AppStart,
+                         #   reviewPullRequest, enqueueReview), AppStart,
                          #   HandOffTarget, HandOffResult, Scheduler, KeyHint;
                          #   useAppDeps(), useTheme(), useMessages(), useConfigWritten() (the
                          #   language read again at once), useStartReview() (the review flow
                          #   in place of the tabs, on a repository's open pull requests when
-                         #   given one), useWorking(),
+                         #   given one), useQuitGuard() (QuitGuard: the question, stop() and
+                         #   abort() of something running, held while given), useWorking(),
                          #   useIsWorking(), useScreenKeys(), useBack(), useScreenInput() (quiet
                          #   while a text field is focused), useArrowKeys() (← and → to the
                          #   screen, Tab still moves between screens), useScreenSize()
@@ -576,11 +590,14 @@ src/
     help.tsx             #   Help: the screen's keys and the global ones
     review-flow.tsx      #   ReviewFlow: a typed pull request (refused when it is not one) or a
                          #   repository → its open pull requests (loaded, r) → only look or
-                         #   review and publish → for publishing, the pull request and the
-                         #   token owner to confirm → the steps live with the mascot and the
-                         #   AI's time on the app clock, warnings → the result (time, history,
-                         #   warnings, reviewDetailLines()) or the error; Esc goes one step
-                         #   back, nothing while it runs, out once it ended
+                         #   review and publish (put in the queue while a watch holds the lock,
+                         #   from readQueue) → for publishing, the pull request and the token
+                         #   owner to confirm (and the watch's PID) → the steps live with the
+                         #   mascot and the AI's time on the app clock, warnings → the result
+                         #   (time, history, warnings, reviewDetailLines()), cancelled or the
+                         #   error; or the queued or joined job or the refusal, Enter to the
+                         #   Queue; Esc goes one step back, asks to cancel while it runs (not
+                         #   once publishing), out once it ended; a quit guard while it runs
     review-steps.ts      #   stepsAfter(): the review progress events → one step per stage
                          #   (fetch, context, conversation, CI, CI wait, indexing, related,
                          #   impact, skill pass, each AI run with its start and end,

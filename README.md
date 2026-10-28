@@ -171,13 +171,19 @@ screen open the review in place of the tabs:
    requests from GitHub, with their number, title, author and whether they are drafts (`r` reads
    them again). `v` opens straight on the open pull requests of that repository.
 2. **The mode**: **Only look** reviews here and posts nothing, as `phada review --dry-run`;
-   **Review and publish** posts the review on the pull request.
+   **Review and publish** posts the review on the pull request. While a `phada watch` runs (in
+   the app or in another terminal), it becomes **Put in the queue**: the watch reviews and
+   publishes it, as `phada enqueue owner/repo#N --publish pr`, and the result is the new job, the
+   job it joined or why the queue refused it, with `Enter` to the Queue. Only look still runs
+   here.
 3. **For publishing**, the pull request and the GitHub login that will publish it (the owner of
    the token) to confirm: `Enter` publishes, `Esc` goes back. Without a token it does not offer to
    publish.
 4. **The steps, live**: the pull request fetched, the context, the conversation, the CI, the
    indexing (`N of M files`), the related repositories, the impact, each run of the AI (review,
-   verify, recheck, skill) with its time, publishing, and the warnings.
+   verify, recheck, skill) with its time, publishing, and the warnings. `Esc` asks before
+   cancelling (`Enter` cancels, `Esc` keeps it running): Phada stops the AI CLI, posts nothing
+   and saves nothing in the history. Once it publishes, it no longer cancels.
 5. **The result**: the same detail as the Reviews screen (score, verdict, findings with their
    text, what was published or, for only look, that nothing was posted, what it would resolve or
    why it would skip, the CI), how long it took and whether the history kept it. `Esc` goes back
@@ -186,7 +192,9 @@ screen open the review in place of the tabs:
 It is the same review as `phada review owner/repo#N` (with `--dry-run` for only look): the
 provider, model and MCP servers of your config for that repository, your GitHub token, and the
 run saved in the history unless `history: false`. The AI CLI runs in its own process group, so it
-never writes on the app. `Esc` goes one step back, and does nothing while the review runs.
+never writes on the app. `Esc` goes one step back. While a review runs, `q` and `Ctrl-C` ask
+before quitting (`Enter` cancels it and quits, waiting for a publication under way; `Esc` stays;
+a second `Ctrl-C` cancels and quits at once).
 
 ### Changing your config from the app
 
