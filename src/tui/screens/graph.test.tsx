@@ -263,6 +263,26 @@ describe('the Graph screen', () => {
     await showing('3 repositories')
   })
 
+  it('says one import, export, call and use in the singular', async () => {
+    const single = indexed('acme/shop')
+    if (single.index.state !== 'indexed') throw new Error('expected an indexed repository')
+    single.index.summary = {
+      ...single.index.summary,
+      imports: 1,
+      exports: 1,
+      calls: 1,
+      references: 1,
+      parseErrors: 0,
+    }
+    const { frame, press, showing } = openGraph({
+      indexes: () => ({ repositories: [single] }),
+    })
+    await showing('acme/shop')
+    await press(KEYS.enter)
+    await showing('Languages')
+    expect(frame()).toMatch(/Links\s+1 import · 1 export · 1 call · 1 use\n/)
+  })
+
   it.each([
     [MISSING, 'This repository has no index yet: press i to index it.', 'i index'],
     [
@@ -303,6 +323,16 @@ describe('the Graph screen', () => {
     await showing(/acme\/web · 340 files indexed/)
     await until(() => reads() > before)
     expect(footer()).not.toContain('Esc stop indexing')
+  })
+
+  it('says one file indexed in the singular', async () => {
+    const { call, calls, frame, press, showing, until } = openGraph()
+    await showing('acme/web')
+    await press(KEYS.down, 'i')
+    await until(() => calls.length === 1)
+    call(0).finish({ kind: 'indexed', files: 1 })
+    await showing(/acme\/web · 1 file/)
+    expect(frame()).toMatch(/acme\/web · 1 file indexed/)
   })
 
   it('stops indexing on Esc and stays on the list', async () => {

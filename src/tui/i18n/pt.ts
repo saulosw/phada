@@ -652,7 +652,8 @@ export const portuguese: UiMessages = {
     fetching: 'buscando…',
     stopping: 'parando…',
     progress: (done, total) => `${number(done)} de ${number(total)} arquivos`,
-    indexed: (files) => `${number(files)} arquivos indexados`,
+    indexed: (files) =>
+      `${number(files)} ${files === 1 ? 'arquivo indexado' : 'arquivos indexados'}`,
     cancelled: (done, total) => `parou em ${number(done)} de ${number(total)} arquivos`,
     notStarted: 'não começou',
     noToken: 'sem token do GitHub',

@@ -532,10 +532,10 @@ export const english: UiMessages = {
         `${number(indexed)} indexed${leftOut === 0 ? '' : ` · ${number(leftOut)} left out`}`,
       linksValue: ({ imports, exports, calls, references, parseErrors }) =>
         [
-          `${number(imports)} imports`,
-          `${number(exports)} exports`,
-          `${number(calls)} calls`,
-          `${number(references)} uses`,
+          `${number(imports)} ${imports === 1 ? 'import' : 'imports'}`,
+          `${number(exports)} ${exports === 1 ? 'export' : 'exports'}`,
+          `${number(calls)} ${calls === 1 ? 'call' : 'calls'}`,
+          `${number(references)} ${references === 1 ? 'use' : 'uses'}`,
           ...(parseErrors === 0
             ? []
             : [`${number(parseErrors)} parse ${parseErrors === 1 ? 'error' : 'errors'}`]),
@@ -647,7 +647,7 @@ export const english: UiMessages = {
     fetching: 'fetching…',
     stopping: 'stopping…',
     progress: (done, total) => `${number(done)} of ${number(total)} files`,
-    indexed: (files) => `${number(files)} files indexed`,
+    indexed: (files) => `${number(files)} ${files === 1 ? 'file' : 'files'} indexed`,
     cancelled: (done, total) => `stopped at ${number(done)} of ${number(total)} files`,
     notStarted: 'not started',
     noToken: 'no GitHub token',

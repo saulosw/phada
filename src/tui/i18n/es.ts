@@ -656,7 +656,8 @@ export const spanish: UiMessages = {
     fetching: 'descargando…',
     stopping: 'deteniendo…',
     progress: (done, total) => `${number(done)} de ${number(total)} archivos`,
-    indexed: (files) => `${number(files)} archivos indexados`,
+    indexed: (files) =>
+      `${number(files)} ${files === 1 ? 'archivo indexado' : 'archivos indexados'}`,
     cancelled: (done, total) => `se detuvo en ${number(done)} de ${number(total)} archivos`,
     notStarted: 'no empezó',
     noToken: 'sin token de GitHub',
