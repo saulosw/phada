@@ -133,6 +133,8 @@ function detail(): ReviewDetail {
       status: 'published',
       url: 'https://github.com/acme/shop/pull/1#pullrequestreview-77',
       comments: 2,
+      wouldResolve: null,
+      reason: null,
     },
     ci: { state: 'failing', failing: ['lint'], pending: ['e2e'], checks: [] },
     published: [

@@ -54,6 +54,8 @@ export interface StoredPublication {
   status: string
   url: string | null
   comments: number | null
+  wouldResolve: number | null
+  reason: string | null
 }
 
 export interface StoredCi {
@@ -117,6 +119,16 @@ export function readReviewDetail(
 ): ReviewDetail | undefined {
   const stored = history?.run(id)
   if (history === undefined || stored === undefined) return undefined
+  return reviewDetailOf(
+    stored,
+    history
+      .findings({ repo: stored.repo, number: stored.number })
+      .filter((finding) => finding.runId === id)
+      .map(withFeedback),
+  )
+}
+
+export function reviewDetailOf(stored: RunRecord, published: FeedbackFinding[]): ReviewDetail {
   const { resultJson, ...run } = stored
   const result = objectOf(parseJson(resultJson))
   const pullRequest = objectOf(result?.pullRequest)
@@ -138,10 +150,7 @@ export function readReviewDetail(
     worthChecking: storedFindings(review?.worthChecking),
     publication: storedPublication(result?.publication),
     ci: storedCi(result?.ci),
-    published: history
-      .findings({ repo: run.repo, number: run.number })
-      .filter((finding) => finding.runId === id)
-      .map(withFeedback),
+    published,
   }
 }
 
@@ -217,6 +226,9 @@ function storedPublication(value: unknown): StoredPublication | null {
     comments: Array.isArray(publication.comments)
       ? publication.comments.length
       : (numberOf(publication.comments) ?? null),
+    wouldResolve: Array.isArray(publication.wouldResolve) ? publication.wouldResolve.length : null,
+    reason:
+      stringOf(publication.reason) ?? stringOf(objectOf(publication.wouldSkip)?.reason) ?? null,
   }
 }
 

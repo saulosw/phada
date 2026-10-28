@@ -6,6 +6,7 @@ import {
   readFindings,
   readReviewDetail,
   readReviews,
+  reviewDetailOf,
   ruleStats,
 } from './read-history.js'
 import type { HistoryReader } from './read-history.js'
@@ -262,7 +263,13 @@ describe('readReviewDetail', () => {
         },
       ],
       worthChecking: [],
-      publication: { status: 'published', url: RUN.url, comments: 1 },
+      publication: {
+        status: 'published',
+        url: RUN.url,
+        comments: 1,
+        wouldResolve: null,
+        reason: null,
+      },
       ci: {
         state: 'passing',
         failing: [],
@@ -331,6 +338,52 @@ describe('readReviewDetail', () => {
     expect(
       readReviewDetail(fakeHistory([{ ...failed, resultJson: '{not json' }]), 7)?.findings,
     ).toEqual([])
+  })
+
+  it('reads what a dry run would post, resolve and skip, and why a publication was skipped', () => {
+    const dryRun = JSON.stringify({
+      publication: {
+        status: 'dry-run',
+        body: 'Phada review',
+        comments: [
+          { path: 'src/a.ts', line: 1, body: 'one' },
+          { path: 'src/a.ts', line: 2, body: 'two' },
+        ],
+        stillOpen: 0,
+        dismissed: 0,
+        wouldSkip: { reason: 'open-threads', openThreads: 2 },
+        wouldResolve: [{ id: 1, verdict: 'fixed', reason: 'gone' }],
+      },
+    })
+    const skipped = JSON.stringify({
+      publication: { status: 'skipped', reason: 'already-reviewed', openThreads: 0 },
+    })
+
+    expect(readReviewDetail(fakeHistory([{ ...RUN, resultJson: dryRun }]), 7)?.publication).toEqual(
+      { status: 'dry-run', url: null, comments: 2, wouldResolve: 1, reason: 'open-threads' },
+    )
+    expect(
+      readReviewDetail(fakeHistory([{ ...RUN, resultJson: skipped }]), 7)?.publication,
+    ).toEqual({
+      status: 'skipped',
+      url: null,
+      comments: null,
+      wouldResolve: null,
+      reason: 'already-reviewed',
+    })
+  })
+
+  it('builds the detail of a run that is not in the history from its record and stored JSON', () => {
+    const detail = reviewDetailOf({ ...RUN, resultJson: REVIEW_JSON }, [])
+
+    expect(detail).toMatchObject({
+      run: RUN,
+      pullRequest: { title: 'Add the cart' },
+      score: { value: 4, reason: 'One P1.' },
+      findings: [{ title: 'Finding 1', why: 'Because.' }],
+      published: [],
+    })
+    expect(detail.run).not.toHaveProperty('resultJson')
   })
 
   it('reads nothing for an unknown run or without a history', () => {
