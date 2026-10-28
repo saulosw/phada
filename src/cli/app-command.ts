@@ -65,6 +65,8 @@ import type { TextOutput } from './progress.js'
 import { indexForApp } from './app-index.js'
 import { appReview } from './app-review.js'
 import type { AppReviewDeps } from './app-review.js'
+import { appWatch } from './app-watch.js'
+import type { AppWatch, AppWatchDeps } from './app-watch.js'
 import { initRepository } from './init.js'
 import type { AppIndexDeps } from './app-index.js'
 import { SLACK_APP_TOKEN, SLACK_BOT_TOKEN } from './review-event-sinks.js'
@@ -78,7 +80,9 @@ export interface AppCommandDeps
   extends
     Omit<RulesReaderDeps, 'ghToken'>,
     Omit<AppIndexDeps, 'ghToken'>,
-    Omit<AppReviewDeps, 'ghToken'> {
+    Omit<AppReviewDeps, 'ghToken'>,
+    Omit<AppWatchDeps, 'ghToken'> {
+  pid: number
   env: NodeJS.ProcessEnv
   home: string
   cwd: string
@@ -155,8 +159,11 @@ export async function runApp(
   )
   const graph = graphOf(deps, history)
   const terminal = terminalHandOff(deps)
+  const ghToken: GhTokenReader = () => ghTokenReader(deps.env, deps.runGh)()
+  const watch = appWatch({ ...deps, ghToken })
   try {
-    const result = await openApp(await appDeps(deps, history, graph, files.lock, terminal, start), {
+    const wiring = { history, graph, lock: files.lock, terminal, watch, ghToken }
+    const result = await openApp(await appDeps(deps, wiring, start), {
       stdin,
       stdout,
       onSignal: terminal.onSignal,
@@ -164,17 +171,24 @@ export async function runApp(
     if (result.kind === 'failed') throw result.error
     return EXIT_CODES[result.kind]
   } finally {
+    await watch.close()
     history.close()
     graph.close()
   }
 }
 
+interface AppWiring {
+  history: AppHistory
+  graph: AppGraph
+  lock: string
+  terminal: TerminalHandOff
+  watch: AppWatch
+  ghToken: GhTokenReader
+}
+
 async function appDeps(
   deps: AppCommandDeps,
-  history: AppHistory,
-  graph: AppGraph,
-  lock: string,
-  terminal: TerminalHandOff,
+  { history, graph, lock, terminal, watch, ghToken }: AppWiring,
   start: AppStart,
 ): Promise<AppDeps> {
   let settings: WatchSettings | undefined
@@ -184,10 +198,10 @@ async function appDeps(
       () => settings,
     )
   const readLanguage = async () => (await loadTopLevelUserLayers(deps))[0]?.config.language
-  const ghToken: GhTokenReader = () => ghTokenReader(deps.env, deps.runGh)()
   const review = appReview({ ...deps, ghToken })
   const base = {
     version: deps.version,
+    pid: deps.pid,
     start,
     cwd: deps.cwd,
     home: deps.home,
@@ -262,6 +276,7 @@ async function appDeps(
     readOpenPullRequests: review.readOpenPullRequests,
     reviewPullRequest: review.reviewPullRequest,
     enqueueReview: review.enqueueReview,
+    startWatch: watch.start,
     readRepositoryFolder: () => readRepositoryFolder(deps.cwd, (path) => deps.files.exists(path)),
     initRepository: () => initRepository(deps),
     ensureRepositoryFile: (repo: string, file: UserRepoFile) =>

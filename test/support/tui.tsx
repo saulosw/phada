@@ -164,6 +164,7 @@ export function fakeSize(initial: TerminalSize) {
 export function fakeAppDeps(scheduler: Scheduler, overrides: Partial<AppDeps> = {}): AppDeps {
   return {
     version: '1.2.3',
+    pid: 1000,
     start: 'home',
     cwd: '/home/ana/code/shop',
     home: '/home/ana',
@@ -220,6 +221,7 @@ export function fakeAppDeps(scheduler: Scheduler, overrides: Partial<AppDeps> = 
     readOpenPullRequests: async () => ({ status: 'no-token' }),
     reviewPullRequest: async () => ({ status: 'no-token' }),
     enqueueReview: async () => ({ status: 'no-token' }),
+    startWatch: async () => ({ status: 'elsewhere', pid: 4242 }),
     ...overrides,
   }
 }

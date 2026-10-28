@@ -36,6 +36,7 @@ import type {
   ReviewMode,
 } from '../app/requested-review.js'
 import type { ReviewProgressSink } from '../app/review-progress.js'
+import type { WatchObserver, WatchStarted } from '../app/watch-event.js'
 import type { UserRepoFile } from '../config/user-config.js'
 import type { UserConfigChange, UserConfigPlan } from '../config/user-config-edit.js'
 import type { UiMessages } from './i18n/messages.js'
@@ -58,6 +59,7 @@ export type AppStart = 'home' | 'setup'
 
 export interface AppDeps {
   version: string
+  pid: number
   start: AppStart
   cwd: string
   home: string
@@ -103,6 +105,7 @@ export interface AppDeps {
     signal: AbortSignal,
   ): Promise<RequestedReview>
   enqueueReview(target: PullRequestTarget): Promise<EnqueuedReview>
+  startWatch(observer: WatchObserver): Promise<WatchStarted>
 }
 
 export interface KeyHint {

@@ -23,6 +23,7 @@ import { openIndexStore } from '../store/index-store.js'
 import type { IndexingProgress } from '../app/index-repository.js'
 import { reviewState } from '../../test/support/review-state.js'
 import type { OpenPull } from '../github/list-pull-requests.js'
+import type { WatchEnd, WatchEvent } from '../app/watch-event.js'
 
 function terminal(isTTY: boolean) {
   return {
@@ -52,6 +53,7 @@ function deps(
     openIndexReader?: AppCommandDeps['openIndexReader']
     openGraph?: AppCommandDeps['openGraph']
     openPulls?: OpenPull[]
+    startWatch?: AppCommandDeps['startWatch']
   } = {},
 ) {
   const ghCalls: string[][] = []
@@ -69,6 +71,7 @@ function deps(
     home: '/home/ana',
     cwd: '/home/ana/shop',
     version: '1.2.3',
+    pid: 1000,
     files,
     stdin: terminal(options.stdin ?? true).stdin,
     stdout: terminal(options.stdout ?? true).stdout,
@@ -140,6 +143,13 @@ function deps(
       openPullReads.push(`${owner}/${repo} ${token}`)
       return { status: 'ok', pulls: options.openPulls ?? [] }
     },
+    listIssueComments: () => Promise.reject(new Error('no watch in this test')),
+    addCommentReaction: () => Promise.reject(new Error('no watch in this test')),
+    fetchPullRequestHead: () => Promise.reject(new Error('no watch in this test')),
+    fetchBranchHead: () => Promise.reject(new Error('no watch in this test')),
+    withLock: (_path, work) => work(),
+    killDetachedChildren: () => undefined,
+    ...(options.startWatch === undefined ? {} : { startWatch: options.startWatch }),
   }
   app.env.PHADA_DATA_HOME = options.dataHome ?? '/data'
   const send = (signal: StopSignal) => {
@@ -824,6 +834,87 @@ describe('the review readers', () => {
     await runApp(app)
 
     expect(seen).toEqual([expect.stringContaining('Nothing to watch')])
+  })
+})
+
+describe('the watch of the app', () => {
+  function watching(options: Parameters<typeof deps>[0] = {}) {
+    const calls: string[] = []
+    const startWatch: AppCommandDeps['startWatch'] = async (start, _deps, listeners) => {
+      calls.push(`start once=${start.once} backfill=${start.backfill}`)
+      listeners.warning('could not save the run in the history (disk full).')
+      let end: (value: WatchEnd) => void = () => undefined
+      const done = new Promise<WatchEnd>((resolve) => {
+        end = resolve
+      })
+      return {
+        done,
+        stop: () => calls.push('stop'),
+        abort: () => {
+          calls.push('abort')
+          end({ reason: 'aborted' })
+        },
+        stopRequested: () => false,
+        running: () => undefined,
+      }
+    }
+    return { calls, startWatch, ...options }
+  }
+
+  it("starts phada watch's watch, gives the app its own PID and aborts it when the app ends", async () => {
+    const events: WatchEvent[] = []
+    const started: string[] = []
+    const { calls, ...options } = watching({
+      result: { kind: 'terminated' },
+      during: async (appDeps) => {
+        started.push(
+          (
+            await appDeps.startWatch({
+              event: (event) => events.push(event),
+              progress: () => undefined,
+            })
+          ).status,
+        )
+      },
+    })
+    const { app, opened } = deps(options)
+
+    expect(await runApp(app)).toBe(143)
+    expect(opened[0]?.deps.pid).toBe(1000)
+    expect(started).toEqual(['started'])
+    expect(events).toEqual([
+      { kind: 'warning', message: 'could not save the run in the history (disk full).' },
+    ])
+    expect(calls).toEqual(['start once=false backfill=false', 'abort'])
+  })
+
+  it('leaves the watch of another terminal alone', async () => {
+    const seen: unknown[] = []
+    const { calls, ...options } = watching({
+      holder: 4242,
+      during: async (appDeps) => {
+        seen.push(await appDeps.startWatch({ event: () => undefined, progress: () => undefined }))
+      },
+    })
+    const { app } = deps(options)
+
+    await runApp(app)
+
+    expect(seen).toEqual([{ status: 'elsewhere', pid: 4242 }])
+    expect(calls).toEqual([])
+  })
+
+  it('aborts the watch when the app fails, and still throws the failure', async () => {
+    const { calls, ...options } = watching({
+      result: { kind: 'failed', error: new Error('render failed') },
+      during: async (appDeps) => {
+        await appDeps.startWatch({ event: () => undefined, progress: () => undefined })
+      },
+    })
+    const { app } = deps(options)
+
+    await expect(runApp(app)).rejects.toThrow('render failed')
+    expect(calls).toEqual(['start once=false backfill=false', 'abort'])
   })
 })
 

@@ -7,9 +7,9 @@ import type { ReviewProgressSink } from '../app/review-progress.js'
 import { BUILT_IN_SKILL, builtInSkillError } from '../app/review-passes.js'
 import type { SubmitDeps } from '../app/submit-request.js'
 import { watchEventsTo } from '../app/watch-event.js'
-import type { WatchEventSink } from '../app/watch-event.js'
+import type { WatchEnd, WatchEventSink } from '../app/watch-event.js'
 import { watchRepositories } from '../app/watch-repositories.js'
-import type { WatchDeps, WatchExit } from '../app/watch-repositories.js'
+import type { WatchDeps } from '../app/watch-repositories.js'
 import { repositoryCache } from '../config/cache-paths.js'
 import { dataFiles } from '../config/data-paths.js'
 import { mergeConfig, resolveProvider } from '../config/merge-config.js'
@@ -119,8 +119,6 @@ export interface WatchListeners {
   warning(message: string): void
   progress(job: JobRecord): JobProgress
 }
-
-export type WatchEnd = WatchExit | { reason: 'aborted' }
 
 export interface WatchHandle {
   readonly done: Promise<WatchEnd>

@@ -227,6 +227,7 @@ function harness(
       return overrides.ghToken?.()
     },
     version: '1.2.3',
+    pid: 4321,
     cwd: '/w/shop',
     home: '/home/u',
     files,

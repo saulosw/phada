@@ -1,7 +1,8 @@
 import type { JobRecord, PauseState } from '../watch/types.js'
 import type { ReviewRun } from './review-and-publish.js'
+import type { ReviewProgress } from './review-progress.js'
 import type { ReviewRequestInput, SubmitResult } from './submit-request.js'
-import type { WatchEvents } from './watch-repositories.js'
+import type { WatchEvents, WatchExit } from './watch-repositories.js'
 
 export type WatchEvent =
   | { kind: 'baseline'; repo: string; count: number }
@@ -27,6 +28,22 @@ export type WatchEvent =
     }
 
 export type WatchEventSink = (event: WatchEvent) => void
+
+export type WatchEnd = WatchExit | { reason: 'aborted' }
+
+export interface WatchObserver {
+  event: WatchEventSink
+  progress(job: JobRecord, event: ReviewProgress): void
+}
+
+export interface WatchControl {
+  readonly done: Promise<WatchEnd>
+  stop(): void
+  abort(): void
+}
+
+export type WatchStarted =
+  { status: 'started'; control: WatchControl } | { status: 'elsewhere'; pid: number }
 
 export function watchEventsTo(sink: WatchEventSink): WatchEvents {
   return {
