@@ -332,7 +332,7 @@ src/
     app.tsx              #   App: theme, catalog of the language read every 2 s and at once after
                          #   a config write (the last good one kept), working signal, load cache
                          #   and error boundary around the shell — tabs, the active screen, or
-                         #   the setup in their place (AppDeps.start, /setup) or the
+                         #   the setup in their place (AppDeps.start, /setup from its first step) or the
                          #   LanguagePicker (/language, back to the screen it came from), footer,
                          #   ? help, / palette, Esc (a screen's back first), q, 1–9, ←/→, Tab
                          #   (not in the setup), Ctrl-C; the size warning below 80×24
@@ -388,7 +388,7 @@ src/
                          #   ProviderPicker → the change → written), repositories-step.tsx (the
                          #   RepositoryPicker → the change → written; no token → Enter goes
                          #   on), language-step.tsx (the LanguagePicker → written),
-                         #   graph-step.tsx (the watched repositories of readRepositories;
+                         #   graph-step.tsx (useWatchedRepositories();
                          #   Enter indexes them in series with useIndexSeries, "N of M files",
                          #   Esc stops; each one indexed, stopped, not started or failed in one
                          #   line; none watched → Enter goes on), repository-step.tsx (the
@@ -396,7 +396,10 @@ src/
                          #   and shows each file; outside one or with .phada/, Enter goes on),
                          #   summary-step.tsx (the values written and their file, what was
                          #   indexed, left for later or not, the files phada init created, the
-                         #   steps skipped, phada watch and phada review; Enter → Home)
+                         #   steps skipped, phada watch when a repository is watched and phada
+                         #   review; Enter → Home), watched-repositories.ts
+                         #   (useWatchedRepositories(): watch.repos of readRepositories, an
+                         #   invalid config as failed)
     config-change.tsx    #   useConfigChange(onSaved): propose(changes) → AppDeps.planConfig →
                          #   the before → after to confirm (Enter writes, cancel() on Esc) or the
                          #   refusal; a file changed since the plan planned again on Enter;

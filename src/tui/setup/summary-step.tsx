@@ -15,10 +15,11 @@ import { textLines } from '../frame-lines.js'
 import { ScrollText } from '../scroll-list.js'
 import { namesText, oneLine, shortenHome, wrapText } from '../text-fit.js'
 import type { IndexOutcome, SetupProgress, SetupStepProps } from './setup-steps.js'
+import { useWatchedRepositories } from './watched-repositories.js'
 
-const COMMANDS = ['watch', 'review'] as const
+type Command = 'watch' | 'review'
 
-const COMMAND_TEXT: Readonly<Record<(typeof COMMANDS)[number], string>> = {
+const COMMAND_TEXT: Readonly<Record<Command, string>> = {
   watch: 'phada watch',
   review: 'phada review owner/repo#N',
 }
@@ -28,6 +29,7 @@ export function SummaryStep({ progress, next }: SetupStepProps) {
   const messages = useMessages()
   const theme = useTheme()
   const size = useScreenSize()
+  const watched = useWatchedRepositories()
   const m = messages.setup.summary
   const { colors } = theme
   useScreenInput((_input, key) => {
@@ -35,6 +37,8 @@ export function SummaryStep({ progress, next }: SetupStepProps) {
   })
   useScreenKeys([{ keys: 'Enter', label: m.home }])
   const draw: ConfigDraw = { messages, theme, home, width: size.columns }
+  const commands: readonly Command[] =
+    watched.status === 'ready' && watched.value.length > 0 ? ['watch', 'review'] : ['review']
   const doneTexts = doneLines(progress, draw)
   const done =
     doneTexts.length === 0
@@ -55,7 +59,7 @@ export function SummaryStep({ progress, next }: SetupStepProps) {
         ]),
     <Text> </Text>,
     <Text bold>{m.now}</Text>,
-    ...COMMANDS.flatMap((command) => [
+    ...commands.flatMap((command) => [
       <Text>
         {'  '}
         <Text bold color={colors.accent}>

@@ -27,7 +27,7 @@ output can change between minor versions.
   suggested), the language, the repositories to watch (from your GitHub list or typed), their
   map (indexed one at a time; `Esc` stops, keeping what was extracted for the idle watch or
   `phada index` to finish), `phada init` for the repository the app runs in, and a summary with
-  what to run now. `/setup` opens it from any screen; outside a terminal, `phada setup` is a
+  what to run now. `/setup` opens it from any screen, from its first step; outside a terminal, `phada setup` is a
   usage error.
 - The app changes your own config: on the Provider screen the AI and its model (`c`), the
   language (`L`, or `/language` anywhere) and a new login to the AI CLI (`l`); on the

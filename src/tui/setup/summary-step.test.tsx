@@ -57,7 +57,7 @@ function expectFits(frame: string) {
 afterEach(() => cleanup())
 
 describe('the summary', () => {
-  it('says what was written and where, what was skipped and what to do now', async () => {
+  it('says what was written and where, what was skipped and what to do now, without the watch when nothing is watched', async () => {
     const { footer, frame, press, seeing } = openSetup('pt')
     await seeing(/ 1 de 7 · GitHub/)
     await press('s', 's', KEYS.up, KEYS.enter)
@@ -68,8 +68,8 @@ describe('the summary', () => {
     await seeing('Step 7 of 7 · Summary', 'Written to ~/.config/phada/config.yml')
     expect(frame()).toMatch(/language +pt → en/)
     expect(frame()).toContain('Skipped: GitHub, AI, Repositories, Graph, This repository')
-    expect(frame()).toContain('phada watch')
     expect(frame()).toContain('phada review owner/repo#N')
+    expect(frame()).not.toContain('phada watch')
     expect(footer()).toContain('Enter go to Home')
     expect(footer()).not.toContain('s skip')
     expectFits(frame())
@@ -128,6 +128,7 @@ describe('the summary', () => {
     expect(frame()).toContain('Created in ~/code/shop: .phada/config.yml')
     expect(frame()).not.toContain('rules.md')
     expect(frame()).toContain('Skipped: GitHub, AI, Language, Repositories')
+    expect(frame()).toContain('reviews the new pull requests of the watched repositories')
     expectFits(frame())
   })
 

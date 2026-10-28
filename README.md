@@ -118,7 +118,7 @@ terminal (a pipe, a script), `phada` with no command prints the same error as be
 ### Setup
 
 `phada setup` opens the app on the setup; `phada` alone opens it while your own `config.yml` does
-not exist, and `/setup` opens it from any screen. It has seven steps, shown as `Step n of 7`: `s`
+not exist, and `/setup` opens it from any screen, from its first step. It has seven steps, shown as `Step n of 7`: `s`
 skips one, and `Esc` asks whether to leave the setup for the Home (what you confirmed is already
 written, and `phada setup` starts again).
 
@@ -148,8 +148,8 @@ written, and `phada setup` starts again).
 6. **This repository**: when the app runs inside a git repository without a `.phada/` folder,
    `Enter` runs `phada init` there and lists the files it created.
 7. **Summary**: what was written and to which file, what was indexed or left for later, what
-   `phada init` created, the steps skipped, and what to run now (`phada watch`,
-   `phada review owner/repo#N`).
+   `phada init` created, the steps skipped, and what to run now (`phada watch` when a repository
+   is watched, `phada review owner/repo#N`).
 
 A step that changes your config shows the change first, one line per value
 (`provider claude → codex`, `watch.repos + owner/repo`), and writes it only on `Enter`; `Esc`

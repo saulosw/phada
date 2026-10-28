@@ -1,8 +1,6 @@
 import { Text } from 'ink'
-import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
-  useAppDeps,
   useBack,
   useMessages,
   useScreenInput,
@@ -11,41 +9,24 @@ import {
   useTheme,
   useWorking,
 } from '../app-context.js'
-import type { DataState } from '../data-hooks.js'
 import { failedNodes, textLines } from '../frame-lines.js'
 import type { UiMessages } from '../i18n/messages.js'
 import { useIndexSeries } from '../index-series.js'
 import type { SeriesEntry, SeriesPhase } from '../index-series.js'
-import { settle } from '../load-cache.js'
 import { ScrollText } from '../scroll-list.js'
 import { fit, oneLine } from '../text-fit.js'
 import type { Theme } from '../theme.js'
 import type { IndexOutcome, RepositoryIndexOutcome, SetupStepProps } from './setup-steps.js'
+import { useWatchedRepositories } from './watched-repositories.js'
 
 export function GraphStep({ next }: SetupStepProps) {
-  const { readRepositories } = useAppDeps()
   const messages = useMessages()
   const theme = useTheme()
   const size = useScreenSize()
   const m = messages.setup.graph
-  const [watched, setWatched] = useState<DataState<string[]>>({ status: 'loading' })
+  const watched = useWatchedRepositories()
   const series = useIndexSeries()
   useWorking(watched.status === 'loading')
-  useEffect(() => {
-    let mounted = true
-    void settle(async () => {
-      const list = await readRepositories()
-      if (list.configError !== null) throw new Error(list.configError)
-      return list.repositories
-        .filter(({ origins }) => origins.includes('watched'))
-        .map(({ repo }) => repo)
-    }).then((state) => {
-      if (mounted) setWatched(state)
-    })
-    return () => {
-      mounted = false
-    }
-  }, [readRepositories])
 
   const repos = watched.status === 'ready' ? watched.value : []
   const startable = series.phase === 'idle' && repos.length > 0
