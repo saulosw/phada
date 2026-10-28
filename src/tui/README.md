@@ -122,6 +122,23 @@ not found or a repository that is not indexed is one line with `i` to index it, 
 after. The Graph screen draws it in a `SubView` from `s`; the app keeps the graph of one repository
 open (`src/cli/app-graph.ts`).
 
+## An action flow in place of the tabs (`review-flow.tsx`)
+
+An action that takes several steps and runs something long (a review) is a flow drawn by the shell
+in place of the tabs, as the setup and `/language` are, and back to the screen it came from. A
+screen opens it through a context of `app-context.ts` (`useStartReview()` for `ReviewFlow`, with
+the repository to start on), and the palette through an entry of the shell.
+
+The flow keeps a stack of steps: each step is a component with its own `useScreenKeys`,
+`useScreenInput` and `useBack(back)`, where `back()` pops the stack or, at its first step, leaves
+the flow (a step may remember what was picked in it, as the mode, so going back shows it chosen).
+The step that runs calls the `AppDeps` function once on mount with a sink for its progress
+events (`ReviewProgress`), folds them into lines (`review-steps.ts`), redraws its elapsed times
+from `scheduler.every()` and `now()`, marks the app as working (`useWorking`, so the mascot flaps)
+and ignores `Esc` while it runs (`useBack` with a no-op, never `undefined`, which would quit the
+app). When it ends, `Esc` leaves the flow; the result is drawn with the module the screen that
+lists such results also uses (`reviewDetailLines()` of `review-detail.tsx`).
+
 ## A picker inside a screen (`sub-view.tsx`)
 
 The pickers the setup uses (`ProviderPicker`, `RepositoryPicker`, `LanguagePicker`) also edit from

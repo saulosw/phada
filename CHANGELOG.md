@@ -26,6 +26,16 @@ output can change between minor versions.
   tree of its callers and dependencies that opens one level at a time with `Enter`/`→` and closes
   with `←`, crossing into the linked repositories, 20 items per level with how many more and when
   the graph cut the list short. A name not found or a repository not indexed offers `i`.
+- Reviewing a pull request from the app: `/review` in the palette, `n` on the Reviews screen or
+  `v` on a repository open it in place of the tabs. Type `owner/repo#N` or a URL, or pick one of
+  the open pull requests of a repository; choose **Only look** (as `phada review --dry-run`) or
+  **Review and publish**, which first shows the pull request and the GitHub login that will
+  publish it; follow each step live (the fetch, context, conversation, CI, indexing, related
+  repositories, impact, each run of the AI with its time, publishing, warnings); and read the
+  result in the same detail as the Reviews screen. It is the same review as `phada review`, saved
+  in the history unless `history: false`, with the AI CLI in its own process group.
+- The review detail of the Reviews screen shows the text of each finding, and for a dry run that
+  nothing was posted, how many threads it would resolve and why it would skip.
 
 ## 0.10.0 - 2026-10-27
 

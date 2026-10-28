@@ -14,7 +14,8 @@ validates and scores the answer, formats the result and posts it.
 Phada has set up, running and reviewed, over the same use cases the commands use. `phada setup`
 opens it on a step-by-step setup. The app writes only the user's own config (and the
 `repos/<owner>/<repo>/` files it opens in the editor), and, when asked, the index and a
-repository's `.phada/` (as `phada index` and `phada init` do).
+repository's `.phada/` (as `phada index` and `phada init` do), and the history of a review it
+runs (as `phada review` does).
 
 ## One engine, many callers
 

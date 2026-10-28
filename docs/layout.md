@@ -9,9 +9,9 @@ src/
                          #   SQLite ExperimentalWarning (suppressSqliteWarning), calls run() with
                          #   the gh token reader (ghTokenReader) and the signals (SIGINT, SIGTERM)
                          #   named to the handler
-  main.ts                # run(argv, deps): CLI flow — flags, token, user config, provider choice,
-                         #   then reviewAndPublish(), printing and saving the run in the history;
-                         #   no command → runApp(); createProvider()
+  main.ts                # run(argv, deps): CLI flow — flags, token, then prepareReview() and
+                         #   runManualReview() of manual-review.ts, printing the run and a
+                         #   history save that failed; no command → runApp(); createProvider()
   architecture.test.ts   # allowed imports of src/review/, src/publish/, src/watch/, src/context/,
                          #   src/investigation/, src/repository/, src/repo-map/, src/store/,
                          #   src/graph/, src/app/, src/skills/, src/gh-facade/, src/slack/ and
@@ -36,6 +36,9 @@ src/
                          #   AI running a review, verify, recheck or skill run, publishing,
                          #   warning), ReviewProgressSink; reportProgress(): ReviewProvider
                          #   decorator that reports when the AI starts and finishes a run
+    requested-review.ts  #   a review the person asks for in the app: ReviewMode (look, publish),
+                         #   PullRequestTarget, OpenPullRequests, HistorySave, RequestedReview
+                         #   (the review detail and how the history kept it, or no token)
     watch-repositories.ts # watchRepositories(): the watch loop — discovery with ETags, planCycle
                          #   (asking the when command before queueing), /phada review comments,
                          #   the next job through the CI gate (readCi: waiting jobs read again
@@ -98,8 +101,10 @@ src/
     read-history.ts      #   readReviews(), readFindings() (destination and marks of each),
                          #   readFeedbackStats() (feedbackStats() per repository, ruleStats() per
                          #   rule), readReviewDetail(): one run with what its stored JSON keeps
-                         #   (score, summary, findings, publication, CI) and the feedback of each
-                         #   published finding; no history file reads as empty
+                         #   (score, summary, findings, publication with what a dry run would
+                         #   resolve and why a publication was skipped, CI) and the feedback of
+                         #   each published finding; reviewDetailOf(): the same from a run
+                         #   record (a run the app just made); no history file reads as empty
     read-repositories.ts #   readRepositories(): watch.repos ∪ the user's repos/<owner>/<repo>/
                          #   folders ∪ the history, each with its origins, index file and last
                          #   review, watched first, then own config, then history, each by
@@ -224,10 +229,19 @@ src/
                          #   terminalHandOff(); planConfig and applyConfig (planUserConfig() with
                          #   USER_CONFIG_TEMPLATE, applyUserConfigPlan() on the local files);
                          #   pullModel (pullOllamaModel() at OLLAMA_HOST, ollamaFetch injectable);
-                         #   indexRepository (indexForApp()); readRepositoryFolder and
+                         #   indexRepository (indexForApp()); parsePullRequest,
+                         #   readOpenPullRequests and reviewPullRequest (appReview());
+                         #   readRepositoryFolder and
                          #   initRepository (the app's folder, initRepository() of init.ts);
                          #   searchSymbol, symbolCallers and symbolDependencies (appGraph() over
                          #   openGraphExplorer(), openGraph injectable), closed on exit
+    app-review.ts        #   appReview(): parsePullRequest (owner/repo#N or a URL, else
+                         #   undefined), readOpenPullRequests (number, title, author, draft;
+                         #   no token as data) and reviewPullRequest (target, look or publish,
+                         #   progress sink): the same prepareReview() and runManualReview() as
+                         #   phada review, the AI detached, never a write to the terminal →
+                         #   the review detail (reviewDetailOf() of the run's JSON) and how the
+                         #   history kept it
     app-index.ts         #   indexForApp(): token, user layers, mirror and index of the cache as
                          #   phada index uses them → indexRepository() with the signal and the
                          #   progress (fetching, extracting); no token and failures as data
@@ -327,6 +341,11 @@ src/
     review-wiring.ts     #   pullRequestReviewDeps() (its progress to a ReviewProgressSink),
                          #   reviewAndPublishEvents(), ciReaders(), renderReview, reviewRunJson():
                          #   shared by review, watch and prompt
+    manual-review.ts     #   prepareReview(): user layers, provider and model (flags › config),
+                         #   MCP servers resolved and their names checked; runManualReview():
+                         #   reviewAndPublish() (mode manual) with its deps and progress, then
+                         #   the run saved in the history when it is on, with its feedback
+                         #   (HistorySave); shared by phada review and the app
     history-run.ts       #   historyRun(), watchRun(): a run, a failure or a ci-failing skip →
                          #   the history record
     stored-ci.ts         #   ciSkipJson(), storedCi(): the CI of a run in its stored JSON, written
@@ -383,7 +402,9 @@ src/
                          #   a config write (the last good one kept), working signal, load cache
                          #   and error boundary around the shell — tabs, the active screen, or
                          #   the setup in their place (AppDeps.start, /setup from its first step) or the
-                         #   LanguagePicker (/language, back to the screen it came from), /index
+                         #   LanguagePicker (/language, back to the screen it came from), the
+                         #   ReviewFlow (/review, n in Reviews, v in Repositories through
+                         #   useStartReview(), back to the screen it came from), /index
                          #   to the Graph tab, footer,
                          #   ? help, / palette, Esc (a screen's back first), q, 1–9, ←/→, Tab
                          #   (not in the setup), Ctrl-C; the size warning below 80×24
@@ -393,10 +414,13 @@ src/
                          #   searchSymbol, symbolCallers, symbolDependencies, readProviderSetup,
                          #   readProviders, readLearnings, readGitHub, readLocalRules, readRepositoryRules,
                          #   readPullRequestRules, handOff, planConfig, applyConfig,
-                         #   ensureRepositoryFile), AppStart,
+                         #   ensureRepositoryFile, parsePullRequest, readOpenPullRequests,
+                         #   reviewPullRequest), AppStart,
                          #   HandOffTarget, HandOffResult, Scheduler, KeyHint;
                          #   useAppDeps(), useTheme(), useMessages(), useConfigWritten() (the
-                         #   language read again at once), useWorking(),
+                         #   language read again at once), useStartReview() (the review flow
+                         #   in place of the tabs, on a repository's open pull requests when
+                         #   given one), useWorking(),
                          #   useIsWorking(), useScreenKeys(), useBack(), useScreenInput() (quiet
                          #   while a text field is focused), useArrowKeys() (← and → to the
                          #   screen, Tab still moves between screens), useScreenSize()
@@ -409,14 +433,15 @@ src/
                          #   open and on r), queue.tsx (the watch from the lock
                          #   and the history, its jobs by kind → a job with its requests;
                          #   queueRows()), reviews.tsx (the history with a text filter → one
-                         #   review with findings, publication, CI and feedback),
+                         #   review drawn by reviewDetailLines(); n reviews a pull request),
                          #   repositories.tsx (each repository with its origins, index and last
                          #   review → its watch filters, index, user config with origins, rules,
                          #   related repositories and last reviews; on the selected one w
                          #   watches or unwatches, p turns publish on or off, e and R open its
                          #   own config.yml and rules.md in the editor (ensureRepositoryFile),
                          #   a → the RepositoryPicker in a SubView; w, p and a hidden while the
-                         #   user config is invalid; i indexes the selected or open one),
+                         #   user config is invalid; i indexes the selected or open one; v
+                         #   reviews one of its open pull requests),
                          #   graph.tsx (each repository's index state, commit, files, symbols
                          #   and size from readIndexes (loaded, r, read again after indexing) →
                          #   its index section: when, commit and branch, duration, files per
@@ -514,8 +539,8 @@ src/
                          #   (cancel(), aborted on unmount); modelPullLines(): the status, a bar
                          #   with bytes and percent, and how it ended
     units.ts             #   durationText(), bytesText(), modelSizeText() (decimal, as Ollama)
-    run-text.ts          #   runKey(), verdictLabel(), verdictColor(): a run of the history as the
-                         #   screens list it
+    run-text.ts          #   runKey(), verdictLabel(), verdictColor(), sourceOf(): a run of the
+                         #   history as the screens list it
     data-hooks.ts        #   usePolled() (local data, at once, every 2 s on the scheduler and when
                          #   its key changes), useLoaded(key) (slow data through the load cache:
                          #   the last value at once, loaded again on open after 30 s and on r;
@@ -549,6 +574,21 @@ src/
                          #   tab-layout.ts: layoutTabs(): full › short › a window with ‹ ›; tabText())
     footer.tsx           #   Footer (+ key-hints.ts: fitHints(): the keys that fit, then "? more")
     help.tsx             #   Help: the screen's keys and the global ones
+    review-flow.tsx      #   ReviewFlow: a typed pull request (refused when it is not one) or a
+                         #   repository → its open pull requests (loaded, r) → only look or
+                         #   review and publish → for publishing, the pull request and the
+                         #   token owner to confirm → the steps live with the mascot and the
+                         #   AI's time on the app clock, warnings → the result (time, history,
+                         #   warnings, reviewDetailLines()) or the error; Esc goes one step
+                         #   back, nothing while it runs, out once it ended
+    review-steps.ts      #   stepsAfter(): the review progress events → one step per stage
+                         #   (fetch, context, conversation, CI, CI wait, indexing, related,
+                         #   impact, skill pass, each AI run with its start and end,
+                         #   publishing) and the warnings; stepRunning()
+    review-detail.tsx    #   reviewDetailLines(): a review as lines — pull request and link,
+                         #   score, verdict, status, when, CI, publication (nothing posted,
+                         #   would resolve, would skip and why), summary, findings with their
+                         #   body, worth checking, feedback (Reviews and the review flow)
     palette.tsx          #   Palette: screens, the setup and the language filtered by name (the catalog's and
                          #   English, without accents), ↑/↓, Enter, Esc; matchEntries()
     mascot.tsx           #   Mascot: the two frames, flapping on the scheduler while working

@@ -93,9 +93,9 @@ phada
 | Screen       | What it shows                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Home         | One line each for GitHub (where the token comes from and whose it is), the AI (installed and logged in), the watch, the queue and the repository maps; the last reviews; and what to do next, with the command                                                                                                                                                                                                                                                                                                                                                                    |
-| Repositories | The watched repositories, the ones with a config of their own and the ones in the history → the settings of each with where every value comes from, its watch filters, its map, its related repositories and its last reviews (and, for a watched one, whether it publishes); `w`, `p`, `a`, `e` and `R` change them, `i` indexes it                                                                                                                                                                                                                                              |
+| Repositories | The watched repositories, the ones with a config of their own and the ones in the history → the settings of each with where every value comes from, its watch filters, its map, its related repositories and its last reviews (and, for a watched one, whether it publishes); `w`, `p`, `a`, `e` and `R` change them, `i` indexes it, `v` reviews one of its open pull requests                                                                                                                                                                                                   |
 | Rules        | The reviewer lens and your rules at once; the repository's `.phada/` and the rules and docs a review of the default branch reads; `p` and a pull request number show what a review of it reads and its prompt                                                                                                                                                                                                                                                                                                                                                                     |
-| Reviews      | The history, with `f` to filter → one review with its score, findings, what was published, the CI line and what happened to each comment                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| Reviews      | The history, with `f` to filter → one review with its score, findings, what was published, the CI line and what happened to each comment; `n` reviews a pull request                                                                                                                                                                                                                                                                                                                                                                                                              |
 | Queue        | The watch running in another terminal (or not), its last and next cycle, the job running, the jobs queued, waiting for CI, skipped for failing CI or failed, a pause, and the reviews this hour → a job with its requests                                                                                                                                                                                                                                                                                                                                                         |
 | Automation   | The watch, the CI wait, the request sources that are on (pull request comments, `phada enqueue`, `phada mcp`, Slack), the hooks and the `when` commands                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | Provider     | The provider and model you chose and where they come from, the language, each AI checked (installed, logged in, Ollama running and its models) with the command that fixes it, and your MCP servers; `c`, `L` and `l` change them                                                                                                                                                                                                                                                                                                                                                 |
@@ -103,13 +103,14 @@ phada
 | Learnings    | Per repository, the relations learned from reviews and what happened to Phada's comments, per repository and per rule                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 
 Keys: `←`/`→` or `Tab` move between screens, `1`–`9` jump to one, `/` finds a screen by name (and
-`/setup` the setup, `/language` the language, `/index` the Graph), `?` lists every key, `↑`/`↓` and `Enter` open an
+`/setup` the setup, `/language` the language, `/index` the Graph, `/review` a review), `?` lists every key, `↑`/`↓` and `Enter` open an
 item, `Esc` goes back, `r` reads again what comes from GitHub or the AI CLIs, and `q` quits. The footer lists the keys of the screen you are on.
 
 What is on your machine (the config, the history, the queue) is read every 2 seconds; what comes
 from GitHub or the AI CLIs is read when a screen opens and on `r`. The app writes only what
-[Changing your config from the app](#changing-your-config-from-the-app) lists, and never the
-history (it does not even create its file). It reads each map without changing it: a map that is
+[Changing your config from the app](#changing-your-config-from-the-app) lists, and the history
+only for a review you run from it, as `phada review` does (just reading it never creates its
+file). It reads each map without changing it: a map that is
 missing, made by another version of Phada or that cannot be read is shown as such on the Graph
 screen, until you index it. The connections of the Graph come only from your machine: the
 manifests and the `.phada/config.yml` of the indexed commit, read from the local copy the index
@@ -160,6 +161,33 @@ A step that changes your config shows the change first, one line per value
 (`provider claude → codex`, `watch.repos + owner/repo`), and writes it only on `Enter`; `Esc`
 cancels it.
 
+### Reviewing a pull request from the app
+
+`/review` in the palette, `n` on the Reviews screen or `v` on a repository of the Repositories
+screen open the review in place of the tabs:
+
+1. **The pull request**: type `owner/repo#N` or its URL and `Enter` (anything else is refused on
+   the spot), or pick a repository (`Esc` leaves the field, `t` types again) → its open pull
+   requests from GitHub, with their number, title, author and whether they are drafts (`r` reads
+   them again). `v` opens straight on the open pull requests of that repository.
+2. **The mode**: **Only look** reviews here and posts nothing, as `phada review --dry-run`;
+   **Review and publish** posts the review on the pull request.
+3. **For publishing**, the pull request and the GitHub login that will publish it (the owner of
+   the token) to confirm: `Enter` publishes, `Esc` goes back. Without a token it does not offer to
+   publish.
+4. **The steps, live**: the pull request fetched, the context, the conversation, the CI, the
+   indexing (`N of M files`), the related repositories, the impact, each run of the AI (review,
+   verify, recheck, skill) with its time, publishing, and the warnings.
+5. **The result**: the same detail as the Reviews screen (score, verdict, findings with their
+   text, what was published or, for only look, that nothing was posted, what it would resolve or
+   why it would skip, the CI), how long it took and whether the history kept it. `Esc` goes back
+   to the screen you came from.
+
+It is the same review as `phada review owner/repo#N` (with `--dry-run` for only look): the
+provider, model and MCP servers of your config for that repository, your GitHub token, and the
+run saved in the history unless `history: false`. The AI CLI runs in its own process group, so it
+never writes on the app. `Esc` goes one step back, and does nothing while the review runs.
+
 ### Changing your config from the app
 
 - **Provider**: `c` changes the AI and its model (the choice of the setup's AI step, with the
@@ -194,7 +222,8 @@ The app writes:
 - the [map](#repository-map) of a repository when you index it in the setup or with `i` on the
   Graph and Repositories screens, in the cache, as `phada index` does (on its default branch,
   replacing a map made by another version of Phada or that cannot be read);
-- a repository's `.phada/` only through `phada init`, in the setup's step 6.
+- a repository's `.phada/` only through `phada init`, in the setup's step 6;
+- the [history](#history), with a review you run from the app, as `phada review` does.
 
 Comments, the order of the keys and the lines a change does not touch stay as you wrote them. When
 a line cannot be kept as written (an indentation of 4 spaces, for example), the change says that
