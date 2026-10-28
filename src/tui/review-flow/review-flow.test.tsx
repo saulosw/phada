@@ -1,8 +1,8 @@
 import { cleanup } from 'ink-testing-library'
 import { afterEach, describe, expect, it } from 'vitest'
-import { contextReportFixture } from '../../test/support/context-report.js'
-import { watchedRepository } from '../../test/support/home.js'
-import { pullRequestFixture } from '../../test/support/pull-request.js'
+import { contextReportFixture } from '../../../test/support/context-report.js'
+import { watchedRepository } from '../../../test/support/home.js'
+import { pullRequestFixture } from '../../../test/support/pull-request.js'
 import {
   emptyQueue,
   emptyRepositories,
@@ -12,19 +12,19 @@ import {
   NOW,
   renderApp,
   visibleWidth,
-} from '../../test/support/tui.js'
-import type { ReviewDetail } from '../app/read-history.js'
-import type { EnqueuedReview } from '../app/requested-review.js'
-import type { JobRecord } from '../watch/types.js'
+} from '../../../test/support/tui.js'
+import type { ReviewDetail } from '../../app/read-history.js'
+import type { EnqueuedReview } from '../../app/requested-review.js'
+import type { JobRecord } from '../../watch/types.js'
 import type {
   OpenPullRequests,
   PullRequestTarget,
   RequestedReview,
   ReviewMode,
-} from '../app/requested-review.js'
-import type { ReviewProgressSink } from '../app/review-progress.js'
-import type { AppDeps } from './app-context.js'
-import type { TerminalSize } from './terminal-size.js'
+} from '../../app/requested-review.js'
+import type { ReviewProgressSink } from '../../app/review-progress.js'
+import type { AppDeps } from '../app-context.js'
+import type { TerminalSize } from '../terminal-size.js'
 
 afterEach(() => cleanup())
 
