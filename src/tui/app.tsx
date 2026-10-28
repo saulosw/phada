@@ -5,6 +5,7 @@ import {
   AppDepsContext,
   ConfigWrittenContext,
   MessagesContext,
+  ReviewStartContext,
   ScreenContext,
   ThemeContext,
   WorkingContext,
@@ -22,6 +23,7 @@ import { createLoadCache, LoadCacheContext } from './load-cache.js'
 import type { UiMessages } from './i18n/messages.js'
 import { uiMessagesFor } from './i18n/messages.js'
 import { Palette } from './palette.js'
+import { ReviewFlow } from './review-flow.js'
 import type { PaletteEntry } from './palette.js'
 import { SCREENS } from './screens.js'
 import { Setup } from './setup/setup.js'
@@ -46,12 +48,13 @@ export interface AppProps {
 }
 
 type Overlay = 'none' | 'help' | 'palette'
-type Takeover = 'setup' | 'language'
+type Takeover = 'setup' | 'language' | 'review'
 
 const SHELL_ROWS = 3
 const SETUP_ID = 'setup'
 const LANGUAGE_ID = 'language'
 const INDEX_ID = 'index'
+const REVIEW_ID = 'review'
 const GRAPH_ID = 'graph'
 
 export function App({ deps, size, onExit, screens = SCREENS }: AppProps) {
@@ -123,6 +126,8 @@ function Shell({
     start === 'setup' ? 'setup' : undefined,
   )
   const [setupRun, setSetupRun] = useState(0)
+  const [reviewRun, setReviewRun] = useState(0)
+  const [reviewRepo, setReviewRepo] = useState<string | undefined>()
   const [overlay, setOverlay] = useState<Overlay>('none')
   const [screenKeys, setScreenKeys] = useState<readonly KeyHint[]>([])
   const [typing, setTypingState] = useState(false)
@@ -150,6 +155,12 @@ function Shell({
     if (next === 'setup') setSetupRun((run) => run + 1)
     setTakeover(next)
   }
+  const startReview = useCallback((repo?: string) => {
+    back.current = undefined
+    setReviewRepo(repo)
+    setReviewRun((run) => run + 1)
+    setTakeover('review')
+  }, [])
   const leaveSetup = () =>
     show(
       Math.max(
@@ -207,7 +218,9 @@ function Shell({
   const global = globalKeys(messages, screens.length, takeover !== undefined, arrows)
   const setupTitle = messages.setup.title
   const languageTitle = { full: messages.language.title, short: messages.language.title }
-  const takeoverTitle = takeover === 'language' ? languageTitle : setupTitle
+  const reviewTitle = { full: messages.reviewFlow.title, short: messages.reviewFlow.title }
+  const takeoverTitle =
+    takeover === 'language' ? languageTitle : takeover === 'review' ? reviewTitle : setupTitle
   const paletteEntries: PaletteEntry[] = [
     ...screens.map((screen, index) => {
       const title = titles[index] ?? screen.title(messages)
@@ -227,6 +240,11 @@ function Shell({
       id: LANGUAGE_ID,
       label: languageTitle.full,
       names: [languageTitle.full, english.language.title],
+    },
+    {
+      id: REVIEW_ID,
+      label: messages.palette.review,
+      names: [messages.palette.review, english.palette.review],
     },
     ...(screens.some((screen) => screen.id === GRAPH_ID)
       ? [
@@ -274,6 +292,7 @@ function Shell({
               setOverlay('none')
               if (id === SETUP_ID) open('setup')
               else if (id === LANGUAGE_ID) open('language')
+              else if (id === REVIEW_ID) startReview()
               else if (id === INDEX_ID) show(screens.findIndex((screen) => screen.id === GRAPH_ID))
               else show(screens.findIndex((screen) => screen.id === id))
             }}
@@ -281,15 +300,19 @@ function Shell({
         )}
         <Box flexDirection="column" display={overlay === 'none' ? 'flex' : 'none'}>
           <ScreenContext.Provider value={controls}>
-            {takeover === 'setup' ? (
-              <Setup key={setupRun} onClose={leaveSetup} />
-            ) : takeover === 'language' ? (
-              <SubView onLeave={() => show(active)}>
-                <LanguagePicker onDone={() => show(active)} />
-              </SubView>
-            ) : (
-              current !== undefined && <current.Screen key={current.id} />
-            )}
+            <ReviewStartContext.Provider value={startReview}>
+              {takeover === 'setup' ? (
+                <Setup key={setupRun} onClose={leaveSetup} />
+              ) : takeover === 'review' ? (
+                <ReviewFlow key={reviewRun} repo={reviewRepo} onClose={() => show(active)} />
+              ) : takeover === 'language' ? (
+                <SubView onLeave={() => show(active)}>
+                  <LanguagePicker onDone={() => show(active)} />
+                </SubView>
+              ) : (
+                current !== undefined && <current.Screen key={current.id} />
+              )}
+            </ReviewStartContext.Provider>
           </ScreenContext.Provider>
         </Box>
       </Box>

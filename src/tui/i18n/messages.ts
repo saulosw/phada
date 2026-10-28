@@ -10,6 +10,8 @@ import type {
   RepositoryIndexState,
 } from '../../app/read-index.js'
 import type { QueueJob } from '../../app/read-queue.js'
+import type { ReviewMode } from '../../app/requested-review.js'
+import type { AiRun } from '../../app/review-progress.js'
 import type { RepositoryOrigin, SettingOrigin } from '../../app/read-repositories.js'
 import type { TimeMessages } from '../relative-time.js'
 import { english } from './en.js'
@@ -52,7 +54,7 @@ export interface UiMessages {
     refresh: string
   }
   help: { title: string; global: string }
-  palette: { title: string; empty: string; setup: string; index: string }
+  palette: { title: string; empty: string; setup: string; index: string; review: string }
   tooSmall(columns: number, rows: number): string
   tooSmallHint: string
   home: HomeMessages
@@ -81,6 +83,52 @@ export interface UiMessages {
   setup: SetupMessages
   language: { title: string; intro: string; current: string; choose: string }
   config: ConfigMessages
+  reviewFlow: ReviewFlowMessages
+}
+
+export interface ReviewFlowMessages {
+  title: string
+  start: string
+  pullRequest: string
+  typeHint: string
+  notAPullRequest(text: string): string
+  repositories: string
+  noRepositories: string
+  type: string
+  openPulls(repo: string): string
+  noOpenPulls: string
+  noToken: string
+  draft: string
+  chooseMode: string
+  modes: Readonly<Record<ReviewMode, { label: string; hint: string }>>
+  confirm: { question: string; pullRequest: string; as: string; publish: string }
+  running: Readonly<Record<ReviewMode, string>>
+  steps: {
+    fetching(ref: string): string
+    fetched(title: string): string
+    context(rules: number, docs: number): string
+    conversation(items: number): string
+    ci(state: string): string
+    ciWaiting(pending: number): string
+    ciWaited: string
+    indexing(done: number, total: number): string
+    related(count: number): string
+    impact(symbols: number): string
+    pass(skill: string, index: number, total: number): string
+    ai(provider: string, run: string, elapsed: string): string
+    publishing: string
+  }
+  runs: Readonly<Record<AiRun, string>>
+  warnings(count: number): string
+  moreWarnings(count: number): string
+  done(elapsed: string): string
+  failed: string
+  history: {
+    saved: string
+    off: string
+    notSaved(error: string): string
+    feedbackNotSaved(error: string): string
+  }
 }
 
 export interface HomeMessages {
@@ -369,6 +417,7 @@ export interface ReviewsMessages {
   count(total: number): string
   latest(shown: number): string
   filter: string
+  newReview: string
   columns: {
     pr: string
     verdict: string
@@ -462,6 +511,7 @@ export interface RepositoriesMessages {
     publishOn: string
     publishOff: string
     add: string
+    review: string
     config: string
     rules: string
     addIntro: string

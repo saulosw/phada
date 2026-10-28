@@ -131,6 +131,7 @@ export const WorkingContext = createContext<WorkingSignal>({
   start: () => () => {},
 })
 export const ConfigWrittenContext = createContext<() => void>(() => {})
+export const ReviewStartContext = createContext<(repo?: string) => void>(() => {})
 export const ScreenContext = createContext<ScreenControls>({
   inputActive: false,
   typing: false,
@@ -160,6 +161,10 @@ export function useMessages(): UiMessages {
 
 export function useConfigWritten(): () => void {
   return useContext(ConfigWrittenContext)
+}
+
+export function useStartReview(): (repo?: string) => void {
+  return useContext(ReviewStartContext)
 }
 
 export function useIsWorking(): boolean {

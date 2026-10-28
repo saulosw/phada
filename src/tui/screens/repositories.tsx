@@ -17,6 +17,7 @@ import {
   useScreenInput,
   useScreenKeys,
   useScreenSize,
+  useStartReview,
   useTheme,
 } from '../app-context.js'
 import { configChangeLines, useConfigChange } from '../config-change.js'
@@ -107,9 +108,13 @@ function RepositoryBrowser({ onAdd }: { onAdd(): void }) {
           ? undefined
           : () => setOpen(undefined),
   )
+  const startReview = useStartReview()
   useScreenInput((input) => {
     if (input === 'i' && indexTarget !== undefined && !change.open && !handOff.running) {
       return indexing.start([indexTarget.repo])
+    }
+    if (input === 'v' && indexTarget !== undefined && !change.open && !handOff.running) {
+      return startReview(indexTarget.repo)
     }
     if (!listing || change.open || handOff.running) return
     if (configEditable && input === 'a') return onAdd()
@@ -139,6 +144,7 @@ function RepositoryBrowser({ onAdd }: { onAdd(): void }) {
     open !== undefined
       ? [
           { keys: '↑/↓', label: messages.list.scroll },
+          { keys: 'v', label: e.review },
           ...indexKeys,
           ...(indexing.busy ? [] : [{ keys: 'Esc', label: messages.keys.back }]),
         ]
@@ -164,6 +170,7 @@ function RepositoryBrowser({ onAdd }: { onAdd(): void }) {
               : [
                   { keys: 'e', label: e.config },
                   { keys: 'R', label: e.rules },
+                  { keys: 'v', label: e.review },
                 ]),
             ...(indexing.busy ? [] : indexKeys),
           ],

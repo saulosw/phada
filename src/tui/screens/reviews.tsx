@@ -9,6 +9,7 @@ import {
   useScreenInput,
   useScreenKeys,
   useScreenSize,
+  useStartReview,
   useTheme,
 } from '../app-context.js'
 import { usePolled, POLL_MS } from '../data-hooks.js'
@@ -46,8 +47,10 @@ export function ReviewsScreen() {
     },
   })
   useBack(open === undefined ? undefined : () => setOpen(undefined))
+  const startReview = useStartReview()
   useScreenInput((input) => {
     if (listing && input === 'f') filter.focus()
+    if (listing && input === 'n') startReview()
   })
   useScreenKeys(
     filter.focused
@@ -64,6 +67,7 @@ export function ReviewsScreen() {
                   { keys: 'Enter', label: messages.keys.open },
                 ]),
             { keys: 'f', label: messages.reviews.filter.toLowerCase() },
+            { keys: 'n', label: messages.reviews.newReview },
           ]
         : [
             { keys: '↑/↓', label: messages.list.scroll },
