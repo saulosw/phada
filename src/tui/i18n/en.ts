@@ -825,11 +825,40 @@ export const english: UiMessages = {
       look: { label: 'Only look', hint: 'review here, post nothing (phada review --dry-run)' },
       publish: { label: 'Review and publish', hint: 'post the review on the pull request' },
     },
+    queueMode: {
+      label: 'Put in the queue',
+      hint: (pid) => `the watch (PID ${pid}) reviews and publishes it`,
+    },
     confirm: {
       question: 'Publish the review on GitHub?',
       pullRequest: 'Pull request',
       as: 'Published as',
       publish: 'publish',
+      queueQuestion: 'Put the pull request in the queue? The watch publishes the review.',
+      queue: 'put in the queue',
+      watch: 'Watch',
+      watchRunning: (pid) => `running (PID ${pid})`,
+    },
+    enqueue: {
+      submitting: 'Putting it in the queue…',
+      queued: (job, sha) => `Queued as job ${job} at ${sha}: the watch reviews and publishes it.`,
+      joined: (job, sha) =>
+        `Joined job ${job} at ${sha}, already in the queue: the watch reviews and publishes it.`,
+      refused: (reason) => `Not queued: ${reason}.`,
+      refusals: {
+        notWatched: 'the repository is not listed under watch: in the user config',
+        closed: 'the pull request is closed',
+        external:
+          'the author is outside the repository (allowExternal: true in watch: lets them in)',
+        whenCommand: (message) => `the when command refused it (${message})`,
+        noReason: 'no reason given',
+        alreadyReviewed: 'this commit was already reviewed',
+        alreadyReviewedJob: (job) => `this commit was already reviewed (job ${job})`,
+        hourlyLimit: 'the hourly limit of new reviews is reached',
+        hourlyLimitUntil: (until) => `the hourly limit of new reviews is reached until ${until}`,
+      },
+      failed: 'Could not put it in the queue.',
+      openQueue: 'open the Queue',
     },
     running: {
       look: 'Only looking: nothing will be posted.',

@@ -3,7 +3,9 @@ import type { ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import type { GitHubAccess } from '../app/read-home.js'
 import type { ListedRepository } from '../app/read-repositories.js'
+import type { SubmitResult } from '../app/submit-request.js'
 import type {
+  EnqueuedReview,
   OpenPullRequest,
   PullRequestTarget,
   RequestedReview,
@@ -28,6 +30,7 @@ import type { DrawContext } from './frame-lines.js'
 import type { UiMessages } from './i18n/messages.js'
 import { labeledLines } from './labeled-lines.js'
 import { Mascot, MASCOT_FRAMES } from './mascot.js'
+import { absoluteTime } from './relative-time.js'
 import { reviewDetailLines } from './review-detail.js'
 import { NO_STEPS, stepRunning, stepsAfter } from './review-steps.js'
 import type { ReviewStep, ReviewSteps } from './review-steps.js'
@@ -40,14 +43,23 @@ type FlowStep =
   | { kind: 'pick'; typing: boolean }
   | { kind: 'pulls'; repo: string }
   | { kind: 'mode'; target: PullRequestTarget; title: string | null; chosen?: ReviewMode }
-  | { kind: 'confirm'; target: PullRequestTarget; title: string | null }
+  | { kind: 'confirm'; target: PullRequestTarget; title: string | null; watch?: number }
   | { kind: 'run'; target: PullRequestTarget; title: string | null; mode: ReviewMode }
+  | { kind: 'enqueue'; target: PullRequestTarget; title: string | null }
 
 const MODES: readonly ReviewMode[] = ['look', 'publish']
 const TICK_MS = 1000
 const GAP = '  '
 
-export function ReviewFlow({ repo, onClose }: { repo?: string; onClose(): void }) {
+export function ReviewFlow({
+  repo,
+  onClose,
+  onQueue,
+}: {
+  repo?: string
+  onClose(): void
+  onQueue(): void
+}) {
   const [stack, setStack] = useState<FlowStep[]>(() => [
     repo === undefined ? { kind: 'pick', typing: true } : { kind: 'pulls', repo },
   ])
@@ -86,10 +98,15 @@ export function ReviewFlow({ repo, onClose }: { repo?: string; onClose(): void }
           title={step.title}
           back={back}
           chosen={step.chosen}
-          onMode={(mode) =>
+          onMode={(mode, watch) =>
             go(
               mode === 'publish'
-                ? { kind: 'confirm', target: step.target, title: step.title }
+                ? {
+                    kind: 'confirm',
+                    target: step.target,
+                    title: step.title,
+                    ...(watch === undefined ? {} : { watch }),
+                  }
                 : { kind: 'run', target: step.target, title: step.title, mode },
               { ...step, chosen: mode },
             )
@@ -102,8 +119,15 @@ export function ReviewFlow({ repo, onClose }: { repo?: string; onClose(): void }
           key={key}
           target={step.target}
           title={step.title}
+          watch={step.watch}
           back={back}
-          onConfirm={() => go({ ...step, kind: 'run', mode: 'publish' })}
+          onConfirm={() =>
+            go(
+              step.watch === undefined
+                ? { kind: 'run', target: step.target, title: step.title, mode: 'publish' }
+                : { kind: 'enqueue', target: step.target, title: step.title },
+            )
+          }
         />
       )
     case 'run':
@@ -114,6 +138,16 @@ export function ReviewFlow({ repo, onClose }: { repo?: string; onClose(): void }
           title={step.title}
           mode={step.mode}
           onClose={onClose}
+        />
+      )
+    case 'enqueue':
+      return (
+        <EnqueueStep
+          key={key}
+          target={step.target}
+          title={step.title}
+          onClose={onClose}
+          onQueue={onQueue}
         />
       )
   }
@@ -302,14 +336,21 @@ function ModeStep({
   title: string | null
   back(): void
   chosen: ReviewMode | undefined
-  onMode(mode: ReviewMode): void
+  onMode(mode: ReviewMode, watch: number | undefined): void
 }) {
+  const { readQueue } = useAppDeps()
   const messages = useMessages()
   const { colors } = useTheme()
   const size = useScreenSize()
   const m = messages.reviewFlow
+  const queue = usePolled(readQueue)
+  const watch = queue.status === 'ready' ? queue.value.holder?.pid : undefined
+  const choice = (mode: ReviewMode) =>
+    mode === 'publish' && watch !== undefined
+      ? { label: m.queueMode.label, hint: m.queueMode.hint(watch) }
+      : m.modes[mode]
   const selection = useSelection(MODES, (mode) => mode, {
-    onOpen: onMode,
+    onOpen: (mode) => onMode(mode, mode === 'publish' ? watch : undefined),
     ...(chosen === undefined ? {} : { initialKey: chosen }),
   })
   useBack(back)
@@ -318,7 +359,7 @@ function ModeStep({
     { keys: 'Enter', label: messages.keys.open },
     { keys: 'Esc', label: messages.keys.back },
   ])
-  const labelWidth = Math.max(...MODES.map((mode) => m.modes[mode].label.length))
+  const labelWidth = Math.max(...MODES.map((mode) => choice(mode).label.length))
   const lines: ReactNode[] = [
     <Text bold>{pullRequestText(target, title)}</Text>,
     <Text> </Text>,
@@ -326,9 +367,9 @@ function ModeStep({
     ...MODES.map((mode, index) => (
       <Text bold={index === selection.index}>
         {index === selection.index ? <Text color={colors.accent}>❯ </Text> : '  '}
-        {fit(m.modes[mode].label, labelWidth)}
+        {fit(choice(mode).label, labelWidth)}
         {GAP}
-        <Text color={colors.dim}>{m.modes[mode].hint}</Text>
+        <Text color={colors.dim}>{choice(mode).hint}</Text>
       </Text>
     )),
   ]
@@ -338,11 +379,13 @@ function ModeStep({
 function ConfirmStep({
   target,
   title,
+  watch,
   back,
   onConfirm,
 }: {
   target: PullRequestTarget
   title: string | null
+  watch: number | undefined
   back(): void
   onConfirm(): void
 }) {
@@ -366,23 +409,131 @@ function ConfirmStep({
     if (key.return && canPublish) onConfirm()
   })
   useScreenKeys([
-    ...(canPublish ? [{ keys: 'Enter', label: m.confirm.publish }] : []),
+    ...(canPublish
+      ? [{ keys: 'Enter', label: watch === undefined ? m.confirm.publish : m.confirm.queue }]
+      : []),
     { keys: 'r', label: messages.keys.refresh },
     { keys: 'Esc', label: messages.keys.back },
   ])
   const lines: ReactNode[] = [
-    <Text bold>{m.confirm.question}</Text>,
+    ...wrapText(
+      watch === undefined ? m.confirm.question : m.confirm.queueQuestion,
+      size.columns,
+    ).map((line) => <Text bold>{line}</Text>),
     <Text> </Text>,
     ...labeledLines(
       [
         [m.confirm.pullRequest, pullRequestText(target, known)],
         [m.confirm.as, accountText(github.state, messages)],
+        ...(watch === undefined
+          ? []
+          : [[m.confirm.watch, m.confirm.watchRunning(watch)] as [string, string]]),
       ],
       size.columns,
       theme.colors.soft,
     ),
   ]
   return <ScrollText lines={lines} rows={size.rows} />
+}
+
+function EnqueueStep({
+  target,
+  title,
+  onClose,
+  onQueue,
+}: {
+  target: PullRequestTarget
+  title: string | null
+  onClose(): void
+  onQueue(): void
+}) {
+  const { enqueueReview } = useAppDeps()
+  const messages = useMessages()
+  const theme = useTheme()
+  const size = useScreenSize()
+  const m = messages.reviewFlow
+  const [state, setState] = useState<DataState<EnqueuedReview>>({ status: 'loading' })
+  const request = useRef(target)
+  useEffect(() => {
+    let mounted = true
+    enqueueReview(request.current).then(
+      (value) => {
+        if (mounted) setState({ status: 'ready', value })
+      },
+      (error: unknown) => {
+        if (mounted) setState({ status: 'failed', error })
+      },
+    )
+    return () => {
+      mounted = false
+    }
+  }, [enqueueReview])
+  const loading = state.status === 'loading'
+  const submitted = state.status === 'ready' && state.value.status === 'submitted'
+  useWorking(loading)
+  useBack(loading ? () => undefined : onClose)
+  useScreenInput((_input, key) => {
+    if (key.return && submitted) onQueue()
+  })
+  useScreenKeys(
+    loading
+      ? []
+      : [
+          ...(submitted ? [{ keys: 'Enter', label: m.enqueue.openQueue }] : []),
+          { keys: 'Esc', label: messages.keys.back },
+        ],
+  )
+  const draw = { messages, theme, width: size.columns }
+  const wrapped = (text: string, color: string | undefined) =>
+    wrapText(text, size.columns).map((line) => <Text color={color}>{line}</Text>)
+  const lines: ReactNode[] = [
+    <Text bold>{pullRequestText(target, title)}</Text>,
+    ...(state.status === 'loading'
+      ? [<Text color={theme.colors.dim}>{m.enqueue.submitting}</Text>]
+      : state.status === 'failed'
+        ? [
+            <Text color={theme.colors.error}>{m.enqueue.failed}</Text>,
+            ...failedNodes(draw, state.error),
+          ]
+        : state.value.status === 'no-token'
+          ? [<Text color={theme.colors.warn}>{m.noToken}</Text>]
+          : state.value.result.status === 'refused'
+            ? wrapped(
+                m.enqueue.refused(refusalText(state.value.result, messages)),
+                theme.colors.warn,
+              )
+            : wrapped(
+                (state.value.result.status === 'queued' ? m.enqueue.queued : m.enqueue.joined)(
+                  state.value.result.job.id,
+                  oneLine(state.value.result.job.headSha.slice(0, 7)),
+                ),
+                theme.colors.ok,
+              )),
+  ]
+  return <ScrollText lines={lines} rows={size.rows} />
+}
+
+function refusalText(
+  refusal: Extract<SubmitResult, { status: 'refused' }>,
+  messages: UiMessages,
+): string {
+  const r = messages.reviewFlow.enqueue.refusals
+  switch (refusal.reason) {
+    case 'not-watched':
+      return r.notWatched
+    case 'closed':
+      return r.closed
+    case 'external':
+      return r.external
+    case 'when-command':
+      return r.whenCommand(refusal.message === undefined ? r.noReason : oneLine(refusal.message))
+    case 'already-reviewed':
+      return refusal.job === undefined ? r.alreadyReviewed : r.alreadyReviewedJob(refusal.job.id)
+    case 'hourly-limit':
+      return refusal.until === undefined
+        ? r.hourlyLimit
+        : r.hourlyLimitUntil(absoluteTime(refusal.until))
+  }
 }
 
 type RunOutcome =

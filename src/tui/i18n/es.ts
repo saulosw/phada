@@ -842,11 +842,41 @@ export const spanish: UiMessages = {
       look: { label: 'Solo ver', hint: 'revisar aquí, sin publicar nada (phada review --dry-run)' },
       publish: { label: 'Revisar y publicar', hint: 'publicar la revisión en el pull request' },
     },
+    queueMode: {
+      label: 'Poner en la cola',
+      hint: (pid) => `el watch (PID ${pid}) la revisa y publica`,
+    },
     confirm: {
       question: '¿Publicar la revisión en GitHub?',
       pullRequest: 'Pull request',
       as: 'Publicado como',
       publish: 'publicar',
+      queueQuestion: '¿Poner el pull request en la cola? El watch publica la revisión.',
+      queue: 'poner en la cola',
+      watch: 'Watch',
+      watchRunning: (pid) => `en marcha (PID ${pid})`,
+    },
+    enqueue: {
+      submitting: 'Poniéndolo en la cola…',
+      queued: (job, sha) => `En la cola como job ${job} en ${sha}: el watch lo revisa y publica.`,
+      joined: (job, sha) =>
+        `Unido al job ${job} en ${sha}, que ya estaba en la cola: el watch lo revisa y publica.`,
+      refused: (reason) => `No entró en la cola: ${reason}.`,
+      refusals: {
+        notWatched: 'el repositorio no está en watch: en la config del usuario',
+        closed: 'el pull request está cerrado',
+        external:
+          'el autor es de fuera del repositorio (allowExternal: true en watch: lo deja entrar)',
+        whenCommand: (message) => `el comando when lo rechazó (${message})`,
+        noReason: 'sin motivo',
+        alreadyReviewed: 'este commit ya se revisó',
+        alreadyReviewedJob: (job) => `este commit ya se revisó (job ${job})`,
+        hourlyLimit: 'se alcanzó el límite de revisiones nuevas por hora',
+        hourlyLimitUntil: (until) =>
+          `se alcanzó el límite de revisiones nuevas por hora hasta ${until}`,
+      },
+      failed: 'No se pudo poner en la cola.',
+      openQueue: 'abrir la Cola',
     },
     running: {
       look: 'Solo viendo: no se publicará nada.',

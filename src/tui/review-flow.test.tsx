@@ -4,7 +4,9 @@ import { contextReportFixture } from '../../test/support/context-report.js'
 import { watchedRepository } from '../../test/support/home.js'
 import { pullRequestFixture } from '../../test/support/pull-request.js'
 import {
+  emptyQueue,
   emptyRepositories,
+  flatFrame,
   frameLines,
   KEYS,
   NOW,
@@ -12,6 +14,8 @@ import {
   visibleWidth,
 } from '../../test/support/tui.js'
 import type { ReviewDetail } from '../app/read-history.js'
+import type { EnqueuedReview } from '../app/requested-review.js'
+import type { JobRecord } from '../watch/types.js'
 import type {
   OpenPullRequests,
   PullRequestTarget,
@@ -443,6 +447,140 @@ describe('reviewing a pull request from the app', () => {
     expect(flow.exits).toEqual([{ kind: 'quit' }])
   })
 
+  function job(changes: Partial<JobRecord> = {}): JobRecord {
+    return {
+      id: 7,
+      repo: 'acme/shop',
+      number: 12,
+      headSha: SHA,
+      status: 'queued',
+      attempts: 0,
+      notBefore: NOW.toISOString(),
+      publish: 'pr',
+      createdAt: NOW.toISOString(),
+      ...changes,
+    }
+  }
+
+  function watching(enqueued: () => Promise<EnqueuedReview>) {
+    const enqueues: PullRequestTarget[] = []
+    const flow = openFlow({
+      deps: {
+        readQueue: async () => ({ ...emptyQueue(), holder: { pid: 4242 } }),
+        enqueueReview: (target) => {
+          enqueues.push(target)
+          return enqueued()
+        },
+      },
+    })
+    const toQueue = async () => {
+      await flow.fromPalette()
+      await flow.type('acme/shop#12')
+      await flow.press(KEYS.enter)
+      await flow.showing('Put in the queue')
+      await flow.press(KEYS.down, KEYS.enter)
+      await flow.showing('@ana')
+      await flow.press(KEYS.enter)
+      await flow.until(() => enqueues.length === 1)
+    }
+    return { ...flow, enqueues, toQueue }
+  }
+
+  it('puts the review in the queue when a watch runs, and opens the Queue with Enter', async () => {
+    const flow = watching(async () => ({
+      status: 'submitted',
+      result: { status: 'queued', job: job(), requestId: 3 },
+    }))
+    const { asked, enqueues, frame, footer, fromPalette, press, showing, type } = flow
+    await fromPalette()
+    await type('acme/shop#12')
+    await press(KEYS.enter)
+    await showing('Put in the queue')
+    expect(frame()).toMatch(/Put in the queue\s+the watch \(PID 4242\) reviews and publishes it/)
+    expect(frame()).not.toContain('Review and publish')
+    expect(frame()).toContain('Only look')
+    expectFits(frame(), { columns: 80, rows: 24 })
+    await press(KEYS.down, KEYS.enter)
+    await showing('@ana')
+    expect(frame()).toContain('Put the pull request in the queue? The watch publishes the review.')
+    expect(frame()).toMatch(/Watch\s+running \(PID 4242\)/)
+    expect(footer()).toContain('Enter put in the queue')
+    expectFits(frame(), { columns: 80, rows: 24 })
+    await press(KEYS.enter)
+    await flow.until(() => enqueues.length === 1)
+    expect(enqueues).toEqual([TARGET])
+    await showing('Queued as job 7')
+    expect(frame()).toContain('Queued as job 7 at a1b2c3d: the watch reviews and publishes it.')
+    expect(footer()).toContain('Enter open the Queue')
+    expect(footer()).toContain('Esc back')
+    expect(asked).toEqual([])
+    expectFits(frame(), { columns: 80, rows: 24 })
+    await press(KEYS.enter)
+    await showing('Watch running · PID 4242')
+    expect(frame()).toMatch(/Home\s+Repos\s+Rules\s+Reviews\s+\[?Queue/)
+  })
+
+  it.each([
+    [
+      'a joined job',
+      { status: 'submitted', result: { status: 'joined', job: job({ id: 5 }), requestId: 4 } },
+      'Joined job 5 at a1b2c3d, already in the queue: the watch reviews and publishes it.',
+    ],
+    [
+      'a refusal',
+      { status: 'submitted', result: { status: 'refused', reason: 'not-watched' } },
+      'Not queued: the repository is not listed under watch: in the user config.',
+    ],
+    [
+      'the refusal of the when command',
+      {
+        status: 'submitted',
+        result: { status: 'refused', reason: 'when-command', message: 'not \u001B[2Jtoday' },
+      },
+      'Not queued: the when command refused it (not [2Jtoday).',
+    ],
+    [
+      'the hourly limit',
+      {
+        status: 'submitted',
+        result: { status: 'refused', reason: 'hourly-limit', until: '2026-10-25T13:00:00.000Z' },
+      },
+      'Not queued: the hourly limit of new reviews is reached until',
+    ],
+    ['no token', { status: 'no-token' }, 'No GitHub token — gh auth login or set GITHUB_TOKEN'],
+  ] as const)('shows %s', async (_case, enqueued, text) => {
+    const flow = watching(async () => enqueued as EnqueuedReview)
+    await flow.toQueue()
+    await flow.until(() => flatFrame(flow.frame()).includes(text))
+    expect(flatFrame(flow.frame())).toContain(text)
+    expect(flow.frame()).not.toContain('\u001B[2J')
+    expectFits(flow.frame(), { columns: 80, rows: 24 })
+  })
+
+  it('shows the error of a queue it cannot use, as without watch: in the config', async () => {
+    const flow = watching(() =>
+      Promise.reject(new Error('Nothing to watch: list the repositories under watch:')),
+    )
+    await flow.toQueue()
+    await flow.showing('Nothing to watch')
+    expect(flow.frame()).toContain('Could not put it in the queue.')
+    expect(flow.frame()).toContain('Nothing to watch: list the repositories under watch:')
+    await flow.press(KEYS.escape)
+    await flow.showing('Review pull requests with the AI you already use.')
+  })
+
+  it('still only looks here when a watch runs', async () => {
+    const flow = watching(async () => ({ status: 'no-token' }))
+    await flow.fromPalette()
+    await flow.type('acme/shop#12')
+    await flow.press(KEYS.enter)
+    await flow.showing('Put in the queue')
+    await flow.press(KEYS.enter)
+    await flow.until(() => flow.asked.length === 1)
+    expect(flow.asked[0]).toMatchObject({ target: TARGET, mode: 'look' })
+    expect(flow.enqueues).toEqual([])
+  })
+
   it('opens with n on the Reviews screen and goes back there', async () => {
     const { frame, footer, press, showing } = openFlow()
     await showing('Home')
@@ -473,10 +611,19 @@ describe('reviewing a pull request from the app', () => {
   })
 
   it.each([
-    ['pt', 'Revisar um pull request', 'Como a Phada deve revisar?', 'Só ver'],
-    ['es', 'Revisar un pull request', '¿Cómo debe revisarlo Phada?', 'Solo ver'],
-  ])('is translated (%s)', async (language, title, question, look) => {
-    const { frame, press, showing, type } = openFlow({ language })
+    ['pt', 'Revisar um pull request', 'Como a Phada deve revisar?', 'Só ver', 'Pôr na fila'],
+    [
+      'es',
+      'Revisar un pull request',
+      '¿Cómo debe revisarlo Phada?',
+      'Solo ver',
+      'Poner en la cola',
+    ],
+  ])('is translated (%s)', async (language, title, question, look, queue) => {
+    const { frame, press, showing, type } = openFlow({
+      language,
+      deps: { readQueue: async () => ({ ...emptyQueue(), holder: { pid: 4242 } }) },
+    })
     await showing('Phada')
     await press('/')
     await type(title.slice(0, 9).toLowerCase())
@@ -486,7 +633,9 @@ describe('reviewing a pull request from the app', () => {
     await type('acme/shop#12')
     await press(KEYS.enter)
     await showing(question)
+    await showing(queue)
     expect(frame()).toContain(look)
+    expect(frame()).toContain(queue)
     expectFits(frame(), { columns: 80, rows: 24 })
   })
 })

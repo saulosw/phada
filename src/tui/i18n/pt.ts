@@ -838,11 +838,40 @@ export const portuguese: UiMessages = {
       look: { label: 'Só ver', hint: 'revisar aqui, sem publicar nada (phada review --dry-run)' },
       publish: { label: 'Revisar e publicar', hint: 'publicar a revisão no pull request' },
     },
+    queueMode: {
+      label: 'Pôr na fila',
+      hint: (pid) => `o watch (PID ${pid}) revisa e publica`,
+    },
     confirm: {
       question: 'Publicar a revisão no GitHub?',
       pullRequest: 'Pull request',
       as: 'Publicado como',
       publish: 'publicar',
+      queueQuestion: 'Pôr o pull request na fila? O watch publica a revisão.',
+      queue: 'pôr na fila',
+      watch: 'Watch',
+      watchRunning: (pid) => `rodando (PID ${pid})`,
+    },
+    enqueue: {
+      submitting: 'Pondo na fila…',
+      queued: (job, sha) => `Na fila como job ${job} em ${sha}: o watch revisa e publica.`,
+      joined: (job, sha) =>
+        `Juntado ao job ${job} em ${sha}, que já estava na fila: o watch revisa e publica.`,
+      refused: (reason) => `Não foi para a fila: ${reason}.`,
+      refusals: {
+        notWatched: 'o repositório não está em watch: na config do usuário',
+        closed: 'o pull request está fechado',
+        external: 'o autor é de fora do repositório (allowExternal: true em watch: deixa entrar)',
+        whenCommand: (message) => `o comando when recusou (${message})`,
+        noReason: 'sem motivo',
+        alreadyReviewed: 'este commit já foi revisado',
+        alreadyReviewedJob: (job) => `este commit já foi revisado (job ${job})`,
+        hourlyLimit: 'o limite de revisões novas por hora foi atingido',
+        hourlyLimitUntil: (until) =>
+          `o limite de revisões novas por hora foi atingido até ${until}`,
+      },
+      failed: 'Não foi possível pôr na fila.',
+      openQueue: 'abrir a Fila',
     },
     running: {
       look: 'Só vendo: nada será publicado.',

@@ -69,6 +69,7 @@ const LANGUAGE_ID = 'language'
 const INDEX_ID = 'index'
 const REVIEW_ID = 'review'
 const GRAPH_ID = 'graph'
+const QUEUE_ID = 'queue'
 
 export function App({ deps, size, onExit, screens = SCREENS, signals }: AppProps) {
   const theme = useMemo(() => resolveTheme(colorLevel(deps.env)), [deps.env])
@@ -201,6 +202,10 @@ function Shell({
     back.current = undefined
     setTakeover(undefined)
     setActive((index + screens.length) % screens.length)
+  }
+  const showScreen = (id: string) => {
+    const index = screens.findIndex((screen) => screen.id === id)
+    show(index < 0 ? active : index)
   }
   const open = (next: Takeover) => {
     back.current = undefined
@@ -380,7 +385,12 @@ function Shell({
                 {takeover === 'setup' ? (
                   <Setup key={setupRun} onClose={leaveSetup} />
                 ) : takeover === 'review' ? (
-                  <ReviewFlow key={reviewRun} repo={reviewRepo} onClose={() => show(active)} />
+                  <ReviewFlow
+                    key={reviewRun}
+                    repo={reviewRepo}
+                    onClose={() => show(active)}
+                    onQueue={() => showScreen(QUEUE_ID)}
+                  />
                 ) : takeover === 'language' ? (
                   <SubView onLeave={() => show(active)}>
                     <LanguagePicker onDone={() => show(active)} />

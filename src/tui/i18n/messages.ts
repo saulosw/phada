@@ -102,7 +102,36 @@ export interface ReviewFlowMessages {
   draft: string
   chooseMode: string
   modes: Readonly<Record<ReviewMode, { label: string; hint: string }>>
-  confirm: { question: string; pullRequest: string; as: string; publish: string }
+  queueMode: { label: string; hint(pid: number): string }
+  confirm: {
+    question: string
+    pullRequest: string
+    as: string
+    publish: string
+    queueQuestion: string
+    queue: string
+    watch: string
+    watchRunning(pid: number): string
+  }
+  enqueue: {
+    submitting: string
+    queued(job: number, sha: string): string
+    joined(job: number, sha: string): string
+    refused(reason: string): string
+    refusals: {
+      notWatched: string
+      closed: string
+      external: string
+      whenCommand(message: string): string
+      noReason: string
+      alreadyReviewed: string
+      alreadyReviewedJob(job: number): string
+      hourlyLimit: string
+      hourlyLimitUntil(until: string): string
+    }
+    failed: string
+    openQueue: string
+  }
   running: Readonly<Record<ReviewMode, string>>
   steps: {
     fetching(ref: string): string
