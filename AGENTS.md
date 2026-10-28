@@ -100,6 +100,7 @@ streams and environment. The limits of each folder:
 - `src/repo-map/` parses text it is given (`web-tree-sitter`, reading only its grammars) and never
   runs `git`.
 - `src/repository/` runs `git` through `src/process/run-command.ts`.
+- `src/providers/` never imports its callers (`src/app/`, `src/cli/`, `src/tui/`).
 - `src/graph/` reads the index through an `IndexReader` and files through a function it is given;
   its only value imports from outside the folder are `node:path` and the pure diff parser
   (`src/review/diff-lines.ts`).
@@ -132,9 +133,10 @@ streams and environment. The limits of each folder:
   (`ReviewWiringDeps`, `WatchCommandDeps`); `MainDeps` extends them.
 
 `src/architecture.test.ts` enforces the allowed imports of these folders and forbids
-`process`/`console` inside them (`console` only, in `src/investigation/`). It also refuses a screen
-of `src/tui/screens/` importing another screen, and a fixed pause (`setTimeout`, `setInterval`,
-`settle()`, `sleep()`, `node:timers`) in the tests of `src/tui/`, which wait on a condition.
+`process`/`console` inside them (`console` only, in `src/investigation/`). It also refuses a
+provider importing one of its callers, a screen of `src/tui/screens/` importing another screen,
+and a fixed pause (`setTimeout`, `setInterval`, `settle()`, `sleep()`, `node:timers`) in the tests
+of `src/tui/`, which wait on a condition.
 
 ## Conventions
 

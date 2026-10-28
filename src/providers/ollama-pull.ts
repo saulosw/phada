@@ -1,4 +1,3 @@
-import { errorMessage } from '../app/error-message.js'
 import { z } from 'zod'
 import { nodeHttpFetch } from './node-http-fetch.js'
 import { resolveOllamaBaseUrl } from './ollama-host.js'
@@ -31,7 +30,7 @@ export async function pullOllamaModel(
   try {
     baseUrl = resolveOllamaBaseUrl(options.env ?? process.env)
   } catch (error) {
-    return { kind: 'failed', message: errorMessage(error) }
+    return failedWith(error)
   }
   const { signal } = options
   const fetch = options.fetch ?? nodeHttpFetch
@@ -48,7 +47,7 @@ export async function pullOllamaModel(
   } catch (error) {
     if (signal?.aborted === true) return { kind: 'cancelled' }
     if (NOT_RUNNING_CODES.has(errorCode(error) ?? '')) return { kind: 'stopped' }
-    return { kind: 'failed', message: errorMessage(error) }
+    return failedWith(error)
   }
 }
 
@@ -115,6 +114,10 @@ function jsonOf(text: string): unknown {
   } catch {
     return undefined
   }
+}
+
+function failedWith(error: unknown): OllamaPullResult {
+  return { kind: 'failed', message: error instanceof Error ? error.message : String(error) }
 }
 
 function errorCode(error: unknown): string | undefined {

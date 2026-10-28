@@ -640,6 +640,46 @@ describe('screen imports', () => {
   })
 })
 
+const PROVIDERS_DIR = 'providers'
+const CALLER_DIRS: ReadonlySet<string> = new Set(['app', 'cli', 'tui'])
+
+function callerImports(code: string): string[] {
+  return [...code.matchAll(STATIC_MODULE), ...code.matchAll(DYNAMIC_MODULE)]
+    .map((match) => match.at(-1) ?? '')
+    .filter((specifier) => specifier.startsWith('.'))
+    .filter((specifier) =>
+      CALLER_DIRS.has(posix.join(PROVIDERS_DIR, specifier).split('/')[0] ?? ''),
+    )
+    .map((specifier) => `imports the caller '${specifier}'`)
+}
+
+describe('provider imports', () => {
+  it('accepts its own files and the shared lower layers', () => {
+    const code = [
+      "import { nodeHttpFetch } from './node-http-fetch.js'",
+      "import { runCommand } from '../process/run-command.js'",
+      "import type { ReviewPrompt } from '../review/types.js'",
+    ].join('\n')
+
+    expect(callerImports(code)).toEqual([])
+  })
+
+  it.each([
+    ['a use case', "import { errorMessage } from '../app/error-message.js'"],
+    ['the CLI', "import type { MainDeps } from '../cli/args.js'"],
+    ['the terminal app', "const app = await import('../tui/open-app.js')"],
+  ])('flags %s', (_case, code) => {
+    expect(callerImports(code)).not.toEqual([])
+  })
+
+  it.each(sourcesOf({ ...TUI, dir: PROVIDERS_DIR }))(
+    '$name imports none of its callers',
+    ({ code }) => {
+      expect(callerImports(code)).toEqual([])
+    },
+  )
+})
+
 const FIXED_PAUSE = /\b(setTimeout|setInterval|settle|sleep)\s*\(/g
 const TIMERS_MODULE = /^node:timers(\/promises)?$/
 
