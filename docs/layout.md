@@ -22,7 +22,11 @@ src/
                          #   (60 s budget) → related repositories → graph and impact of the diff
                          #   across them → investigation → recheck of earlier comments → review →
                          #   observed relations → reports; progress through typed events;
+                         #   an aborted signal stops it between those stages (the fetch and the
+                         #   index of the head take it; a cut index saves no commit);
                          #   loadPullRequestContext()
+    review-cancelled.ts  #   ReviewCancelledError; stopIfCancelled(): throws it once the signal
+                         #   is aborted, wrapping what a stage threw after the abort
     review-and-publish.ts # reviewAndPublish(): fetch → decideRun → context → decideRun with the
                          #   diff fingerprint → [--wait-ci: waitForCi()] → threads to recheck
                          #   (compare) → the conversation
@@ -33,8 +37,8 @@ src/
                          #   and the CI it read go out as events); an aborted signal stops it
                          #   between stages and right before publishing, never once publishing
                          #   started (ReviewCancelledError, also for what a stage threw after
-                         #   the abort); once aborted, no AI run of the review starts (a call
-                         #   to the provider throws it)
+                         #   the abort), and passes it into reviewPullRequest; once aborted,
+                         #   no AI run of the review starts (a call to the provider throws it)
     review-progress.ts   #   ReviewProgress: each step of a review as data (fetched, conversation
                          #   and CI read, CI wait, context, indexing, related, impact, passes, the
                          #   AI running a review, verify, recheck or skill run, publishing,

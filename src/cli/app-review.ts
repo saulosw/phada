@@ -1,5 +1,5 @@
 import { reviewDetailOf } from '../app/read-history.js'
-import { ReviewCancelledError } from '../app/review-and-publish.js'
+import { ReviewCancelledError } from '../app/review-cancelled.js'
 import { submitRequest } from '../app/submit-request.js'
 import { dataFiles } from '../config/data-paths.js'
 import { loadTopLevelUserLayers } from '../config/user-config.js'

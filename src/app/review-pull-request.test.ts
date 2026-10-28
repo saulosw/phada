@@ -25,6 +25,7 @@ import { memoryMirror } from '../../test/support/memory-mirror.js'
 import type { RepositoryInfo } from '../github/repository.js'
 import type { NativeRunnerDeps, NativeRunnerInput } from './native-skill.js'
 import type { RelatedDeps } from './related-repositories.js'
+import { ReviewCancelledError } from './review-cancelled.js'
 import { reviewPullRequest } from './review-pull-request.js'
 import type { PullRequestReviewDeps } from './review-pull-request.js'
 
@@ -1109,5 +1110,126 @@ describe('reviewPullRequest with MCP servers', () => {
 
     await expect(reviewPullRequest(withMcp, h.deps)).rejects.toThrow('provider down')
     expect(closed).toEqual(['tickets', 'docs'])
+  })
+})
+
+describe('reviewPullRequest with a signal', () => {
+  function cancelling() {
+    const controller = new AbortController()
+    return { signal: controller.signal, cancel: () => controller.abort() }
+  }
+
+  it('stops after the context, before the mirror and the AI', async () => {
+    const { signal, cancel } = cancelling()
+    let mirrors = 0
+    const h = setup({
+      openMirror: async () => {
+        mirrors += 1
+        return fakeMirror(() => {})
+      },
+    })
+    h.deps.events.contextLoaded = cancel
+
+    await expect(reviewPullRequest({ ...input, signal }, h.deps)).rejects.toBeInstanceOf(
+      ReviewCancelledError,
+    )
+    expect(mirrors).toBe(0)
+    expect(h.prompts).toEqual([])
+  })
+
+  it('stops the fetch of the head and closes nothing it did not open', async () => {
+    const { signal, cancel } = cancelling()
+    const seen: (AbortSignal | undefined)[] = []
+    const h = setup({
+      openMirror: async () => {
+        const mirror = fakeMirror(() => {})
+        const fetch = mirror.fetch.bind(mirror)
+        mirror.fetch = async (ref, keepAs, options) => {
+          seen.push(options?.signal)
+          cancel()
+          return fetch(ref, keepAs, options)
+        }
+        return mirror
+      },
+    })
+
+    await expect(reviewPullRequest({ ...input, signal }, h.deps)).rejects.toBeInstanceOf(
+      ReviewCancelledError,
+    )
+    expect(seen).toEqual([signal])
+    expect(h.events).not.toContain('impact used')
+    expect(h.prompts).toEqual([])
+  })
+
+  it('stops the index of the head without a warning, and the next review finishes the index', async () => {
+    const { signal, cancel } = cancelling()
+    const path = freshPath('index')
+    let closedStores = 0
+    const h = setup({
+      openIndexStore: async () => {
+        const store = await openIndexStore(path)
+        const close = store.close.bind(store)
+        store.close = () => {
+          closedStores += 1
+          close()
+        }
+        return store
+      },
+    })
+    h.deps.events.indexed = cancel
+
+    await expect(reviewPullRequest({ ...input, signal }, h.deps)).rejects.toBeInstanceOf(
+      ReviewCancelledError,
+    )
+    expect(h.events.filter((event) => event.startsWith('warning'))).toEqual([])
+    expect(h.prompts).toEqual([])
+    expect(h.closed()).toBe(1)
+    expect(closedStores).toBe(1)
+
+    const next = setup({ openIndexStore: () => openIndexStore(path) })
+    const result = await reviewPullRequest(input, next.deps)
+    expect(result.impact).toMatchObject({ status: 'used', index: { files: 5 } })
+  })
+
+  it('stops after the related repositories and closes them', async () => {
+    const { signal, cancel } = cancelling()
+    const closedRelated: string[] = []
+    const h = setup({
+      contextSources: sources('context:\n  repos: [acme/web]'),
+      related: {
+        readRepository: async (repo) => {
+          cancel()
+          return { repo, private: false, defaultBranch: 'main', empty: false }
+        },
+        openRelated: () => ({
+          openMirror: async () => {
+            const mirror = memoryMirror({ 'README.md': '# x\n' })
+            const checkout = mirror.checkout.bind(mirror)
+            mirror.checkout = (sha, options) => {
+              const opened = checkout(sha, options)
+              return {
+                ...opened,
+                close: async () => {
+                  closedRelated.push('acme/web')
+                  await opened.close()
+                },
+              }
+            }
+            return mirror
+          },
+          openIndexStore: () => openIndexStore(freshPath('related')),
+        }),
+        extractor,
+        now: () => 0,
+        events: { warning: () => {}, indexing: () => {}, indexed: () => {} },
+      },
+    })
+
+    await expect(reviewPullRequest({ ...input, signal }, h.deps)).rejects.toBeInstanceOf(
+      ReviewCancelledError,
+    )
+    expect(h.prompts).toEqual([])
+    expect(closedRelated).toEqual(['acme/web'])
+    expect(h.events.filter((event) => event.startsWith('warning'))).toEqual([])
   })
 })

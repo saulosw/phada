@@ -17,6 +17,7 @@ import type { RecheckThread, RecheckVerdict, ReviewResult } from '../review/type
 import type { ReviewProvider } from '../providers/types.js'
 import { errorMessage } from './error-message.js'
 import { readCi } from './read-ci.js'
+import { stopIfCancelled } from './review-cancelled.js'
 import { readConversation } from './read-conversation.js'
 import type { CiReaders } from './read-ci.js'
 import { waitForCi } from './wait-for-ci.js'
@@ -123,26 +124,14 @@ export interface ReviewAndPublishDeps {
   events: ReviewAndPublishEvents
 }
 
-export class ReviewCancelledError extends Error {
-  constructor(options?: ErrorOptions) {
-    super('The review was cancelled.', options)
-    this.name = 'ReviewCancelledError'
-  }
-}
-
 export async function reviewAndPublish(
   input: ReviewAndPublishInput,
   deps: ReviewAndPublishDeps,
 ): Promise<ReviewRun> {
-  const stopIfCancelled = () => {
-    if (input.signal?.aborted === true) throw new ReviewCancelledError()
-  }
   try {
-    return await reviewThenPublish(input, deps, stopIfCancelled)
+    return await reviewThenPublish(input, deps, () => stopIfCancelled(input.signal))
   } catch (error) {
-    if (input.signal?.aborted === true && !(error instanceof ReviewCancelledError)) {
-      throw new ReviewCancelledError({ cause: error })
-    }
+    stopIfCancelled(input.signal, error)
     throw error
   }
 }
@@ -268,6 +257,7 @@ async function reviewThenPublish(
       viewer: state.viewer,
       ...(conversation === undefined ? {} : { conversation }),
       ...(ci === undefined ? {} : { ci }),
+      ...(input.signal === undefined ? {} : { signal: input.signal }),
     },
     reviewDeps,
   )

@@ -17,7 +17,9 @@ import { RECHECK_JSON_SCHEMA } from '../review/recheck-schema.js'
 import { VERIFICATION_JSON_SCHEMA } from '../review/verification-schema.js'
 import { verdictFixture, verificationJson } from '../../test/support/verification.js'
 import { diffFingerprint } from '../review/diff-fingerprint.js'
-import { reviewAndPublish, ReviewCancelledError } from './review-and-publish.js'
+import { reviewAndPublish } from './review-and-publish.js'
+import { ReviewCancelledError } from './review-cancelled.js'
+import { CheckoutUnavailableError } from '../repository/git-checkout.js'
 import type { ReviewAndPublishDeps, ReviewAndPublishInput } from './review-and-publish.js'
 import type { NativeRunnerInput } from './native-skill.js'
 import type { CiReaders } from './read-ci.js'
@@ -652,6 +654,33 @@ describe('reviewAndPublish cancelled', () => {
     expect(calls.posts).toEqual([])
     expect(calls.replies).toEqual([])
     expect(calls.events).not.toContain('publishing')
+  })
+
+  it('passes the cancel into the review of the pull request, which stops between its own stages', async () => {
+    const controller = new AbortController()
+    const { deps, calls } = setup()
+    const reviewDeps = deps.reviewDeps
+    let created = 0
+    deps.reviewDeps = (pullRequest) => ({
+      ...reviewDeps(pullRequest),
+      openMirror: async () => {
+        controller.abort()
+        throw new CheckoutUnavailableError('fetch-failed', 'Could not fetch the head')
+      },
+      createProvider: () => {
+        created += 1
+        throw new Error('no provider once cancelled')
+      },
+    })
+
+    await expect(
+      reviewAndPublish(
+        { ...INPUT, options: { ...INPUT.options, investigate: true }, signal: controller.signal },
+        deps,
+      ),
+    ).rejects.toBeInstanceOf(ReviewCancelledError)
+    expect(calls.warnings).toEqual([])
+    expect(created).toBe(0)
   })
 
   it('stops after the AI answers, and turns the error of an AI stopped by the cancel into the cancellation', async () => {
