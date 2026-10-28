@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -48,6 +48,7 @@ function deps(
     ghToken?: string
     dataHome?: string
     openMirror?: AppCommandDeps['openMirror']
+    openIndexReader?: AppCommandDeps['openIndexReader']
   } = {},
 ) {
   const ghCalls: string[][] = []
@@ -103,6 +104,7 @@ function deps(
       ollama: async () => ({ provider: 'ollama', baseUrl: null, server: { state: 'stopped' } }),
     },
     ...(options.observed === undefined ? {} : { observed: options.observed }),
+    ...(options.openIndexReader === undefined ? {} : { openIndexReader: options.openIndexReader }),
     runGh: async (_command, args) => {
       ghCalls.push([...args])
       return options.ghToken === undefined
@@ -966,6 +968,40 @@ describe('the provider and learnings readers', () => {
     await runApp(app)
     expect(urls).toEqual(['http://gpu-box:9000/api/pull'])
     expect(seen).toEqual(['pulling manifest', 'success', { kind: 'pulled' }])
+  })
+
+  it('reads the index of each repository of the screens from its cache path, read-only', async () => {
+    const opened: string[] = []
+    const { app } = deps({
+      config: 'watch:\n  repos:\n    - acme/shop\n    - acme/web\n',
+      openIndexReader: async (path) => {
+        opened.push(path)
+        return { status: 'missing', path }
+      },
+      during: async (appDeps) => {
+        const indexes = await appDeps.readIndexes()
+        expect(indexes.repositories.map(({ repo, index }) => [repo, index.state])).toEqual([
+          ['acme/shop', 'missing'],
+          ['acme/web', 'missing'],
+        ])
+      },
+    })
+    app.env.PHADA_CACHE_HOME = '/cache'
+    await runApp(app)
+    expect(opened.sort()).toEqual(['/cache/index/acme/shop.sqlite', '/cache/index/acme/web.sqlite'])
+  })
+
+  it('opens a missing index without creating it', async () => {
+    const { app } = deps({
+      config: 'watch:\n  repos:\n    - acme/shop\n',
+      during: async (appDeps) => {
+        const [shop] = (await appDeps.readIndexes()).repositories
+        expect(shop?.index.state).toBe('missing')
+      },
+    })
+    app.env.PHADA_CACHE_HOME = indexDir
+    await runApp(app)
+    expect(existsSync(join(indexDir, 'index', 'acme'))).toBe(false)
   })
 
   it('read the observed files of the cache folder, each by its own path', async () => {

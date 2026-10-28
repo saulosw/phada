@@ -9,6 +9,11 @@ import type {
 } from '../store/index-store.js'
 import { errorMessage } from './error-message.js'
 
+export type { IndexVersion } from '../store/index-store.js'
+
+export type IndexLanguage = keyof IndexSummary['languages']
+export type IndexSymbolKind = keyof IndexSummary['symbols']
+
 export interface IndexReaders {
   repositories(): Promise<string[]>
   indexPath(repo: string): string
@@ -55,8 +60,6 @@ export interface IndexedRepository {
 export interface RepositoryIndexes {
   repositories: IndexedRepository[]
 }
-
-const NO_EXTENSION = '(none)'
 
 export async function readIndexes(readers: IndexReaders): Promise<RepositoryIndexes> {
   const repos = await readers.repositories()
@@ -129,7 +132,7 @@ export function extensionCounts(paths: readonly string[]): ExtensionCount[] {
   for (const path of paths) {
     const name = path.slice(path.lastIndexOf('/') + 1)
     const dot = name.lastIndexOf('.')
-    const extension = dot <= 0 ? NO_EXTENSION : name.slice(dot).toLowerCase()
+    const extension = dot <= 0 ? '' : name.slice(dot).toLowerCase()
     counts.set(extension, (counts.get(extension) ?? 0) + 1)
   }
   return [...counts]

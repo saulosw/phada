@@ -2,6 +2,8 @@ import type { ProviderCheckers } from '../app/check-providers.js'
 import type { IndexingOptions } from '../app/index-repository.js'
 import { applyUserConfigPlan, planUserConfig } from '../app/edit-user-config.js'
 import { readReviewDetail, readReviews } from '../app/read-history.js'
+import { readIndexes } from '../app/read-index.js'
+import type { IndexReaders } from '../app/read-index.js'
 import { readLearnings } from '../app/read-learnings.js'
 import type { ObservedRead } from '../app/read-learnings.js'
 import { providerSetup, readProviderChecks, readProviders } from '../app/read-provider.js'
@@ -33,6 +35,8 @@ import { checkOllamaStatus } from '../providers/ollama-status.js'
 import type { runInteractive } from '../process/run-interactive.js'
 import { openExistingHistoryStore, openHistoryStore } from '../store/history-store.js'
 import type { HistoryStore } from '../store/history-store.js'
+import { openExistingIndexStore } from '../store/index-store.js'
+import type { IndexOpening } from '../store/index-store.js'
 import { readObservedEdges } from '../store/observed-store.js'
 import { splitRepoName } from '../github/pull-request-ref.js'
 import { fetchAuthenticatedUser } from '../github/user.js'
@@ -75,6 +79,7 @@ export interface AppCommandDeps
   clock: () => Date
   lockHolder: (path: string) => Promise<number | undefined>
   openHistoryReader?: (path: string) => Promise<HistoryStore>
+  openIndexReader?: (path: string) => Promise<IndexOpening>
   pathSize: (path: string) => Promise<number>
   providerCheckers?: ProviderCheckers
   observed?: {
@@ -187,6 +192,7 @@ async function appDeps(
     readRepositories: () => readRepositories(repositoryReaders(deps, history)),
     readRepository: (repo: string) => readRepository(repositoryReaders(deps, history), repo),
     readAutomation: () => readAutomation(automationReaders(deps)),
+    readIndexes: () => readIndexes(indexReaders(deps, history)),
     readProviderSetup: async () => providerSetup(await providerConfig(deps)),
     readProviders: async () =>
       readProviders({
@@ -259,6 +265,28 @@ function repositoryReaders(deps: AppCommandDeps, history: AppHistory): Repositor
       const path = repositoryCache(env, home, owner, name).index
       return (await files.exists(path)) ? { path, bytes: await deps.pathSize(path) } : null
     },
+  }
+}
+
+function indexReaders(deps: AppCommandDeps, history: AppHistory): IndexReaders {
+  const { env, home } = deps
+  return {
+    repositories: async () =>
+      (await readRepositories(repositoryReaders(deps, history))).repositories.map(
+        ({ repo }) => repo,
+      ),
+    indexPath: (repo) => {
+      const { owner, repo: name } = splitRepoName(repo)
+      return repositoryCache(env, home, owner, name).index
+    },
+    openIndex:
+      deps.openIndexReader ??
+      ((path) =>
+        openExistingIndexStore(path, {
+          version: deps.version,
+          exists: (file) => deps.files.exists(file),
+        })),
+    fileSize: deps.pathSize,
   }
 }
 

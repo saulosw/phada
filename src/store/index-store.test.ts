@@ -475,6 +475,7 @@ describe('openExistingIndexStore', () => {
     expect(index.snapshot).toEqual({
       sha: '2'.repeat(40),
       ref: 'refs/phada/default',
+      defaultBranch: true,
       indexedAt: expect.any(String),
       durationMs: 12,
     })
@@ -504,7 +505,7 @@ describe('openExistingIndexStore', () => {
     const opening = await openExistingIndexStore(path, { version: VERSION })
 
     if (opening.status !== 'open') throw new Error(`expected open, got ${opening.status}`)
-    expect(opening.index.snapshot?.sha).toBe('4'.repeat(40))
+    expect(opening.index.snapshot).toMatchObject({ sha: '4'.repeat(40), defaultBranch: false })
     opening.index.close()
   })
 

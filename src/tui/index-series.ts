@@ -47,6 +47,7 @@ export function useIndexSeries(): IndexSeries {
           }))
           set(index, { repo, state: 'done', result })
         }
+        if (running.current === controller) running.current = undefined
         setPhase('ended')
       })()
     },

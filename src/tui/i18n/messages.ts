@@ -1,6 +1,13 @@
 import type { FeedbackFinding, ListedRun, ReviewDetail } from '../../app/read-history.js'
 import type { GitHubTokenSource } from '../../app/read-home.js'
 import type { McpServerKind, NextStep } from '../../app/read-provider.js'
+import type {
+  IndexLanguage,
+  IndexSymbolKind,
+  IndexVersion,
+  LeftOutGroup,
+  RepositoryIndexState,
+} from '../../app/read-index.js'
 import type { QueueJob } from '../../app/read-queue.js'
 import type { RepositoryOrigin, SettingOrigin } from '../../app/read-repositories.js'
 import type { TimeMessages } from '../relative-time.js'
@@ -9,7 +16,15 @@ import { spanish } from './es.js'
 import { portuguese } from './pt.js'
 
 export type ScreenId =
-  'home' | 'repositories' | 'rules' | 'reviews' | 'queue' | 'automation' | 'provider' | 'learnings'
+  | 'home'
+  | 'repositories'
+  | 'rules'
+  | 'reviews'
+  | 'queue'
+  | 'automation'
+  | 'provider'
+  | 'graph'
+  | 'learnings'
 
 export type SetupStepId =
   'github' | 'ai' | 'language' | 'repositories' | 'graph' | 'repository' | 'summary'
@@ -36,7 +51,7 @@ export interface UiMessages {
     refresh: string
   }
   help: { title: string; global: string }
-  palette: { title: string; empty: string; setup: string }
+  palette: { title: string; empty: string; setup: string; index: string }
   tooSmall(columns: number, rows: number): string
   tooSmallHint: string
   home: HomeMessages
@@ -58,6 +73,8 @@ export interface UiMessages {
   repositories: RepositoriesMessages
   automation: AutomationMessages
   provider: ProviderMessages
+  graph: GraphMessages
+  indexing: IndexingMessages
   learnings: LearningsMessages
   rules: RulesMessages
   setup: SetupMessages
@@ -140,14 +157,6 @@ export interface SetupMessages {
     none: string
     index: string
     stop: string
-    waiting: string
-    fetching: string
-    stopping: string
-    progress(done: number, total: number): string
-    indexed(files: number): string
-    cancelled(done: number, total: number): string
-    notStarted: string
-    noToken: string
     later: string
   }
   repository: {
@@ -194,6 +203,69 @@ export interface ConfigMessages {
   unreadable(message: string): string
   failed(message: string): string
   changed: string
+}
+
+export interface IndexingMessages {
+  waiting: string
+  fetching: string
+  stopping: string
+  progress(done: number, total: number): string
+  indexed(files: number): string
+  cancelled(done: number, total: number): string
+  notStarted: string
+  noToken: string
+  index: string
+  again: string
+  stop: string
+}
+
+export interface GraphMessages {
+  amount(value: number): string
+  count(total: number): string
+  indexed(count: number): string
+  columns: {
+    repo: string
+    state: string
+    commit: string
+    files: string
+    symbols: string
+    size: string
+  }
+  states: Readonly<Record<RepositoryIndexState['state'], string>>
+  none: string
+  noneHint: string
+  detail: {
+    index: string
+    state: string
+    commit: string
+    took: string
+    files: string
+    languages: string
+    symbols: string
+    links: string
+    leftOut: string
+    file: string
+    indexedAt(relative: string, absolute: string): string
+    defaultBranch: string
+    filesValue(indexed: number, leftOut: number): string
+    linksValue(counts: {
+      imports: number
+      exports: number
+      calls: number
+      references: number
+      parseErrors: number
+    }): string
+    nothing: string
+    other(files: number): string
+    noExtension: string
+    missing: string
+    empty: string
+    otherVersion(found: IndexVersion, expected: IndexVersion): string
+    unreadable: string
+  }
+  languages: Readonly<Record<IndexLanguage, string>>
+  symbols: Readonly<Record<IndexSymbolKind, (count: number) => string>>
+  leftOut: Readonly<Record<LeftOutGroup['reason'], (count: number) => string>>
 }
 
 type RequestSource = QueueJob['requests'][number]['source']

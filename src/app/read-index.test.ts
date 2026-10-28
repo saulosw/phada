@@ -86,6 +86,7 @@ describe('readIndexes', () => {
     const snapshot = {
       sha: SHA,
       ref: 'HEAD',
+      defaultBranch: true,
       indexedAt: '2026-10-25T11:00:00.000Z',
       durationMs: 5300,
     }
@@ -110,7 +111,7 @@ describe('readIndexes', () => {
                 files: 5,
                 extensions: [
                   { extension: '.md', files: 3 },
-                  { extension: '(none)', files: 1 },
+                  { extension: '', files: 1 },
                   { extension: '.json', files: 1 },
                 ],
               },
@@ -191,7 +192,13 @@ describe('readIndexes', () => {
     const path = '/cache/acme/shop/index.sqlite'
     const index = openIndex(
       path,
-      { sha: SHA, ref: 'HEAD', indexedAt: '2026-10-25T11:00:00.000Z', durationMs: 1 },
+      {
+        sha: SHA,
+        ref: 'HEAD',
+        defaultBranch: true,
+        indexedAt: '2026-10-25T11:00:00.000Z',
+        durationMs: 1,
+      },
       closed,
     )
     index.summary = () => {
@@ -210,9 +217,9 @@ describe('readIndexes', () => {
 })
 
 describe('extensionCounts', () => {
-  it('counts the extensions of paths, most first, then by name', () => {
+  it('counts the extensions of paths, most first, then by name, with an empty one for none', () => {
     expect(extensionCounts(['a.md', 'b/.env', 'c.MD', 'd.ts', 'Makefile'])).toEqual([
-      { extension: '(none)', files: 2 },
+      { extension: '', files: 2 },
       { extension: '.md', files: 2 },
       { extension: '.ts', files: 1 },
     ])

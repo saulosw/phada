@@ -47,11 +47,14 @@ afterEach(() => cleanup())
 
 describe('the tabs', () => {
   it.each([
-    ['en', 'Home  Repositories  Rules  Reviews  Queue  Automation  Provider  Learnings'],
-    ['pt', 'Início  Repositórios  Regras  Reviews  Fila  Automações  Provider  Aprendizados'],
+    ['en', 'Home  Repositories  Rules  Reviews  Queue  Automation  Provider  Graph  Learnings'],
+    [
+      'pt',
+      'Início  Repositórios  Regras  Reviews  Fila  Automações  Provider  Grafo  Aprendizados',
+    ],
     [
       'es',
-      'Inicio  Repositorios  Reglas  Revisiones  Cola  Automatización  Proveedor  Aprendizajes',
+      'Inicio  Repositorios  Reglas  Revisiones  Cola  Automatización  Proveedor  Grafo  Aprendizajes',
     ],
   ])('show the full names when they fit (%s)', async (language, tabs) => {
     const { frame, until } = openApp({ language, size: { columns: 160, rows: 30 } })
@@ -60,9 +63,9 @@ describe('the tabs', () => {
   })
 
   it.each([
-    ['en', 'Home  Repositories  Rules  Reviews  Queue  Automation  Provider  Learnings'],
-    ['pt', 'Início  Repos  Regras  Reviews  Fila  Auto  IA  Aprend.'],
-    ['es', 'Inicio  Repos  Reglas  Revis.  Cola  Auto  IA  Aprend.'],
+    ['en', 'Home  Repos  Rules  Reviews  Queue  Auto  AI  Graph  Learn'],
+    ['pt', 'Início  Repos  Regras  Reviews  Fila  Auto  IA  Grafo  Aprend.'],
+    ['es', 'Inicio  Repos  Reglas  Revis.  Cola  Auto  IA  Grafo  Aprend.'],
   ])('fit 80 columns (%s)', async (language, tabs) => {
     const { frame, until } = openApp({ language, size: { columns: 80, rows: 24 } })
     await until(() => lines(frame())[0]?.trim() === tabs)
@@ -75,21 +78,21 @@ describe('the tabs', () => {
   it.each([
     [
       'en',
-      '[Home] Repositories  Rules  Reviews  Queue  Automation  Provider  Learnings',
+      '[Home] Repos  Rules  Reviews  Queue  Auto  AI  Graph  Learn',
       '3',
-      'Home  Repositories [Rules] Reviews  Queue  Automation  Provider  Learnings',
+      'Home  Repos [Rules] Reviews  Queue  Auto  AI  Graph  Learn',
     ],
     [
       'pt',
-      '[Início] Repos  Regras  Reviews  Fila  Auto  IA  Aprend.',
+      '[Início] Repos  Regras  Reviews  Fila  Auto  IA  Grafo  Aprend.',
       '8',
-      'Início  Repos  Regras  Reviews  Fila  Auto  IA [Aprend.]',
+      'Início  Repos  Regras  Reviews  Fila  Auto  IA [Grafo] Aprend.',
     ],
     [
       'es',
-      '[Inicio] Repos  Reglas  Revis.  Cola  Auto  IA  Aprend.',
+      '[Inicio] Repos  Reglas  Revis.  Cola  Auto  IA  Grafo  Aprend.',
       '4',
-      'Inicio  Repos  Reglas [Revis.] Cola  Auto  IA  Aprend.',
+      'Inicio  Repos  Reglas [Revis.] Cola  Auto  IA  Grafo  Aprend.',
     ],
   ])(
     'mark the active tab with brackets when the terminal has no colors or styles (%s)',
@@ -175,9 +178,11 @@ describe('navigation', () => {
     await press(KEYS.shiftTab)
     await showing('showing repositories')
     expect(frame()).toContain('showing repositories')
-    await press('9', KEYS.right)
-    await showing('showing rules')
-    expect(frame()).toContain('showing rules')
+    await press('9')
+    await showing('showing learnings')
+    await press(KEYS.right)
+    await showing('showing home')
+    expect(frame()).toContain('showing home')
   })
 
   it('draws the screens it is given instead of its own', async () => {

@@ -135,6 +135,7 @@ const DEFAULT_BRANCH_REFS: readonly string[] = ['HEAD', RELATED_REF]
 export interface IndexSnapshot {
   sha: string
   ref: string
+  defaultBranch: boolean
   indexedAt: string
   durationMs: number
 }
@@ -246,6 +247,7 @@ function latestSnapshot(db: DatabaseSync): IndexSnapshot | null {
   return {
     sha: String(row.sha),
     ref: String(row.ref),
+    defaultBranch: DEFAULT_BRANCH_REFS.includes(String(row.ref)),
     indexedAt: String(row.indexed_at),
     durationMs: Number(row.duration_ms),
   }

@@ -51,6 +51,8 @@ type Takeover = 'setup' | 'language'
 const SHELL_ROWS = 3
 const SETUP_ID = 'setup'
 const LANGUAGE_ID = 'language'
+const INDEX_ID = 'index'
+const GRAPH_ID = 'graph'
 
 export function App({ deps, size, onExit, screens = SCREENS }: AppProps) {
   const theme = useMemo(() => resolveTheme(colorLevel(deps.env)), [deps.env])
@@ -218,6 +220,15 @@ function Shell({
       label: languageTitle.full,
       names: [languageTitle.full, english.language.title],
     },
+    ...(screens.some((screen) => screen.id === GRAPH_ID)
+      ? [
+          {
+            id: INDEX_ID,
+            label: messages.palette.index,
+            names: [messages.palette.index, english.palette.index],
+          },
+        ]
+      : []),
   ]
   const footerKeys =
     overlay === 'palette'
@@ -255,6 +266,7 @@ function Shell({
               setOverlay('none')
               if (id === SETUP_ID) open('setup')
               else if (id === LANGUAGE_ID) open('language')
+              else if (id === INDEX_ID) show(screens.findIndex((screen) => screen.id === GRAPH_ID))
               else show(screens.findIndex((screen) => screen.id === id))
             }}
           />

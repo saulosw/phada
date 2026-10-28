@@ -118,7 +118,7 @@ function byExtension(files: readonly LeftOutFile[]): string {
   const sorted = extensionCounts(files.map(({ path }) => path))
   const shown = sorted
     .slice(0, EXTENSIONS_SHOWN)
-    .map(({ extension, files: count }) => `${extension} ${count}`)
+    .map(({ extension, files: count }) => `${extension === '' ? '(none)' : extension} ${count}`)
   const other = sorted.slice(EXTENSIONS_SHOWN).reduce((sum, { files: count }) => sum + count, 0)
   return [...shown, ...(other === 0 ? [] : [`other ${other}`])].join(', ')
 }
