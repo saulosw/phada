@@ -3,7 +3,8 @@ import type { ReactNode } from 'react'
 import type { AutomationView } from '../../app/read-automation.js'
 import { useAppDeps, useMessages, useScreenKeys, useScreenSize, useTheme } from '../app-context.js'
 import { usePolled } from '../data-hooks.js'
-import { DataView, failedLines } from '../data-view.js'
+import { DataView } from '../data-view.js'
+import { failedNodes } from '../frame-lines.js'
 import type { UiMessages } from '../i18n/messages.js'
 import { labeledLines } from '../labeled-lines.js'
 import { ScrollText } from '../scroll-list.js'
@@ -47,9 +48,7 @@ function AutomationLines({ view }: { view: AutomationView }) {
   const head: ReactNode[] = [
     ...(view.configError === null
       ? []
-      : failedLines(messages, view.configError, size.columns).map((line) => (
-          <Text color={colors.error}>{line}</Text>
-        ))),
+      : failedNodes({ messages, theme, width: size.columns }, view.configError)),
     ...(view.configured
       ? []
       : [

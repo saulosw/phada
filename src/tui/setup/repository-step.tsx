@@ -12,10 +12,11 @@ import {
   useWorking,
 } from '../app-context.js'
 import type { DataState } from '../data-hooks.js'
-import { failedLines } from '../data-view.js'
+import { failedNodes, textLines } from '../frame-lines.js'
+import type { DrawContext } from '../frame-lines.js'
 import { settle } from '../load-cache.js'
 import { ScrollText } from '../scroll-list.js'
-import { fit, oneLine, shortenHome, wrapText } from '../text-fit.js'
+import { fit, oneLine, shortenHome } from '../text-fit.js'
 import type { SetupStepProps } from './setup-steps.js'
 
 type InitState = { status: 'idle' } | { status: 'creating' } | DataState<RepositoryInit>
@@ -23,7 +24,8 @@ type InitState = { status: 'idle' } | { status: 'creating' } | DataState<Reposit
 export function RepositoryStep({ next }: SetupStepProps) {
   const { cwd, home, initRepository, readRepositoryFolder } = useAppDeps()
   const messages = useMessages()
-  const { colors } = useTheme()
+  const theme = useTheme()
+  const { colors } = theme
   const size = useScreenSize()
   const m = messages.setup.repository
   const [folder, setFolder] = useState<DataState<RepositoryFolder>>({ status: 'loading' })
@@ -65,28 +67,26 @@ export function RepositoryStep({ next }: SetupStepProps) {
         : [],
   )
 
+  const draw: DrawContext = { messages, theme, width: size.columns }
   const shown = (path: string) => shortenHome(oneLine(path), home)
-  const wrapped = (text: string, color?: string) =>
-    wrapText(text, size.columns).map((line) => <Text color={color}>{line}</Text>)
   const folderLines = (): ReactNode[] => {
     if (folder.status === 'loading') return [<Text color={colors.dim}>{m.checking}</Text>]
     if (folder.status === 'failed') {
-      return failedLines(messages, folder.error, size.columns).map((line) => (
-        <Text color={colors.error}>{line}</Text>
-      ))
+      return failedNodes(draw, folder.error)
     }
     const value = folder.value
     switch (value.kind) {
       case 'outside':
-        return wrapped(m.outside(shown(cwd)))
+        return textLines(m.outside(shown(cwd)), size.columns)
       case 'configured':
-        return wrapped(m.configured(shown(value.root)))
+        return textLines(m.configured(shown(value.root)), size.columns)
       case 'unconfigured':
-        if (init.status === 'ready') return wrapped(m.initialized(shown(init.value.root)))
+        if (init.status === 'ready')
+          return textLines(m.initialized(shown(init.value.root)), size.columns)
         return [
-          ...wrapped(m.offer(shown(value.root)), colors.warn),
+          ...textLines(m.offer(shown(value.root)), size.columns, colors.warn),
           <Text> </Text>,
-          ...wrapped(m.why, colors.soft),
+          ...textLines(m.why, size.columns, colors.soft),
         ]
     }
   }
@@ -98,12 +98,7 @@ export function RepositoryStep({ next }: SetupStepProps) {
       case 'creating':
         return [<Text> </Text>, <Text color={colors.dim}>{m.creating}</Text>]
       case 'failed':
-        return [
-          <Text> </Text>,
-          ...failedLines(messages, init.error, size.columns).map((line) => (
-            <Text color={colors.error}>{line}</Text>
-          )),
-        ]
+        return [<Text> </Text>, ...failedNodes(draw, init.error)]
       case 'ready':
         return [
           <Text> </Text>,

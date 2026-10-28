@@ -11,9 +11,9 @@ import {
   useWorking,
 } from './app-context.js'
 import type { KeyHint } from './app-context.js'
+import type { DrawContext } from './frame-lines.js'
 import type { UiMessages } from './i18n/messages.js'
 import { textWidth } from './tab-layout.js'
-import type { Theme } from './theme.js'
 import { fit, oneLine, shortenHome, wrapText } from './text-fit.js'
 
 export type ConfigProblem =
@@ -34,11 +34,8 @@ export interface ConfigChange {
   cancel(): void
 }
 
-export interface ConfigDraw {
-  messages: UiMessages
-  theme: Theme
+export interface ConfigDraw extends DrawContext {
   home: string
-  width: number
 }
 
 const IDLE: ConfigChangeState = { kind: 'idle' }

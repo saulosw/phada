@@ -159,10 +159,13 @@ than `columns`. Long content goes through `ScrollList`/`ScrollText` and `useSele
 - Every word the app writes comes from the catalogs in `i18n/`: the key in `UiMessages`
   (`messages.ts`) and its text in `en.ts`, `pt.ts` and `es.ts`, read with `useMessages()`.
 - Every text from outside (names, paths, config values, what GitHub, git or an AI CLI answered)
-  goes through `oneLine()`, or `wrapText()` when it spans lines; every error through
-  `failedLines(messages, error, width)` (wrapped over `ERROR_LINES`, so a config error shows its
-  key and reason), `failedText(messages, error)` where one line is all there is, or `<DataView>`.
-  They strip control and bidi characters.
+  goes through `oneLine()`, or `wrapText()` (`textLines()` for drawn lines) when it spans lines;
+  every error through `failedNodes(draw, error)` (wrapped over `ERROR_LINES`, so a config error
+  shows its key and reason), `failedText(messages, error)` where one line is all there is, or
+  `<DataView>`. They strip control and bidi characters.
+- A frame drawn as lines takes a `DrawContext` (the catalog, the theme and the width) and draws
+  them with the helpers of `frame-lines.tsx` (`textLines()`, `failedNodes()`, `spaced()`,
+  `<Lines>`).
 
 ## Tests
 

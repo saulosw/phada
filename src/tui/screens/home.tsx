@@ -11,6 +11,7 @@ import { useAppDeps, useMessages, useScreenKeys, useScreenSize, useTheme } from 
 import { useLoaded, usePolled } from '../data-hooks.js'
 import type { DataState } from '../data-hooks.js'
 import { DataView, failedText } from '../data-view.js'
+import type { DrawContext } from '../frame-lines.js'
 import type { UiMessages } from '../i18n/messages.js'
 import { Mascot } from '../mascot.js'
 import { PROVIDER_NAMES } from '../provider-names.js'
@@ -35,12 +36,9 @@ interface StatusLine {
   text: string
 }
 
-interface Draw {
-  messages: UiMessages
-  theme: Theme
+interface Draw extends DrawContext {
   home: string
   now: Date
-  width: number
 }
 
 export function HomeScreen() {

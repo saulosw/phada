@@ -18,12 +18,12 @@ import {
 import { useLoaded, usePolled } from '../data-hooks.js'
 import type { DataState } from '../data-hooks.js'
 import { DataView, failedText } from '../data-view.js'
+import type { DrawContext } from '../frame-lines.js'
 import type { UiMessages } from '../i18n/messages.js'
 import { ScrollList, ScrollText, useSelection } from '../scroll-list.js'
 import { ruleLines } from '../setting-lines.js'
 import { textWidth } from '../tab-layout.js'
 import { TextFieldLine, useTextField } from '../text-field.js'
-import type { Theme } from '../theme.js'
 import { fit, oneLine, shortenHome, wrapText } from '../text-fit.js'
 import { bytesText } from '../units.js'
 
@@ -40,11 +40,8 @@ type ContextReport = ReadRules['report']
 type RuleReport = ContextReport['rules'][number]
 type DocReport = ContextReport['docs'][number]
 
-interface Draw {
-  messages: UiMessages
-  theme: Theme
+interface Draw extends DrawContext {
   home: string
-  width: number
 }
 
 export function RulesScreen() {

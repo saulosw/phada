@@ -11,6 +11,7 @@ import {
 } from '../app-context.js'
 import { valueChangeLines } from '../config-change.js'
 import type { ConfigDraw } from '../config-change.js'
+import { textLines } from '../frame-lines.js'
 import { ScrollText } from '../scroll-list.js'
 import { namesText, oneLine, shortenHome, wrapText } from '../text-fit.js'
 import type { IndexOutcome, SetupProgress, SetupStepProps } from './setup-steps.js'
@@ -34,11 +35,11 @@ export function SummaryStep({ progress, next }: SetupStepProps) {
   })
   useScreenKeys([{ keys: 'Enter', label: m.home }])
   const draw: ConfigDraw = { messages, theme, home, width: size.columns }
-  const wrapped = (text: string, color?: string) =>
-    wrapText(text, size.columns).map((line) => <Text color={color}>{line}</Text>)
   const doneTexts = doneLines(progress, draw)
   const done =
-    doneTexts.length === 0 ? [] : [<Text> </Text>, ...doneTexts.flatMap((text) => wrapped(text))]
+    doneTexts.length === 0
+      ? []
+      : [<Text> </Text>, ...doneTexts.flatMap((text) => textLines(text, size.columns))]
   const lines: ReactNode[] = [
     ...writtenLines(progress.written, draw),
     ...done,
@@ -46,8 +47,9 @@ export function SummaryStep({ progress, next }: SetupStepProps) {
       ? []
       : [
           <Text> </Text>,
-          ...wrapped(
+          ...textLines(
             m.skipped(progress.skipped.map((id) => messages.setup.steps[id]).join(', ')),
+            size.columns,
             colors.soft,
           ),
         ]),

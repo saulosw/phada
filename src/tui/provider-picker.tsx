@@ -16,7 +16,8 @@ import {
 import type { KeyHint } from './app-context.js'
 import { configChangeLines, useConfigChange } from './config-change.js'
 import { useLoaded } from './data-hooks.js'
-import { failedLines } from './data-view.js'
+import { failedNodes, Lines, spaced } from './frame-lines.js'
+import type { DrawContext } from './frame-lines.js'
 import { useHandOff } from './hand-off.js'
 import type { UiMessages } from './i18n/messages.js'
 import { modelPullLines, useModelPull } from './model-pull.js'
@@ -28,7 +29,6 @@ import { PROVIDER_NAMES } from './provider-names.js'
 import { ScrollList, ScrollText } from './scroll-list.js'
 import { textWidth } from './tab-layout.js'
 import { TextFieldLine, useTextField } from './text-field.js'
-import type { Theme } from './theme.js'
 import { fit, oneLine, wrapText } from './text-fit.js'
 import { modelSizeText } from './units.js'
 
@@ -39,12 +39,6 @@ type ModelOption =
   | { kind: 'type' }
 
 type Mode = 'providers' | 'models'
-
-interface Draw {
-  messages: UiMessages
-  theme: Theme
-  width: number
-}
 
 const CURSOR = '❯ '
 const NO_CURSOR = '  '
@@ -197,7 +191,7 @@ export function ProviderPicker({
               ],
   )
 
-  const draw: Draw = { messages, theme, width: size.columns }
+  const draw: DrawContext = { messages, theme, width: size.columns }
   const tail: ReactNode[] = [
     ...(field.focused ? [<TextFieldLine label={m.modelField} field={field} />] : []),
     ...spaced(modelPullLines(pull.state, draw)),
@@ -211,9 +205,7 @@ export function ProviderPicker({
     const state =
       checked.status === 'loading'
         ? [<Text color={theme.colors.dim}>{messages.provider.checking}</Text>]
-        : failedLines(messages, checked.error, size.columns).map((line) => (
-            <Text color={theme.colors.error}>{line}</Text>
-          ))
+        : failedNodes(draw, checked.error)
     return <ScrollText lines={[...head, ...state]} rows={size.rows} active={false} />
   }
   const nameWidth = Math.max(...Object.values(PROVIDER_NAMES).map(textWidth))
@@ -264,14 +256,6 @@ export function ProviderPicker({
   )
 }
 
-function Lines({ lines }: { lines: readonly ReactNode[] }) {
-  return lines.map((line, index) => (
-    <Text key={index} wrap="truncate-end">
-      {line}
-    </Text>
-  ))
-}
-
 function providerAction(status: ReportedProvider): 'models' | 'login' | undefined {
   if (status.provider === 'ollama') {
     return status.server.state === 'running' ? 'models' : undefined
@@ -299,7 +283,7 @@ function providerRows(
   status: ReportedProvider,
   selected: boolean,
   nameWidth: number,
-  { messages, theme }: Draw,
+  { messages, theme }: DrawContext,
 ): ReactNode[] {
   const { colors } = theme
   const chosenWidth = textWidth(messages.provider.chosen)
@@ -351,7 +335,11 @@ function optionKey(option: ModelOption): string {
     : option.kind
 }
 
-function optionText(option: ModelOption, current: boolean, { messages, theme }: Draw): ReactNode {
+function optionText(
+  option: ModelOption,
+  current: boolean,
+  { messages, theme }: DrawContext,
+): ReactNode {
   const { colors } = theme
   const m = messages.provider.pick
   const [name, note] =
@@ -382,8 +370,4 @@ function choose(provider: ReportedProvider['provider'], model: string | null): U
     { kind: 'set', key: 'provider', value: provider },
     model === null ? { kind: 'unset', key: 'model' } : { kind: 'set', key: 'model', value: model },
   ]
-}
-
-function spaced(lines: ReactNode[]): ReactNode[] {
-  return lines.length === 0 ? [] : [<Text> </Text>, ...lines]
 }

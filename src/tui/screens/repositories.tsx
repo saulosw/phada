@@ -21,7 +21,8 @@ import {
 } from '../app-context.js'
 import { configChangeLines, useConfigChange } from '../config-change.js'
 import { usePolled } from '../data-hooks.js'
-import { DataView, failedLines, failedText } from '../data-view.js'
+import { DataView, failedText } from '../data-view.js'
+import { failedNodes } from '../frame-lines.js'
 import { useHandOff } from '../hand-off.js'
 import type { HandOffOutcome } from '../hand-off.js'
 import type { UiMessages } from '../i18n/messages.js'
@@ -246,9 +247,7 @@ function RepositoryListView({
   const head: ReactNode[] = [
     ...(list.configError === null
       ? []
-      : failedLines(messages, list.configError, size.columns).map((line) => (
-          <Text color={colors.error}>{line}</Text>
-        ))),
+      : failedNodes({ messages, theme, width: size.columns }, list.configError)),
     ...(rows.length === 0
       ? []
       : [<Text bold>{`${m.count(rows.length)} · ${m.watched(watched)}`}</Text>]),

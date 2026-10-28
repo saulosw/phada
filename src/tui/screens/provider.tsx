@@ -12,7 +12,8 @@ import {
 } from '../app-context.js'
 import { useLoaded, usePolled } from '../data-hooks.js'
 import type { DataState } from '../data-hooks.js'
-import { failedLines } from '../data-view.js'
+import { failedNodes } from '../frame-lines.js'
+import type { DrawContext } from '../frame-lines.js'
 import { useHandOff } from '../hand-off.js'
 import { LanguagePicker, languageName } from '../language-picker.js'
 import { ProviderPicker } from '../provider-picker.js'
@@ -21,20 +22,15 @@ import { aiLoginLines } from '../login-lines.js'
 import type { AiLogin } from '../login-lines.js'
 import { modelsLine, nextStepLine, stateIcon, statusParts } from '../provider-lines.js'
 import type { LoginProvider } from '../provider-lines.js'
-import type { UiMessages } from '../i18n/messages.js'
 import { ScrollText } from '../scroll-list.js'
 import { SubView } from '../sub-view.js'
 import { textWidth } from '../tab-layout.js'
-import type { Theme } from '../theme.js'
 import { fit, oneLine, shortenHome, wrapText } from '../text-fit.js'
 
 const MAX_MCP_NAME = 24
 
-interface Draw {
-  messages: UiMessages
-  theme: Theme
+interface Draw extends DrawContext {
   home: string
-  width: number
 }
 
 type Mode = 'view' | 'change' | 'language'
@@ -142,9 +138,7 @@ function choiceLines(setup: DataState<ProviderSetup>, draw: Draw): ReactNode[] {
   const m = messages.provider
   if (setup.status === 'loading') return [<Text color={colors.dim}>{messages.loading}</Text>]
   if (setup.status === 'failed') {
-    return failedLines(messages, setup.error, width).map((line) => (
-      <Text color={colors.error}>{line}</Text>
-    ))
+    return failedNodes(draw, setup.error)
   }
   const { provider, model, origin } = setup.value.choice
   const modelText =
@@ -180,12 +174,7 @@ function providerLines(checked: DataState<ProviderChecks>, draw: Draw): ReactNod
   const header = <Text bold>{m.providers}</Text>
   if (checked.status === 'loading') return [header, <Text color={colors.dim}>{m.checking}</Text>]
   if (checked.status === 'failed') {
-    return [
-      header,
-      ...failedLines(messages, checked.error, draw.width).map((line) => (
-        <Text color={colors.error}>{line}</Text>
-      )),
-    ]
+    return [header, ...failedNodes(draw, checked.error)]
   }
   const nameWidth = Math.max(...Object.values(PROVIDER_NAMES).map(textWidth))
   const chosenWidth = textWidth(m.chosen)

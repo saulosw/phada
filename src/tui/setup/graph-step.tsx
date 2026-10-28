@@ -12,13 +12,13 @@ import {
   useWorking,
 } from '../app-context.js'
 import type { DataState } from '../data-hooks.js'
-import { failedLines } from '../data-view.js'
+import { failedNodes, textLines } from '../frame-lines.js'
 import type { UiMessages } from '../i18n/messages.js'
 import { useIndexSeries } from '../index-series.js'
 import type { SeriesEntry, SeriesPhase } from '../index-series.js'
 import { settle } from '../load-cache.js'
 import { ScrollText } from '../scroll-list.js'
-import { fit, oneLine, wrapText } from '../text-fit.js'
+import { fit, oneLine } from '../text-fit.js'
 import type { Theme } from '../theme.js'
 import type { IndexOutcome, RepositoryIndexOutcome, SetupStepProps } from './setup-steps.js'
 
@@ -69,20 +69,16 @@ export function GraphStep({ next }: SetupStepProps) {
           : [],
   )
 
-  const wrapped = (text: string, color?: string) =>
-    wrapText(text, size.columns).map((line) => <Text color={color}>{line}</Text>)
   const { colors } = theme
   const lines: ReactNode[] =
     watched.status === 'loading'
       ? [<Text color={colors.dim}>{m.reading}</Text>]
       : watched.status === 'failed'
-        ? failedLines(messages, watched.error, size.columns).map((line) => (
-            <Text color={colors.error}>{line}</Text>
-          ))
+        ? failedNodes({ messages, theme, width: size.columns }, watched.error)
         : repos.length === 0
-          ? wrapped(m.none)
+          ? textLines(m.none, size.columns)
           : [
-              ...wrapped(m.intro, colors.soft),
+              ...textLines(m.intro, size.columns, colors.soft),
               <Text> </Text>,
               ...(series.phase === 'idle'
                 ? repos.map((repo) => <Text>○ {fit(oneLine(repo), size.columns - 2)}</Text>)
@@ -90,7 +86,7 @@ export function GraphStep({ next }: SetupStepProps) {
                     entryLine(entry, series.phase, { messages, theme }, size.columns),
                   )),
               ...(series.phase === 'ended' && series.entries.some(leftForLater)
-                ? [<Text> </Text>, ...wrapped(m.later, colors.dim)]
+                ? [<Text> </Text>, ...textLines(m.later, size.columns, colors.dim)]
                 : []),
             ]
   return <ScrollText lines={lines} rows={size.rows} />

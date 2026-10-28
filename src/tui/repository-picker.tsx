@@ -15,13 +15,13 @@ import {
 import type { KeyHint } from './app-context.js'
 import { configChangeLines, useConfigChange } from './config-change.js'
 import { useLoaded } from './data-hooks.js'
-import { failedLines } from './data-view.js'
+import { failedNodes, Lines, spaced, textLines } from './frame-lines.js'
 import type { UiMessages } from './i18n/messages.js'
 import { relativeTime } from './relative-time.js'
 import { ScrollList, useSelection } from './scroll-list.js'
 import { textWidth } from './tab-layout.js'
 import { TextFieldLine, useTextField } from './text-field.js'
-import { fit, oneLine, wrapText } from './text-fit.js'
+import { fit, oneLine } from './text-fit.js'
 
 const REPO_NAME = /^[\w.-]+\/[\w.-]+$/
 const MARK_WIDTH = 4
@@ -144,29 +144,25 @@ export function RepositoryPicker({
             : [{ keys: 'r', label: messages.keys.refresh }],
   )
 
-  const wrapped = (value: string, color?: string) =>
-    wrapText(value, size.columns).map((line) => <Text color={color}>{line}</Text>)
-  const head: ReactNode[] = [...wrapped(intro), <Text> </Text>]
+  const head: ReactNode[] = [...textLines(intro, size.columns), <Text> </Text>]
   if (read === undefined) {
     const status =
       state.status === 'failed'
-        ? failedLines(messages, state.error, size.columns).map((line) => (
-            <Text color={colors.error}>{line}</Text>
-          ))
+        ? failedNodes({ messages, theme, width: size.columns }, state.error)
         : [<Text color={colors.dim}>{m.listing}</Text>]
     return <Lines lines={[...head, ...status]} />
   }
   if (read.status === 'no-token')
-    return <Lines lines={[...head, ...wrapped(noToken, colors.warn)]} />
+    return <Lines lines={[...head, ...textLines(noToken, size.columns, colors.warn)]} />
 
   const status: ReactNode[] = [
     ...(read.status === 'failed'
       ? [
-          ...wrapped(m.failed(oneLine(read.error)), colors.error),
-          ...wrapped(m.typeHint, colors.dim),
+          ...textLines(m.failed(oneLine(read.error)), size.columns, colors.error),
+          ...textLines(m.typeHint, size.columns, colors.dim),
         ]
       : rows.length === 0
-        ? wrapped(m.none, colors.dim)
+        ? textLines(m.none, size.columns, colors.dim)
         : []),
     ...(rows.length === 0
       ? []
@@ -175,7 +171,9 @@ export function RepositoryPicker({
       ? [<TextFieldLine label={m.filter} field={filter} />]
       : []),
     ...(add.focused ? [<TextFieldLine label={m.field} field={add} />] : []),
-    ...(invalid === undefined ? [] : wrapped(m.invalid(oneLine(invalid)), colors.error)),
+    ...(invalid === undefined
+      ? []
+      : textLines(m.invalid(oneLine(invalid)), size.columns, colors.error)),
   ]
   const tail = spaced(
     configChangeLines(change.state, { messages, theme, home, width: size.columns }),
@@ -221,29 +219,9 @@ export function RepositoryPicker({
     )
   return (
     <Box flexDirection="column" width={size.columns}>
-      {[...head, ...status].map((line, index) => (
-        <Text key={index} wrap="truncate-end">
-          {line}
-        </Text>
-      ))}
+      <Lines lines={[...head, ...status]} />
       {list}
-      {tail.map((line, index) => (
-        <Text key={`tail-${index}`} wrap="truncate-end">
-          {line}
-        </Text>
-      ))}
-    </Box>
-  )
-}
-
-function Lines({ lines }: { lines: readonly ReactNode[] }) {
-  return (
-    <Box flexDirection="column">
-      {lines.map((line, index) => (
-        <Text key={index} wrap="truncate-end">
-          {line}
-        </Text>
-      ))}
+      <Lines lines={tail} />
     </Box>
   )
 }
@@ -291,10 +269,6 @@ function rowDetails(row: PickRow, messages: UiMessages, now: Date): string {
 
 function continueKeys(onContinue: PickerContinue | undefined): KeyHint[] {
   return onContinue === undefined ? [] : [{ keys: 'Enter', label: onContinue.label }]
-}
-
-function spaced(lines: ReactNode[]): ReactNode[] {
-  return lines.length === 0 ? [] : [<Text> </Text>, ...lines]
 }
 
 function keyOf(name: string): string {

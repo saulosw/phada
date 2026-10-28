@@ -462,6 +462,9 @@ src/
                          #   and "+N"), fit() (pad or cut with …, at the end or the start),
                          #   wrapText() (at most maxLines, the last cut with …), errorLines()
                          #   (an error over ERROR_LINES), shortenHome() (a path under ~)
+    frame-lines.tsx      #   DrawContext (catalog, theme, width); textLines() (a text wrapped, one
+                         #   node per line), failedNodes() (failedLines() in the error color),
+                         #   spaced() (a blank line before lines), Lines (each cut at the width)
     labeled-lines.tsx    #   labeledLines(): label and value rows of a detail, values wrapped
     relative-time.ts     #   relativeTime() ("2m ago", "in ~4m" for an estimate), absoluteTime();
                          #   TimeMessages

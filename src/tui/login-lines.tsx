@@ -3,18 +3,11 @@ import type { ReactNode } from 'react'
 import { errorMessage } from '../app/error-message.js'
 import type { ProviderChecks } from '../app/read-provider.js'
 import type { Loaded } from './data-hooks.js'
+import type { DrawContext } from './frame-lines.js'
 import type { HandOffOutcome } from './hand-off.js'
-import type { UiMessages } from './i18n/messages.js'
 import type { LoginProvider } from './provider-lines.js'
 import { PROVIDER_NAMES } from './provider-names.js'
-import type { Theme } from './theme.js'
 import { oneLine, wrapText } from './text-fit.js'
-
-export interface LoginDraw {
-  messages: UiMessages
-  theme: Theme
-  width: number
-}
 
 export interface AiLogin {
   provider: LoginProvider
@@ -29,7 +22,7 @@ export interface LoginJudgement {
 export function aiLoginLines(
   login: AiLogin | undefined,
   checked: Loaded<ProviderChecks>,
-  draw: LoginDraw,
+  draw: DrawContext,
 ): ReactNode[] {
   if (login === undefined) return []
   const loggedIn = loggedInAfter(checked, login.provider)
@@ -41,7 +34,7 @@ export function aiLoginLines(
 export function loginOutcomeLines(
   name: string,
   outcome: HandOffOutcome,
-  { messages, theme, width }: LoginDraw,
+  { messages, theme, width }: DrawContext,
   { notFound, loggedIn }: LoginJudgement = {},
 ): ReactNode[] {
   const { colors } = theme

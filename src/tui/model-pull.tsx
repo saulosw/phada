@@ -4,8 +4,7 @@ import type { ReactNode } from 'react'
 import { errorMessage } from '../app/error-message.js'
 import type { OllamaPullProgress, OllamaPullResult } from '../app/read-provider.js'
 import { useAppDeps, useWorking } from './app-context.js'
-import type { UiMessages } from './i18n/messages.js'
-import type { Theme } from './theme.js'
+import type { DrawContext } from './frame-lines.js'
 import { fit, oneLine, wrapText } from './text-fit.js'
 import { modelSizeText } from './units.js'
 
@@ -20,12 +19,6 @@ export interface ModelPull {
   start(model: string): void
   cancel(): void
   clear(): void
-}
-
-export interface ModelPullDraw {
-  messages: UiMessages
-  theme: Theme
-  width: number
 }
 
 const IDLE: ModelPullState = { kind: 'idle' }
@@ -71,7 +64,7 @@ export function useModelPull(onPulled: (model: string) => void): ModelPull {
   return { state, pulling: state.kind === 'pulling', start, cancel, clear }
 }
 
-export function modelPullLines(state: ModelPullState, draw: ModelPullDraw): ReactNode[] {
+export function modelPullLines(state: ModelPullState, draw: DrawContext): ReactNode[] {
   const { messages, theme, width } = draw
   const { colors } = theme
   const m = messages.provider.pick
@@ -103,7 +96,7 @@ export function modelPullLines(state: ModelPullState, draw: ModelPullDraw): Reac
   return wrapText(text, width).map((line) => <Text color={color}>{line}</Text>)
 }
 
-function progressLine(progress: OllamaPullProgress, { messages, theme }: ModelPullDraw) {
+function progressLine(progress: OllamaPullProgress, { messages, theme }: DrawContext) {
   const { completed, total } = progress
   if (total === null || total <= 0) return []
   const done = Math.min(completed ?? 0, total)

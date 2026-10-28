@@ -13,15 +13,13 @@ import {
 import type { HandOffTarget } from '../app-context.js'
 import { useLoaded } from '../data-hooks.js'
 import type { DataState } from '../data-hooks.js'
-import { failedLines } from '../data-view.js'
+import { failedNodes, textLines } from '../frame-lines.js'
+import type { DrawContext } from '../frame-lines.js'
 import { useHandOff } from '../hand-off.js'
 import type { HandOffOutcome } from '../hand-off.js'
 import { loginOutcomeLines } from '../login-lines.js'
-import type { LoginDraw } from '../login-lines.js'
-import type { UiMessages } from '../i18n/messages.js'
 import { ScrollText } from '../scroll-list.js'
-import { oneLine, wrapText } from '../text-fit.js'
-import type { Theme } from '../theme.js'
+import { oneLine } from '../text-fit.js'
 import type { SetupStepProps } from './setup-steps.js'
 
 const GH_LOGIN: HandOffTarget = { kind: 'command', command: 'gh', args: ['auth', 'login'] }
@@ -46,10 +44,8 @@ export function GitHubStep({ next }: SetupStepProps) {
     })
   })
   const m = messages.setup
-  const lines = [
-    ...accessLines(state, messages, theme, size.columns),
-    ...loginLines(login, { messages, theme, width: size.columns }),
-  ]
+  const draw: DrawContext = { messages, theme, width: size.columns }
+  const lines = [...accessLines(state, draw), ...loginLines(login, draw)]
   useScreenKeys([
     ...(state.status === 'loading'
       ? []
@@ -63,24 +59,21 @@ function needsGhLogin(access: GitHubAccess): boolean {
   return access.source === null || (access.source === 'gh' && access.account.state === 'refused')
 }
 
-function accessLines(
-  state: DataState<GitHubAccess>,
-  messages: UiMessages,
-  { colors }: Theme,
-  width: number,
-): ReactNode[] {
+function accessLines(state: DataState<GitHubAccess>, draw: DrawContext): ReactNode[] {
+  const { messages, width } = draw
+  const { colors } = draw.theme
   const m = messages.setup.github
-  const wrapped = (text: string, color?: string) =>
-    wrapText(text, width).map((line) => <Text color={color}>{line}</Text>)
   if (state.status === 'loading') return [<Text color={colors.dim}>{m.checking}</Text>]
   if (state.status === 'failed') {
-    return failedLines(messages, state.error, width).map((line) => (
-      <Text color={colors.error}>{line}</Text>
-    ))
+    return failedNodes(draw, state.error)
   }
   const access = state.value
   if (access.source === null) {
-    return [<Text color={colors.warn}>○ {m.noToken}</Text>, <Text> </Text>, ...wrapped(m.why)]
+    return [
+      <Text color={colors.warn}>○ {m.noToken}</Text>,
+      <Text> </Text>,
+      ...textLines(m.why, width),
+    ]
   }
   const source = messages.home.github.sources[access.source]
   const { account } = access
@@ -90,19 +83,19 @@ function accessLines(
         <Text>
           <Text color={colors.ok}>●</Text> {m.found(source, oneLine(account.login))}
         </Text>,
-        ...wrapped(m.readsAs(oneLine(account.login)), colors.soft),
+        ...textLines(m.readsAs(oneLine(account.login)), width, colors.soft),
       ]
     case 'refused':
       return [
         <Text color={colors.error}>○ {m.refused(source)}</Text>,
-        ...(access.source === 'gh' ? [] : wrapped(m.replace(access.source), colors.soft)),
+        ...(access.source === 'gh' ? [] : textLines(m.replace(access.source), width, colors.soft)),
       ]
     case 'failed':
-      return wrapped(`○ ${m.unreachable(oneLine(account.error))}`, colors.error)
+      return textLines(`○ ${m.unreachable(oneLine(account.error))}`, width, colors.error)
   }
 }
 
-function loginLines(login: HandOffOutcome | undefined, draw: LoginDraw): ReactNode[] {
+function loginLines(login: HandOffOutcome | undefined, draw: DrawContext): ReactNode[] {
   if (login === undefined) return []
   const lines = loginOutcomeLines('gh', login, draw, {
     notFound: draw.messages.setup.github.notInstalled,
