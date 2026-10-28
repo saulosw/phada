@@ -237,13 +237,43 @@ describe('reviewing a pull request from the app', () => {
     const progress = asked[0]?.progress ?? (() => undefined)
     progress({ kind: 'fetched', pullRequest: pullRequestFixture() })
     progress({ kind: 'contextLoaded', report: contextReportFixture() })
+    progress({
+      kind: 'conversationRead',
+      conversation: {
+        items: [],
+        report: { items: 1, omitted: 0, resolved: 0, bots: 0, truncated: 0, bytes: 120 },
+      },
+    })
+    progress({
+      kind: 'impactReady',
+      report: {
+        status: 'used',
+        changed: [
+          {
+            kind: 'function',
+            name: 'spend',
+            path: 'src/wallet.ts',
+            lines: [3, 9],
+            callers: 2,
+            files: 1,
+            shown: 2,
+            dependencies: 0,
+            capped: false,
+          },
+        ],
+        totals: { symbols: 1, callers: 2, files: 1 },
+        learned: [],
+      },
+    })
     progress({ kind: 'indexing', total: 40 })
     progress({ kind: 'indexed', done: 10, total: 40 })
     progress({ kind: 'aiStarted', provider: 'claude-cli', run: 'review' })
     progress({ kind: 'warning', message: 'The CI logs are gone.' })
     await showing('claude-cli: review · 0s')
     expect(frame()).toContain('✓ Pull request: Let users spend crystals')
-    expect(frame()).toContain('✓ Context: 1 rules, 1 docs')
+    expect(frame()).toContain('✓ Context: 1 rule, 1 doc')
+    expect(frame()).toContain('✓ Conversation: 1 item')
+    expect(frame()).toContain('✓ Impact: 1 changed symbol')
     expect(frame()).toContain('Indexing: 10 of 40 files')
     expect(frame()).toContain('› claude-cli: review · 0s')
     expect(frame()).toContain('The CI logs are gone.')

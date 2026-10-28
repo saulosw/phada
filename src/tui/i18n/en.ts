@@ -920,14 +920,16 @@ export const english: UiMessages = {
     steps: {
       fetching: (ref) => `Fetching ${ref}…`,
       fetched: (title) => `Pull request: ${title}`,
-      context: (rules, docs) => `Context: ${number(rules)} rules, ${number(docs)} docs`,
-      conversation: (items) => `Conversation: ${number(items)} items`,
+      context: (rules, docs) =>
+        `Context: ${number(rules)} ${rules === 1 ? 'rule' : 'rules'}, ${number(docs)} ${docs === 1 ? 'doc' : 'docs'}`,
+      conversation: (items) => `Conversation: ${number(items)} ${items === 1 ? 'item' : 'items'}`,
       ci: (state) => `CI: ${state}`,
       ciWaiting: (pending) => `Waiting for CI: ${number(pending)} pending`,
       ciWaited: 'Waited for CI',
       indexing: (done, total) => `Indexing: ${number(done)} of ${number(total)} files`,
       related: (count) => `Related repositories: ${number(count)}`,
-      impact: (symbols) => `Impact: ${number(symbols)} changed symbols`,
+      impact: (symbols) =>
+        `Impact: ${number(symbols)} changed ${symbols === 1 ? 'symbol' : 'symbols'}`,
       pass: (skill, index, total) => `Skill ${skill} (${index} of ${total})`,
       ai: (provider, run, elapsed) => `${provider}: ${run} · ${elapsed}`,
       publishing: 'Publishing on GitHub…',

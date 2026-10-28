@@ -940,14 +940,17 @@ export const spanish: UiMessages = {
     steps: {
       fetching: (ref) => `Obteniendo ${ref}…`,
       fetched: (title) => `Pull request: ${title}`,
-      context: (rules, docs) => `Contexto: ${number(rules)} reglas, ${number(docs)} docs`,
-      conversation: (items) => `Conversación: ${number(items)} elementos`,
+      context: (rules, docs) =>
+        `Contexto: ${number(rules)} ${rules === 1 ? 'regla' : 'reglas'}, ${number(docs)} ${docs === 1 ? 'doc' : 'docs'}`,
+      conversation: (items) =>
+        `Conversación: ${number(items)} ${items === 1 ? 'elemento' : 'elementos'}`,
       ci: (state) => `CI: ${state}`,
       ciWaiting: (pending) => `Esperando la CI: ${number(pending)} pendientes`,
       ciWaited: 'Esperó la CI',
       indexing: (done, total) => `Indexando: ${number(done)} de ${number(total)} archivos`,
       related: (count) => `Repositorios relacionados: ${number(count)}`,
-      impact: (symbols) => `Impacto: ${number(symbols)} símbolos cambiados`,
+      impact: (symbols) =>
+        `Impacto: ${number(symbols)} ${symbols === 1 ? 'símbolo cambiado' : 'símbolos cambiados'}`,
       pass: (skill, index, total) => `Skill ${skill} (${index} de ${total})`,
       ai: (provider, run, elapsed) => `${provider}: ${run} · ${elapsed}`,
       publishing: 'Publicando en GitHub…',
