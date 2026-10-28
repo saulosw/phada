@@ -676,6 +676,19 @@ describe('reviewAndPublish cancelled', () => {
     expect(dying.calls.posts).toEqual([])
   })
 
+  it('starts no other AI run once cancelled while one runs', async () => {
+    const controller = new AbortController()
+    const { deps, calls } = setup({ fetchReviewState: earlierComments() }, PR, async () => {
+      controller.abort()
+      throw new Error('Claude Code ended without an exit code (SIGTERM).')
+    })
+
+    await expect(
+      reviewAndPublish({ ...INPUT, signal: controller.signal }, deps),
+    ).rejects.toBeInstanceOf(ReviewCancelledError)
+    expect(calls.log).toEqual(['compare', 'recheck'])
+  })
+
   it('does not start when it was cancelled before', async () => {
     const controller = new AbortController()
     controller.abort()

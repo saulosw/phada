@@ -378,6 +378,19 @@ describe('child scopes', () => {
     outside.kill('SIGKILL')
   })
 
+  it('stops at once a child started after the scope was killed', async () => {
+    const scope = childScope()
+    scope.kill()
+    const startedAt = performance.now()
+
+    const error = await captureError(
+      scope.run(() => runCommand(...node('setTimeout(() => {}, 30_000)'), { detached: true })),
+    )
+
+    expect(error).toBeInstanceOf(CommandError)
+    expect(performance.now() - startedAt).toBeLessThan(5_000)
+  })
+
   it('leaves the children of a scope to killDetachedChildren too', async () => {
     const scope = childScope()
     const running = captureError(

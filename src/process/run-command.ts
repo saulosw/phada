@@ -13,7 +13,12 @@ const DEFAULT_MAX_OUTPUT_LENGTH = 10_000_000
 const KILL_GRACE_MS = 2_000
 
 const detachedChildren = new Set<number>()
-const scopes = new AsyncLocalStorage<Set<number>>()
+interface ScopeChildren {
+  pids: Set<number>
+  killed: boolean
+}
+
+const scopes = new AsyncLocalStorage<ScopeChildren>()
 
 export interface ChildScope {
   run<T>(work: () => T): T
@@ -26,15 +31,16 @@ export function killDetachedChildren(): void {
 }
 
 export function childScope(): ChildScope {
-  const children = new Set<number>()
+  const children: ScopeChildren = { pids: new Set(), killed: false }
   return {
     run: (work) => scopes.run(children, work),
     kill: () => {
-      for (const pid of children) {
+      children.killed = true
+      for (const pid of children.pids) {
         signalGroup(pid, 'SIGTERM')
         detachedChildren.delete(pid)
       }
-      children.clear()
+      children.pids.clear()
     },
   }
 }
@@ -49,11 +55,15 @@ function signalGroup(pid: number, signal: NodeJS.Signals): void {
 
 export function trackDetachedChild(pid: number): () => void {
   const scope = scopes.getStore()
+  if (scope?.killed === true) {
+    signalGroup(pid, 'SIGTERM')
+    return () => undefined
+  }
   detachedChildren.add(pid)
-  scope?.add(pid)
+  scope?.pids.add(pid)
   return () => {
     detachedChildren.delete(pid)
-    scope?.delete(pid)
+    scope?.pids.delete(pid)
   }
 }
 

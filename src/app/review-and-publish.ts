@@ -14,6 +14,7 @@ import type { Conversation, PublicationPlan, SkipReason } from '../publish/types
 import type { Ci, CiSummary } from '../context/types.js'
 import { diffFingerprint } from '../review/diff-fingerprint.js'
 import type { RecheckThread, RecheckVerdict, ReviewResult } from '../review/types.js'
+import type { ReviewProvider } from '../providers/types.js'
 import { errorMessage } from './error-message.js'
 import { readCi } from './read-ci.js'
 import { readConversation } from './read-conversation.js'
@@ -146,6 +147,35 @@ export async function reviewAndPublish(
   }
 }
 
+function refusingAfterCancel(
+  deps: PullRequestReviewDeps,
+  stopIfCancelled: () => void,
+): PullRequestReviewDeps {
+  const watch = deps.watchProvider ?? ((provider: ReviewProvider) => provider)
+  return {
+    ...deps,
+    watchProvider: (provider, pass) => {
+      const watched = watch(provider, pass)
+      const runSkill = watched.runSkill?.bind(watched)
+      return {
+        id: watched.id,
+        review: (prompt) => {
+          stopIfCancelled()
+          return watched.review(prompt)
+        },
+        ...(runSkill === undefined
+          ? {}
+          : {
+              runSkill: (request) => {
+                stopIfCancelled()
+                return runSkill(request)
+              },
+            }),
+      }
+    },
+  }
+}
+
 async function reviewThenPublish(
   input: ReviewAndPublishInput,
   deps: ReviewAndPublishDeps,
@@ -173,7 +203,7 @@ async function reviewThenPublish(
   if (early.action === 'skip')
     return { status: 'skipped', pullRequest, reason: early.reason, reviewState: state }
 
-  const reviewDeps = deps.reviewDeps(pullRequest)
+  const reviewDeps = refusingAfterCancel(deps.reviewDeps(pullRequest), stopIfCancelled)
   const review = {
     pullRequest,
     userLayers: input.userLayers,
