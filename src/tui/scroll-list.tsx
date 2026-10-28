@@ -30,14 +30,15 @@ export function listWindow(
 export interface Selection<T> {
   index: number
   item: T | undefined
+  select(key: string): void
 }
 
 export function useSelection<T>(
   items: readonly T[],
   keyOf: (item: T) => string,
-  options: { active?: boolean; page?: number; onOpen?(item: T): void } = {},
+  options: { active?: boolean; page?: number; initialKey?: string; onOpen?(item: T): void } = {},
 ): Selection<T> {
-  const [selectedKey, setSelectedKey] = useState<string | undefined>()
+  const [selectedKey, setSelectedKey] = useState<string | undefined>(options.initialKey)
   const lastIndex = useRef(0)
   const found =
     selectedKey === undefined ? -1 : items.findIndex((item) => keyOf(item) === selectedKey)
@@ -62,7 +63,13 @@ export function useSelection<T>(
     setSelectedKey(keyOf(target))
   })
 
-  return { index, item }
+  const select = (key: string) => {
+    const found = items.findIndex((candidate) => keyOf(candidate) === key)
+    if (found >= 0) lastIndex.current = found
+    setSelectedKey(key)
+  }
+
+  return { index, item, select }
 }
 
 function moved(index: number, count: number, page: number, key: Key): number | undefined {

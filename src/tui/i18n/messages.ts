@@ -269,6 +269,30 @@ export interface GraphMessages {
   symbols: Readonly<Record<IndexSymbolKind, (count: number) => string>>
   leftOut: Readonly<Record<LeftOutGroup['reason'], (count: number) => string>>
   connections: ConnectionMessages
+  explore: ExploreMessages
+}
+
+export interface ExploreMessages {
+  field: string
+  search: string
+  run: string
+  cancel: string
+  searching(name: string): string
+  cannotExplore(repo: string, why: string): string
+  notFound(name: string, repo: string, commit: string): string
+  notFoundHint: string
+  definitions(count: number, name: string): string
+  more(count: number): string
+  crosses(names: string): string
+  callers: string
+  dependencies: string
+  loading: string
+  none: string
+  capped: string
+  inferred: string
+  observed(pullRequest: number | undefined): string
+  kinds: Readonly<Record<IndexSymbolKind, string>>
+  keys: { explore: string; expand: string; collapse: string }
 }
 
 export interface ConnectionMessages {

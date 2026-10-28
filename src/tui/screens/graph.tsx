@@ -4,7 +4,6 @@ import { useState } from 'react'
 import type {
   Connection,
   Connections,
-  NotIndexed,
   PackageRef,
   RepositoryConnections,
 } from '../../app/read-connections.js'
@@ -13,6 +12,7 @@ import type {
   IndexLanguage,
   IndexSymbolKind,
   LeftOutGroup,
+  RepositoryIndexes,
   RepositoryIndexState,
 } from '../../app/read-index.js'
 import {
@@ -26,17 +26,21 @@ import {
 } from '../app-context.js'
 import type { KeyHint } from '../app-context.js'
 import { useLoaded } from '../data-hooks.js'
-import type { DataState } from '../data-hooks.js'
+import type { DataState, Loaded } from '../data-hooks.js'
 import { DataView } from '../data-view.js'
 import { failedNodes, spaced, textLines } from '../frame-lines.js'
 import type { DrawContext } from '../frame-lines.js'
-import type { ConnectionMessages, GraphMessages, UiMessages } from '../i18n/messages.js'
+import type { GraphMessages, UiMessages } from '../i18n/messages.js'
 import { labeledLines } from '../labeled-lines.js'
+import { notIndexedText } from '../not-indexed-text.js'
 import { absoluteTime, relativeTime } from '../relative-time.js'
 import { useRepositoryIndexing } from '../repository-indexing.js'
 import { ScrollList, ScrollText, useSelection } from '../scroll-list.js'
+import { SubView } from '../sub-view.js'
+import { SymbolExplorer } from '../symbol-explorer.js'
 import { indented } from '../setting-lines.js'
 import { textWidth } from '../tab-layout.js'
+import { TextFieldLine, useTextField } from '../text-field.js'
 import { fit, namesText, oneLine, shortenHome, wrapText } from '../text-fit.js'
 import { bytesText, durationText } from '../units.js'
 
@@ -54,46 +58,105 @@ const repoKey = ({ repo }: IndexedRepository) => repo
 
 export function GraphScreen() {
   const { readIndexes, readConnections } = useAppDeps()
-  const messages = useMessages()
-  const size = useScreenSize()
   const loaded = useLoaded(INDEXES_KEY, readIndexes)
   const connections = useLoaded(CONNECTIONS_KEY, readConnections)
   const [open, setOpen] = useState<string | undefined>()
+  const [exploring, setExploring] = useState(false)
+  const [symbol, setSymbol] = useState('')
+  if (open !== undefined && exploring) {
+    return (
+      <SubView onLeave={() => setExploring(false)}>
+        <SymbolExplorer repo={open} name={symbol} />
+      </SubView>
+    )
+  }
+  return (
+    <GraphView
+      loaded={loaded}
+      connections={connections}
+      open={open}
+      onOpen={setOpen}
+      symbol={symbol}
+      onSearch={(name) => {
+        setSymbol(name)
+        setExploring(true)
+      }}
+    />
+  )
+}
+
+function GraphView({
+  loaded,
+  connections,
+  open,
+  onOpen,
+  symbol,
+  onSearch,
+}: {
+  loaded: Loaded<RepositoryIndexes>
+  connections: Loaded<Connections>
+  open: string | undefined
+  onOpen(repo: string | undefined): void
+  symbol: string
+  onSearch(name: string): void
+}) {
+  const messages = useMessages()
+  const size = useScreenSize()
+  const field = useTextField({
+    initial: symbol,
+    onSubmit: (name) => {
+      if (name.trim() !== '') onSearch(name.trim())
+    },
+  })
   const indexing = useRepositoryIndexing(() => {
     loaded.reload()
     connections.reload()
   })
   const repositories = loaded.state.status === 'ready' ? loaded.state.value.repositories : []
   const selection = useSelection(repositories, repoKey, {
-    active: open === undefined,
-    onOpen: (entry) => setOpen(entry.repo),
+    active: open === undefined && !field.focused,
+    ...(open === undefined ? {} : { initialKey: open }),
+    onOpen: (entry) => onOpen(entry.repo),
   })
   const opened = open === undefined ? undefined : repositories.find((entry) => entry.repo === open)
   const target = open === undefined ? selection.item : opened
   const unindexed =
     opened === undefined ? [] : unindexedRelated(connectionsOf(connections.state, opened.repo))
 
-  useBack(indexing.busy ? indexing.stop : open === undefined ? undefined : () => setOpen(undefined))
+  useBack(indexing.busy ? indexing.stop : open === undefined ? undefined : () => onOpen(undefined))
   useScreenInput((input) => {
     if (input === 'i' && target !== undefined) indexing.start([target.repo])
     if (input === 'I') indexing.start(unindexed)
+    if (input === 's' && opened !== undefined && !indexing.busy) field.focus()
   })
-  useScreenKeys([
-    ...(open === undefined
-      ? repositories.length === 0
-        ? []
-        : [
-            { keys: '↑/↓', label: messages.keys.select },
-            { keys: 'Enter', label: messages.keys.open },
-          ]
-      : [{ keys: '↑/↓', label: messages.list.scroll }]),
-    ...indexKeys(target, indexing.busy, messages),
-    ...(indexing.busy || unindexed.length === 0
-      ? []
-      : [{ keys: 'I', label: messages.graph.connections.indexRelated }]),
-    { keys: 'r', label: messages.keys.refresh },
-    ...(open !== undefined && !indexing.busy ? [{ keys: 'Esc', label: messages.keys.back }] : []),
-  ])
+  useScreenKeys(
+    field.focused
+      ? [
+          { keys: 'Enter', label: messages.graph.explore.run },
+          { keys: 'Esc', label: messages.graph.explore.cancel },
+        ]
+      : [
+          ...(open === undefined
+            ? repositories.length === 0
+              ? []
+              : [
+                  { keys: '↑/↓', label: messages.keys.select },
+                  { keys: 'Enter', label: messages.keys.open },
+                ]
+            : [{ keys: '↑/↓', label: messages.list.scroll }]),
+          ...(opened === undefined || indexing.busy
+            ? []
+            : [{ keys: 's', label: messages.graph.explore.search }]),
+          ...indexKeys(target, indexing.busy, messages),
+          ...(open !== undefined && !indexing.busy
+            ? [{ keys: 'Esc', label: messages.keys.back }]
+            : []),
+          ...(indexing.busy || unindexed.length === 0
+            ? []
+            : [{ keys: 'I', label: messages.graph.connections.indexRelated }]),
+          { keys: 'r', label: messages.keys.refresh },
+        ],
+  )
 
   const tail = spaced(indexing.lines(size.columns))
   return (
@@ -107,7 +170,15 @@ export function GraphScreen() {
             tail={tail}
           />
         ) : (
-          <RepositoryView entry={opened} connections={connections.state} tail={tail} />
+          <RepositoryView
+            entry={opened}
+            connections={connections.state}
+            tail={
+              field.focused
+                ? [...tail, <TextFieldLine label={messages.graph.explore.field} field={field} />]
+                : tail
+            }
+          />
         )
       }
     </DataView>
@@ -481,7 +552,7 @@ function connectionLines(
   const declared = entry?.declared
   const lines: ReactNode[] = [
     ...(entry?.source.state === 'not-indexed'
-      ? textLines(c.sourceNotIndexed(whyText(entry.source.why, c)), width, colors.warn)
+      ? textLines(c.sourceNotIndexed(notIndexedText(entry.source.why, c)), width, colors.warn)
       : []),
     ...(declared?.configError == null
       ? []
@@ -510,7 +581,7 @@ function relatedLines(connection: Connection, repo: string, draw: DrawContext): 
         ? [c.noLink, colors.dim]
         : link.state === 'unknown'
           ? [c.unknown, colors.dim]
-          : [c.notIndexed(whyText(link.why, c)), colors.warn]
+          : [c.notIndexed(notIndexedText(link.why, c)), colors.warn]
   const head = [
     oneLine(connection.repo),
     label,
@@ -559,16 +630,4 @@ function byEcosystem(packages: readonly PackageRef[]): [PackageRef['ecosystem'],
     groups.set(ecosystem, [...(groups.get(ecosystem) ?? []), name])
   }
   return [...groups]
-}
-
-function whyText(why: NotIndexed, c: ConnectionMessages): string {
-  switch (why.reason) {
-    case 'other-version':
-      return c.why['other-version'](optional(why.found.phadaVersion))
-    case 'unreadable':
-    case 'mirror-unreadable':
-      return c.why[why.reason](oneLine(why.error))
-    default:
-      return c.why[why.reason]
-  }
 }

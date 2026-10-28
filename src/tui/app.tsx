@@ -131,6 +131,12 @@ function Shell({
     typingNow.current = on
     setTypingState(on)
   }, [])
+  const [arrows, setArrowsState] = useState(false)
+  const arrowsNow = useRef(false)
+  const claimArrows = useCallback((on: boolean) => {
+    arrowsNow.current = on
+    setArrowsState(on)
+  }, [])
   const back = useRef<(() => void) | undefined>(undefined)
   const titles = screens.map((screen) => screen.title(messages))
   const quit = () => onExit({ kind: 'quit' })
@@ -163,8 +169,9 @@ function Shell({
       },
       isTyping: () => typingNow.current,
       setTyping,
+      claimArrows,
     }),
-    [overlay, tooSmall, typing, size.columns, size.rows, setTyping],
+    [overlay, tooSmall, typing, size.columns, size.rows, setTyping, claimArrows],
   )
 
   useInput((input, key) => {
@@ -189,14 +196,15 @@ function Shell({
       if (index < screens.length) show(index)
       return
     }
-    if (key.rightArrow || (key.tab && !key.shift)) return show(active + 1)
-    if (key.leftArrow || (key.tab && key.shift)) return show(active - 1)
+    const arrow = !arrowsNow.current
+    if ((arrow && key.rightArrow) || (key.tab && !key.shift)) return show(active + 1)
+    if ((arrow && key.leftArrow) || (key.tab && key.shift)) return show(active - 1)
   })
 
   if (tooSmall) return <TooSmall size={size} />
 
   const current = screens[active]
-  const global = globalKeys(messages, screens.length, takeover !== undefined)
+  const global = globalKeys(messages, screens.length, takeover !== undefined, arrows)
   const setupTitle = messages.setup.title
   const languageTitle = { full: messages.language.title, short: messages.language.title }
   const takeoverTitle = takeover === 'language' ? languageTitle : setupTitle
@@ -241,7 +249,7 @@ function Shell({
         ? [{ keys: 'Esc', label: messages.keys.close }]
         : typing
           ? screenKeys
-          : [...screenKeys, ...footerGlobals(messages, takeover !== undefined)]
+          : [...screenKeys, ...footerGlobals(messages, takeover !== undefined, arrows)]
 
   return (
     <Box flexDirection="column" width={size.columns} height={size.rows}>
@@ -294,21 +302,26 @@ function Shell({
   )
 }
 
-function footerGlobals(messages: UiMessages, takenOver: boolean): KeyHint[] {
+function footerGlobals(messages: UiMessages, takenOver: boolean, arrows: boolean): KeyHint[] {
   return [
-    ...(takenOver ? [] : [{ keys: '←/→', label: messages.keys.screens }]),
+    ...(takenOver ? [] : [{ keys: arrows ? 'Tab' : '←/→', label: messages.keys.screens }]),
     { keys: '/', label: messages.keys.palette },
     { keys: '?', label: messages.keys.help },
     { keys: 'q', label: messages.keys.quit },
   ]
 }
 
-function globalKeys(messages: UiMessages, screens: number, takenOver: boolean): KeyHint[] {
+function globalKeys(
+  messages: UiMessages,
+  screens: number,
+  takenOver: boolean,
+  arrows: boolean,
+): KeyHint[] {
   return [
     ...(takenOver
       ? []
       : [
-          { keys: '←/→ Tab', label: messages.keys.cycle },
+          { keys: arrows ? 'Tab' : '←/→ Tab', label: messages.keys.cycle },
           { keys: `1–${Math.min(screens, 9)}`, label: messages.keys.jump },
         ]),
     { keys: '/', label: messages.keys.palette },

@@ -545,6 +545,43 @@ export const spanish: UiMessages = {
       ecosystems: { npm: 'npm', go: 'Go', python: 'Python' },
       indexRelated: 'indexar relacionados',
     },
+    explore: {
+      field: 'Símbolo',
+      search: 'buscar un símbolo',
+      run: 'buscar',
+      cancel: 'cancelar',
+      searching: (name) => `Buscando ${name}…`,
+      cannotExplore: (repo, why) =>
+        `No se puede explorar ${repo} (${why}): pulsa i para indexarlo.`,
+      notFound: (name, repo, commit) =>
+        `Ninguna definición de ${name} en el índice de ${repo} (${commit}).`,
+      notFoundHint:
+        'Revisa el nombre, o pulsa i para indexar el repositorio de nuevo si el código cambió.',
+      definitions: (count, name) =>
+        `${number(count)} ${count === 1 ? 'definición' : 'definiciones'} de ${name}`,
+      more: (count) => `+${number(count)} más`,
+      crosses: (names) => `Cruza hacia ${names}`,
+      callers: 'Quién llama',
+      dependencies: 'Dependencias',
+      loading: 'cargando…',
+      none: 'ninguno',
+      capped: 'El grafo recortó esta lista: demasiados candidatos o por encima del tiempo límite.',
+      inferred: 'inferido',
+      observed: (pullRequest) =>
+        pullRequest === undefined ? 'observado' : `observado en #${pullRequest}`,
+      kinds: {
+        function: 'función',
+        method: 'método',
+        class: 'clase',
+        struct: 'struct',
+        interface: 'interfaz',
+        type: 'tipo',
+        enum: 'enum',
+        variable: 'variable',
+        parameter: 'parámetro',
+      },
+      keys: { explore: 'explorar', expand: 'abrir', collapse: 'cerrar' },
+    },
   },
   indexing: {
     waiting: 'esperando',

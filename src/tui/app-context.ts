@@ -101,6 +101,7 @@ export interface ScreenControls {
   setBack(back: (() => void) | undefined): void
   isTyping(): boolean
   setTyping(typing: boolean): void
+  claimArrows(on: boolean): void
 }
 
 export interface WorkingSignal {
@@ -124,6 +125,7 @@ export const ScreenContext = createContext<ScreenControls>({
   setBack: () => {},
   isTyping: () => false,
   setTyping: () => {},
+  claimArrows: () => {},
 })
 
 export function useAppDeps(): AppDeps {
@@ -184,6 +186,15 @@ export function useScreenInput(handler: (input: string, key: Key) => void): void
     },
     { isActive: inputActive },
   )
+}
+
+export function useArrowKeys(active: boolean): void {
+  const { claimArrows } = useContext(ScreenContext)
+  useEffect(() => {
+    if (!active) return undefined
+    claimArrows(true)
+    return () => claimArrows(false)
+  }, [active, claimArrows])
 }
 
 export function useScreenSize(): TerminalSize {
