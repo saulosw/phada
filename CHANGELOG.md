@@ -16,6 +16,11 @@ output can change between minor versions.
   and the files left out and why. `i` indexes the selected repository (or indexes it again) with
   its progress, there and on the Repositories screen; `Esc` stops it. `/index` in the palette
   opens the Graph. The app reads each map without creating, migrating or removing it.
+- The connections of each repository on the Graph screen: how many of the related repositories
+  it declares (`context.repos`) are linked → each one with the packages one publishes and the
+  other uses (npm, Go, Python), without a link, or not indexed and why. They are read from the
+  index and the local copy on your machine, never fetched; `I` indexes the related repositories
+  that are not indexed.
 
 ## 0.10.0 - 2026-10-27
 

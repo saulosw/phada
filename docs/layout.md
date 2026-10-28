@@ -145,6 +145,14 @@ src/
     edit-user-config.ts  #   planUserConfig(): the user's own config.yml read (injected) →
                          #   planUserConfigEdit(); applyUserConfigPlan(): written atomically only
                          #   if the file did not change since the plan; failures as data
+    read-connections.ts  #   readConnections(): each repository of the screens with its
+                         #   declared related repositories (the user config and the root
+                         #   .phada/config.yml of its indexed commit, merged as a review does),
+                         #   each linked by package both ways, without a link, not indexed (no
+                         #   index, empty, other version, unreadable, no mirror or an unreadable
+                         #   one) or not read while the repository itself is not; manifests read
+                         #   from the existing mirror at the index's snapshot, no fetch; readers
+                         #   injected
     read-index.ts        #   readIndexes(): each repository of the screens with its index read
                          #   only (missing, other version with both, unreadable with the reason,
                          #   empty, or indexed: the latest snapshot of the default branch, its
@@ -393,8 +401,12 @@ src/
                          #   and size from readIndexes (loaded, r, read again after indexing) →
                          #   its index section: when, commit and branch, duration, files per
                          #   language, symbols by kind, links, files left out, file; missing,
-                         #   other version, unreadable or empty as a line; i indexes or indexes
-                         #   again, Esc stops), automation.tsx (one page:
+                         #   other version, unreadable or empty as a line; the linked count of
+                         #   each one and its connections section from readConnections (loaded,
+                         #   r, read again after indexing): each declared related repository with
+                         #   its packages each way, no link or why it is not indexed, or how to
+                         #   declare them; i indexes or indexes again, I indexes the related
+                         #   repositories not indexed, Esc stops), automation.tsx (one page:
                          #   watch, CI wait, request sources, hooks, when), provider.tsx (the
                          #   choice and its origin, the language, each AI checked on open and on
                          #   r with its next step, l to log in to the chosen CLI (again, when
@@ -467,8 +479,8 @@ src/
                          #   other with an AbortController (stop() cancels the current one and
                          #   starts no other; aborted on unmount), each one waiting, running with
                          #   its progress or done; a new series once the last one ended
-    repository-indexing.tsx # useRepositoryIndexing(onEnded): one repository indexed through
-                         #   useIndexSeries (start, stop, busy, the Esc key while busy, its line);
+    repository-indexing.tsx # useRepositoryIndexing(onEnded): repositories indexed through
+                         #   useIndexSeries (start, stop, busy, the Esc key while busy, their lines);
                          #   indexEntryLine(): a repository of a series in one line (also the
                          #   setup's graph step)
     model-pull.tsx       #   useModelPull(onPulled): AppDeps.pullModel with an AbortController
@@ -747,7 +759,9 @@ src/
                          #   without tokens
     git-mirror.ts        #   openGitMirror(): bare repository in the cache, fetch --depth 1 into
                          #   refs/phada/* (stopped by the caller's signal), deepen to 200 commits for history, ls-tree -r,
-                         #   cat-file --batch
+                         #   cat-file --batch; openExistingGitMirror(): only the local reads
+                         #   (ls-tree, cat-file) of a mirror that already exists, missing as a
+                         #   state, never creating or fetching one
     mirror-lock.ts       #   withMirrorLock(): one fetch at a time per mirror, stale locks taken over
     repo-path.ts         #   toRepoPath(): paths inside the repository only
     work-tree.ts         #   materializeWorkTree(): a checkout of the head with origin/<base> at

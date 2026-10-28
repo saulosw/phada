@@ -103,9 +103,9 @@ language is read again at once and `onSaved(plan)` runs; a proposal that changes
 
 ## Indexing from a screen (`repository-indexing.tsx`)
 
-**`useRepositoryIndexing(onEnded)`** indexes one repository through `useIndexSeries()`:
-`start(repo)` (ignored while `busy`), `stop()`, `keys` (`Esc` while busy) and `lines(width)` (the
-repository with its progress, then how it ended). The screen wires `Esc` with
+**`useRepositoryIndexing(onEnded)`** indexes repositories one after the other through
+`useIndexSeries()`: `start(repos)` (ignored while `busy`), `stop()`, `keys` (`Esc` while busy)
+and `lines(width)` (each repository with its progress, then how it ended). The screen wires `Esc` with
 `useBack(indexing.busy ? indexing.stop : …)`, draws the lines under its own and reads its data
 again in `onEnded` (`reload()` of `useLoaded`). Leaving the screen aborts the indexing.
 
