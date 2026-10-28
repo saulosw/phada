@@ -158,6 +158,24 @@ describe('the watch the app starts', () => {
     expect(sessions[0]?.aborts).toBe(1)
   })
 
+  it('aborts on close a watch still starting, once it started', async () => {
+    let release: () => void = () => undefined
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const { deps, sessions, observer } = harness({ startWatch: () => gate })
+    const watch = appWatch(deps)
+    const starting = watch.start(observer)
+
+    const closing = watch.close()
+    await new Promise((done) => setImmediate(done))
+    release()
+    await closing
+
+    expect((await starting).status).toBe('started')
+    expect(sessions[0]?.aborts).toBe(1)
+  })
+
   it('leaves a watch that already ended alone on close', async () => {
     const { deps, sessions, observer } = harness()
     const watch = appWatch(deps)
