@@ -402,6 +402,10 @@ export interface ReviewsMessages {
     findings(count: number): string
     worthChecking(count: number): string
     feedback(count: number): string
+    nothingPosted: string
+    wouldResolve(count: number): string
+    wouldSkip(reason: string): string
+    skipReasons: Readonly<Record<string, string>>
     gone: string
   }
 }

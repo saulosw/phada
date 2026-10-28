@@ -302,6 +302,42 @@ describe('the Reviews screen', () => {
     expect(exits).toEqual([])
   })
 
+  it('says what a dry run would post, resolve and skip, and the body of each finding', async () => {
+    const base = detail()
+    const { frame, press, showing } = openReviews({
+      size: { columns: 80, rows: 40 },
+      detail: () => ({
+        ...base,
+        run: { ...base.run, status: 'dry-run', url: undefined },
+        findings: base.findings.map((finding, index) =>
+          index === 0
+            ? { ...finding, why: 'The discount is applied after the\u0007 total.' }
+            : finding,
+        ),
+        publication: {
+          status: 'dry-run',
+          url: null,
+          comments: 2,
+          wouldResolve: 1,
+          reason: 'open-threads',
+        },
+        published: [],
+      }),
+    })
+    await showing('Enter open')
+    await press(KEYS.enter)
+    await showing('Score', 'Esc back')
+    const text = frame()
+    expect(text).toMatch(
+      /Published\s+nothing was posted · 2 comments · would resolve 1 · would skip:\s+already\s+reviewed, threads still open/,
+    )
+    expect(text).toMatch(
+      /P0\s+src\/cart.ts:12\s+Total ignores the discount\n\s+The discount is applied after the total\./,
+    )
+    expect(text).not.toContain('\u0007')
+    expectFits(text, { columns: 80, rows: 40 })
+  })
+
   it('scrolls the detail in 80×24', async () => {
     const { frame, press, showing } = openReviews()
     await showing('Enter open')

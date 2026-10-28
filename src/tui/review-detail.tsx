@@ -12,6 +12,7 @@ import { fit, oneLine, wrapText } from './text-fit.js'
 
 const PLACE_SHARE = 0.4
 const GAP = '  '
+const BODY_INDENT = '      '
 
 export function reviewDetailLines(
   detail: ReviewDetail,
@@ -87,7 +88,7 @@ function findingLines(
 ): ReactNode[] {
   const places = findings.map((finding) => place(finding.file, finding.line ?? undefined))
   const width = placeWidth(places, columns)
-  return findings.map((finding, index) => (
+  return findings.flatMap((finding, index) => [
     <Text>
       {'  '}
       <Text bold color={severityColor(finding.severity, theme)}>
@@ -97,8 +98,13 @@ function findingLines(
       {fit(places[index] ?? '', width, 'start')}
       {GAP}
       {oneLine(finding.title)}
-    </Text>
-  ))
+    </Text>,
+    ...(finding.why === null
+      ? []
+      : wrapText(finding.why, columns - BODY_INDENT.length).map((line) => (
+          <Text color={theme.colors.dim}>{`${BODY_INDENT}${line}`}</Text>
+        ))),
+  ])
 }
 
 function feedbackLines(
@@ -146,11 +152,22 @@ function publicationLine(
 ): string | undefined {
   if (publication === null) return undefined
   const m = messages.reviews
+  const d = m.detail
+  const dryRun = publication.status === 'dry-run'
   const status =
-    publication.status === 'published' ? [] : [statusLabel(publication.status, messages)]
+    publication.status === 'published' || dryRun ? [] : [statusLabel(publication.status, messages)]
+  const reason =
+    publication.reason === null
+      ? undefined
+      : (d.skipReasons[publication.reason] ?? oneLine(publication.reason))
   return [
     ...status,
-    ...(publication.comments === null ? [] : [m.detail.comments(publication.comments)]),
+    ...(dryRun ? [d.nothingPosted] : []),
+    ...(publication.comments === null ? [] : [d.comments(publication.comments)]),
+    ...(publication.wouldResolve === null || publication.wouldResolve === 0
+      ? []
+      : [d.wouldResolve(publication.wouldResolve)]),
+    ...(reason === undefined ? [] : [dryRun ? d.wouldSkip(reason) : reason]),
     ...(publication.url === null ? [] : [oneLine(publication.url)]),
   ].join(' · ')
 }
