@@ -39,6 +39,13 @@ output can change between minor versions.
   runs (a second `Ctrl-C` cancels and quits at once; a `SIGTERM` cancels it without asking). While
   a `phada watch` runs, **Review and publish** becomes **Put in the queue**, as `phada enqueue
 --publish pr`, showing the job or why the queue refused it, with `Enter` to the Queue.
+- Running the watch from the app: `w` on the Queue screen or `/watch` in the palette starts the
+  same watch as `phada watch` (lock, history, hooks, Slack) and asks before stopping it after the
+  current review. The Queue says whether the watch runs in this app or in another terminal (with
+  its PID), shows the step of the review under way and a log of the watch's events in the app's
+  language (`l` for the last 200 lines). Quitting while it runs asks first; a second `Ctrl-C` or a
+  `SIGTERM` stops it at once and puts the running pull request back in the queue. Cancelling a
+  review started from the app stops only its own AI CLI, never the watch's.
 - The review detail of the Reviews screen shows the text of each finding, and for a dry run that
   nothing was posted, how many threads it would resolve and why it would skip.
 

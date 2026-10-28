@@ -96,7 +96,7 @@ phada
 | Repositories | The watched repositories, the ones with a config of their own and the ones in the history → the settings of each with where every value comes from, its watch filters, its map, its related repositories and its last reviews (and, for a watched one, whether it publishes); `w`, `p`, `a`, `e` and `R` change them, `i` indexes it, `v` reviews one of its open pull requests                                                                                                                                                                                                   |
 | Rules        | The reviewer lens and your rules at once; the repository's `.phada/` and the rules and docs a review of the default branch reads; `p` and a pull request number show what a review of it reads and its prompt                                                                                                                                                                                                                                                                                                                                                                     |
 | Reviews      | The history, with `f` to filter → one review with its score, findings, what was published, the CI line and what happened to each comment; `n` reviews a pull request                                                                                                                                                                                                                                                                                                                                                                                                              |
-| Queue        | The watch running in another terminal (or not), its last and next cycle, the job running, the jobs queued, waiting for CI, skipped for failing CI or failed, a pause, and the reviews this hour → a job with its requests                                                                                                                                                                                                                                                                                                                                                         |
+| Queue        | The watch running in this app, in another terminal (with its PID) or not running, its last and next cycle, the job running (with the step of its review when the watch runs here), the jobs queued, waiting for CI, skipped for failing CI or failed, a pause, the reviews this hour and the log of the watch started here → a job with its requests; `w` starts or stops the watch, `l` opens its whole log                                                                                                                                                                      |
 | Automation   | The watch, the CI wait, the request sources that are on (pull request comments, `phada enqueue`, `phada mcp`, Slack), the hooks and the `when` commands                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | Provider     | The provider and model you chose and where they come from, the language, each AI checked (installed, logged in, Ollama running and its models) with the command that fixes it, and your MCP servers; `c`, `L` and `l` change them                                                                                                                                                                                                                                                                                                                                                 |
 | Graph        | The [map](#repository-map) of each repository of the Repositories screen: whether it is indexed, its commit, files, symbols and size → its commit and branch, when it was indexed and how long it took, its files per language, its symbols by kind, its imports, exports, calls and uses, and the files left out and why, and its connections: each related repository it declares (`context.repos`) linked by the packages one publishes and the other uses, without a link, or not indexed and why; `i` indexes it and `I` the related ones not indexed; `s` explores a symbol |
@@ -109,8 +109,8 @@ item, `Esc` goes back, `r` reads again what comes from GitHub or the AI CLIs, an
 What is on your machine (the config, the history, the queue) is read every 2 seconds; what comes
 from GitHub or the AI CLIs is read when a screen opens and on `r`. The app writes only what
 [Changing your config from the app](#changing-your-config-from-the-app) lists, and the history
-only for a review you run from it, as `phada review` does (just reading it never creates its
-file). It reads each map without changing it: a map that is
+only for a review or the watch you run from it, as `phada review` and `phada watch` do (just
+reading it never creates its file). It reads each map without changing it: a map that is
 missing, made by another version of Phada or that cannot be read is shown as such on the Graph
 screen, until you index it. The connections of the Graph come only from your machine: the
 manifests and the `.phada/config.yml` of the indexed commit, read from the local copy the index
@@ -196,6 +196,21 @@ never writes on the app. `Esc` goes one step back. While a review runs, `q` and 
 before quitting (`Enter` cancels it and quits, waiting for a publication under way; `Esc` stays;
 a second `Ctrl-C` cancels and quits at once).
 
+### Running the watch from the app
+
+`w` on the Queue screen, or `/watch` in the palette from any screen, starts the watch in the app:
+the same watch as `phada watch` (your `watch:` settings, the lock, the history, the hooks and
+Slack), until you stop it. The Queue says whether the watch runs in this app, in another terminal
+(with its PID; `w` then only says so) or not at all, and what kept it from starting, in one line.
+Under the jobs, its log: what it queued, started, published, skipped or retried, its warnings, the
+time of each line, and the step of the review under way on the running job; `l` opens the last 200
+lines. With the watch running here, `w` (or `/watch`) asks before stopping it after the current
+review; `Enter` stops, `Esc` keeps it running. Quitting with `q`, `Esc` or `Ctrl-C` asks too:
+`Enter` lets the current review finish and quits, a second `Ctrl-C` stops the AI at once and puts
+the pull request back in the queue, and a `SIGTERM` does that without asking. A review you start
+from the app while the watch runs here (only look) has its own AI CLI: cancelling one never stops
+the other.
+
 ### Changing your config from the app
 
 - **Provider**: `c` changes the AI and its model (the choice of the setup's AI step, with the
@@ -231,7 +246,9 @@ The app writes:
   Graph and Repositories screens, in the cache, as `phada index` does (on its default branch,
   replacing a map made by another version of Phada or that cannot be read);
 - a repository's `.phada/` only through `phada init`, in the setup's step 6;
-- the [history](#history), with a review you run from the app, as `phada review` does.
+- the [history](#history), with a review or the watch you run from the app, as `phada review` and
+  `phada watch` do (the watch also takes its lock and keeps the index of each default branch up
+  to date).
 
 Comments, the order of the keys and the lines a change does not touch stay as you wrote them. When
 a line cannot be kept as written (an indentation of 4 spaces, for example), the change says that

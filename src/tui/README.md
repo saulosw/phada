@@ -156,6 +156,18 @@ asking and exit `interrupted` or `terminated`. `stop()` is the gentle end (cance
 publishing, or finish the job under way) and `abort()` the immediate one; both keep the screen
 mounted until the app exits.
 
+## The watch of the app (`app-watch.tsx`)
+
+The shell holds the watch the app runs (`useWatchSession()`, above the screens, so switching tabs
+or opening a flow keeps it and its log) and gives it to the screens through **`useAppWatch()`**:
+its `phase` (`idle`, `starting`, `running`, `stopping`), a `notice` (held by another PID, or why it
+did not start), its `log` (`WatchLogEntry`, the last 200 on the app clock, drawn with
+`watchLogText()` of `watch-log.ts`), the `running` job with its review steps, and the stop
+question (`asking`, `toggle(holder)`, `confirmStop()`, `keepRunning()`). It starts through
+`AppDeps.startWatch(observer)`, which says when another PID holds the lock; `AppDeps.pid` tells
+the lock of this app from another one. While it runs it holds a quit guard: `stop()` waits for the
+current review, `abort()` stops at once.
+
 ## A picker inside a screen (`sub-view.tsx`)
 
 The pickers the setup uses (`ProviderPicker`, `RepositoryPicker`, `LanguagePicker`) also edit from
