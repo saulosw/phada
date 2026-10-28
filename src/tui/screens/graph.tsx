@@ -43,6 +43,7 @@ import { textWidth } from '../tab-layout.js'
 import { TextFieldLine, useTextField } from '../text-field.js'
 import { fit, namesText, oneLine, shortenHome, wrapText } from '../text-fit.js'
 import { bytesText, durationText } from '../units.js'
+import { shortSha } from '../refs.js'
 
 const INDEXES_KEY = 'graph-indexes'
 const CONNECTIONS_KEY = 'graph-connections'
@@ -50,7 +51,6 @@ const PACKAGES_SHOWN = 5
 const BRANCH_INDENT = 2
 const GAP = '  '
 const MIN_NAME_WIDTH = 12
-const SHORT_SHA = 7
 const EXTENSIONS_SHOWN = 3
 const NO_VALUE = '–'
 
@@ -343,7 +343,7 @@ function listCells(
   return {
     name: oneLine(repo),
     state: m.states[index.state],
-    commit: indexed === undefined ? NO_VALUE : indexed.snapshot.sha.slice(0, SHORT_SHA),
+    commit: indexed === undefined ? NO_VALUE : shortSha(indexed.snapshot.sha),
     files: indexed === undefined ? NO_VALUE : m.amount(indexed.summary.files.indexed),
     symbols: indexed === undefined ? NO_VALUE : m.amount(symbolTotal(indexed.summary.symbols)),
     size:
@@ -469,7 +469,7 @@ function indexLines(
             ],
             [
               d.commit,
-              `${snapshot.sha.slice(0, SHORT_SHA)} · ${snapshot.defaultBranch ? d.defaultBranch : oneLine(snapshot.ref)}`,
+              `${shortSha(snapshot.sha)} · ${snapshot.defaultBranch ? d.defaultBranch : oneLine(snapshot.ref)}`,
             ],
             [d.took, durationText(snapshot.durationMs)],
             [d.files, d.filesValue(summary.files.indexed, leftOut)],

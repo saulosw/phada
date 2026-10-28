@@ -27,6 +27,7 @@ import { fit, namesText, oneLine, shortenHome } from '../text-fit.js'
 import { stepText } from '../review-steps.js'
 import { watchLogText, watchLogTone } from '../watch-log.js'
 import type { WatchLogEntry } from '../watch-log.js'
+import { pullRef, shortSha } from '../refs.js'
 
 interface QueueRow {
   kind: QueueRowKind
@@ -485,11 +486,7 @@ function errorText(job: QueueJob['job']): string | undefined {
 }
 
 function jobRef(entry: QueueJob): string {
-  return oneLine(`${entry.job.repo}#${entry.job.number}`)
-}
-
-function shortSha(sha: string): string {
-  return sha.slice(0, 7)
+  return pullRef(entry.job.repo, entry.job.number)
 }
 
 function kindColor(kind: QueueRowKind, { colors }: Theme): string | undefined {

@@ -33,8 +33,8 @@ import { useRepositoryIndexing } from './repository-indexing.js'
 import { ScrollList, useSelection } from './scroll-list.js'
 import { textWidth } from './tab-layout.js'
 import { fit, namesText, oneLine } from './text-fit.js'
+import { shortSha } from './refs.js'
 
-const SHORT_SHA = 7
 const INDENT = '  '
 const MAX_LOCATION_WIDTH = 36
 const LINKED_SHOWN = 3
@@ -169,7 +169,7 @@ function SearchState({
             )
           : [
               ...textLines(
-                m.notFound(oneLine(name), oneLine(repo), (commit ?? '').slice(0, SHORT_SHA)),
+                m.notFound(oneLine(name), oneLine(repo), shortSha(commit ?? '')),
                 size.columns,
               ),
               ...textLines(m.notFoundHint, size.columns, colors.dim),

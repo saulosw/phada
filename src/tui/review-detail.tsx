@@ -9,6 +9,7 @@ import { sourceOf } from './run-text.js'
 import { textWidth } from './tab-layout.js'
 import type { Theme } from './theme.js'
 import { fit, oneLine, wrapText } from './text-fit.js'
+import { pullRef, shortSha } from './refs.js'
 
 const PLACE_SHARE = 0.4
 const GAP = '  '
@@ -31,7 +32,7 @@ export function reviewDetailLines(
     `${absoluteTime(run.startedAt)} (${relativeTime(run.startedAt, time, messages.time)})`,
     ...(ai.length === 0 ? [] : [ai.join(' ')]),
     m.sources[sourceOf(run)],
-    run.headSha.slice(0, 7),
+    shortSha(run.headSha),
   ].join(' · ')
   const error =
     run.error ?? (run.status === 'failed' || run.status === 'skipped' ? run.reason : undefined)
@@ -39,7 +40,7 @@ export function reviewDetailLines(
     lines.length === 0 ? [] : [<Text> </Text>, <Text bold>{heading}</Text>, ...lines]
   const lines: ReactNode[] = [
     <Text bold>
-      {oneLine(`${run.repo}#${run.number}`)}
+      {pullRef(run.repo, run.number)}
       {title}
     </Text>,
     <Text color={colors.info}>{oneLine(detail.pullRequest.url)}</Text>,

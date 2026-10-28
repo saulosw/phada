@@ -21,6 +21,7 @@ import { ScrollList, ScrollText, useSelection } from '../scroll-list.js'
 import { textWidth } from '../tab-layout.js'
 import { TextFieldLine, useTextField } from '../text-field.js'
 import { fit, oneLine } from '../text-fit.js'
+import { pullRef } from '../refs.js'
 
 export const REVIEWS_SHOWN = 200
 const MIN_REF_WIDTH = 12
@@ -115,7 +116,7 @@ function ReviewList({
   const time = now()
   const rows = runs.map((run) => ({
     run,
-    ref: oneLine(`${run.repo}#${run.number}`),
+    ref: pullRef(run.repo, run.number),
     title: oneLine(run.title ?? ''),
     verdict: verdictLabel(run, messages),
     score: run.score === undefined ? '–' : `${run.score}/5`,

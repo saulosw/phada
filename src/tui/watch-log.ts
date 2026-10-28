@@ -5,6 +5,7 @@ import type { UiMessages } from './i18n/messages.js'
 import { refusalText } from './refusal-text.js'
 import { clockTime } from './relative-time.js'
 import { namesText, oneLine } from './text-fit.js'
+import { pullRef, shortSha } from './refs.js'
 
 export type WatchLogLine =
   | { kind: 'event'; event: WatchEvent }
@@ -86,24 +87,28 @@ function eventText(event: WatchEvent, messages: UiMessages): string {
     case 'baseline':
       return l.baseline(oneLine(event.repo), event.count)
     case 'queued':
-      return l.queued(ref(event.job), sha(event.job.headSha), time(event.job.notBefore))
+      return l.queued(ref(event.job), shortSha(event.job.headSha), time(event.job.notBefore))
     case 'superseded':
-      return l.superseded(ref(event.job), sha(event.job.headSha))
+      return l.superseded(ref(event.job), shortSha(event.job.headSha))
     case 'started':
-      return l.started(ref(event.job), sha(event.job.headSha))
+      return l.started(ref(event.job), shortSha(event.job.headSha))
     case 'waiting': {
       const pending = event.job.ciPending ?? []
       return l.waiting(
         ref(event.job),
-        sha(event.job.headSha),
+        shortSha(event.job.headSha),
         time(event.job.ciDeadline ?? event.job.notBefore),
         pending.length === 0 ? q.noChecks : q.pending(pending.length, names(pending)),
       )
     }
     case 'ciFailing':
-      return l.ciFailing(ref(event.job), sha(event.job.headSha), names(event.job.ciFailing ?? []))
+      return l.ciFailing(
+        ref(event.job),
+        shortSha(event.job.headSha),
+        names(event.job.ciFailing ?? []),
+      )
     case 'ciCleared':
-      return l.ciCleared(ref(event.job), sha(event.job.headSha))
+      return l.ciCleared(ref(event.job), shortSha(event.job.headSha))
     case 'finished':
       return finishedText(event.job, event.run, messages)
     case 'retry':
@@ -116,11 +121,11 @@ function eventText(event: WatchEvent, messages: UiMessages): string {
     case 'failed':
       return l.failed(ref(event.job), reason(event.error))
     case 'indexed':
-      return l.indexed(oneLine(event.repo), sha(event.sha))
+      return l.indexed(oneLine(event.repo), shortSha(event.sha))
     case 'indexPartial':
       return l.indexPartial(oneLine(event.repo))
     case 'feedback':
-      return l.feedback(oneLine(`${event.repo}#${event.number}`), event.threads)
+      return l.feedback(pullRef(event.repo, event.number), event.threads)
     case 'warning':
       return l.warning(oneLine(event.message))
     case 'limited':
@@ -128,7 +133,7 @@ function eventText(event: WatchEvent, messages: UiMessages): string {
     case 'refused':
       return l.refused(
         messages.requests.sources[event.request.source],
-        oneLine(`${event.request.repo}#${event.request.number}`),
+        pullRef(event.request.repo, event.request.number),
         refusalText(event.result, messages),
       )
   }
@@ -150,7 +155,7 @@ function finishedText(job: Job, run: ReviewRun, messages: UiMessages): string {
     case 'not-published':
       return l.notPublished(ref(job))
     case 'superseded':
-      return l.moved(ref(job), sha(publication.headSha))
+      return l.moved(ref(job), shortSha(publication.headSha))
     case 'closed-or-draft':
       return l.closed(ref(job))
     case 'dry-run':
@@ -161,11 +166,7 @@ function finishedText(job: Job, run: ReviewRun, messages: UiMessages): string {
 }
 
 function ref(job: Job): string {
-  return oneLine(`${job.repo}#${job.number}`)
-}
-
-function sha(value: string): string {
-  return oneLine(value.slice(0, 7))
+  return pullRef(job.repo, job.number)
 }
 
 function time(at: string): string {

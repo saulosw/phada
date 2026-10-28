@@ -39,10 +39,10 @@ import { textWidth } from '../tab-layout.js'
 import type { Theme } from '../theme.js'
 import { fit, oneLine, shortenHome, wrapText } from '../text-fit.js'
 import { bytesText } from '../units.js'
+import { shortSha } from '../refs.js'
 
 const GAP = '  '
 const MIN_NAME_WIDTH = 16
-const SHORT_SHA = 7
 
 const repoKey = ({ repo }: ListedRepository) => repo
 
@@ -518,7 +518,7 @@ function indexLines(
     index.indexedSha === null
       ? undefined
       : [
-          index.indexedSha.slice(0, SHORT_SHA),
+          shortSha(index.indexedSha),
           ...(index.checkedAt === null
             ? []
             : [

@@ -39,6 +39,7 @@ import { ScrollList, ScrollText, useSelection } from './scroll-list.js'
 import { TextFieldLine, useTextField } from './text-field.js'
 import { fit, oneLine, wrapText } from './text-fit.js'
 import { durationText } from './units.js'
+import { pullRef, shortSha } from './refs.js'
 
 type FlowStep =
   | { kind: 'pick'; typing: boolean }
@@ -512,7 +513,7 @@ function EnqueueStep({
             : wrapped(
                 (state.value.result.status === 'queued' ? m.enqueue.queued : m.enqueue.joined)(
                   state.value.result.job.id,
-                  oneLine(state.value.result.job.headSha.slice(0, 7)),
+                  shortSha(state.value.result.job.headSha),
                 ),
                 theme.colors.ok,
               )),
@@ -807,7 +808,7 @@ function pullRequestText(target: PullRequestTarget, title: string | null): strin
 }
 
 function refText({ owner, repo, number }: PullRequestTarget): string {
-  return oneLine(`${owner}/${repo}#${number}`)
+  return pullRef(`${owner}/${repo}`, number)
 }
 
 function targetOf(repo: string, number: number): PullRequestTarget {
