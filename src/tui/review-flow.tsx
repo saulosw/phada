@@ -139,6 +139,12 @@ export function ReviewFlow({
           title={step.title}
           mode={step.mode}
           onClose={onClose}
+          onWatchRunning={(watch) =>
+            setStack((current) => [
+              ...current.slice(0, -2),
+              { kind: 'confirm', target: step.target, title: step.title, watch },
+            ])
+          }
         />
       )
     case 'enqueue':
@@ -516,7 +522,11 @@ function EnqueueStep({
 
 type RunOutcome =
   | { status: 'running' }
-  | { status: 'done'; review: RequestedReview; endedAt: number }
+  | {
+      status: 'done'
+      review: Exclude<RequestedReview, { status: 'watch-running' }>
+      endedAt: number
+    }
   | { status: 'failed'; error: unknown; endedAt: number }
 
 function RunStep({
@@ -524,11 +534,13 @@ function RunStep({
   title,
   mode,
   onClose,
+  onWatchRunning,
 }: {
   target: PullRequestTarget
   title: string | null
   mode: ReviewMode
   onClose(): void
+  onWatchRunning(pid: number): void
 }) {
   const { reviewPullRequest, now, scheduler } = useAppDeps()
   const messages = useMessages()
@@ -545,6 +557,8 @@ function RunStep({
   const controller = useRef(new AbortController())
   const publishingNow = useRef(false)
   const settled = useRef<Promise<void>>(Promise.resolve())
+  const watchRunning = useRef(onWatchRunning)
+  watchRunning.current = onWatchRunning
   const running = outcome.status === 'running'
   const publishing = steps.steps.some(({ kind }) => kind === 'publish')
   const cancellable = running && !publishing && !cancelling
@@ -565,7 +579,9 @@ function RunStep({
       stop.signal,
     ).then(
       (review) => {
-        if (mounted) setOutcome({ status: 'done', review, endedAt: clock() })
+        if (!mounted) return
+        if (review.status === 'watch-running') watchRunning.current(review.pid)
+        else setOutcome({ status: 'done', review, endedAt: clock() })
       },
       (error: unknown) => {
         if (mounted) setOutcome({ status: 'failed', error, endedAt: clock() })
@@ -740,7 +756,7 @@ function warningLines(warnings: readonly string[], { messages, theme, width }: D
 }
 
 function resultLines(
-  review: Exclude<RequestedReview, { status: 'cancelled' }>,
+  review: Exclude<RequestedReview, { status: 'cancelled' | 'watch-running' }>,
   steps: ReviewSteps,
   draw: DrawContext,
   elapsed: string,

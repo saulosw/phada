@@ -29,4 +29,5 @@ export type EnqueuedReview = { status: 'no-token' } | { status: 'submitted'; res
 export type RequestedReview =
   | { status: 'no-token' }
   | { status: 'cancelled' }
+  | { status: 'watch-running'; pid: number }
   | { status: 'reviewed'; detail: ReviewDetail; history: HistorySave }

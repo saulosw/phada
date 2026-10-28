@@ -599,6 +599,42 @@ describe('reviewing a pull request from the app', () => {
     await flow.showing('Review pull requests with the AI you already use.')
   })
 
+  it.each([
+    ['failed', () => Promise.reject(new Error('history unreadable'))],
+    ['still loading', () => new Promise<never>(() => undefined)],
+  ] as const)(
+    'puts it in the queue when the queue read %s and a watch holds the lock at publishing',
+    async (_case, readQueue) => {
+      const enqueues: PullRequestTarget[] = []
+      const flow = openFlow({
+        deps: {
+          readQueue,
+          enqueueReview: async (target) => {
+            enqueues.push(target)
+            return { status: 'no-token' }
+          },
+        },
+      })
+      await flow.fromPalette()
+      await flow.type('acme/shop#12')
+      await flow.press(KEYS.enter)
+      await flow.showing('Review and publish')
+      await flow.press(KEYS.down, KEYS.enter)
+      await flow.showing('Publish the review on GitHub?')
+      await flow.showing('@ana')
+      await flow.press(KEYS.enter)
+      await flow.until(() => flow.asked.length === 1)
+      flow.asked[0]?.resolve({ status: 'watch-running', pid: 4242 })
+      await flow.showing('Put the pull request in the queue? The watch publishes the review.')
+      expect(flow.frame()).toMatch(/Watch\s+running \(PID 4242\)/)
+      expectFits(flow.frame(), { columns: 80, rows: 24 })
+      await flow.press(KEYS.enter)
+      await flow.until(() => enqueues.length === 1)
+      expect(enqueues).toEqual([TARGET])
+      expect(flow.asked).toHaveLength(1)
+    },
+  )
+
   it('still only looks here when a watch runs', async () => {
     const flow = watching(async () => ({ status: 'no-token' }))
     await flow.fromPalette()

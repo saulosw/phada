@@ -30,6 +30,7 @@ export interface AppReviewDeps extends ManualReviewDeps, RequestWiringDeps, GitH
   listOpenPullRequests: (
     options: RepositoryFilesOptions & { etag?: string },
   ) => Promise<PullListing>
+  lockHolder: (path: string) => Promise<number | undefined>
   childScope?: () => ChildScope
 }
 
@@ -56,6 +57,10 @@ export function appReview(deps: AppReviewDeps): AppReview {
   ) => {
     const token = await readGitHubToken(deps)
     if (token === undefined) return { status: 'no-token' }
+    if (mode === 'publish') {
+      const holder = await deps.lockHolder(dataFiles(deps.env, deps.home).lock)
+      if (holder !== undefined) return { status: 'watch-running', pid: holder }
+    }
     if (signal?.aborted === true) return { status: 'cancelled' }
     const children = (deps.childScope ?? childScope)()
     const kill = () => children.kill()

@@ -79,6 +79,7 @@ function harness(changes: Partial<AppReviewDeps> = {}) {
     clock: () => new Date('2026-10-28T12:00:00.000Z'),
     listOpenPullRequests: async () => ({ status: 'ok', pulls: [] }),
     fetchPullRequestMetadata: async () => pullRequestFixture(),
+    lockHolder: async () => undefined,
     ...changes,
   }
   return { deps, posts, providers, written, data }
@@ -147,6 +148,28 @@ describe('a review the app asks for', () => {
       },
     })
     expect(written).toEqual([])
+  })
+
+  it('publishes nothing while a watch holds the lock, saying which, and still only looks', async () => {
+    const locks: string[] = []
+    const { deps, posts, providers, data } = harness({
+      lockHolder: async (path) => {
+        locks.push(path)
+        return 4242
+      },
+    })
+    const review = appReview(deps)
+
+    expect(await review.reviewPullRequest(TARGET, 'publish', () => undefined)).toEqual({
+      status: 'watch-running',
+      pid: 4242,
+    })
+    expect(posts).toEqual([])
+    expect(providers).toEqual([])
+    expect(locks).toEqual([join(data, 'watch.lock')])
+    expect(await review.reviewPullRequest(TARGET, 'look', () => undefined)).toMatchObject({
+      status: 'reviewed',
+    })
   })
 
   it('says when there is no GitHub token, without reviewing', async () => {
