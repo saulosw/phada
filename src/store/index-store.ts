@@ -1,4 +1,4 @@
-import { mkdir, rm } from 'node:fs/promises'
+import { access, mkdir, rm } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
 import type { Language } from '../repo-map/languages.js'
@@ -127,6 +127,161 @@ export async function openIndexStore(
   const recreated = openDatabase(sqlite, path, version)
   if (!recreated.ok) throw recreated.error
   return new SqliteIndexStore(path, recreated.db, opened.existed, now)
+}
+
+export const RELATED_REF = 'refs/phada/default'
+const DEFAULT_BRANCH_REFS: readonly string[] = ['HEAD', RELATED_REF]
+
+export interface IndexSnapshot {
+  sha: string
+  ref: string
+  indexedAt: string
+  durationMs: number
+}
+
+export interface LeftOutPath {
+  path: string
+  status: Exclude<FileStatus, 'indexed'>
+}
+
+export interface ReadOnlyIndex {
+  readonly path: string
+  readonly snapshot: IndexSnapshot | null
+  summary(sha: string): IndexSummary
+  leftOut(sha: string): LeftOutPath[]
+  reader(sha: string): IndexReader
+  close(): void
+}
+
+export interface IndexVersion {
+  schemaVersion: string | null
+  phadaVersion: string | null
+}
+
+export type IndexOpening =
+  | { status: 'open'; index: ReadOnlyIndex }
+  | { status: 'missing'; path: string }
+  | { status: 'other-version'; path: string; found: IndexVersion; expected: IndexVersion }
+  | { status: 'unreadable'; path: string; error: IndexStoreError }
+
+export interface OpenExistingIndexOptions {
+  version: string
+  loadSqlite?: () => Promise<Sqlite>
+  exists?: (path: string) => Promise<boolean>
+}
+
+export async function openExistingIndexStore(
+  path: string,
+  options: OpenExistingIndexOptions,
+): Promise<IndexOpening> {
+  if (!(await (options.exists ?? fileExists)(path))) return { status: 'missing', path }
+  const unreadable = (reason: string): IndexOpening => ({
+    status: 'unreadable',
+    path,
+    error: new IndexStoreError(`Cannot read the index at ${path}: ${reason}`),
+  })
+  let sqlite: Sqlite
+  try {
+    sqlite = await (options.loadSqlite ?? (() => import('node:sqlite')))()
+  } catch {
+    return unreadable('reading it needs Node.js 22.13 or newer')
+  }
+  let db: DatabaseSync
+  try {
+    db = new sqlite.DatabaseSync(path, { readOnly: true })
+  } catch (error) {
+    return unreadable((error as Error).message)
+  }
+  try {
+    db.exec('pragma busy_timeout = 5000')
+    const hasMeta = db
+      .prepare("select 1 from sqlite_master where type = 'table' and name = 'meta'")
+      .get()
+    if (hasMeta === undefined) {
+      db.close()
+      return unreadable('it is not a Phada index')
+    }
+    const meta = new Map(
+      db
+        .prepare('select key, value from meta')
+        .all()
+        .map((row) => [String(row.key), String(row.value)]),
+    )
+    const found = {
+      schemaVersion: meta.get('schema_version') ?? null,
+      phadaVersion: meta.get('phada_version') ?? null,
+    }
+    const expected = { schemaVersion: String(SCHEMA_VERSION), phadaVersion: options.version }
+    if (
+      found.schemaVersion !== expected.schemaVersion ||
+      found.phadaVersion !== expected.phadaVersion
+    ) {
+      db.close()
+      return { status: 'other-version', path, found, expected }
+    }
+    return { status: 'open', index: new SqliteReadOnlyIndex(path, db, latestSnapshot(db)) }
+  } catch (error) {
+    db.close()
+    return unreadable(isNotADatabase(error) ? 'it is not a Phada index' : (error as Error).message)
+  }
+}
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function latestSnapshot(db: DatabaseSync): IndexSnapshot | null {
+  const refs = DEFAULT_BRANCH_REFS.map(() => '?').join(', ')
+  const row =
+    db
+      .prepare(`select * from snapshot where ref in (${refs}) order by seq desc limit 1`)
+      .get(...DEFAULT_BRANCH_REFS) ??
+    db.prepare('select * from snapshot order by seq desc limit 1').get()
+  if (row === undefined) return null
+  return {
+    sha: String(row.sha),
+    ref: String(row.ref),
+    indexedAt: String(row.indexed_at),
+    durationMs: Number(row.duration_ms),
+  }
+}
+
+class SqliteReadOnlyIndex implements ReadOnlyIndex {
+  readonly path: string
+  readonly snapshot: IndexSnapshot | null
+  readonly #db: DatabaseSync
+
+  constructor(path: string, db: DatabaseSync, snapshot: IndexSnapshot | null) {
+    this.path = path
+    this.#db = db
+    this.snapshot = snapshot
+  }
+
+  summary(sha: string): IndexSummary {
+    return summarize(this.#db, sha)
+  }
+
+  leftOut(sha: string): LeftOutPath[] {
+    return this.#db
+      .prepare(
+        "select path, status from snapshot_file where commit_sha = ? and status != 'indexed' order by path",
+      )
+      .all(sha)
+      .map((row) => ({ path: String(row.path), status: row.status as LeftOutPath['status'] }))
+  }
+
+  reader(sha: string): IndexReader {
+    return new SqliteIndexReader(this.#db, sha)
+  }
+
+  close(): void {
+    this.#db.close()
+  }
 }
 
 type Opened = { ok: true; db: DatabaseSync } | { ok: false; existed: boolean; error: Error }
@@ -323,56 +478,7 @@ class SqliteIndexStore implements IndexStore {
   }
 
   summary(sha: string): IndexSummary {
-    const files = Object.fromEntries(FILE_STATUSES.map((status) => [status, 0])) as Record<
-      FileStatus,
-      number
-    >
-    for (const row of this.#db
-      .prepare(
-        'select status, count(*) as n from snapshot_file where commit_sha = ? group by status',
-      )
-      .all(sha)) {
-      files[row.status as FileStatus] = Number(row.n)
-    }
-    const indexed =
-      "from snapshot_file f join %s on %s.blob_id = f.blob_id where f.commit_sha = ? and f.status = 'indexed'"
-    const grouped = (table: string, column: string) =>
-      Object.fromEntries(
-        this.#db
-          .prepare(
-            `select ${table}.${column} as key, count(*) as n ${indexed.replaceAll('%s', table)} group by ${table}.${column}`,
-          )
-          .all(sha)
-          .map((row) => [String(row.key), Number(row.n)]),
-      )
-    const counted = (table: string) =>
-      Number(
-        this.#db.prepare(`select count(*) as n ${indexed.replaceAll('%s', table)}`).get(sha)?.n ??
-          0,
-      )
-    const languages = Object.fromEntries(
-      this.#db
-        .prepare(
-          "select language, count(*) as n from snapshot_file where commit_sha = ? and status = 'indexed' group by language",
-        )
-        .all(sha)
-        .map((row) => [String(row.language), Number(row.n)]),
-    )
-    const parseErrors = this.#db
-      .prepare(
-        "select coalesce(sum(b.parse_errors), 0) as n from snapshot_file f join blob b on b.id = f.blob_id where f.commit_sha = ? and f.status = 'indexed'",
-      )
-      .get(sha)
-    return {
-      files,
-      languages,
-      symbols: grouped('symbol', 'kind'),
-      imports: counted('import_item'),
-      exports: counted('export_item'),
-      calls: counted('call_site'),
-      references: counted('reference'),
-      parseErrors: Number(parseErrors?.n ?? 0),
-    }
+    return summarize(this.#db, sha)
   }
 
   reader(sha: string): IndexReader {
@@ -470,5 +576,53 @@ class SqliteIndexStore implements IndexStore {
       this.#db.exec('rollback')
       throw error
     }
+  }
+}
+
+function summarize(db: DatabaseSync, sha: string): IndexSummary {
+  const files = Object.fromEntries(FILE_STATUSES.map((status) => [status, 0])) as Record<
+    FileStatus,
+    number
+  >
+  for (const row of db
+    .prepare('select status, count(*) as n from snapshot_file where commit_sha = ? group by status')
+    .all(sha)) {
+    files[row.status as FileStatus] = Number(row.n)
+  }
+  const indexed =
+    "from snapshot_file f join %s on %s.blob_id = f.blob_id where f.commit_sha = ? and f.status = 'indexed'"
+  const grouped = (table: string, column: string) =>
+    Object.fromEntries(
+      db
+        .prepare(
+          `select ${table}.${column} as key, count(*) as n ${indexed.replaceAll('%s', table)} group by ${table}.${column}`,
+        )
+        .all(sha)
+        .map((row) => [String(row.key), Number(row.n)]),
+    )
+  const counted = (table: string) =>
+    Number(db.prepare(`select count(*) as n ${indexed.replaceAll('%s', table)}`).get(sha)?.n ?? 0)
+  const languages = Object.fromEntries(
+    db
+      .prepare(
+        "select language, count(*) as n from snapshot_file where commit_sha = ? and status = 'indexed' group by language",
+      )
+      .all(sha)
+      .map((row) => [String(row.language), Number(row.n)]),
+  )
+  const parseErrors = db
+    .prepare(
+      "select coalesce(sum(b.parse_errors), 0) as n from snapshot_file f join blob b on b.id = f.blob_id where f.commit_sha = ? and f.status = 'indexed'",
+    )
+    .get(sha)
+  return {
+    files,
+    languages,
+    symbols: grouped('symbol', 'kind'),
+    imports: counted('import_item'),
+    exports: counted('export_item'),
+    calls: counted('call_site'),
+    references: counted('reference'),
+    parseErrors: Number(parseErrors?.n ?? 0),
   }
 }
