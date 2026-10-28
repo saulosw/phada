@@ -1,12 +1,3 @@
-import { reviewAndPublish } from './app/review-and-publish.js'
-import type { ReviewAndPublishDeps, ReviewRun } from './app/review-and-publish.js'
-import { errorMessage } from './app/error-message.js'
-import { recordReviewFeedback } from './app/feedback.js'
-import { historyRun } from './cli/history-run.js'
-import type { RunMeta } from './cli/history-run.js'
-import { dataFiles } from './config/data-paths.js'
-import type { ConfigLayer } from './config/types.js'
-import { historyEnabled } from './config/watch-settings.js'
 import type { PullRequestReview } from './app/review-pull-request.js'
 import { assertAppTerminal, runApp } from './cli/app-command.js'
 import type { AppCommandDeps } from './cli/app-command.js'
@@ -40,23 +31,15 @@ import { runInit } from './cli/init.js'
 import { runPrompt } from './cli/prompt-command.js'
 import { runRules } from './cli/rules-command.js'
 import { runHistory, runHistoryPrune } from './cli/history-command.js'
-import {
-  ciReaders,
-  mcpNameChecker,
-  pullRequestReviewDeps,
-  renderReview,
-  reviewAndPublishEvents,
-  reviewRunJson,
-} from './cli/review-wiring.js'
+import { reviewRunJson } from './cli/review-wiring.js'
+import { prepareReview, runManualReview } from './cli/manual-review.js'
+import type { ReviewRun } from './app/review-and-publish.js'
+import type { HistorySave } from './app/requested-review.js'
 import { assertProviderChoice } from './cli/provider-choice.js'
 import type { ProviderOptions } from './cli/provider-choice.js'
 export { assertProviderChoice } from './cli/provider-choice.js'
 export type { ProviderOptions } from './cli/provider-choice.js'
-import type { Choice } from './cli/review-wiring.js'
 import { toTerminalText } from './app/terminal-text.js'
-import { resolveProvider } from './config/merge-config.js'
-import { resolveMcp, userMcp } from './config/mcp-servers.js'
-import { loadUserLayers } from './config/user-config.js'
 import { formatPullRequestRef } from './github/pull-request-ref.js'
 import type { PullRequest } from './github/pull-request.js'
 import { runEnqueue } from './cli/enqueue-command.js'
@@ -144,34 +127,24 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
     }
 
     const token = await requireGitHubToken(deps)
-    const { owner, repo } = command.ref
-    const userLayers = await loadUserLayers({
-      env: deps.env,
-      home: deps.home,
-      owner,
-      repo,
-      files: deps.files,
-    })
-    const choice = resolveProvider({ provider: command.provider, model: command.model }, userLayers)
-    const mcp = resolveMcp(userMcp(userLayers), deps.env)
-    assertProviderChoice(choice.provider, {
-      ...(choice.model === undefined ? {} : { model: choice.model }),
-      mcp,
-    })
-    const mcpNames = await mcpNameChecker(deps)(choice.provider, mcp.names)
-    const checked = mcpNames === undefined ? choice : { ...choice, mcpNames }
+    const prepared = await prepareReview(
+      command.ref,
+      token,
+      {
+        ...(command.provider === undefined ? {} : { provider: command.provider }),
+        ...(command.model === undefined ? {} : { model: command.model }),
+      },
+      deps,
+    )
 
     deps.onSignal(() => deps.abort(130))
     deps.stderr.write(`Fetching ${formatPullRequestRef(command.ref)}…\n`)
-    const startedAt = deps.clock().toISOString()
-    const reviewRun = await reviewAndPublish(
+    const { run: reviewRun, history } = await runManualReview(
+      prepared,
       {
-        ref: command.ref,
-        mode: 'manual',
         force: command.force,
         dryRun: command.dryRun,
-        publish: true,
-        ...(command.waitCi === true ? { waitCi: { since: startedAt } } : {}),
+        waitCi: command.waitCi === true,
         options: {
           language: command.language,
           minConfidence: command.minConfidence,
@@ -184,18 +157,14 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
           ...(command.ci === undefined ? {} : { ci: command.ci }),
           ...(command.skills === undefined ? {} : { skills: command.skills }),
         },
-        userLayers,
-        mcp,
       },
-      reviewAndPublishDeps(deps, token, checked, command),
+      deps,
+      {
+        progress: printReviewProgress(deps.stderr, deps.clock),
+        reviewed: (reviewed, pullRequest) => printReviewed(deps, command, reviewed, pullRequest),
+      },
     )
-    await saveRun(deps, userLayers, reviewRun, {
-      source: 'manual',
-      startedAt,
-      finishedAt: deps.clock().toISOString(),
-      provider: choice.provider,
-      ...(choice.model === undefined ? {} : { model: choice.model }),
-    })
+    printHistorySave(deps, history)
     printRun(deps, command, reviewRun)
     return 0
   } catch (error) {
@@ -206,48 +175,6 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
 }
 
 type ReviewCommand = Extract<CliCommand, { kind: 'review' }>
-
-function reviewAndPublishDeps(
-  deps: MainDeps,
-  token: string,
-  choice: Choice,
-  command: ReviewCommand,
-): ReviewAndPublishDeps {
-  const target = { ...command.ref, token }
-  const progress = printReviewProgress(deps.stderr, deps.clock)
-  const forever = new AbortController().signal
-  return {
-    fetchPullRequest: (ref) => deps.fetchPullRequest({ ...ref, token }),
-    fetchReviewState: (ref) => deps.fetchReviewState({ ...ref, token }),
-    fetchPullComments: (ref) => deps.fetchPullComments({ ...ref, token }),
-    ci: ciReaders(deps, target),
-    reviewDeps: (pullRequest) => pullRequestReviewDeps(deps, target, choice, pullRequest, progress),
-    render: renderReview,
-    createReview: (pullRequest, rendered) =>
-      deps.createReview({
-        ...target,
-        commitSha: pullRequest.headSha,
-        body: rendered.body,
-        comments: rendered.comments,
-      }),
-    compare: (pullRequest, base) =>
-      deps.fetchComparison({
-        owner: command.ref.owner,
-        repo: command.ref.repo,
-        token,
-        base,
-        head: pullRequest.headSha,
-      }),
-    replyAndResolve: (threadId, body) => deps.replyAndResolve({ token, threadId, body }),
-    clock: {
-      now: () => deps.clock().toISOString(),
-      sleep: (ms) => deps.sleep(ms, forever),
-    },
-    events: reviewAndPublishEvents(progress, (reviewed, pullRequest) =>
-      printReviewed(deps, command, reviewed, pullRequest),
-    ),
-  }
-}
 
 function printReviewed(
   deps: MainDeps,
@@ -359,36 +286,15 @@ function passesSection(run: ReviewRun, fixFor: BlockedFix): string {
   return passes === undefined ? '' : `${formatPassesSection(passes, fixFor)}\n`
 }
 
-async function saveRun(
-  deps: MainDeps,
-  userLayers: readonly ConfigLayer[],
-  run: ReviewRun,
-  meta: RunMeta,
-): Promise<void> {
-  if (!historyEnabled(userLayers)) return
-  try {
-    const history = await deps.openHistoryStore(dataFiles(deps.env, deps.home).history)
-    try {
-      const runId = history.addRun(historyRun(run, reviewRunJson(run), meta))
-      saveFeedback(deps, () =>
-        recordReviewFeedback(history, run, { runId, source: 'manual', now: meta.finishedAt }),
-      )
-    } finally {
-      history.close()
-    }
-  } catch (error) {
+function printHistorySave(deps: Pick<MainDeps, 'stderr'>, history: HistorySave): void {
+  if (history.status === 'not-saved') {
     deps.stderr.write(
-      `Warning: ${toTerminalText(errorMessage(error))}. This review is not saved in the history.\n`,
+      `Warning: ${toTerminalText(history.error)}. This review is not saved in the history.\n`,
     )
   }
-}
-
-function saveFeedback(deps: Pick<MainDeps, 'stderr'>, save: () => void): void {
-  try {
-    save()
-  } catch (error) {
+  if (history.status === 'saved' && history.feedbackError !== undefined) {
     deps.stderr.write(
-      `Warning: could not save the comments' feedback in the history (${toTerminalText(errorMessage(error))}).\n`,
+      `Warning: could not save the comments' feedback in the history (${toTerminalText(history.feedbackError)}).\n`,
     )
   }
 }
