@@ -120,15 +120,17 @@ export function ScrollText({
   lines,
   rows,
   active = true,
+  from = 'start',
 }: {
   lines: readonly ReactNode[]
   rows: number
   active?: boolean
+  from?: 'start' | 'end'
 }) {
-  const [offset, setOffset] = useState(0)
+  const [offset, setOffset] = useState<number | 'end'>(from === 'end' ? 'end' : 0)
   const visible = lines.length <= rows ? lines.length : Math.max(rows - 1, 1)
   const maxOffset = Math.max(lines.length - visible, 0)
-  const start = Math.min(offset, maxOffset)
+  const start = offset === 'end' ? maxOffset : Math.min(offset, maxOffset)
   const latestStart = useRef(start)
   latestStart.current = start
 
@@ -137,7 +139,7 @@ export function ScrollText({
     const next = moved(latestStart.current, maxOffset + 1, visible, key)
     if (next === undefined) return
     latestStart.current = next
-    setOffset(next)
+    setOffset(from === 'end' && next >= maxOffset ? 'end' : next)
   })
 
   const window = { start, end: start + visible, overflow: lines.length > rows }

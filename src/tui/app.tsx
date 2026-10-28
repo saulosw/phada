@@ -22,6 +22,7 @@ import type {
   ScreenControls,
   WorkingSignal,
 } from './app-context.js'
+import { AppWatchContext, useWatchSession } from './app-watch.js'
 import { POLL_MS, usePolled } from './data-hooks.js'
 import { ErrorBoundary } from './error-boundary.js'
 import { Footer } from './footer.js'
@@ -70,6 +71,7 @@ const INDEX_ID = 'index'
 const REVIEW_ID = 'review'
 const GRAPH_ID = 'graph'
 const QUEUE_ID = 'queue'
+const WATCH_ID = 'watch'
 
 export function App({ deps, size, onExit, screens = SCREENS, signals }: AppProps) {
   const theme = useMemo(() => resolveTheme(colorLevel(deps.env)), [deps.env])
@@ -177,6 +179,7 @@ function Shell({
     [],
   )
   const [quitting, setQuitting] = useState<Quitting | undefined>()
+  const watch = useWatchSession(holdGuard)
   useEffect(
     () =>
       signals?.(() => {
@@ -310,6 +313,15 @@ function Shell({
       label: messages.palette.review,
       names: [messages.palette.review, english.palette.review],
     },
+    ...(screens.some((screen) => screen.id === QUEUE_ID)
+      ? [
+          {
+            id: WATCH_ID,
+            label: messages.palette.watch,
+            names: [messages.palette.watch, english.palette.watch],
+          },
+        ]
+      : []),
     ...(screens.some((screen) => screen.id === GRAPH_ID)
       ? [
           {
@@ -371,7 +383,10 @@ function Shell({
               else if (id === LANGUAGE_ID) open('language')
               else if (id === REVIEW_ID) startReview()
               else if (id === INDEX_ID) show(screens.findIndex((screen) => screen.id === GRAPH_ID))
-              else show(screens.findIndex((screen) => screen.id === id))
+              else if (id === WATCH_ID) {
+                showScreen(QUEUE_ID)
+                watch.toggle()
+              } else show(screens.findIndex((screen) => screen.id === id))
             }}
           />
         )}
@@ -381,24 +396,26 @@ function Shell({
         >
           <ScreenContext.Provider value={controls}>
             <QuitGuardContext.Provider value={holdGuard}>
-              <ReviewStartContext.Provider value={startReview}>
-                {takeover === 'setup' ? (
-                  <Setup key={setupRun} onClose={leaveSetup} />
-                ) : takeover === 'review' ? (
-                  <ReviewFlow
-                    key={reviewRun}
-                    repo={reviewRepo}
-                    onClose={() => show(active)}
-                    onQueue={() => showScreen(QUEUE_ID)}
-                  />
-                ) : takeover === 'language' ? (
-                  <SubView onLeave={() => show(active)}>
-                    <LanguagePicker onDone={() => show(active)} />
-                  </SubView>
-                ) : (
-                  current !== undefined && <current.Screen key={current.id} />
-                )}
-              </ReviewStartContext.Provider>
+              <AppWatchContext.Provider value={watch}>
+                <ReviewStartContext.Provider value={startReview}>
+                  {takeover === 'setup' ? (
+                    <Setup key={setupRun} onClose={leaveSetup} />
+                  ) : takeover === 'review' ? (
+                    <ReviewFlow
+                      key={reviewRun}
+                      repo={reviewRepo}
+                      onClose={() => show(active)}
+                      onQueue={() => showScreen(QUEUE_ID)}
+                    />
+                  ) : takeover === 'language' ? (
+                    <SubView onLeave={() => show(active)}>
+                      <LanguagePicker onDone={() => show(active)} />
+                    </SubView>
+                  ) : (
+                    current !== undefined && <current.Screen key={current.id} />
+                  )}
+                </ReviewStartContext.Provider>
+              </AppWatchContext.Provider>
             </QuitGuardContext.Provider>
           </ScreenContext.Provider>
         </Box>

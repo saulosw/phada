@@ -39,3 +39,9 @@ export function absoluteTime(at: string): string {
   const two = (value: number) => String(value).padStart(2, '0')
   return `${date.getFullYear()}-${two(date.getMonth() + 1)}-${two(date.getDate())} ${two(date.getHours())}:${two(date.getMinutes())}`
 }
+
+export function clockTime(at: number): string {
+  const date = new Date(at)
+  const two = (value: number) => String(value).padStart(2, '0')
+  return `${two(date.getHours())}:${two(date.getMinutes())}:${two(date.getSeconds())}`
+}

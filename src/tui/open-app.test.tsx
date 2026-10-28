@@ -7,6 +7,7 @@ import type { AppProps } from './app.js'
 import { useQuitGuard } from './app-context.js'
 import type { AppDeps } from './app-context.js'
 import { openApp } from './open-app.js'
+import { QueueScreen } from './screens/queue.js'
 import type { AppHost, StopSignal } from './open-app.js'
 import type { ScreenDefinition } from './screens.js'
 
@@ -20,6 +21,7 @@ function host(options: { screens?: readonly ScreenDefinition[] } = {}) {
   const signals: ((signal?: StopSignal) => void)[] = []
   let renderedOptions: unknown
   let stdin: ReturnType<typeof render>['stdin'] | undefined
+  let frame = () => ''
   let exit = () => {}
   const exited = new Promise<void>((resolve) => {
     exit = resolve
@@ -36,6 +38,7 @@ function host(options: { screens?: readonly ScreenDefinition[] } = {}) {
         options.screens === undefined ? node : cloneElement(node, { screens: options.screens }),
       )
       stdin = app.stdin
+      frame = () => app.lastFrame() ?? ''
       return {
         unmount: () => {
           calls.push('unmount')
@@ -55,6 +58,8 @@ function host(options: { screens?: readonly ScreenDefinition[] } = {}) {
       if (stdin !== undefined) await writeKeys(stdin, [key])
     },
     renderedOptions: () => renderedOptions,
+    showing: (text: string) => waitFor(() => frame().includes(text)),
+    frame: () => frame(),
   }
 }
 
@@ -129,6 +134,38 @@ describe('openApp', () => {
     fake.signal(signal)
     expect(await result).toEqual(expected)
     expect(calls).toEqual(['abort'])
+    expect(fake.calls).toEqual(['unmount'])
+  })
+
+  it('aborts the watch running in the app on SIGTERM and gives the terminal back', async () => {
+    const calls: string[] = []
+    const fake = host({
+      screens: [{ id: 'queue', title: (messages) => messages.screens.queue, Screen: QueueScreen }],
+    })
+    const deps: AppDeps = {
+      ...DEPS,
+      startWatch: async () => {
+        calls.push('start')
+        return {
+          status: 'started',
+          control: {
+            done: new Promise(() => {}),
+            stop: () => calls.push('stop'),
+            abort: () => calls.push('abort'),
+          },
+        }
+      },
+    }
+    const result = openApp(deps, fake.appHost)
+    await fake.mounted()
+    await fake.press('w')
+    await fake.showing('Watch running in this app')
+    expect(fake.frame()).toContain('Watch running in this app')
+
+    fake.signal('SIGTERM')
+
+    expect(await result).toEqual({ kind: 'terminated' })
+    expect(calls).toEqual(['start', 'abort'])
     expect(fake.calls).toEqual(['unmount'])
   })
 

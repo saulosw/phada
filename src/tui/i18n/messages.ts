@@ -54,7 +54,14 @@ export interface UiMessages {
     refresh: string
   }
   help: { title: string; global: string }
-  palette: { title: string; empty: string; setup: string; index: string; review: string }
+  palette: {
+    title: string
+    empty: string
+    setup: string
+    index: string
+    review: string
+    watch: string
+  }
   tooSmall(columns: number, rows: number): string
   tooSmallHint: string
   home: HomeMessages
@@ -409,11 +416,14 @@ type RequestSource = QueueJob['requests'][number]['source']
 export type QueueRowKind = 'running' | 'waiting' | 'queued' | 'skipped' | 'failed'
 
 export interface QueueMessages {
-  running(pid: number): string
+  runningHere: string
+  runningElsewhere(pid: number): string
+  starting: string
+  stopping: string
   stopped: string
   lastCycle(when: string): string
   next(when: string): string
-  startWith: string
+  startHere: string
   notConfigured: string
   setUp(file: string): string
   paused(until: string, relative: string, reason: string): string
@@ -448,6 +458,52 @@ export interface QueueMessages {
     requests(count: number): string
     gone: string
   }
+  watch: {
+    start: string
+    stop: string
+    log: string
+    stopQuestion: string
+    stopConfirm: string
+    keepRunning: string
+    elsewhere(pid: number): string
+    startFailed(reason: string): string
+    quitQuestion: string
+  }
+  log: WatchLogMessages
+}
+
+export interface WatchLogMessages {
+  title: string
+  empty: string
+  watchStarted: string
+  watchStopping: string
+  watchStopped: string
+  watchAborted: string
+  watchFailed(reason: string): string
+  baseline(repo: string, count: number): string
+  queued(ref: string, sha: string, after: string): string
+  superseded(ref: string, sha: string): string
+  started(ref: string, sha: string): string
+  waiting(ref: string, sha: string, until: string, pending: string): string
+  ciFailing(ref: string, sha: string, names: string): string
+  ciCleared(ref: string, sha: string): string
+  published(ref: string, url: string): string
+  notPublished(ref: string): string
+  moved(ref: string, sha: string): string
+  closed(ref: string): string
+  dryRun(ref: string): string
+  publishFailed(ref: string, reason: string): string
+  nothingToReview(ref: string): string
+  skipped(ref: string, reason: string): string
+  retry(ref: string, reason: string, at: string): string
+  paused(until: string, reason: string): string
+  failed(ref: string, reason: string): string
+  indexed(repo: string, sha: string): string
+  indexPartial(repo: string): string
+  feedback(ref: string, comments: number): string
+  warning(message: string): string
+  limited(count: number, until: string): string
+  refused(source: string, ref: string, reason: string): string
 }
 
 export type ReviewSource = ListedRun['source'] | NonNullable<ListedRun['requestSource']>
