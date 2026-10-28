@@ -4,7 +4,8 @@ import { failedText } from './data-view.js'
 import type { UiMessages } from './i18n/messages.js'
 import { refusalText } from './refusal-text.js'
 import { clockTime } from './relative-time.js'
-import { namesText, oneLine } from './text-fit.js'
+import { checkNames, pauseReasonText, pendingText } from './queue-text.js'
+import { oneLine } from './text-fit.js'
 import { pullRef, shortSha } from './refs.js'
 
 export type WatchLogLine =
@@ -21,8 +22,6 @@ export interface WatchLogEntry {
 export type WatchLogTone = 'ok' | 'warn' | 'error' | undefined
 
 export const MAX_LOG_LINES = 200
-
-const NAMES_SHOWN = 3
 
 type Job = Extract<WatchEvent, { kind: 'started' }>['job']
 
@@ -82,7 +81,6 @@ function lineText(line: WatchLogLine, messages: UiMessages): string {
 
 function eventText(event: WatchEvent, messages: UiMessages): string {
   const l = messages.queue.log
-  const q = messages.queue
   switch (event.kind) {
     case 'baseline':
       return l.baseline(oneLine(event.repo), event.count)
@@ -98,14 +96,14 @@ function eventText(event: WatchEvent, messages: UiMessages): string {
         ref(event.job),
         shortSha(event.job.headSha),
         time(event.job.ciDeadline ?? event.job.notBefore),
-        pending.length === 0 ? q.noChecks : q.pending(pending.length, names(pending)),
+        pendingText(pending, messages),
       )
     }
     case 'ciFailing':
       return l.ciFailing(
         ref(event.job),
         shortSha(event.job.headSha),
-        names(event.job.ciFailing ?? []),
+        checkNames(event.job.ciFailing ?? []),
       )
     case 'ciCleared':
       return l.ciCleared(ref(event.job), shortSha(event.job.headSha))
@@ -116,10 +114,7 @@ function eventText(event: WatchEvent, messages: UiMessages): string {
         l.retry(ref(event.job), why, time(event.at)),
       )
     case 'paused':
-      return l.paused(
-        time(event.pause.until),
-        event.pause.reason === 'rate-limit' ? q.pauseReasons.rateLimit : q.pauseReasons.usageLimit,
-      )
+      return l.paused(time(event.pause.until), pauseReasonText(event.pause.reason, messages))
     case 'failed':
       return failedText(messages, event.error, (why) => l.failed(ref(event.job), why))
     case 'indexed':
@@ -174,8 +169,4 @@ function ref(job: Job): string {
 function time(at: string): string {
   const parsed = Date.parse(at)
   return Number.isNaN(parsed) ? oneLine(at) : clockTime(parsed)
-}
-
-function names(values: readonly string[]): string {
-  return namesText(values, NAMES_SHOWN)
 }

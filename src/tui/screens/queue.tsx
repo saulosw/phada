@@ -23,7 +23,8 @@ import { absoluteTime, relativeTime } from '../relative-time.js'
 import { ScrollList, ScrollText, useSelection } from '../scroll-list.js'
 import { textWidth } from '../tab-layout.js'
 import type { Theme } from '../theme.js'
-import { fit, namesText, oneLine, shortenHome } from '../text-fit.js'
+import { checkNames, pauseReasonText, pendingText } from '../queue-text.js'
+import { fit, oneLine, shortenHome } from '../text-fit.js'
 import { stepText } from '../review-steps.js'
 import { watchLogText, watchLogTone } from '../watch-log.js'
 import type { WatchLogEntry } from '../watch-log.js'
@@ -35,7 +36,6 @@ interface QueueRow {
 }
 
 const MAX_REF_WIDTH = 24
-const NAMES_SHOWN = 3
 
 export function queueRows(view: QueueView): QueueRow[] {
   const rows = (kind: QueueRowKind, entries: readonly QueueJob[]) =>
@@ -318,8 +318,7 @@ function stateLines(view: QueueView, now: Date, messages: UiMessages, theme: The
   const m = messages.queue
   const lines: ReactNode[] = []
   if (view.pause !== null) {
-    const reason =
-      view.pause.reason === 'rate-limit' ? m.pauseReasons.rateLimit : m.pauseReasons.usageLimit
+    const reason = pauseReasonText(view.pause.reason, messages)
     lines.push(
       <Text color={colors.warn} bold={colors.warn === undefined}>
         ‖{' '}
@@ -366,15 +365,10 @@ function rowDetail(
   }
   if (kind === 'waiting') {
     parts.push(m.ciUntil(when(job.ciDeadline ?? job.notBefore)))
-    const pending = job.ciPending ?? []
-    parts.push(
-      pending.length === 0
-        ? m.noChecks
-        : m.pending(pending.length, namesText(pending, NAMES_SHOWN)),
-    )
+    parts.push(pendingText(job.ciPending ?? [], messages))
   }
   if (kind === 'skipped') {
-    parts.push(m.failing(namesText(job.ciFailing ?? [], NAMES_SHOWN)))
+    parts.push(m.failing(checkNames(job.ciFailing ?? [])))
     if (job.ciCheckedAt !== undefined) parts.push(m.checked(when(job.ciCheckedAt)))
   }
   if (kind === 'failed') {

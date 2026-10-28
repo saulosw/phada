@@ -652,6 +652,8 @@ src/
                          #   the Queue show it
     refs.ts              #   pullRef() (owner/repo#N), shortSha(): through oneLine()
     refusal-text.ts      #   refusalText(): why a review request was refused, from the catalogs
+    queue-text.ts        #   checkNames() (the first 3 checks and "+N"), pendingText(),
+                         #   pauseReasonText(): the Queue screen and the watch log
     app-watch.tsx        #   useWatchSession() (held by the shell above the screens, so tabs
                          #   and the review flow keep it): the phase (idle, starting, running,
                          #   stopping), a notice (held by another PID, or why it did not
