@@ -7,6 +7,8 @@ output can change between minor versions.
 
 ## Unreleased
 
+## 0.11.0 - 2026-10-28
+
 ### Added
 
 - A Graph screen in the app (between Provider and Learnings, so Learnings is now `9`): the map of
