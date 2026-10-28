@@ -120,6 +120,7 @@ function Shell({
   const [takeover, setTakeover] = useState<Takeover | undefined>(
     start === 'setup' ? 'setup' : undefined,
   )
+  const [setupRun, setSetupRun] = useState(0)
   const [overlay, setOverlay] = useState<Overlay>('none')
   const [screenKeys, setScreenKeys] = useState<readonly KeyHint[]>([])
   const [typing, setTypingState] = useState(false)
@@ -138,6 +139,7 @@ function Shell({
   }
   const open = (next: Takeover) => {
     back.current = undefined
+    if (next === 'setup') setSetupRun((run) => run + 1)
     setTakeover(next)
   }
   const leaveSetup = () =>
@@ -260,7 +262,7 @@ function Shell({
         <Box flexDirection="column" display={overlay === 'none' ? 'flex' : 'none'}>
           <ScreenContext.Provider value={controls}>
             {takeover === 'setup' ? (
-              <Setup onClose={leaveSetup} />
+              <Setup key={setupRun} onClose={leaveSetup} />
             ) : takeover === 'language' ? (
               <SubView onLeave={() => show(active)}>
                 <LanguagePicker onDone={() => show(active)} />

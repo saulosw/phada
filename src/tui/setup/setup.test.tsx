@@ -91,6 +91,18 @@ describe('the setup', () => {
     expect(frame()).not.toContain('Repositories')
   })
 
+  it('starts over from the first step on /setup in the middle of it', async () => {
+    const { press, seeing, type } = openSetup()
+    await seeing('Step 1 of 7')
+    await press('s', 's')
+    await seeing('Step 3 of 7 · Language')
+    await press('/')
+    await type('setup')
+    await seeing('❯ Setup')
+    await press(KEYS.enter)
+    await seeing('Step 1 of 7 · GitHub')
+  })
+
   it('leaves to a screen picked in the palette', async () => {
     const { frame, press, seeing, type } = openSetup()
     await seeing('Step 1 of 7')
