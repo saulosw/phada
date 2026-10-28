@@ -45,6 +45,8 @@ src/
                          #   warning), ReviewProgressSink; reportProgress(): ReviewProvider
                          #   decorator that reports when the AI starts and finishes a run, and
                          #   whether it answered
+    wrap-provider-runs.ts #  wrapProviderRuns(): a ReviewProvider whose review and skill runs go
+                         #   through a wrapper (the progress report, the refusal once cancelled)
     requested-review.ts  #   a review the person asks for in the app: ReviewMode (look, publish),
                          #   PullRequestTarget, OpenPullRequests, HistorySave, RequestedReview
                          #   (the review detail and how the history kept it, cancelled, a watch

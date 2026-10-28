@@ -18,6 +18,7 @@ import type { ReviewProvider } from '../providers/types.js'
 import { errorMessage } from './error-message.js'
 import { readCi } from './read-ci.js'
 import { stopIfCancelled } from './review-cancelled.js'
+import { wrapProviderRuns } from './wrap-provider-runs.js'
 import { readConversation } from './read-conversation.js'
 import type { CiReaders } from './read-ci.js'
 import { waitForCi } from './wait-for-ci.js'
@@ -143,25 +144,11 @@ function refusingAfterCancel(
   const watch = deps.watchProvider ?? ((provider: ReviewProvider) => provider)
   return {
     ...deps,
-    watchProvider: (provider, pass) => {
-      const watched = watch(provider, pass)
-      const runSkill = watched.runSkill?.bind(watched)
-      return {
-        id: watched.id,
-        review: (prompt) => {
-          stopIfCancelled()
-          return watched.review(prompt)
-        },
-        ...(runSkill === undefined
-          ? {}
-          : {
-              runSkill: (request) => {
-                stopIfCancelled()
-                return runSkill(request)
-              },
-            }),
-      }
-    },
+    watchProvider: (provider, pass) =>
+      wrapProviderRuns(watch(provider, pass), (_run, work) => {
+        stopIfCancelled()
+        return work()
+      }),
   }
 }
 

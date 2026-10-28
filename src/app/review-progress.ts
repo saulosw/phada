@@ -2,11 +2,12 @@ import type { Ci, ContextReport } from '../context/types.js'
 import type { PullRequest } from '../github/pull-request.js'
 import type { ImpactReport } from '../graph/report.js'
 import type { ReviewPass } from '../investigation/tools/tool-log.js'
-import type { ReviewPrompt, ReviewProvider, SkillRunRequest } from '../providers/types.js'
+import type { ReviewProvider } from '../providers/types.js'
 import type { Conversation } from '../publish/types.js'
 import type { RelatedReport } from './related-report.js'
 import type { PassPlan } from './review-passes.js'
 import type { CiWaited, CiWaiting } from './wait-for-ci.js'
+import { wrapProviderRuns } from './wrap-provider-runs.js'
 
 export type AiRun = ReviewPass | 'skill'
 
@@ -46,12 +47,5 @@ export function reportProgress(
       progress({ kind: 'aiFinished', provider: provider.id, run, answered })
     }
   }
-  const runSkill = provider.runSkill?.bind(provider)
-  return {
-    id: provider.id,
-    review: (prompt: ReviewPrompt) => running(pass, () => provider.review(prompt)),
-    ...(runSkill === undefined
-      ? {}
-      : { runSkill: (request: SkillRunRequest) => running('skill', () => runSkill(request)) }),
-  }
+  return wrapProviderRuns(provider, (run, work) => running(run === 'review' ? pass : 'skill', work))
 }
