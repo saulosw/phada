@@ -46,6 +46,10 @@ src/
                          #   superseded job or a ci-failing one), job events (notify; the CI
                          #   the gate read on started), the idle index and feedback
                          #   refresh (30 min per pull request, 10 per cycle); events
+    watch-event.ts       #   WatchEvent: each event of the watch as data (baseline, queued,
+                         #   started, waiting for CI, finished, retry, paused, failed, index,
+                         #   feedback, warning, limited, refused), WatchEventSink;
+                         #   watchEventsTo(): the WatchEvents of the loop → the sink
     submit-request.ts    #   submitRequest(): a review request of any source → the policy (and the
                          #   when command) → a new job, a joined job (a ci-failing one queued
                          #   again) or a refusal; whenInput()
@@ -235,8 +239,12 @@ src/
                          #   command or read
     read-dirs.ts         #   readDirResolver(): review.readDirs → existing folders (~ expanded)
     format-passes.ts     #   the "Skills:" line and the skills section of --dry-run
-    watch-command.ts     #   runWatch(): settings, providers checked on start, history, lock, the
-                         #   watch deps, one job's review; each job event sent to the sinks
+    watch-command.ts     #   runWatch(): --status, or the watch through startWatch() with its
+                         #   events as lines, Ctrl-C once (stop) or twice (abort, exit 130)
+    watch-session.ts     #   startWatch(): settings, providers checked on start, lock, history,
+                         #   hooks and Slack, the watch deps, one job's review → a WatchHandle
+                         #   (done, stop(), abort(), the running job); the watch events, warnings
+                         #   and each job's review progress as data, never printing
     ci-gate-reader.ts    #   ciGateReader(): the ci settings of a job (user config and the root
                          #   .phada/config.yml at the base merged with mergeLayers(), read once
                          #   per job) and the checks
@@ -266,9 +274,9 @@ src/
                          #   replies in the thread
     format-slack.ts      #   slackReplies(): the event as Slack text (link, summary, full, the
                          #   failing checks of a ci-failing skip), split
-    watch-stop.ts        #   createStopControl(): Ctrl-C once (finish the review) or twice (abort);
-                         #   trackRunningJob(): which job a second Ctrl-C puts back
-    watch-events.ts      #   printWatchEvents(): the watch events as terminal lines
+    watch-stop.ts        #   createStopControl(): stop (finish the review) or abort (kill the
+                         #   children, put the running job back, close); trackRunningJob(): the
+                         #   job an abort puts back
     watch-status.ts      #   watchStatusText(): readQueue() as --status in text or JSON
     history-command.ts   #   runHistory() (list, stats, --refresh) over the history use cases,
                          #   runHistoryPrune(); the history opened only when its file exists
