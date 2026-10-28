@@ -49,6 +49,7 @@ function deps(
     dataHome?: string
     openMirror?: AppCommandDeps['openMirror']
     openIndexReader?: AppCommandDeps['openIndexReader']
+    openGraph?: AppCommandDeps['openGraph']
   } = {},
 ) {
   const ghCalls: string[][] = []
@@ -105,6 +106,7 @@ function deps(
     },
     ...(options.observed === undefined ? {} : { observed: options.observed }),
     ...(options.openIndexReader === undefined ? {} : { openIndexReader: options.openIndexReader }),
+    ...(options.openGraph === undefined ? {} : { openGraph: options.openGraph }),
     runGh: async (_command, args) => {
       ghCalls.push([...args])
       return options.ghToken === undefined
@@ -1002,6 +1004,52 @@ describe('the provider and learnings readers', () => {
     app.env.PHADA_CACHE_HOME = indexDir
     await runApp(app)
     expect(existsSync(join(indexDir, 'index', 'acme'))).toBe(false)
+  })
+
+  it('keeps the graph of one repository open while the app runs and closes it after', async () => {
+    const opened: string[] = []
+    const closed: string[] = []
+    const { app } = deps({
+      openIndexReader: async (path) => ({ status: 'missing', path }),
+      openGraph: async (repo) => {
+        opened.push(repo)
+        return {
+          state: 'open',
+          explorer: {
+            repo,
+            commit: 'a'.repeat(40),
+            linked: [],
+            search: () => ({ definitions: [], more: 0 }),
+            callers: () => ({ sites: [], more: 0, capped: false }),
+            dependencies: () => ({ dependencies: [], more: 0 }),
+            close: () => closed.push(repo),
+          },
+        }
+      },
+      during: async (appDeps) => {
+        await appDeps.searchSymbol('acme/shop', 'total')
+        await appDeps.searchSymbol('acme/ui', 'Button')
+        expect(closed).toEqual(['acme/shop'])
+      },
+    })
+    await runApp(app)
+    expect(opened).toEqual(['acme/shop', 'acme/ui'])
+    expect(closed).toEqual(['acme/shop', 'acme/ui'])
+  })
+
+  it('explores a repository without a local copy as not indexed, creating nothing', async () => {
+    const { app } = deps({
+      during: async (appDeps) => {
+        expect(await appDeps.searchSymbol('acme/shop', 'total')).toEqual({
+          state: 'not-indexed',
+          why: { reason: 'no-index' },
+        })
+      },
+    })
+    app.env.PHADA_CACHE_HOME = indexDir
+    await runApp(app)
+    expect(existsSync(join(indexDir, 'index', 'acme'))).toBe(false)
+    expect(existsSync(join(indexDir, 'repos'))).toBe(false)
   })
 
   it('reads the connections from the index and mirror of the cache, never creating a mirror', async () => {

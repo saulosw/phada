@@ -87,6 +87,10 @@ export interface GraphExplorer {
 export type GraphOpening =
   { state: 'open'; explorer: GraphExplorer } | { state: 'not-indexed'; why: NotIndexed }
 
+export type Explored<T> =
+  | { state: 'read'; repo: string; commit: string; linked: readonly string[]; result: T }
+  | { state: 'not-indexed'; why: NotIndexed }
+
 interface OpenedRepository {
   repo: string
   local: LocalRepository

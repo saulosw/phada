@@ -5,6 +5,13 @@ import type { AppliedUserConfig, UserConfigPlanResult } from '../app/edit-user-c
 import type { HistoryFilter, ListedRun, ReviewDetail } from '../app/read-history.js'
 import type { GitHubAccess } from '../app/read-home.js'
 import type { IndexingOptions, IndexingResult } from '../app/index-repository.js'
+import type {
+  CallerList,
+  DefinitionList,
+  DependencyList,
+  Explored,
+  ExploredSymbol,
+} from '../app/explore-graph.js'
 import type { Connections } from '../app/read-connections.js'
 import type { RepositoryIndexes } from '../app/read-index.js'
 import type { Learnings } from '../app/read-learnings.js'
@@ -59,6 +66,9 @@ export interface AppDeps {
   readAutomation(): Promise<AutomationView>
   readIndexes(): Promise<RepositoryIndexes>
   readConnections(): Promise<Connections>
+  searchSymbol(repo: string, name: string): Promise<Explored<DefinitionList>>
+  symbolCallers(repo: string, symbol: ExploredSymbol): Promise<Explored<CallerList>>
+  symbolDependencies(repo: string, symbol: ExploredSymbol): Promise<Explored<DependencyList>>
   readProviderSetup(): Promise<ProviderSetup>
   readProviders(): Promise<ProviderReport>
   readProviderChecks(): Promise<ProviderChecks>

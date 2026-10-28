@@ -1,6 +1,8 @@
 import type { ProviderCheckers } from '../app/check-providers.js'
 import type { IndexingOptions } from '../app/index-repository.js'
 import { applyUserConfigPlan, planUserConfig } from '../app/edit-user-config.js'
+import { indexedCommit, openGraphExplorer } from '../app/explore-graph.js'
+import type { ExplorerReaders } from '../app/explore-graph.js'
 import { readReviewDetail, readReviews } from '../app/read-history.js'
 import { readConnections } from '../app/read-connections.js'
 import type { ConnectionReaders } from '../app/read-connections.js'
@@ -48,6 +50,8 @@ import type { UserRepository } from '../github/user-repositories.js'
 import type { FetchUserOptions, GitHubUser } from '../github/user.js'
 import type { AppDeps, AppResult, AppStart, openApp, Scheduler } from '../tui/open-app.js'
 import type { ColorEnv } from '../tui/theme.js'
+import { appGraph } from './app-graph.js'
+import type { AppGraph } from './app-graph.js'
 import { appHistory } from './app-history.js'
 import { rulesReaders } from './app-rules.js'
 import type { RulesReaderDeps } from './app-rules.js'
@@ -83,6 +87,7 @@ export interface AppCommandDeps
   lockHolder: (path: string) => Promise<number | undefined>
   openHistoryReader?: (path: string) => Promise<HistoryStore>
   openIndexReader?: (path: string) => Promise<IndexOpening>
+  openGraph?: typeof openGraphExplorer
   pathSize: (path: string) => Promise<number>
   providerCheckers?: ProviderCheckers
   observed?: {
@@ -143,9 +148,10 @@ export async function runApp(
       open: deps.openHistoryReader ?? ((path) => openHistoryStore(path, { readOnly: true })),
     }),
   )
+  const graph = graphOf(deps, history)
   const terminal = terminalHandOff(deps)
   try {
-    const result = await openApp(await appDeps(deps, history, files.lock, terminal, start), {
+    const result = await openApp(await appDeps(deps, history, graph, files.lock, terminal, start), {
       stdin,
       stdout,
       onSignal: terminal.onSignal,
@@ -154,12 +160,14 @@ export async function runApp(
     return EXIT_CODES[result.kind]
   } finally {
     history.close()
+    graph.close()
   }
 }
 
 async function appDeps(
   deps: AppCommandDeps,
   history: AppHistory,
+  graph: AppGraph,
   lock: string,
   terminal: TerminalHandOff,
   start: AppStart,
@@ -197,6 +205,9 @@ async function appDeps(
     readAutomation: () => readAutomation(automationReaders(deps)),
     readIndexes: () => readIndexes(indexReaders(deps, history)),
     readConnections: () => readConnections(connectionReaders(deps, history)),
+    searchSymbol: graph.searchSymbol,
+    symbolCallers: graph.symbolCallers,
+    symbolDependencies: graph.symbolDependencies,
     readProviderSetup: async () => providerSetup(await providerConfig(deps)),
     readProviders: async () =>
       readProviders({
@@ -306,6 +317,20 @@ function connectionReaders(deps: AppCommandDeps, history: AppHistory): Connectio
       return openExistingGitMirror({ dir: repositoryCache(env, home, owner, name).mirror, env })
     },
   }
+}
+
+function graphOf(deps: AppCommandDeps, history: AppHistory): AppGraph {
+  const readers: ExplorerReaders = {
+    ...connectionReaders(deps, history),
+    readObserved: async (repo) => {
+      const read = await observedOf(deps, repo)
+      return read.state === 'read' ? read.edges : []
+    },
+  }
+  return appGraph({
+    open: (repo) => (deps.openGraph ?? openGraphExplorer)(repo, readers),
+    commitOf: (repo) => indexedCommit(repo, readers),
+  })
 }
 
 function automationReaders(deps: AppCommandDeps): AutomationReaders {

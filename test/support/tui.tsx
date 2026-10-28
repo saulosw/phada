@@ -179,6 +179,9 @@ export function fakeAppDeps(scheduler: Scheduler, overrides: Partial<AppDeps> = 
     readAutomation: async () => emptyAutomation(),
     readIndexes: async () => ({ repositories: [] }),
     readConnections: async () => ({ repositories: [] }),
+    searchSymbol: async () => ({ state: 'not-indexed', why: { reason: 'no-index' } }),
+    symbolCallers: async () => ({ state: 'not-indexed', why: { reason: 'no-index' } }),
+    symbolDependencies: async () => ({ state: 'not-indexed', why: { reason: 'no-index' } }),
     readProviderSetup: async () => ({
       choice: { provider: 'claude', model: null, origin: { kind: 'default' } },
       mcp: [],
