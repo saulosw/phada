@@ -1,4 +1,7 @@
 import type { AiRun, ReviewProgress } from '../app/review-progress.js'
+import type { UiMessages } from './i18n/messages.js'
+import { oneLine } from './text-fit.js'
+import { durationText } from './units.js'
 
 export type ReviewStep =
   | { kind: 'fetch'; title?: string }
@@ -104,5 +107,42 @@ export function stepRunning(step: ReviewStep, last: boolean): boolean {
       return last
     default:
       return false
+  }
+}
+
+export function stepText(
+  step: ReviewStep,
+  ref: string,
+  messages: UiMessages,
+  time: number,
+): string {
+  const s = messages.reviewFlow.steps
+  switch (step.kind) {
+    case 'fetch':
+      return step.title === undefined ? s.fetching(ref) : s.fetched(oneLine(step.title))
+    case 'context':
+      return s.context(step.rules, step.docs)
+    case 'conversation':
+      return s.conversation(step.items)
+    case 'ci':
+      return s.ci(messages.reviews.ciStates[step.state] ?? oneLine(step.state))
+    case 'ciWait':
+      return step.waited ? s.ciWaited : s.ciWaiting(step.pending)
+    case 'index':
+      return s.indexing(step.done, step.total)
+    case 'related':
+      return s.related(step.count)
+    case 'impact':
+      return s.impact(step.symbols)
+    case 'pass':
+      return s.pass(oneLine(step.skill), step.index, step.total)
+    case 'ai':
+      return s.ai(
+        oneLine(step.provider),
+        messages.reviewFlow.runs[step.run],
+        durationText((step.endedAt ?? time) - step.startedAt),
+      )
+    case 'publish':
+      return s.publishing
   }
 }

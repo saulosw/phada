@@ -32,8 +32,9 @@ import { labeledLines } from './labeled-lines.js'
 import { Mascot, MASCOT_FRAMES } from './mascot.js'
 import { absoluteTime } from './relative-time.js'
 import { reviewDetailLines } from './review-detail.js'
-import { NO_STEPS, stepRunning, stepsAfter } from './review-steps.js'
-import type { ReviewStep, ReviewSteps } from './review-steps.js'
+import { refusalText } from './refusal-text.js'
+import { NO_STEPS, stepRunning, stepsAfter, stepText } from './review-steps.js'
+import type { ReviewSteps } from './review-steps.js'
 import { ScrollList, ScrollText, useSelection } from './scroll-list.js'
 import { TextFieldLine, useTextField } from './text-field.js'
 import { fit, oneLine, wrapText } from './text-fit.js'
@@ -513,29 +514,6 @@ function EnqueueStep({
   return <ScrollText lines={lines} rows={size.rows} />
 }
 
-function refusalText(
-  refusal: Extract<SubmitResult, { status: 'refused' }>,
-  messages: UiMessages,
-): string {
-  const r = messages.reviewFlow.enqueue.refusals
-  switch (refusal.reason) {
-    case 'not-watched':
-      return r.notWatched
-    case 'closed':
-      return r.closed
-    case 'external':
-      return r.external
-    case 'when-command':
-      return r.whenCommand(refusal.message === undefined ? r.noReason : oneLine(refusal.message))
-    case 'already-reviewed':
-      return refusal.job === undefined ? r.alreadyReviewed : r.alreadyReviewedJob(refusal.job.id)
-    case 'hourly-limit':
-      return refusal.until === undefined
-        ? r.hourlyLimit
-        : r.hourlyLimitUntil(absoluteTime(refusal.until))
-  }
-}
-
 type RunOutcome =
   | { status: 'running' }
   | { status: 'done'; review: RequestedReview; endedAt: number }
@@ -743,47 +721,10 @@ function stepLines(
     return (
       <Text>
         {running ? <Text color={colors.accent}>› </Text> : <Text color={colors.ok}>✓ </Text>}
-        {stepText(step, target, messages, time)}
+        {stepText(step, refText(target), messages, time)}
       </Text>
     )
   })
-}
-
-function stepText(
-  step: ReviewStep,
-  target: PullRequestTarget,
-  messages: UiMessages,
-  time: number,
-): string {
-  const s = messages.reviewFlow.steps
-  switch (step.kind) {
-    case 'fetch':
-      return step.title === undefined ? s.fetching(refText(target)) : s.fetched(oneLine(step.title))
-    case 'context':
-      return s.context(step.rules, step.docs)
-    case 'conversation':
-      return s.conversation(step.items)
-    case 'ci':
-      return s.ci(messages.reviews.ciStates[step.state] ?? oneLine(step.state))
-    case 'ciWait':
-      return step.waited ? s.ciWaited : s.ciWaiting(step.pending)
-    case 'index':
-      return s.indexing(step.done, step.total)
-    case 'related':
-      return s.related(step.count)
-    case 'impact':
-      return s.impact(step.symbols)
-    case 'pass':
-      return s.pass(oneLine(step.skill), step.index, step.total)
-    case 'ai':
-      return s.ai(
-        oneLine(step.provider),
-        messages.reviewFlow.runs[step.run],
-        durationText((step.endedAt ?? time) - step.startedAt),
-      )
-    case 'publish':
-      return s.publishing
-  }
 }
 
 function warningLines(warnings: readonly string[], { messages, theme, width }: DrawContext) {
