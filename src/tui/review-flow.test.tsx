@@ -193,7 +193,8 @@ describe('reviewing a pull request from the app', () => {
     expect(frame()).toContain('#9')
     await press(KEYS.escape)
     await showing('t type a pull request')
-    expect(frame()).toContain('Repositories')
+    expect(footer()).toContain('t type a pull request')
+    expect(frame()).toContain('❯ acme/shop')
   })
 
   it('says why the open pull requests could not be read', async () => {

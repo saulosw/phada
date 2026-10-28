@@ -36,7 +36,7 @@ import { fit, oneLine, wrapText } from './text-fit.js'
 import { durationText } from './units.js'
 
 type FlowStep =
-  | { kind: 'pick' }
+  | { kind: 'pick'; typing: boolean }
   | { kind: 'pulls'; repo: string }
   | { kind: 'mode'; target: PullRequestTarget; title: string | null; chosen?: ReviewMode }
   | { kind: 'confirm'; target: PullRequestTarget; title: string | null }
@@ -48,10 +48,11 @@ const GAP = '  '
 
 export function ReviewFlow({ repo, onClose }: { repo?: string; onClose(): void }) {
   const [stack, setStack] = useState<FlowStep[]>(() => [
-    repo === undefined ? { kind: 'pick' } : { kind: 'pulls', repo },
+    repo === undefined ? { kind: 'pick', typing: true } : { kind: 'pulls', repo },
   ])
-  const step = stack.at(-1) ?? { kind: 'pick' }
-  const go = (next: FlowStep) => setStack((current) => [...current, next])
+  const step: FlowStep = stack.at(-1) ?? { kind: 'pick', typing: true }
+  const go = (next: FlowStep, left: FlowStep = step) =>
+    setStack((current) => [...current.slice(0, -1), left, next])
   const back = () => (stack.length <= 1 ? onClose() : setStack((current) => current.slice(0, -1)))
   const key = String(stack.length)
   switch (step.kind) {
@@ -59,9 +60,12 @@ export function ReviewFlow({ repo, onClose }: { repo?: string; onClose(): void }
       return (
         <PickStep
           key={key}
+          typing={step.typing}
           back={back}
-          onTarget={(target) => go({ kind: 'mode', target, title: null })}
-          onRepo={(name) => go({ kind: 'pulls', repo: name })}
+          onTarget={(target) =>
+            go({ kind: 'mode', target, title: null }, { kind: 'pick', typing: true })
+          }
+          onRepo={(name) => go({ kind: 'pulls', repo: name }, { kind: 'pick', typing: false })}
         />
       )
     case 'pulls':
@@ -82,13 +86,12 @@ export function ReviewFlow({ repo, onClose }: { repo?: string; onClose(): void }
           back={back}
           chosen={step.chosen}
           onMode={(mode) =>
-            setStack((current) => [
-              ...current.slice(0, -1),
-              { ...step, chosen: mode },
+            go(
               mode === 'publish'
                 ? { kind: 'confirm', target: step.target, title: step.title }
                 : { kind: 'run', target: step.target, title: step.title, mode },
-            ])
+              { ...step, chosen: mode },
+            )
           }
         />
       )
@@ -116,10 +119,12 @@ export function ReviewFlow({ repo, onClose }: { repo?: string; onClose(): void }
 }
 
 function PickStep({
+  typing,
   back,
   onTarget,
   onRepo,
 }: {
+  typing: boolean
   back(): void
   onTarget(target: PullRequestTarget): void
   onRepo(repo: string): void
@@ -140,7 +145,10 @@ function PickStep({
   })
   const focus = useRef(field.focus)
   focus.current = field.focus
-  useEffect(() => focus.current(), [])
+  const focusOnOpen = useRef(typing)
+  useEffect(() => {
+    if (focusOnOpen.current) focus.current()
+  }, [])
   const state = usePolled(readRepositories)
   const repositories = state.status === 'ready' ? state.value.repositories : []
   const selection = useSelection(repositories, ({ repo }: ListedRepository) => repo, {
