@@ -63,6 +63,8 @@ import { ghTokenReader, readGitHubToken } from './github-token.js'
 import type { GhTokenReader, RunGh } from './github-token.js'
 import type { TextOutput } from './progress.js'
 import { indexForApp } from './app-index.js'
+import { appReview } from './app-review.js'
+import type { AppReviewDeps } from './app-review.js'
 import { initRepository } from './init.js'
 import type { AppIndexDeps } from './app-index.js'
 import { SLACK_APP_TOKEN, SLACK_BOT_TOKEN } from './review-event-sinks.js'
@@ -73,7 +75,10 @@ import type { TerminalHandOff } from './terminal-hand-off.js'
 export type StopSignal = 'SIGINT' | 'SIGTERM'
 
 export interface AppCommandDeps
-  extends Omit<RulesReaderDeps, 'ghToken'>, Omit<AppIndexDeps, 'ghToken'> {
+  extends
+    Omit<RulesReaderDeps, 'ghToken'>,
+    Omit<AppIndexDeps, 'ghToken'>,
+    Omit<AppReviewDeps, 'ghToken'> {
   env: NodeJS.ProcessEnv
   home: string
   cwd: string
@@ -180,6 +185,7 @@ async function appDeps(
     )
   const readLanguage = async () => (await loadTopLevelUserLayers(deps))[0]?.config.language
   const ghToken: GhTokenReader = () => ghTokenReader(deps.env, deps.runGh)()
+  const review = appReview({ ...deps, ghToken })
   const base = {
     version: deps.version,
     start,
@@ -252,6 +258,9 @@ async function appDeps(
     applyConfig: (plan: UserConfigPlan) => applyUserConfigPlan(plan, deps.files),
     indexRepository: (repo: string, options: IndexingOptions) =>
       indexForApp(repo, options, { ...deps, ghToken }),
+    parsePullRequest: review.parsePullRequest,
+    readOpenPullRequests: review.readOpenPullRequests,
+    reviewPullRequest: review.reviewPullRequest,
     readRepositoryFolder: () => readRepositoryFolder(deps.cwd, (path) => deps.files.exists(path)),
     initRepository: () => initRepository(deps),
     ensureRepositoryFile: (repo: string, file: UserRepoFile) =>

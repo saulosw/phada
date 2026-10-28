@@ -28,6 +28,13 @@ import type { BranchRules, LocalRules, PullRequestRules } from '../app/read-rule
 import type { RepositoryDetail, RepositoryList } from '../app/read-repositories.js'
 import type { UserRepositories } from '../app/read-user-repositories.js'
 import type { RepositoryFolder, RepositoryInit } from '../app/repository-folder.js'
+import type {
+  OpenPullRequests,
+  PullRequestTarget,
+  RequestedReview,
+  ReviewMode,
+} from '../app/requested-review.js'
+import type { ReviewProgressSink } from '../app/review-progress.js'
 import type { UserRepoFile } from '../config/user-config.js'
 import type { UserConfigChange, UserConfigPlan } from '../config/user-config-edit.js'
 import type { UiMessages } from './i18n/messages.js'
@@ -86,6 +93,13 @@ export interface AppDeps {
   readRepositoryFolder(): Promise<RepositoryFolder>
   initRepository(): Promise<RepositoryInit>
   ensureRepositoryFile(repo: string, file: UserRepoFile): Promise<string>
+  parsePullRequest(text: string): PullRequestTarget | undefined
+  readOpenPullRequests(repo: string): Promise<OpenPullRequests>
+  reviewPullRequest(
+    target: PullRequestTarget,
+    mode: ReviewMode,
+    onProgress: ReviewProgressSink,
+  ): Promise<RequestedReview>
 }
 
 export interface KeyHint {

@@ -211,6 +211,14 @@ export function fakeAppDeps(scheduler: Scheduler, overrides: Partial<AppDeps> = 
       throw new Error('no repository in this test')
     },
     ensureRepositoryFile: async (repo, file) => `/home/ana/.config/phada/repos/${repo}/${file}`,
+    parsePullRequest: (text) => {
+      const [, owner, repo, number] = /^([\w.-]+)\/([\w.-]+)#(\d+)$/.exec(text.trim()) ?? []
+      return owner === undefined || repo === undefined
+        ? undefined
+        : { owner, repo, number: Number(number) }
+    },
+    readOpenPullRequests: async () => ({ status: 'no-token' }),
+    reviewPullRequest: async () => ({ status: 'no-token' }),
     ...overrides,
   }
 }

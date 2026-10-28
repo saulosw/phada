@@ -22,6 +22,7 @@ import { CheckoutUnavailableError } from '../repository/git-checkout.js'
 import { openIndexStore } from '../store/index-store.js'
 import type { IndexingProgress } from '../app/index-repository.js'
 import { reviewState } from '../../test/support/review-state.js'
+import type { OpenPull } from '../github/list-pull-requests.js'
 
 function terminal(isTTY: boolean) {
   return {
@@ -50,12 +51,14 @@ function deps(
     openMirror?: AppCommandDeps['openMirror']
     openIndexReader?: AppCommandDeps['openIndexReader']
     openGraph?: AppCommandDeps['openGraph']
+    openPulls?: OpenPull[]
   } = {},
 ) {
   const ghCalls: string[][] = []
   const userTokens: string[] = []
   const opened: { deps: AppDeps; host: AppHost }[] = []
   const historyPaths: string[] = []
+  const openPullReads: string[] = []
   const signalHandlers: ((signal?: StopSignal) => void)[] = []
   const files = memoryFiles({
     ...(options.config === undefined ? {} : { '/cfg/config.yml': options.config }),
@@ -124,12 +127,25 @@ function deps(
       options.openMirror ?? (async () => memoryMirror({ 'src/a.ts': 'export const a = 1\n' })),
     openIndexStore: async () => openIndexStore(join(indexDir, `i${(stores += 1)}.sqlite`)),
     createExtractor,
+    openObservedStore: () => Promise.reject(new Error('no observed relations in this test')),
+    createProvider: () => {
+      throw new Error('no AI in this test')
+    },
+    createReview: () => Promise.reject(new Error('nothing is posted in this test')),
+    fetchComparison: async () => [],
+    replyAndResolve: async () => undefined,
+    openHistoryStore: () => Promise.reject(new Error('no history writes in this test')),
+    sleep: async () => undefined,
+    listOpenPullRequests: async ({ owner, repo, token }) => {
+      openPullReads.push(`${owner}/${repo} ${token}`)
+      return { status: 'ok', pulls: options.openPulls ?? [] }
+    },
   }
   app.env.PHADA_DATA_HOME = options.dataHome ?? '/data'
   const send = (signal: StopSignal) => {
     for (const handler of signalHandlers) handler(signal)
   }
-  return { app, opened, files, historyPaths, ghCalls, userTokens, send }
+  return { app, opened, files, historyPaths, ghCalls, userTokens, send, openPullReads }
 }
 
 const indexDir = mkdtempSync(join(tmpdir(), 'phada-app-index-'))
@@ -732,6 +748,66 @@ describe('the user repositories reader', () => {
     await runApp(app)
 
     expect(seen).toEqual([{ status: 'no-token', repositories: [] }])
+  })
+})
+
+describe('the review readers', () => {
+  it('reads the open pull requests with the token gh gives and parses a typed pull request', async () => {
+    const seen: unknown[] = []
+    const { app, openPullReads } = deps({
+      ghToken: 'gho_from_gh',
+      openPulls: [
+        {
+          number: 4,
+          headSha: 'b'.repeat(40),
+          title: 'Add the cart',
+          draft: false,
+          author: 'ana',
+          authorIsBot: false,
+          association: 'MEMBER',
+          labels: [],
+          baseRef: 'main',
+          private: false,
+        },
+      ],
+      during: async (appDeps) => {
+        seen.push(await appDeps.readOpenPullRequests('acme/shop'))
+        seen.push(appDeps.parsePullRequest('https://github.com/acme/shop/pull/4'))
+        seen.push(appDeps.parsePullRequest('acme/shop'))
+      },
+    })
+
+    await runApp(app)
+
+    expect(openPullReads).toEqual(['acme/shop gho_from_gh'])
+    expect(seen).toEqual([
+      {
+        status: 'read',
+        repo: 'acme/shop',
+        pulls: [{ number: 4, title: 'Add the cart', author: 'ana', draft: false }],
+      },
+      { owner: 'acme', repo: 'shop', number: 4 },
+      undefined,
+    ])
+  })
+
+  it('reviews nothing without a token', async () => {
+    const seen: unknown[] = []
+    const { app } = deps({
+      during: async (appDeps) => {
+        seen.push(
+          await appDeps.reviewPullRequest(
+            { owner: 'acme', repo: 'shop', number: 4 },
+            'look',
+            () => undefined,
+          ),
+        )
+      },
+    })
+
+    await runApp(app)
+
+    expect(seen).toEqual([{ status: 'no-token' }])
   })
 })
 
