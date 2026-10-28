@@ -31,7 +31,7 @@ export const spanish: UiMessages = {
     title: 'Ir a',
     empty: 'Ninguna pantalla con ese nombre.',
     setup: 'Configuración',
-    index: 'Indexar un repositorio',
+    index: 'Grafo: indexar un repositorio',
     review: 'Revisar un pull request',
     watch: 'Iniciar o detener el watch',
   },

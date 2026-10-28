@@ -31,7 +31,7 @@ export const portuguese: UiMessages = {
     title: 'Ir para',
     empty: 'Nenhuma tela com esse nome.',
     setup: 'Setup',
-    index: 'Indexar um repositório',
+    index: 'Grafo: indexar um repositório',
     review: 'Revisar um pull request',
     watch: 'Iniciar ou parar o watch',
   },

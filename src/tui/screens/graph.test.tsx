@@ -499,8 +499,20 @@ describe('the Graph screen', () => {
     await showing('Phada v1.2.3')
     await press('/')
     await type('index')
-    await showing('Index a repository')
+    await showing('Graph: index a repository')
     await press(KEYS.enter)
     await showing('3 repositories · 1 indexed')
+  })
+
+  it.each([
+    ['pt', 'Grafo: indexar um repositório'],
+    ['es', 'Grafo: indexar un repositorio'],
+  ])('names /index in the palette as the Graph it opens (%s)', async (language, label) => {
+    const { frame, press, showing, type } = openGraph({ screens: SCREENS, language })
+    await showing('Phada v1.2.3')
+    await press('/')
+    await type('indexar')
+    await showing(label)
+    expect(frame()).toContain(label)
   })
 })

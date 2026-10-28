@@ -31,7 +31,7 @@ export const english: UiMessages = {
     title: 'Go to',
     empty: 'No screen matches.',
     setup: 'Setup',
-    index: 'Index a repository',
+    index: 'Graph: index a repository',
     review: 'Review a pull request',
     watch: 'Start or stop the watch',
   },
