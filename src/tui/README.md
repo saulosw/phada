@@ -122,7 +122,7 @@ not found or a repository that is not indexed is one line with `i` to index it, 
 after. The Graph screen draws it in a `SubView` from `s`; the app keeps the graph of one repository
 open (`src/cli/app-graph.ts`).
 
-## An action flow in place of the tabs (`review-flow.tsx`)
+## An action flow in place of the tabs (`review-flow/`)
 
 An action that takes several steps and runs something long (a review) is a flow drawn by the shell
 in place of the tabs, as the setup and `/language` are, and back to the screen it came from. A
@@ -141,7 +141,9 @@ keeps it running; once it publishes, `Esc` does nothing. It holds a quit guard w
 it ends, `Esc` leaves the flow; the result is drawn with the module the screen that lists such
 results also uses (`reviewDetailLines()` of `review-detail.tsx`). With a watch holding the lock
 (`readQueue`), publishing becomes a request in the queue (`AppDeps.enqueueReview`), and `Enter`
-on its result opens the Queue.
+on its result opens the Queue; `reviewPullRequest` reads the lock again before publishing and
+answers `watch-running`, which takes the flow back to that confirmation. Each step is its own
+file in `review-flow/`, as the setup's are in `setup/`.
 
 ## Quitting while something runs (`useQuitGuard`)
 
@@ -241,7 +243,8 @@ Each screen has a `screens/<name>.test.tsx` that renders the whole app with
 and reads its frames:
 
 - wait on a condition before asserting: `await showing('text', /pattern/)` or
-  `await until(() => condition)`; drive keys with `press(KEYS.down)` and `type('text')`, time
+  `await until(() => condition)`, which fail with what they awaited and the last frame when it
+  does not come within 3 s; drive keys with `press(KEYS.down)` and `type('text')`, time
   with `clock.advance(ms)`, the size with `resize()`. A fixed pause (`setTimeout`, `settle()`) is
   refused by `src/architecture.test.ts`;
 - check the frame fits: at 80×24, every line of `frameLines(frame())` at most 80 columns wide

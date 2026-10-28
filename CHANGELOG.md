@@ -7,6 +7,22 @@ output can change between minor versions.
 
 ## Unreleased
 
+### Fixed
+
+- Quitting the app while its watch or one of its reviews is still under way now ends the process
+  as `phada watch` does when aborted: the work no longer goes on without the app, and a job the
+  watch put back in the queue is not reviewed twice.
+- A review cancelled in the app no longer starts another run of the AI after the one it stopped.
+- **Review and publish** from the app checks again for a running watch right before it starts and
+  turns into putting the review in the queue when one holds the lock, even when the Queue could
+  not be read.
+- A run of the AI that gave no answer (cancelled or failed) shows `✕` and "no answer" in the
+  steps of a review instead of `✓`.
+- The Queue no longer offers `w` to start the watch while another terminal runs it.
+- `s` on the Graph screen opens the search empty instead of after the last name searched.
+- The warnings of `phada watch` are cleaned of control characters before they are printed, and
+  why the watch did not start in the app is shown in full, as the lines of its log are on `l`.
+
 ## 0.11.0 - 2026-10-28
 
 ### Added

@@ -33,16 +33,18 @@ src/
                          #   and the CI it read go out as events); an aborted signal stops it
                          #   between stages and right before publishing, never once publishing
                          #   started (ReviewCancelledError, also for what a stage threw after
-                         #   the abort)
+                         #   the abort); once aborted, no AI run of the review starts (a call
+                         #   to the provider throws it)
     review-progress.ts   #   ReviewProgress: each step of a review as data (fetched, conversation
                          #   and CI read, CI wait, context, indexing, related, impact, passes, the
                          #   AI running a review, verify, recheck or skill run, publishing,
                          #   warning), ReviewProgressSink; reportProgress(): ReviewProvider
-                         #   decorator that reports when the AI starts and finishes a run
+                         #   decorator that reports when the AI starts and finishes a run, and
+                         #   whether it answered
     requested-review.ts  #   a review the person asks for in the app: ReviewMode (look, publish),
                          #   PullRequestTarget, OpenPullRequests, HistorySave, RequestedReview
-                         #   (the review detail and how the history kept it, cancelled, or no
-                         #   token), EnqueuedReview (what submitRequest() answered, or no token)
+                         #   (the review detail and how the history kept it, cancelled, a watch
+                         #   holding the lock when it would publish, or no token), EnqueuedReview (what submitRequest() answered, or no token)
     watch-repositories.ts # watchRepositories(): the watch loop — discovery with ETags, planCycle
                          #   (asking the when command before queueing), /phada review comments,
                          #   the next job through the CI gate (readCi: waiting jobs read again
@@ -218,7 +220,10 @@ src/
                          #   language of the user config at open and readLanguage (read on each
                          #   poll), src/tui/ loaded by import() only here
                          #   (loadApp), setInterval as the scheduler; quit 0, interrupted 130,
-                         #   terminated 143, a failure thrown for formatError(); the readers of
+                         #   terminated 143, a failure thrown for formatError(); with its watch
+                         #   aborted or one of its reviews still running at the end, the
+                         #   process ends through abort() (as phada watch's abort), a failure
+                         #   printed first; the readers of
                          #   the screens (readQueue with the lock holder and the watch settings
                          #   read on each poll, the last good ones kept, readReviews,
                          #   readReviewDetail) over appHistory() with the history opened
@@ -251,6 +256,8 @@ src/
                          #   runManualReview() as phada review, the AI detached, never a write
                          #   to the terminal → the review detail (reviewDetailOf() of the run's
                          #   JSON) and how the history kept it, run in its own childScope() (injectable);
+                         #   publishing refused as watch-running while the lock holder says a
+                         #   watch runs (read just before); reviewsRunning();
                          #   an abort kills the detached children of that scope only and ends as cancelled,
                          #   with no history row; enqueueReview: the watch settings
                          #   (requireWatchSettings()), the token and submitRequest() (source
@@ -261,7 +268,8 @@ src/
                          #   the session's killDetachedChildren; warnings as warning events,
                          #   both progress sinks of a job to the observer) → WatchControl;
                          #   close(): a start under way awaited, a running watch aborted and
-                         #   its end awaited; startWatch and childScope injectable
+                         #   its end awaited → idle, or aborted when a watch ended aborted;
+                         #   startWatch and childScope injectable
     app-index.ts         #   indexForApp(): token, user layers, mirror and index of the cache as
                          #   phada index uses them → indexRepository() with the signal and the
                          #   progress (fetching, extracting); no token and failures as data
@@ -462,9 +470,11 @@ src/
                          #   (the lock holder is AppDeps.pid), in another terminal with its PID,
                          #   or not running, w starts it — and the history, its jobs by kind
                          #   (the running one with the step of its review in this app) → a job
-                         #   with its requests; w starts the watch here, or asks before
-                         #   stopping it after the current review; the newest lines of its log
-                         #   under the jobs, l → the whole log, from its end; queueRows()), reviews.tsx (the history with a text filter → one
+                         #   with its requests; w starts the watch here (no hint while another
+                         #   terminal holds the lock; why it did not start wrapped), or asks
+                         #   before stopping it after the current review; the newest lines of
+                         #   its log under the jobs, l → the whole log wrapped, from its end;
+                         #   queueRows()), reviews.tsx (the history with a text filter → one
                          #   review drawn by reviewDetailLines(); n reviews a pull request),
                          #   repositories.tsx (each repository with its origins, index and last
                          #   review → its watch filters, index, user config with origins, rules,
@@ -585,7 +595,8 @@ src/
                          #   one at a time, a throw as a failed outcome
     data-view.tsx        #   DataView: loading, the error wrapped, or the value; failedText():
                          #   any error as one line without control characters; failedLines():
-                         #   that line wrapped over ERROR_LINES at most
+                         #   that line (or the catalog sentence it is given) wrapped over
+                         #   ERROR_LINES at most
     scroll-list.tsx      #   useSelection() (↑/↓, PgUp/PgDn, Home/End, Enter; follows the selected
                          #   key when the list changes; initialKey, select(key)), ScrollList (the rows that fit and
                          #   "n–m of N"), ScrollText (lines that scroll, from the start or
@@ -608,21 +619,28 @@ src/
                          #   tab-layout.ts: layoutTabs(): full › short › a window with ‹ ›; tabText())
     footer.tsx           #   Footer (+ key-hints.ts: fitHints(): the keys that fit, then "? more")
     help.tsx             #   Help: the screen's keys and the global ones
-    review-flow.tsx      #   ReviewFlow: a typed pull request (refused when it is not one) or a
-                         #   repository → its open pull requests (loaded, r) → only look or
-                         #   review and publish (put in the queue while a watch holds the lock,
-                         #   from readQueue) → for publishing, the pull request and the token
-                         #   owner to confirm (and the watch's PID) → the steps live with the
+    review-flow/         #   ReviewFlow (review-flow.tsx): a stack of steps, one file each — a
+                         #   typed pull request (refused when it is not one) or a repository
+                         #   (pick-step.tsx) → its open pull requests (pulls-step.tsx, loaded,
+                         #   r) → only look or review and publish (mode-step.tsx; put in the
+                         #   queue while a watch holds the lock, from readQueue) → for
+                         #   publishing, the pull request and the token owner to confirm (and
+                         #   the watch's PID) (confirm-step.tsx) → the steps live with the
                          #   mascot and the AI's time on the app clock, warnings → the result
                          #   (time, history, warnings, reviewDetailLines()), cancelled or the
-                         #   error; or the queued or joined job or the refusal, Enter to the
-                         #   Queue; Esc goes one step back, asks to cancel while it runs (not
-                         #   once publishing), out once it ended; a quit guard while it runs
+                         #   error (run-step.tsx; a watch found holding the lock when it would
+                         #   publish goes back to the confirmation, as putting it in the queue);
+                         #   or the queued or joined job or the refusal, Enter to the Queue
+                         #   (enqueue-step.tsx); Esc goes one step back, asks to cancel while
+                         #   it runs (not once publishing), out once it ended; a quit guard
+                         #   while it runs; flow-text.ts: the pull request line
     review-steps.ts      #   stepsAfter(): the review progress events → one step per stage
                          #   (fetch, context, conversation, CI, CI wait, indexing, related,
                          #   impact, skill pass, each AI run with its start and end,
-                         #   publishing) and the warnings; stepRunning(); stepText(): a step as
-                         #   the review flow and the Queue show it
+                         #   publishing) and the warnings; stepRunning(), stepFailed() (an AI
+                         #   run with no answer); stepText(): a step as the review flow and
+                         #   the Queue show it
+    refs.ts              #   pullRef() (owner/repo#N), shortSha(): through oneLine()
     refusal-text.ts      #   refusalText(): why a review request was refused, from the catalogs
     app-watch.tsx        #   useWatchSession() (held by the shell above the screens, so tabs
                          #   and the review flow keep it): the phase (idle, starting, running,
@@ -823,7 +841,8 @@ src/
                          #   detached children in their own process group, killDetachedChildren();
                          #   childScope(): run() records the detached children started (or
                          #   tracked) inside it through AsyncLocalStorage, kill() stops only
-                         #   those, so one run's cancel leaves another run's children;
+                         #   those, so one run's cancel leaves another run's children, and a
+                         #   child started in a killed scope is stopped at once;
                          #   an AbortSignal stops the child (its group) like the timeout
     run-interactive.ts   #   runInteractive(): a command with stdio inherited (the terminal is
                          #   its own), its exit code (128 + n for a signal), not found, ended by
@@ -991,7 +1010,9 @@ scripts/copy-grammars.ts # build step: the tree-sitter grammars into dist/gramma
 test/fixtures/bin/       # fake AI CLIs used by the provider and status tests
 test/fixtures/github/    # trimmed GitHub API responses (REST and GraphQL) and a synthetic diff
 test/support/            # shared test helpers (fake fetch, fixtures for pull requests, findings, …;
-                         #   tui.tsx: the app rendered with fake deps, size, scheduler and keys)
+                         #   tui.tsx: the app rendered with fake deps, size, scheduler and keys;
+                         #   showing() and until() fail with what they awaited and the last
+                         #   frame when it does not come)
 ```
 
 Tests live next to the code they test (`*.test.ts`, `*.test.tsx` for the app's frames with
