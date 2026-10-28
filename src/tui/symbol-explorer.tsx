@@ -25,7 +25,7 @@ import type { KeyHint } from './app-context.js'
 import { useLoaded } from './data-hooks.js'
 import type { DataState } from './data-hooks.js'
 import { failedText } from './data-view.js'
-import { failedNodes, spaced, textLines } from './frame-lines.js'
+import { failedNodes, Lines, spaced, textLines } from './frame-lines.js'
 import type { DrawContext } from './frame-lines.js'
 import type { ExploreMessages, UiMessages } from './i18n/messages.js'
 import { notIndexedText } from './not-indexed-text.js'
@@ -174,7 +174,7 @@ function SearchState({
               ),
               ...textLines(m.notFoundHint, size.columns, colors.dim),
             ]
-  return <LinesBox lines={[...lines, ...tail]} />
+  return <Lines lines={[...lines, ...tail].slice(0, size.rows)} />
 }
 
 function DefinitionPicker({
@@ -519,17 +519,4 @@ function place(repo: string, explored: string): string {
 
 function location(symbol: ExploredSymbol, explored: string): string {
   return `${place(symbol.repo, explored)}${oneLine(symbol.path)}:${symbol.line}`
-}
-
-function LinesBox({ lines }: { lines: readonly ReactNode[] }) {
-  const size = useScreenSize()
-  return (
-    <Box flexDirection="column" width={size.columns}>
-      {lines.slice(0, size.rows).map((line, position) => (
-        <Text key={position} wrap="truncate-end">
-          {line}
-        </Text>
-      ))}
-    </Box>
-  )
 }
