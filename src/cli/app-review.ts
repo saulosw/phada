@@ -1,7 +1,11 @@
 import { reviewDetailOf } from '../app/read-history.js'
 import { ReviewCancelledError } from '../app/review-and-publish.js'
+import { submitRequest } from '../app/submit-request.js'
+import { dataFiles } from '../config/data-paths.js'
+import { loadTopLevelUserLayers } from '../config/user-config.js'
 import type { ReviewProgressSink } from '../app/review-progress.js'
 import type {
+  EnqueuedReview,
   OpenPullRequests,
   PullRequestTarget,
   RequestedReview,
@@ -17,9 +21,11 @@ import type { GitHubTokenDeps } from './github-token.js'
 import { historyRun } from './history-run.js'
 import { prepareReview, runManualReview } from './manual-review.js'
 import type { ManualReviewDeps } from './manual-review.js'
+import { requireWatchSettings, submitDeps } from './request-wiring.js'
+import type { RequestWiringDeps } from './request-wiring.js'
 import { reviewRunJson } from './review-wiring.js'
 
-export interface AppReviewDeps extends ManualReviewDeps, GitHubTokenDeps {
+export interface AppReviewDeps extends ManualReviewDeps, RequestWiringDeps, GitHubTokenDeps {
   listOpenPullRequests: (
     options: RepositoryFilesOptions & { etag?: string },
   ) => Promise<PullListing>
@@ -35,6 +41,7 @@ export interface AppReview {
     onProgress: ReviewProgressSink,
     signal?: AbortSignal,
   ): Promise<RequestedReview>
+  enqueueReview(target: PullRequestTarget): Promise<EnqueuedReview>
 }
 
 export function appReview(deps: AppReviewDeps): AppReview {
@@ -98,6 +105,21 @@ export function appReview(deps: AppReviewDeps): AppReview {
         throw error
       } finally {
         signal?.removeEventListener('abort', kill)
+      }
+    },
+    enqueueReview: async ({ owner, repo, number }) => {
+      const settings = requireWatchSettings(await loadTopLevelUserLayers(deps))
+      const token = await readGitHubToken(deps)
+      if (token === undefined) return { status: 'no-token' }
+      const history = await deps.openHistoryStore(dataFiles(deps.env, deps.home).history)
+      try {
+        const result = await submitRequest(
+          { repo: `${owner}/${repo}`, number, source: 'enqueue', publish: 'pr' },
+          submitDeps(history, settings, token, deps),
+        )
+        return { status: 'submitted', result }
+      } finally {
+        history.close()
       }
     },
   }

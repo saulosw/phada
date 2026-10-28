@@ -29,6 +29,7 @@ import type { RepositoryDetail, RepositoryList } from '../app/read-repositories.
 import type { UserRepositories } from '../app/read-user-repositories.js'
 import type { RepositoryFolder, RepositoryInit } from '../app/repository-folder.js'
 import type {
+  EnqueuedReview,
   OpenPullRequests,
   PullRequestTarget,
   RequestedReview,
@@ -101,6 +102,7 @@ export interface AppDeps {
     onProgress: ReviewProgressSink,
     signal: AbortSignal,
   ): Promise<RequestedReview>
+  enqueueReview(target: PullRequestTarget): Promise<EnqueuedReview>
 }
 
 export interface KeyHint {

@@ -75,6 +75,7 @@ function harness(changes: Partial<AppReviewDeps> = {}) {
     sleep: async () => undefined,
     clock: () => new Date('2026-10-28T12:00:00.000Z'),
     listOpenPullRequests: async () => ({ status: 'ok', pulls: [] }),
+    fetchPullRequestMetadata: async () => pullRequestFixture(),
     ...changes,
   }
   return { deps, posts, providers, written, data }
@@ -233,6 +234,68 @@ describe('a review the app cancels', () => {
 
     expect(review.status).toBe('reviewed')
     expect(kills).toBe(0)
+  })
+})
+
+describe('a review the app puts in the queue', () => {
+  const WATCHED = { '/home/u/.config/phada/config.yml': 'watch:\n  repos: [acme/shop]\n' }
+
+  it('queues a job the watch publishes, and joins it when asked again', async () => {
+    const { deps, data, posts, providers } = harness({ files: memoryFiles(WATCHED) })
+    const { enqueueReview } = appReview(deps)
+
+    const first = await enqueueReview(TARGET)
+    const second = await enqueueReview(TARGET)
+
+    expect(first).toMatchObject({
+      status: 'submitted',
+      result: {
+        status: 'queued',
+        job: { repo: 'acme/shop', number: 12, headSha: pullRequestFixture().headSha },
+      },
+    })
+    if (first.status !== 'submitted' || first.result.status === 'refused') {
+      throw new Error('expected a queued job')
+    }
+    expect(second).toMatchObject({
+      status: 'submitted',
+      result: { status: 'joined', job: { id: first.result.job.id } },
+    })
+    const history = await openHistoryStore(join(data, 'history.sqlite'))
+    expect(history.requests([first.result.job.id])).toEqual([
+      expect.objectContaining({ source: 'enqueue', publish: 'pr' }),
+      expect.objectContaining({ source: 'enqueue', publish: 'pr' }),
+    ])
+    history.close()
+    expect([posts, providers]).toEqual([[], []])
+  })
+
+  it('gives the reason the queue refused it', async () => {
+    const { deps } = harness({
+      files: memoryFiles({
+        '/home/u/.config/phada/config.yml': 'watch:\n  repos: [acme/web]\n',
+      }),
+    })
+
+    expect(await appReview(deps).enqueueReview(TARGET)).toEqual({
+      status: 'submitted',
+      result: { status: 'refused', reason: 'not-watched' },
+    })
+  })
+
+  it('says when there is no GitHub token', async () => {
+    const { deps } = harness({ env: {}, files: memoryFiles(WATCHED) })
+
+    expect(await appReview(deps).enqueueReview(TARGET)).toEqual({ status: 'no-token' })
+  })
+
+  it('fails as phada enqueue does without watch: in the user config', async () => {
+    const { deps, data } = harness()
+
+    await expect(appReview(deps).enqueueReview(TARGET)).rejects.toThrow(
+      'Nothing to watch: list the repositories under watch: in your own config',
+    )
+    expect(existsSync(join(data, 'history.sqlite'))).toBe(false)
   })
 })
 

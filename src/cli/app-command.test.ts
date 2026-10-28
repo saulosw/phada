@@ -810,6 +810,21 @@ describe('the review readers', () => {
 
     expect(seen).toEqual([{ status: 'no-token' }])
   })
+
+  it('asks the user config for the watch before putting a review in the queue', async () => {
+    const seen: unknown[] = []
+    const { app } = deps({
+      during: async (appDeps) => {
+        seen.push(
+          await appDeps.enqueueReview({ owner: 'acme', repo: 'shop', number: 4 }).catch(String),
+        )
+      },
+    })
+
+    await runApp(app)
+
+    expect(seen).toEqual([expect.stringContaining('Nothing to watch')])
+  })
 })
 
 describe('the indexer', () => {
@@ -1271,6 +1286,7 @@ function fakeGitHub(options: { files?: Record<string, string>; failTree?: boolea
       calls.push(`pull ${number} ${token}`)
       return { ...pull, number }
     },
+    fetchPullRequestMetadata: async ({ number }: { number: number }) => ({ ...pull, number }),
     fetchRepositoryTree: async ({ sha }: { sha: string }) => {
       calls.push(`tree ${sha}`)
       if (options.failTree === true) throw new Error('Resource not accessible by integration')

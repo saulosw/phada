@@ -219,6 +219,7 @@ export function fakeAppDeps(scheduler: Scheduler, overrides: Partial<AppDeps> = 
     },
     readOpenPullRequests: async () => ({ status: 'no-token' }),
     reviewPullRequest: async () => ({ status: 'no-token' }),
+    enqueueReview: async () => ({ status: 'no-token' }),
     ...overrides,
   }
 }
