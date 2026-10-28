@@ -186,6 +186,7 @@ export function fakeAppDeps(scheduler: Scheduler, overrides: Partial<AppDeps> = 
     version: '1.2.3',
     pid: 1000,
     start: 'home',
+    debug: false,
     cwd: '/home/ana/code/shop',
     home: '/home/ana',
     env: { TERM: 'xterm-256color' },

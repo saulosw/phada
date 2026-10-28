@@ -373,6 +373,67 @@ describe('reviewing a pull request from the app', () => {
     expect(frame()).toContain('✓ Pull request: Let users spend crystals')
   })
 
+  function failure(): Error {
+    const cause = new Error('spawn claude \u001B[2JENOENT')
+    cause.stack = 'Error: spawn claude ENOENT\n    at spawn (node:child_process:1:1)'
+    const error = new Error('The AI CLI could not start.', { cause })
+    error.stack = 'Error: The AI CLI could not start.\n    at runReview (review.ts:10:5)'
+    return error
+  }
+
+  async function failed(flow: ReturnType<typeof openFlow>) {
+    await flow.fromPalette()
+    await flow.type('acme/shop#12')
+    await flow.press(KEYS.enter)
+    await flow.showing('How should Phada review it?')
+    await flow.press(KEYS.enter)
+    await flow.until(() => flow.asked.length === 1)
+    flow.asked[0]?.reject(failure())
+    await flow.showing('The review failed.')
+  }
+
+  it('shows the causes and the stack of a failed review when the app was opened with --debug', async () => {
+    const flow = openFlow({ deps: { debug: true } })
+    await failed(flow)
+    await flow.showing('Caused by: Error: spawn claude ENOENT')
+    expect(flow.frame()).toContain('The AI CLI could not start.')
+    expect(flow.frame()).toContain('at runReview (review.ts:10:5)')
+    expect(flow.frame()).toContain('at spawn (node:child_process:1:1)')
+    expect(flow.frame()).not.toContain('\u001B[2J')
+    expectFits(flow.frame(), { columns: 80, rows: 24 })
+  })
+
+  it('keeps the stack of a failed review to the rows of the screen', async () => {
+    const error = new Error('deep')
+    error.stack = [
+      'Error: deep',
+      ...Array.from({ length: 60 }, (_, at) => `    at f${at} (x.ts:${at}:1)`),
+    ].join('\n')
+    const flow = openFlow({ deps: { debug: true } })
+    await flow.fromPalette()
+    await flow.type('acme/shop#12')
+    await flow.press(KEYS.enter)
+    await flow.showing('How should Phada review it?')
+    await flow.press(KEYS.enter)
+    await flow.until(() => flow.asked.length === 1)
+    flow.asked[0]?.reject(error)
+    await flow.showing('at f0 (x.ts:0:1)')
+    await flow.press(KEYS.end)
+    await flow.showing('at f')
+    const shown = frameLines(flow.frame()).filter((line) => /at f\d+/.test(line))
+    expect(shown.length).toBeGreaterThan(0)
+    expect(flow.frame()).not.toContain('at f59 (x.ts:59:1)')
+    expectFits(flow.frame(), { columns: 80, rows: 24 })
+  })
+
+  it('shows only the message of a failed review without --debug', async () => {
+    const flow = openFlow()
+    await failed(flow)
+    expect(flow.frame()).toContain('The AI CLI could not start.')
+    expect(flow.frame()).not.toContain('Caused by')
+    expect(flow.frame()).not.toContain('at runReview')
+  })
+
   async function running(flow: ReturnType<typeof openFlow>, publish = false) {
     await flow.fromPalette()
     await flow.type('acme/shop#12')

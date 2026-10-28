@@ -61,6 +61,7 @@ export interface AppDeps {
   version: string
   pid: number
   start: AppStart
+  debug: boolean
   cwd: string
   home: string
   env: ColorEnv

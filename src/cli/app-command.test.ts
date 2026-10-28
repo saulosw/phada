@@ -227,6 +227,15 @@ describe('runApp', () => {
     expect(opened[0]?.deps.start).toBe('home')
   })
 
+  it('tells the app whether it was opened with --debug', async () => {
+    const plain = deps({ config: '' })
+    await runApp(plain.app)
+    const debugging = deps({ config: '' })
+    await runApp(debugging.app, { debug: true })
+    expect(plain.opened[0]?.deps.debug).toBe(false)
+    expect(debugging.opened[0]?.deps.debug).toBe(true)
+  })
+
   it('opens on the setup when asked, with a user config', async () => {
     const { app, opened } = deps({ config: 'language: pt\n' })
     await runApp(app, { setup: true })

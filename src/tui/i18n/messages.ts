@@ -67,6 +67,7 @@ export interface UiMessages {
   home: HomeMessages
   loading: string
   failed(message: string): string
+  causedBy(error: string): string
   time: TimeMessages
   list: { range(first: number, last: number, total: number): string; scroll: string }
   field: { apply: string; cancel: string }

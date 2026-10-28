@@ -13,7 +13,7 @@ import {
   useTheme,
   useWorking,
 } from '../app-context.js'
-import { failedNodes, spaced } from '../frame-lines.js'
+import { errorDetailNodes, failedNodes, spaced } from '../frame-lines.js'
 import type { DrawContext } from '../frame-lines.js'
 import { Mascot, MASCOT_FRAMES } from '../mascot.js'
 import { reviewDetailLines } from '../review-detail.js'
@@ -48,7 +48,7 @@ export function RunStep({
   onClose(): void
   onWatchRunning(pid: number): void
 }) {
-  const { reviewPullRequest, now, scheduler } = useAppDeps()
+  const { reviewPullRequest, now, scheduler, debug } = useAppDeps()
   const messages = useMessages()
   const theme = useTheme()
   const size = useScreenSize()
@@ -195,6 +195,7 @@ export function RunStep({
           <Text bold>{header}</Text>,
           <Text color={theme.colors.error}>{m.failed}</Text>,
           ...failedNodes(draw, outcome.error),
+          ...(debug ? spaced(errorDetailNodes(draw, outcome.error, size.rows)) : []),
           ...spaced(stepLines(steps, target, draw, outcome.endedAt)),
           ...spaced(warningLines(steps.warnings, draw)),
         ]

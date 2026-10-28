@@ -25,6 +25,22 @@ export function failedNodes(
   ))
 }
 
+export function errorDetailNodes(
+  { messages, theme, width }: DrawContext,
+  error: unknown,
+  rows: number,
+): ReactNode[] {
+  const chain: string[] = []
+  const seen = new Set<unknown>()
+  for (let current = error; current !== undefined && !seen.has(current);) {
+    seen.add(current)
+    const text = current instanceof Error ? (current.stack ?? current.message) : String(current)
+    chain.push(chain.length === 0 ? text : messages.causedBy(text))
+    current = current instanceof Error ? current.cause : undefined
+  }
+  return textLines(chain.join('\n'), width, theme.colors.dim).slice(0, Math.max(rows, 0))
+}
+
 export function spaced(lines: readonly ReactNode[]): ReactNode[] {
   return lines.length === 0 ? [] : [<Text> </Text>, ...lines]
 }

@@ -169,7 +169,7 @@ export async function runApp(
   let watchEnd: AppWatchEnd
   try {
     const wiring = { history, graph, lock: files.lock, terminal, watch, review, ghToken }
-    result = await openApp(await appDeps(deps, wiring, start), {
+    result = await openApp(await appDeps(deps, wiring, start, options.debug === true), {
       stdin,
       stdout,
       onSignal: terminal.onSignal,
@@ -206,6 +206,7 @@ async function appDeps(
   deps: AppCommandDeps,
   { history, graph, lock, terminal, watch, review, ghToken }: AppWiring,
   start: AppStart,
+  debug: boolean,
 ): Promise<AppDeps> {
   let settings: WatchSettings | undefined
   const watchSettings = () =>
@@ -218,6 +219,7 @@ async function appDeps(
     version: deps.version,
     pid: deps.pid,
     start,
+    debug,
     cwd: deps.cwd,
     home: deps.home,
     env: colorEnv(deps.env),

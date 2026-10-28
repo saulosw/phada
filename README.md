@@ -187,8 +187,9 @@ screen open the review in place of the tabs:
    and saves nothing in the history. Once it publishes, it no longer cancels.
 5. **The result**: the same detail as the Reviews screen (score, verdict, findings with their
    text, what was published or, for only look, that nothing was posted, what it would resolve or
-   why it would skip, the CI), how long it took and whether the history kept it. `Esc` goes back
-   to the screen you came from.
+   why it would skip, the CI), how long it took and whether the history kept it. A failed review
+   shows its error; with `phada --debug`, also its causes and stack. `Esc` goes back to the
+   screen you came from.
 
 It is the same review as `phada review owner/repo#N` (with `--dry-run` for only look): the
 provider, model and MCP servers of your config for that repository, your GitHub token, and the

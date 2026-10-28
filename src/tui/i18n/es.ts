@@ -104,6 +104,7 @@ export const spanish: UiMessages = {
   },
   loading: 'Cargando…',
   failed: (message) => `No se pudo cargar: ${message}`,
+  causedBy: (error) => `Causado por: ${error}`,
   time: {
     now: 'ahora',
     soon: 'en cualquier momento',

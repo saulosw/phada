@@ -103,6 +103,7 @@ export const english: UiMessages = {
   },
   loading: 'Loading…',
   failed: (message) => `Could not load: ${message}`,
+  causedBy: (error) => `Caused by: ${error}`,
   time: {
     now: 'just now',
     soon: 'any moment',

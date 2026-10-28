@@ -447,7 +447,7 @@ src/
                          #   and quits once they stopped, Esc stays, a second Ctrl-C aborts and
                          #   exits interrupted), a signal aborts them; the size warning below
                          #   80×24
-    app-context.ts       #   AppDeps (version, start, cwd, home, env, scheduler, language, now,
+    app-context.ts       #   AppDeps (version, start, debug, cwd, home, env, scheduler, language, now,
                          #   readLanguage, readQueue, readReviews, readReviewDetail, readRepositories,
                          #   readRepository, readAutomation, readIndexes, readConnections,
                          #   searchSymbol, symbolCallers, symbolDependencies, readProviderSetup,
@@ -614,7 +614,9 @@ src/
                          #   (an error over ERROR_LINES), shortenHome() (a path under ~)
     frame-lines.tsx      #   DrawContext (catalog, theme, width); textLines() (a text wrapped, one
                          #   node per line), failedNodes() (failedLines() in the error color),
-                         #   spaced() (a blank line before lines), Lines (each cut at the width)
+                         #   spaced() (a blank line before lines), Lines (each cut at the width),
+                         #   errorDetailNodes() (an error's stack and causes, for --debug, cut
+                         #   to the rows)
     labeled-lines.tsx    #   labeledLines(): label and value rows of a detail, values wrapped
     relative-time.ts     #   relativeTime() ("2m ago", "in ~4m" for an estimate), absoluteTime(),
                          #   clockTime() (HH:MM:SS);
