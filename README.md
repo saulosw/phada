@@ -194,7 +194,8 @@ screen open the review in place of the tabs:
 It is the same review as `phada review owner/repo#N` (with `--dry-run` for only look): the
 provider, model and MCP servers of your config for that repository, your GitHub token, and the
 run saved in the history unless `history: false`. The AI CLI runs in its own process group, so it
-never writes on the app. `Esc` goes one step back. While a review runs, `q` and `Ctrl-C` ask
+never writes on the app. `Esc` goes one step back; the palette stays closed while the review is
+open, so it is left only with `Esc`. While a review runs, `q` and `Ctrl-C` ask
 before quitting (`Enter` cancels it and quits, waiting for a publication under way; `Esc` stays;
 a second `Ctrl-C` cancels and quits at once).
 
