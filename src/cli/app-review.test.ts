@@ -11,6 +11,8 @@ import { verdictFixture, verificationJson } from '../../test/support/verificatio
 import type { ReviewProgress } from '../app/review-progress.js'
 import type { CreateReviewOptions } from '../github/create-review.js'
 import type { OpenPull } from '../github/list-pull-requests.js'
+import { CommandError } from '../process/errors.js'
+import { childScope, runCommand } from '../process/run-command.js'
 import { createExtractor } from '../repo-map/extract.js'
 import { openHistoryStore } from '../store/history-store.js'
 import { openIndexStore } from '../store/index-store.js'
@@ -25,6 +27,7 @@ afterAll(() => rmSync(dir, { recursive: true, force: true }))
 const TOKEN = `ghp_${'Z9y8X7w6V5'.repeat(4)}`
 const TARGET = { owner: 'acme', repo: 'shop', number: 12 }
 let runs = 0
+const LONG_CHILD: [string, string[]] = [process.execPath, ['-e', 'setTimeout(() => {}, 30_000)']]
 
 function harness(changes: Partial<AppReviewDeps> = {}) {
   runs += 1
@@ -181,21 +184,14 @@ describe('a review the app asks for', () => {
 describe('a review the app cancels', () => {
   function cancelling(mode: 'look' | 'publish') {
     const controller = new AbortController()
-    let kills = 0
-    let killed = () => {}
-    const dead = new Promise<void>((resolve) => {
-      killed = resolve
-    })
+    let aiCli: Promise<unknown> = Promise.resolve()
     const setup = harness({
-      killDetachedChildren: () => {
-        kills += 1
-        killed()
-      },
       createProvider: () => ({
         id: 'fake-cli',
         review: async () => {
-          controller.abort()
-          await dead
+          aiCli = runCommand(...LONG_CHILD, { detached: true }).catch((error: unknown) => error)
+          setTimeout(() => controller.abort(), 200)
+          await aiCli
           throw new Error('Claude Code ended without an exit code (SIGTERM).')
         },
       }),
@@ -206,23 +202,45 @@ describe('a review the app cancels', () => {
       () => undefined,
       controller.signal,
     )
-    return { ...setup, review, kills: () => kills }
+    return { ...setup, review, aiCli: () => aiCli }
   }
 
   it('kills the AI CLI it started, posts nothing and saves no run', async () => {
-    const { review, kills, posts, written, data } = cancelling('publish')
+    const { review, aiCli, posts, written, data } = cancelling('publish')
 
     expect(await review).toEqual({ status: 'cancelled' })
-    expect(kills()).toBe(1)
+    expect(await aiCli()).toBeInstanceOf(CommandError)
     expect(posts).toEqual([])
     expect(written).toEqual([])
     expect(existsSync(join(data, 'history.sqlite'))).toBe(false)
   })
 
+  it('leaves alone the children another run of the same process started', async () => {
+    const watch = childScope()
+    const watchJob = watch.run(() =>
+      runCommand(...LONG_CHILD, { detached: true }).then(
+        () => 'ended',
+        () => 'killed',
+      ),
+    )
+    const { review } = cancelling('look')
+
+    expect(await review).toEqual({ status: 'cancelled' })
+    const settled = await Promise.race([
+      watchJob,
+      new Promise((done) => setTimeout(() => done('running'), 300)),
+    ])
+    watch.kill()
+    expect(settled).toBe('running')
+    expect(await watchJob).toBe('killed')
+  })
+
   it('kills nothing once the review ended', async () => {
     const controller = new AbortController()
     let kills = 0
-    const { deps } = harness({ killDetachedChildren: () => (kills += 1) })
+    const { deps } = harness({
+      childScope: () => ({ run: (work) => work(), kill: () => (kills += 1) }),
+    })
 
     const review = await appReview(deps).reviewPullRequest(
       TARGET,

@@ -10,6 +10,7 @@ import {
 } from './errors.js'
 import { spawn } from 'node:child_process'
 import {
+  childScope,
   killDetachedChildren,
   runCommand,
   runCommandBytes,
@@ -306,5 +307,86 @@ describe('detached children', () => {
     expect(child.exitCode).toBeNull()
     expect(child.signalCode).toBeNull()
     child.kill('SIGKILL')
+  })
+})
+
+describe('child scopes', () => {
+  const settledWithin = (promise: Promise<unknown>, ms: number) =>
+    Promise.race([
+      promise.then(() => true),
+      new Promise<boolean>((done) => setTimeout(() => done(false), ms)),
+    ])
+
+  it('stops only the detached children started inside the scope', async () => {
+    const review = childScope()
+    const watch = childScope()
+    const reviewing = captureError(
+      review.run(() => runCommand(...node('setTimeout(() => {}, 30_000)'), { detached: true })),
+    )
+    const watching = captureError(
+      watch.run(() => runCommand(...node('setTimeout(() => {}, 30_000)'), { detached: true })),
+    )
+    await new Promise((done) => setTimeout(done, 200))
+
+    review.kill()
+
+    expect(await reviewing).toBeInstanceOf(CommandError)
+    expect(await settledWithin(watching, 300)).toBe(false)
+    watch.kill()
+    expect(await watching).toBeInstanceOf(CommandError)
+  })
+
+  it('stops the children started after an await inside the scope', async () => {
+    const scope = childScope()
+    const running = captureError(
+      scope.run(async () => {
+        await new Promise((done) => setTimeout(done, 10))
+        return runCommand(...node('setTimeout(() => {}, 30_000)'), { detached: true })
+      }),
+    )
+    await new Promise((done) => setTimeout(done, 200))
+
+    scope.kill()
+
+    expect(await running).toBeInstanceOf(CommandError)
+  })
+
+  it('stops a child tracked inside the scope and leaves the ones tracked outside', async () => {
+    const start = () =>
+      spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30_000)'], {
+        detached: true,
+        stdio: 'ignore',
+      })
+    const scope = childScope()
+    const inside = scope.run(() => {
+      const child = start()
+      trackDetachedChild(child.pid ?? 0)
+      return child
+    })
+    const outside = start()
+    const untrackOutside = trackDetachedChild(outside.pid ?? 0)
+    const exited = new Promise((done) => inside.once('exit', done))
+
+    scope.kill()
+
+    await exited
+    await new Promise((done) => setTimeout(done, 200))
+    expect(inside.signalCode).toBe('SIGTERM')
+    expect(outside.exitCode).toBeNull()
+    expect(outside.signalCode).toBeNull()
+    untrackOutside()
+    outside.kill('SIGKILL')
+  })
+
+  it('leaves the children of a scope to killDetachedChildren too', async () => {
+    const scope = childScope()
+    const running = captureError(
+      scope.run(() => runCommand(...node('setTimeout(() => {}, 30_000)'), { detached: true })),
+    )
+    await new Promise((done) => setTimeout(done, 200))
+
+    killDetachedChildren()
+
+    expect(await running).toBeInstanceOf(CommandError)
   })
 })

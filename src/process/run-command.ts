@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { execa } from 'execa'
 import {
   CommandAbortedError,
@@ -12,10 +13,30 @@ const DEFAULT_MAX_OUTPUT_LENGTH = 10_000_000
 const KILL_GRACE_MS = 2_000
 
 const detachedChildren = new Set<number>()
+const scopes = new AsyncLocalStorage<Set<number>>()
+
+export interface ChildScope {
+  run<T>(work: () => T): T
+  kill(): void
+}
 
 export function killDetachedChildren(): void {
   for (const pid of detachedChildren) signalGroup(pid, 'SIGTERM')
   detachedChildren.clear()
+}
+
+export function childScope(): ChildScope {
+  const children = new Set<number>()
+  return {
+    run: (work) => scopes.run(children, work),
+    kill: () => {
+      for (const pid of children) {
+        signalGroup(pid, 'SIGTERM')
+        detachedChildren.delete(pid)
+      }
+      children.clear()
+    },
+  }
 }
 
 function signalGroup(pid: number, signal: NodeJS.Signals): void {
@@ -27,9 +48,12 @@ function signalGroup(pid: number, signal: NodeJS.Signals): void {
 }
 
 export function trackDetachedChild(pid: number): () => void {
+  const scope = scopes.getStore()
   detachedChildren.add(pid)
+  scope?.add(pid)
   return () => {
     detachedChildren.delete(pid)
+    scope?.delete(pid)
   }
 }
 
@@ -103,7 +127,7 @@ async function execute(
     ...(options.signal === undefined ? {} : { cancelSignal: options.signal }),
   })
   const pid = options.detached === true ? child.pid : undefined
-  if (pid !== undefined) detachedChildren.add(pid)
+  const untrack = pid === undefined ? undefined : trackDetachedChild(pid)
   let groupTimedOut = false
   let graceTimer: NodeJS.Timeout | undefined
   const stopGroup = () => {
@@ -123,7 +147,7 @@ async function execute(
     clearTimeout(groupTimer)
     clearTimeout(graceTimer)
     options.signal?.removeEventListener('abort', stopGroup)
-    if (pid !== undefined) detachedChildren.delete(pid)
+    untrack?.()
   })
   const durationMs = performance.now() - startedAt
 
