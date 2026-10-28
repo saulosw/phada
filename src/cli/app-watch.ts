@@ -10,13 +10,16 @@ export interface AppWatchDeps extends WatchSessionDeps {
   childScope?: () => ChildScope
 }
 
+export type AppWatchEnd = 'idle' | 'aborted'
+
 export interface AppWatch {
   start(observer: WatchObserver): Promise<WatchStarted>
-  close(): Promise<void>
+  close(): Promise<AppWatchEnd>
 }
 
 export function appWatch(deps: AppWatchDeps): AppWatch {
   let running: WatchControl | undefined
+  let aborted = false
   let starting: Promise<unknown> = Promise.resolve()
   const start = async (observer: WatchObserver): Promise<WatchStarted> => {
     const holder = await deps.lockHolder(dataFiles(deps.env, deps.home).lock)
@@ -46,7 +49,10 @@ export function appWatch(deps: AppWatchDeps): AppWatch {
     const forget = () => {
       if (running === control) running = undefined
     }
-    void handle.done.then(forget, forget)
+    void handle.done.then((end) => {
+      if (end.reason === 'aborted') aborted = true
+      forget()
+    }, forget)
     return { status: 'started', control }
   }
   return {
@@ -58,9 +64,12 @@ export function appWatch(deps: AppWatchDeps): AppWatch {
     close: async () => {
       await starting
       const control = running
-      if (control === undefined) return
-      control.abort()
-      await control.done.catch(() => undefined)
+      if (control !== undefined) {
+        aborted = true
+        control.abort()
+        await control.done.catch(() => undefined)
+      }
+      return aborted ? 'aborted' : 'idle'
     },
   }
 }

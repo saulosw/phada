@@ -54,8 +54,11 @@ function deps(
     openGraph?: AppCommandDeps['openGraph']
     openPulls?: OpenPull[]
     startWatch?: AppCommandDeps['startWatch']
+    fetchPullRequest?: AppCommandDeps['fetchPullRequest']
   } = {},
 ) {
+  const aborts: number[] = []
+  const errors: string[] = []
   const ghCalls: string[][] = []
   const userTokens: string[] = []
   const opened: { deps: AppDeps; host: AppHost }[] = []
@@ -75,6 +78,15 @@ function deps(
     files,
     stdin: terminal(options.stdin ?? true).stdin,
     stdout: terminal(options.stdout ?? true).stdout,
+    stderr: {
+      write: (text: string) => {
+        errors.push(text)
+        return true
+      },
+    },
+    abort: (code) => {
+      aborts.push(code)
+    },
     onSignal: (handler) => {
       signalHandlers.push(handler)
     },
@@ -150,12 +162,26 @@ function deps(
     withLock: (_path, work) => work(),
     killDetachedChildren: () => undefined,
     ...(options.startWatch === undefined ? {} : { startWatch: options.startWatch }),
+    ...(options.fetchPullRequest === undefined
+      ? {}
+      : { fetchPullRequest: options.fetchPullRequest }),
   }
   app.env.PHADA_DATA_HOME = options.dataHome ?? '/data'
   const send = (signal: StopSignal) => {
     for (const handler of signalHandlers) handler(signal)
   }
-  return { app, opened, files, historyPaths, ghCalls, userTokens, send, openPullReads }
+  return {
+    app,
+    opened,
+    files,
+    historyPaths,
+    ghCalls,
+    userTokens,
+    send,
+    openPullReads,
+    aborts,
+    errors,
+  }
 }
 
 const indexDir = mkdtempSync(join(tmpdir(), 'phada-app-index-'))
@@ -904,7 +930,7 @@ describe('the watch of the app', () => {
     expect(calls).toEqual([])
   })
 
-  it('aborts the watch when the app fails, and still throws the failure', async () => {
+  it('aborts the watch when the app fails', async () => {
     const { calls, ...options } = watching({
       result: { kind: 'failed', error: new Error('render failed') },
       during: async (appDeps) => {
@@ -913,8 +939,149 @@ describe('the watch of the app', () => {
     })
     const { app } = deps(options)
 
-    await expect(runApp(app)).rejects.toThrow('render failed')
+    expect(await runApp(app)).toBe(1)
     expect(calls).toEqual(['start once=false backfill=false', 'abort'])
+  })
+})
+
+describe('the end of the app with work in flight', () => {
+  function watchUntil(end: 'abort' | 'stop' | 'never') {
+    const startWatch: AppCommandDeps['startWatch'] = async () => {
+      let finish: (value: WatchEnd) => void = () => undefined
+      const done = new Promise<WatchEnd>((resolve) => {
+        finish = resolve
+      })
+      return {
+        done,
+        stop: () => {
+          if (end === 'stop') finish({ reason: 'stopped' })
+        },
+        abort: () => finish({ reason: 'aborted' }),
+        stopRequested: () => false,
+        running: () => undefined,
+      }
+    }
+    return startWatch
+  }
+
+  it.each([
+    [{ kind: 'interrupted' }, 130],
+    [{ kind: 'terminated' }, 143],
+  ] as const)(
+    'ends the process like phada watch when the app ends %j with its watch running',
+    async (result, code) => {
+      const { app, aborts } = deps({
+        result,
+        startWatch: watchUntil('never'),
+        during: async (appDeps) => {
+          await appDeps.startWatch({ event: () => undefined, progress: () => undefined })
+        },
+      })
+
+      expect(await runApp(app)).toBe(code)
+      expect(aborts).toEqual([code])
+    },
+  )
+
+  it('ends the process when the app aborted its watch on the way out', async () => {
+    const { app, aborts } = deps({
+      result: { kind: 'interrupted' },
+      startWatch: watchUntil('never'),
+      during: async (appDeps) => {
+        const started = await appDeps.startWatch({
+          event: () => undefined,
+          progress: () => undefined,
+        })
+        if (started.status === 'started') {
+          started.control.abort()
+          await started.control.done
+        }
+      },
+    })
+
+    expect(await runApp(app)).toBe(130)
+    expect(aborts).toEqual([130])
+  })
+
+  it('returns normally once the watch stopped after its review', async () => {
+    const { app, aborts } = deps({
+      startWatch: watchUntil('stop'),
+      during: async (appDeps) => {
+        const started = await appDeps.startWatch({
+          event: () => undefined,
+          progress: () => undefined,
+        })
+        if (started.status === 'started') {
+          started.control.stop()
+          await started.control.done
+        }
+      },
+    })
+
+    expect(await runApp(app)).toBe(0)
+    expect(aborts).toEqual([])
+  })
+
+  it('ends the process when the app quits while one of its reviews still runs', async () => {
+    let fetching = false
+    const { app, aborts } = deps({
+      ghToken: 'gho_from_gh',
+      fetchPullRequest: () => {
+        fetching = true
+        return new Promise(() => undefined)
+      },
+      during: async (appDeps) => {
+        void appDeps.reviewPullRequest(
+          { owner: 'acme', repo: 'shop', number: 4 },
+          'look',
+          () => undefined,
+          new AbortController().signal,
+        )
+        await vi.waitFor(() => {
+          expect(fetching).toBe(true)
+        })
+      },
+    })
+
+    expect(await runApp(app)).toBe(0)
+    expect(aborts).toEqual([0])
+  })
+
+  it('returns normally once its reviews ended', async () => {
+    const { app, aborts } = deps({
+      during: async (appDeps) => {
+        await appDeps.reviewPullRequest(
+          { owner: 'acme', repo: 'shop', number: 4 },
+          'look',
+          () => undefined,
+          new AbortController().signal,
+        )
+      },
+    })
+
+    expect(await runApp(app)).toBe(0)
+    expect(aborts).toEqual([])
+  })
+
+  it('prints the failure of the app before ending the process with work in flight', async () => {
+    const { app, aborts, errors } = deps({
+      result: { kind: 'failed', error: new Error('render failed') },
+      startWatch: watchUntil('never'),
+      during: async (appDeps) => {
+        await appDeps.startWatch({ event: () => undefined, progress: () => undefined })
+      },
+    })
+
+    expect(await runApp(app)).toBe(1)
+    expect(errors.join('')).toContain('render failed')
+    expect(aborts).toEqual([1])
+  })
+
+  it('never ends the process on a clean quit', async () => {
+    const { app, aborts } = deps()
+
+    expect(await runApp(app)).toBe(0)
+    expect(aborts).toEqual([])
   })
 })
 

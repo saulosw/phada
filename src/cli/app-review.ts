@@ -43,10 +43,57 @@ export interface AppReview {
     signal?: AbortSignal,
   ): Promise<RequestedReview>
   enqueueReview(target: PullRequestTarget): Promise<EnqueuedReview>
+  reviewsRunning(): boolean
 }
 
 export function appReview(deps: AppReviewDeps): AppReview {
+  let running = 0
+  const reviewPullRequest: AppReview['reviewPullRequest'] = async (
+    target,
+    mode,
+    onProgress,
+    signal,
+  ) => {
+    const token = await readGitHubToken(deps)
+    if (token === undefined) return { status: 'no-token' }
+    if (signal?.aborted === true) return { status: 'cancelled' }
+    const children = (deps.childScope ?? childScope)()
+    const kill = () => children.kill()
+    signal?.addEventListener('abort', kill, { once: true })
+    try {
+      const { run, meta, history } = await children.run(async () =>
+        runManualReview(
+          await prepareReview(target, token, { detached: true }, deps),
+          {
+            force: false,
+            dryRun: mode === 'look',
+            waitCi: false,
+            options: {},
+            ...(signal === undefined ? {} : { signal }),
+          },
+          deps,
+          {
+            progress: onProgress,
+            reviewed: ({ outcome }) => {
+              if (outcome.status !== 'reviewed') return
+              for (const message of outcome.result.warnings ?? []) {
+                onProgress({ kind: 'warning', message })
+              }
+            },
+          },
+        ),
+      )
+      const detail = reviewDetailOf(historyRun(run, reviewRunJson(run), meta), [])
+      return { status: 'reviewed', detail, history }
+    } catch (error) {
+      if (error instanceof ReviewCancelledError) return { status: 'cancelled' }
+      throw error
+    } finally {
+      signal?.removeEventListener('abort', kill)
+    }
+  }
   return {
+    reviewsRunning: () => running > 0,
     parsePullRequest: (text) => {
       try {
         return parsePullRequestRef(text)
@@ -71,43 +118,12 @@ export function appReview(deps: AppReviewDeps): AppReview {
         })),
       }
     },
-    reviewPullRequest: async (target, mode, onProgress, signal) => {
-      const token = await readGitHubToken(deps)
-      if (token === undefined) return { status: 'no-token' }
-      if (signal?.aborted === true) return { status: 'cancelled' }
-      const children = (deps.childScope ?? childScope)()
-      const kill = () => children.kill()
-      signal?.addEventListener('abort', kill, { once: true })
+    reviewPullRequest: async (...request) => {
+      running += 1
       try {
-        const { run, meta, history } = await children.run(async () =>
-          runManualReview(
-            await prepareReview(target, token, { detached: true }, deps),
-            {
-              force: false,
-              dryRun: mode === 'look',
-              waitCi: false,
-              options: {},
-              ...(signal === undefined ? {} : { signal }),
-            },
-            deps,
-            {
-              progress: onProgress,
-              reviewed: ({ outcome }) => {
-                if (outcome.status !== 'reviewed') return
-                for (const message of outcome.result.warnings ?? []) {
-                  onProgress({ kind: 'warning', message })
-                }
-              },
-            },
-          ),
-        )
-        const detail = reviewDetailOf(historyRun(run, reviewRunJson(run), meta), [])
-        return { status: 'reviewed', detail, history }
-      } catch (error) {
-        if (error instanceof ReviewCancelledError) return { status: 'cancelled' }
-        throw error
+        return await reviewPullRequest(...request)
       } finally {
-        signal?.removeEventListener('abort', kill)
+        running -= 1
       }
     },
     enqueueReview: async ({ owner, repo, number }) => {

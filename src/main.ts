@@ -96,11 +96,11 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
     if (command.kind === 'app') {
       assertAppTerminal(command, deps)
       debug = command.debug
-      return await runApp(deps)
+      return await runApp(deps, { debug })
     }
     if (command.kind === 'setup') {
       debug = command.debug
-      return await runApp(deps, { setup: true })
+      return await runApp(deps, { setup: true, debug })
     }
     debug = command.debug
     if (command.kind === 'index') {

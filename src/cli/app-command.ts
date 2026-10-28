@@ -57,6 +57,7 @@ import { rulesReaders } from './app-rules.js'
 import type { RulesReaderDeps } from './app-rules.js'
 import type { AppHistory } from './app-history.js'
 import { UsageError } from './errors.js'
+import { formatError } from './format-error.js'
 import { readGitHubAccess } from './github-access.js'
 import { USER_CONFIG_TEMPLATE } from './init-templates.js'
 import { ghTokenReader, readGitHubToken } from './github-token.js'
@@ -64,9 +65,9 @@ import type { GhTokenReader, RunGh } from './github-token.js'
 import type { TextOutput } from './progress.js'
 import { indexForApp } from './app-index.js'
 import { appReview } from './app-review.js'
-import type { AppReviewDeps } from './app-review.js'
+import type { AppReview, AppReviewDeps } from './app-review.js'
 import { appWatch } from './app-watch.js'
-import type { AppWatch, AppWatchDeps } from './app-watch.js'
+import type { AppWatch, AppWatchDeps, AppWatchEnd } from './app-watch.js'
 import { initRepository } from './init.js'
 import type { AppIndexDeps } from './app-index.js'
 import { SLACK_APP_TOKEN, SLACK_BOT_TOKEN } from './review-event-sinks.js'
@@ -90,7 +91,9 @@ export interface AppCommandDeps
   files: LocalFileSystem
   stdin: NodeJS.ReadableStream
   stdout: TextOutput
+  stderr: TextOutput
   onSignal: (handler: (signal?: StopSignal) => void) => void
+  abort: (code: number) => void
   loadApp?: () => Promise<{ openApp: typeof openApp }>
   clock: () => Date
   lockHolder: (path: string) => Promise<number | undefined>
@@ -139,7 +142,7 @@ export function assertAppTerminal(
 
 export async function runApp(
   deps: AppCommandDeps,
-  options: { setup: boolean } = { setup: false },
+  options: { setup?: boolean; debug?: boolean } = {},
 ): Promise<number> {
   const { stdin, stdout } = deps
   if (!isTerminalInput(stdin) || !isTerminalOutput(stdout)) {
@@ -161,20 +164,32 @@ export async function runApp(
   const terminal = terminalHandOff(deps)
   const ghToken: GhTokenReader = () => ghTokenReader(deps.env, deps.runGh)()
   const watch = appWatch({ ...deps, ghToken })
+  const review = appReview({ ...deps, ghToken })
+  let result: AppResult
+  let watchEnd: AppWatchEnd
   try {
-    const wiring = { history, graph, lock: files.lock, terminal, watch, ghToken }
-    const result = await openApp(await appDeps(deps, wiring, start), {
+    const wiring = { history, graph, lock: files.lock, terminal, watch, review, ghToken }
+    result = await openApp(await appDeps(deps, wiring, start), {
       stdin,
       stdout,
       onSignal: terminal.onSignal,
     })
-    if (result.kind === 'failed') throw result.error
-    return EXIT_CODES[result.kind]
   } finally {
-    await watch.close()
+    watchEnd = await watch.close()
     history.close()
     graph.close()
   }
+  const workLeft = watchEnd === 'aborted' || review.reviewsRunning()
+  if (result.kind !== 'failed') {
+    const code = EXIT_CODES[result.kind]
+    if (workLeft) deps.abort(code)
+    return code
+  }
+  if (!workLeft) throw result.error
+  const { message, exitCode } = formatError(result.error, { debug: options.debug === true })
+  deps.stderr.write(`${message}\n`)
+  deps.abort(exitCode)
+  return exitCode
 }
 
 interface AppWiring {
@@ -183,12 +198,13 @@ interface AppWiring {
   lock: string
   terminal: TerminalHandOff
   watch: AppWatch
+  review: AppReview
   ghToken: GhTokenReader
 }
 
 async function appDeps(
   deps: AppCommandDeps,
-  { history, graph, lock, terminal, watch, ghToken }: AppWiring,
+  { history, graph, lock, terminal, watch, review, ghToken }: AppWiring,
   start: AppStart,
 ): Promise<AppDeps> {
   let settings: WatchSettings | undefined
@@ -198,7 +214,6 @@ async function appDeps(
       () => settings,
     )
   const readLanguage = async () => (await loadTopLevelUserLayers(deps))[0]?.config.language
-  const review = appReview({ ...deps, ghToken })
   const base = {
     version: deps.version,
     pid: deps.pid,
