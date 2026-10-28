@@ -127,7 +127,9 @@ open (`src/cli/app-graph.ts`).
 An action that takes several steps and runs something long (a review) is a flow drawn by the shell
 in place of the tabs, as the setup and `/language` are, and back to the screen it came from. A
 screen opens it through a context of `app-context.ts` (`useStartReview()` for `ReviewFlow`, with
-the repository to start on), and the palette through an entry of the shell.
+the repository to start on), and the palette through an entry of the shell. While it is open,
+`/` and `1`–`9` do nothing, so the palette never leaves a running review behind: the flow is left
+with `Esc`, which asks while it runs. The setup and `/language` keep the palette.
 
 The flow keeps a stack of steps: each step is a component with its own `useScreenKeys`,
 `useScreenInput` and `useBack(back)`, where `back()` pops the stack or, at its first step, leaves

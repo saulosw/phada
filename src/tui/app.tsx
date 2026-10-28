@@ -229,6 +229,7 @@ function Shell({
       ),
     )
 
+  const paletteOpens = takeover !== 'review'
   const controls = useMemo<ScreenControls>(
     () => ({
       inputActive: overlay === 'none' && !tooSmall && quitting === undefined,
@@ -267,7 +268,7 @@ function Shell({
     if (key.escape) return back.current === undefined ? quit() : back.current()
     if (input === 'q') return quit()
     if (input === '?') return setOverlay('help')
-    if (input === '/') return setOverlay('palette')
+    if (input === '/' && paletteOpens) return setOverlay('palette')
     if (takeover !== undefined) return
     if (/^[1-9]$/.test(input)) {
       const index = Number(input) - 1
@@ -282,7 +283,7 @@ function Shell({
   if (tooSmall && quitting === undefined) return <TooSmall size={size} />
 
   const current = screens[active]
-  const global = globalKeys(messages, screens.length, takeover !== undefined, arrows)
+  const global = globalKeys(messages, screens.length, takeover !== undefined, arrows, paletteOpens)
   const setupTitle = messages.setup.title
   const languageTitle = { full: messages.language.title, short: messages.language.title }
   const reviewTitle = { full: messages.reviewFlow.title, short: messages.reviewFlow.title }
@@ -350,7 +351,10 @@ function Shell({
           ? [{ keys: 'Esc', label: messages.keys.close }]
           : typing
             ? screenKeys
-            : [...screenKeys, ...footerGlobals(messages, takeover !== undefined, arrows)]
+            : [
+                ...screenKeys,
+                ...footerGlobals(messages, takeover !== undefined, arrows, paletteOpens),
+              ]
 
   return (
     <Box flexDirection="column" width={size.columns} height={size.rows}>
@@ -429,10 +433,15 @@ function Shell({
   )
 }
 
-function footerGlobals(messages: UiMessages, takenOver: boolean, arrows: boolean): KeyHint[] {
+function footerGlobals(
+  messages: UiMessages,
+  takenOver: boolean,
+  arrows: boolean,
+  palette: boolean,
+): KeyHint[] {
   return [
     ...(takenOver ? [] : [{ keys: arrows ? 'Tab' : '←/→', label: messages.keys.screens }]),
-    { keys: '/', label: messages.keys.palette },
+    ...(palette ? [{ keys: '/', label: messages.keys.palette }] : []),
     { keys: '?', label: messages.keys.help },
     { keys: 'q', label: messages.keys.quit },
   ]
@@ -443,6 +452,7 @@ function globalKeys(
   screens: number,
   takenOver: boolean,
   arrows: boolean,
+  palette: boolean,
 ): KeyHint[] {
   return [
     ...(takenOver
@@ -451,7 +461,7 @@ function globalKeys(
           { keys: arrows ? 'Tab' : '←/→ Tab', label: messages.keys.cycle },
           { keys: `1–${Math.min(screens, 9)}`, label: messages.keys.jump },
         ]),
-    { keys: '/', label: messages.keys.palette },
+    ...(palette ? [{ keys: '/', label: messages.keys.palette }] : []),
     { keys: '?', label: messages.keys.help },
     { keys: 'Esc', label: messages.keys.back },
     { keys: 'q', label: messages.keys.quit },

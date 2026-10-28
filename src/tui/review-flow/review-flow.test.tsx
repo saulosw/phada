@@ -425,6 +425,19 @@ describe('reviewing a pull request from the app', () => {
     expect(frame()).toContain('Home')
   })
 
+  it('keeps the palette closed while it runs, so nothing leaves the review behind', async () => {
+    const flow = openFlow()
+    const asked = await running(flow)
+    await flow.showing('Esc cancel')
+    expect(flow.footer()).not.toContain('/ go to')
+    await flow.press('/')
+    await flow.type('home')
+    await flow.press(KEYS.enter, KEYS.escape)
+    await flow.showing('Cancel the review? Nothing will be posted.')
+    expect(flow.frame()).toContain('Only looking: nothing will be posted.')
+    expect(asked.signal.aborted).toBe(false)
+  })
+
   it('cannot be cancelled once it is publishing', async () => {
     const flow = openFlow()
     const asked = await running(flow, true)
