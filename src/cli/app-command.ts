@@ -99,6 +99,7 @@ export interface AppCommandDeps
   lockHolder: (path: string) => Promise<number | undefined>
   openHistoryReader?: (path: string) => Promise<HistoryStore>
   openIndexReader?: (path: string) => Promise<IndexOpening>
+  openExistingMirror?: typeof openExistingGitMirror
   openGraph?: typeof openGraphExplorer
   pathSize: (path: string) => Promise<number>
   providerCheckers?: ProviderCheckers
@@ -356,7 +357,10 @@ function connectionReaders(deps: AppCommandDeps, history: AppHistory): Connectio
     openIndex: (repo) => indexes.openIndex(indexes.indexPath(repo)),
     openMirror: (repo) => {
       const { owner, repo: name } = splitRepoName(repo)
-      return openExistingGitMirror({ dir: repositoryCache(env, home, owner, name).mirror, env })
+      return (deps.openExistingMirror ?? openExistingGitMirror)({
+        dir: repositoryCache(env, home, owner, name).mirror,
+        env,
+      })
     },
   }
 }

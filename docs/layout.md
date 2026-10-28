@@ -239,7 +239,8 @@ src/
                          #   readLearnings (the observed files of the cache, read only),
                          #   readIndexes (the repositories of readRepositories, each index of the
                          #   cache opened with openExistingIndexStore(), openIndexReader
-                         #   injectable), readGitHub (readGitHubAccess()) and rulesReaders() of app-rules.ts
+                         #   injectable), readConnections (each local copy opened with
+                         #   openExistingGitMirror(), openExistingMirror injectable), readGitHub (readGitHubAccess()) and rulesReaders() of app-rules.ts
                          #   with one token reader that asks gh again on each load (runGh and
                          #   fetchUser injectable); handOff and the signals through
                          #   terminalHandOff(); planConfig and applyConfig (planUserConfig() with

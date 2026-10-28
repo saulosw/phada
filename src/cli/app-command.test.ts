@@ -1,3 +1,4 @@
+import { repositoryCache } from '../config/cache-paths.js'
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -51,6 +52,7 @@ function deps(
     dataHome?: string
     openMirror?: AppCommandDeps['openMirror']
     openIndexReader?: AppCommandDeps['openIndexReader']
+    openExistingMirror?: AppCommandDeps['openExistingMirror']
     openGraph?: AppCommandDeps['openGraph']
     openPulls?: OpenPull[]
     startWatch?: AppCommandDeps['startWatch']
@@ -125,6 +127,9 @@ function deps(
     ...(options.observed === undefined ? {} : { observed: options.observed }),
     ...(options.openIndexReader === undefined ? {} : { openIndexReader: options.openIndexReader }),
     ...(options.openGraph === undefined ? {} : { openGraph: options.openGraph }),
+    ...(options.openExistingMirror === undefined
+      ? {}
+      : { openExistingMirror: options.openExistingMirror }),
     runGh: async (_command, args) => {
       ghCalls.push([...args])
       return options.ghToken === undefined
@@ -1409,6 +1414,47 @@ describe('the provider and learnings readers', () => {
     await runApp(app)
     expect(existsSync(join(indexDir, 'index', 'acme'))).toBe(false)
     expect(existsSync(join(indexDir, 'repos'))).toBe(false)
+  })
+
+  it('opens the local copy of each repository of the connections through the reader it is given', async () => {
+    const mirrors: string[] = []
+    const { app } = deps({
+      config: 'watch:\n  repos:\n    - acme/shop\n',
+      openIndexReader: async (path) => ({
+        status: 'open',
+        index: {
+          path,
+          snapshot: {
+            sha: 'a'.repeat(40),
+            ref: 'HEAD',
+            defaultBranch: true,
+            indexedAt: '2026-10-25T11:00:00.000Z',
+            durationMs: 10,
+          },
+          summary: () => {
+            throw new Error('not used')
+          },
+          leftOut: () => [],
+          reader: () => {
+            throw new Error('not used')
+          },
+          close: () => {},
+        },
+      }),
+      openExistingMirror: async ({ dir }) => {
+        mirrors.push(dir)
+        return { status: 'missing', dir }
+      },
+      during: async (appDeps) => {
+        const [shop] = (await appDeps.readConnections()).repositories
+        expect(shop?.source).toEqual({ state: 'not-indexed', why: { reason: 'no-mirror' } })
+      },
+    })
+    app.env.PHADA_CACHE_HOME = '/cache'
+    await runApp(app)
+    expect(mirrors).toEqual([
+      repositoryCache({ PHADA_CACHE_HOME: '/cache' }, '/home', 'acme', 'shop').mirror,
+    ])
   })
 
   it('reads the connections from the index and mirror of the cache, never creating a mirror', async () => {
