@@ -256,6 +256,21 @@ describe('exploring a symbol from the Graph screen', () => {
     expect(calls.searches).toEqual([])
   })
 
+  it('opens s empty for a new search after one ran', async () => {
+    const { calls, frame, press, search, showing, type, until } = openExplorer()
+    await search('total')
+    await showing('function total · src/cart/total.ts:12')
+    await press(KEYS.escape)
+    await showing('shop.sqlite')
+    await press('s')
+    await showing('Symbol: ')
+    expect(frame()).not.toContain('Symbol: total')
+    await type('load')
+    await press(KEYS.enter)
+    await until(() => calls.searches.length === 2)
+    expect(calls.searches).toEqual(['acme/shop total', 'acme/shop load'])
+  })
+
   it('opens the only definition as a tree, expanding and collapsing one level at a time', async () => {
     const { calls, footer, frame, press, search, showing, until } = openExplorer({
       screens: SCREENS,

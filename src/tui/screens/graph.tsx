@@ -104,6 +104,7 @@ function GraphView({
   const size = useScreenSize()
   const field = useTextField({
     initial: symbol,
+    emptyOnFocus: true,
     onSubmit: (name) => {
       if (name.trim() !== '') onSearch(name.trim())
     },
