@@ -550,7 +550,7 @@ describe('reviewing a pull request from the app', () => {
     expect(asked).toEqual([])
     expectFits(frame(), { columns: 80, rows: 24 })
     await press(KEYS.enter)
-    await showing('Watch running · PID 4242')
+    await showing('Watch running in another terminal · PID 4242')
     expect(frame()).toMatch(/Home\s+Repos\s+Rules\s+Reviews\s+\[?Queue/)
   })
 

@@ -379,7 +379,7 @@ describe('/language', () => {
     expect(lines(frame())[0]).toContain('Language')
     expect(footer()).toContain('Esc back')
     await press(KEYS.down, KEYS.enter)
-    await showing('Save ~/.config/phada/config.yml?')
+    await showing('Save to ~/.config/phada/config.yml?')
     expect(frame()).toMatch(/language +\(not set\) → pt/)
     await press(KEYS.enter)
     await showing('Nenhuma config ainda.')

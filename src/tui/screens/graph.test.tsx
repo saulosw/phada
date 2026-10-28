@@ -4,6 +4,7 @@ import type { IndexingOptions, IndexingResult } from '../../app/index-repository
 import type { Connections, RepositoryConnections } from '../../app/read-connections.js'
 import type { IndexedRepository, RepositoryIndexes } from '../../app/read-index.js'
 import {
+  flatFrame,
   frameLines,
   KEYS,
   minutesFrom,
@@ -293,13 +294,13 @@ describe('the Graph screen', () => {
     [BROKEN, 'it is not a Phada index', 'i index again'],
     [EMPTY, 'The index holds no commit yet', 'i index'],
   ])('shows an index that is $index.state and offers to index it', async (entry, text, key) => {
-    const { footer, frame, press, showing } = openGraph({
+    const { footer, frame, press, showing, until } = openGraph({
       indexes: () => ({ repositories: [entry] }),
     })
     await showing(entry.repo)
     expect(footer()).toContain(key)
     await press(KEYS.enter)
-    await showing(text)
+    await until(() => flatFrame(frame()).includes(text))
     expect(footer()).toContain(key)
     expectFits(frame())
   })

@@ -34,9 +34,29 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 50))
 
 const nextTurn = () => new Promise((resolve) => setImmediate(resolve))
 
-export async function waitFor(ready: () => boolean, timeoutMs = 3000): Promise<void> {
+export class WaitTimeoutError extends Error {
+  constructor(awaited: string, timeoutMs: number, lastFrame: string | undefined) {
+    super(
+      `Waited ${timeoutMs} ms for ${awaited}` +
+        (lastFrame === undefined ? '' : `; the last frame was:\n${lastFrame}`),
+    )
+    this.name = 'WaitTimeoutError'
+  }
+}
+
+export interface WaitOptions {
+  timeoutMs?: number
+  awaited?: string
+  lastFrame?: () => string
+}
+
+export async function waitFor(ready: () => boolean, options: WaitOptions = {}): Promise<void> {
+  const timeoutMs = options.timeoutMs ?? 3000
   const deadline = Date.now() + timeoutMs
-  while (!ready() && Date.now() < deadline) {
+  while (!ready()) {
+    if (Date.now() >= deadline) {
+      throw new WaitTimeoutError(options.awaited ?? String(ready), timeoutMs, options.lastFrame?.())
+    }
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
   await settle()
@@ -249,8 +269,13 @@ export function renderApp(
   const press = (...keys: string[]) => writeKeys(app.stdin, keys)
   const type = async (text: string) => press(...[...text])
   const listening = () => app.stdin.listenerCount('readable') > 0
-  const until = (ready: () => boolean) => waitFor(() => listening() && ready())
-  const showing = (...expected: (string | RegExp)[]) => until(() => shows(frame(), ...expected))
+  const until = (ready: () => boolean, awaited = String(ready)) =>
+    waitFor(() => listening() && ready(), { awaited, lastFrame: frame })
+  const showing = (...expected: (string | RegExp)[]) =>
+    until(
+      () => shows(frame(), ...expected),
+      `the frame to show ${expected.map((text) => String(text)).join(', ')}`,
+    )
   const footer = () => frameLines(frame()).at(-1) ?? ''
   return {
     app,
