@@ -1,8 +1,10 @@
 import { cleanup, render } from 'ink-testing-library'
 import { cloneElement, isValidElement } from 'react'
+import { Text } from 'ink'
 import { afterEach, describe, expect, it } from 'vitest'
 import { fakeAppDeps, waitFor, writeKeys } from '../../test/support/tui.js'
 import type { AppProps } from './app.js'
+import { useQuitGuard } from './app-context.js'
 import type { AppDeps } from './app-context.js'
 import { openApp } from './open-app.js'
 import type { AppHost, StopSignal } from './open-app.js'
@@ -96,6 +98,67 @@ describe('openApp', () => {
     fake.signal(signal)
     fake.signal(signal)
     expect(await result).toEqual(expected)
+    expect(fake.calls).toEqual(['unmount'])
+  })
+
+  it.each([
+    ['SIGTERM', { kind: 'terminated' }],
+    ['SIGINT', { kind: 'interrupted' }],
+  ] as const)('aborts what runs on %s without asking and unmounts', async (signal, expected) => {
+    const calls: string[] = []
+    const fake = host({
+      screens: [
+        {
+          id: 'home',
+          title: (messages) => messages.screens.home,
+          Screen: () => {
+            useQuitGuard({
+              question: 'A job is running: stop it and quit?',
+              stop: () => {
+                calls.push('stop')
+              },
+              abort: () => calls.push('abort'),
+            })
+            return <Text>working</Text>
+          },
+        },
+      ],
+    })
+    const result = openApp(DEPS, fake.appHost)
+    await fake.mounted()
+    fake.signal(signal)
+    expect(await result).toEqual(expected)
+    expect(calls).toEqual(['abort'])
+    expect(fake.calls).toEqual(['unmount'])
+  })
+
+  it('asks before quitting on Ctrl-C while something runs, and a second one stops as interrupted', async () => {
+    const calls: string[] = []
+    const fake = host({
+      screens: [
+        {
+          id: 'home',
+          title: (messages) => messages.screens.home,
+          Screen: () => {
+            useQuitGuard({
+              question: 'A job is running: stop it and quit?',
+              stop: () => {
+                calls.push('stop')
+              },
+              abort: () => calls.push('abort'),
+            })
+            return <Text>working</Text>
+          },
+        },
+      ],
+    })
+    const result = openApp(DEPS, fake.appHost)
+    await fake.mounted()
+    await fake.press('\u0003')
+    expect(fake.calls).toEqual([])
+    await fake.press('\u0003')
+    expect(await result).toEqual({ kind: 'interrupted' })
+    expect(calls).toEqual(['abort'])
     expect(fake.calls).toEqual(['unmount'])
   })
 

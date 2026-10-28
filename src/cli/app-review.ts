@@ -1,4 +1,5 @@
 import { reviewDetailOf } from '../app/read-history.js'
+import { ReviewCancelledError } from '../app/review-and-publish.js'
 import type { ReviewProgressSink } from '../app/review-progress.js'
 import type {
   OpenPullRequests,
@@ -10,6 +11,7 @@ import { InvalidPullRequestRefError } from '../github/errors.js'
 import type { PullListing } from '../github/list-pull-requests.js'
 import { parsePullRequestRef, splitRepoName } from '../github/pull-request-ref.js'
 import type { RepositoryFilesOptions } from '../github/repository-files.js'
+import { killDetachedChildren } from '../process/run-command.js'
 import { readGitHubToken } from './github-token.js'
 import type { GitHubTokenDeps } from './github-token.js'
 import { historyRun } from './history-run.js'
@@ -21,6 +23,7 @@ export interface AppReviewDeps extends ManualReviewDeps, GitHubTokenDeps {
   listOpenPullRequests: (
     options: RepositoryFilesOptions & { etag?: string },
   ) => Promise<PullListing>
+  killDetachedChildren?: () => void
 }
 
 export interface AppReview {
@@ -30,6 +33,7 @@ export interface AppReview {
     target: PullRequestTarget,
     mode: ReviewMode,
     onProgress: ReviewProgressSink,
+    signal?: AbortSignal,
   ): Promise<RequestedReview>
 }
 
@@ -59,26 +63,42 @@ export function appReview(deps: AppReviewDeps): AppReview {
         })),
       }
     },
-    reviewPullRequest: async (target, mode, onProgress) => {
+    reviewPullRequest: async (target, mode, onProgress, signal) => {
       const token = await readGitHubToken(deps)
       if (token === undefined) return { status: 'no-token' }
-      const prepared = await prepareReview(target, token, { detached: true }, deps)
-      const { run, meta, history } = await runManualReview(
-        prepared,
-        { force: false, dryRun: mode === 'look', waitCi: false, options: {} },
-        deps,
-        {
-          progress: onProgress,
-          reviewed: ({ outcome }) => {
-            if (outcome.status !== 'reviewed') return
-            for (const message of outcome.result.warnings ?? []) {
-              onProgress({ kind: 'warning', message })
-            }
+      if (signal?.aborted === true) return { status: 'cancelled' }
+      const kill = deps.killDetachedChildren ?? killDetachedChildren
+      signal?.addEventListener('abort', kill, { once: true })
+      try {
+        const prepared = await prepareReview(target, token, { detached: true }, deps)
+        const { run, meta, history } = await runManualReview(
+          prepared,
+          {
+            force: false,
+            dryRun: mode === 'look',
+            waitCi: false,
+            options: {},
+            ...(signal === undefined ? {} : { signal }),
           },
-        },
-      )
-      const detail = reviewDetailOf(historyRun(run, reviewRunJson(run), meta), [])
-      return { status: 'reviewed', detail, history }
+          deps,
+          {
+            progress: onProgress,
+            reviewed: ({ outcome }) => {
+              if (outcome.status !== 'reviewed') return
+              for (const message of outcome.result.warnings ?? []) {
+                onProgress({ kind: 'warning', message })
+              }
+            },
+          },
+        )
+        const detail = reviewDetailOf(historyRun(run, reviewRunJson(run), meta), [])
+        return { status: 'reviewed', detail, history }
+      } catch (error) {
+        if (error instanceof ReviewCancelledError) return { status: 'cancelled' }
+        throw error
+      } finally {
+        signal?.removeEventListener('abort', kill)
+      }
     },
   }
 }

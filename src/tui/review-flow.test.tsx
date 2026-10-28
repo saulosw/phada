@@ -88,6 +88,7 @@ interface Asked {
   target: PullRequestTarget
   mode: ReviewMode
   progress: ReviewProgressSink
+  signal: AbortSignal
   resolve(review: RequestedReview): void
   reject(error: unknown): void
 }
@@ -113,9 +114,9 @@ function openFlow(
       }),
       readOpenPullRequests: async () => OPEN,
       readGitHub: async () => ({ source: 'gh', account: { state: 'found', login: 'ana' } }),
-      reviewPullRequest: (target, mode, progress) =>
+      reviewPullRequest: (target, mode, progress, signal) =>
         new Promise((resolve, reject) => {
-          asked.push({ target, mode, progress, resolve, reject })
+          asked.push({ target, mode, progress, signal, resolve, reject })
         }),
       ...options.deps,
     },
@@ -227,7 +228,7 @@ describe('reviewing a pull request from the app', () => {
     expect(asked[0]).toMatchObject({ target: TARGET, mode: 'look' })
     await showing('Fetching acme/shop#12…')
     expect(frame()).toContain('Only looking: nothing will be posted.')
-    expect(footer()).not.toContain('Esc')
+    expect(footer()).toContain('Esc cancel')
 
     const progress = asked[0]?.progress ?? (() => undefined)
     progress({ kind: 'fetched', pullRequest: pullRequestFixture() })
@@ -336,6 +337,110 @@ describe('reviewing a pull request from the app', () => {
     expect(frame()).toContain('The AI CLI is not [31mlogged in')
     expect(frame()).not.toContain('\u001B[31m')
     expect(frame()).toContain('✓ Pull request: Let users spend crystals')
+  })
+
+  async function running(flow: ReturnType<typeof openFlow>, publish = false) {
+    await flow.fromPalette()
+    await flow.type('acme/shop#12')
+    await flow.press(KEYS.enter)
+    await flow.showing('How should Phada review it?')
+    if (publish) {
+      await flow.press(KEYS.down, KEYS.enter)
+      await flow.showing('@ana')
+    }
+    await flow.press(KEYS.enter)
+    await flow.until(() => flow.asked.length === 1)
+    const asked = flow.asked[0]
+    if (asked === undefined) throw new Error('no review asked')
+    return asked
+  }
+
+  it('asks before cancelling with Esc, keeps running on Esc and cancels on Enter', async () => {
+    const flow = openFlow()
+    const { frame, footer, press, showing } = flow
+    const asked = await running(flow)
+    asked.progress({ kind: 'fetched', pullRequest: pullRequestFixture() })
+    await showing('✓ Pull request: Let users spend crystals')
+    expect(footer()).toContain('Esc cancel')
+    await press(KEYS.escape)
+    await showing('Cancel the review? Nothing will be posted.')
+    expect(footer()).toContain('Enter cancel the review')
+    expect(footer()).toContain('Esc keep running')
+    expectFits(frame(), { columns: 80, rows: 24 })
+    await press(KEYS.escape)
+    await showing('Esc cancel')
+    expect(frame()).not.toContain('Cancel the review?')
+    expect(asked.signal.aborted).toBe(false)
+    await press(KEYS.escape)
+    await showing('Cancel the review?')
+    await press(KEYS.enter)
+    await showing('Cancelling…')
+    expect(asked.signal.aborted).toBe(true)
+    expect(footer()).not.toContain('Esc')
+    asked.resolve({ status: 'cancelled' })
+    await showing('Cancelled: nothing was posted.')
+    expect(frame()).toContain('✓ Pull request: Let users spend crystals')
+    expect(footer()).toContain('Esc back')
+    expectFits(frame(), { columns: 80, rows: 24 })
+    await press(KEYS.escape)
+    await showing('Review pull requests with the AI you already use.')
+    expect(frame()).toContain('Home')
+  })
+
+  it('cannot be cancelled once it is publishing', async () => {
+    const flow = openFlow()
+    const asked = await running(flow, true)
+    asked.progress({ kind: 'publishing' })
+    await flow.showing('Publishing on GitHub…')
+    expect(flow.footer()).not.toContain('Esc')
+    await flow.press(KEYS.escape)
+    await flow.showing('Publishing on GitHub…')
+    expect(flow.frame()).not.toContain('Cancel the review?')
+    expect(asked.signal.aborted).toBe(false)
+  })
+
+  it('asks before quitting while it runs: Esc stays, Enter cancels it and quits', async () => {
+    const flow = openFlow()
+    const asked = await running(flow)
+    await flow.press('q')
+    await flow.showing('A review is running: cancel it and quit?')
+    expect(flow.exits).toEqual([])
+    expectFits(flow.frame(), { columns: 80, rows: 24 })
+    await flow.press(KEYS.escape)
+    await flow.showing('Only looking: nothing will be posted.')
+    expect(asked.signal.aborted).toBe(false)
+    await flow.press(KEYS.ctrlC)
+    await flow.showing('cancel it and quit?')
+    await flow.press(KEYS.enter)
+    await flow.until(() => flow.exits.length > 0)
+    expect(flow.exits).toEqual([{ kind: 'interrupted' }])
+    expect(asked.signal.aborted).toBe(true)
+  })
+
+  it('cancels it and quits at once on a second Ctrl-C', async () => {
+    const flow = openFlow()
+    const asked = await running(flow)
+    await flow.press(KEYS.ctrlC)
+    await flow.showing('cancel it and quit?')
+    await flow.press(KEYS.ctrlC)
+    await flow.until(() => flow.exits.length > 0)
+    expect(flow.exits).toEqual([{ kind: 'interrupted' }])
+    expect(asked.signal.aborted).toBe(true)
+  })
+
+  it('waits for a publication under way before quitting', async () => {
+    const flow = openFlow()
+    const asked = await running(flow, true)
+    asked.progress({ kind: 'publishing' })
+    await flow.showing('Publishing on GitHub…')
+    await flow.press('q')
+    await flow.showing('cancel it and quit?')
+    await flow.press(KEYS.enter)
+    await flow.showing('Stopping…')
+    expect(flow.exits).toEqual([])
+    asked.resolve({ status: 'reviewed', detail: detail(), history: { status: 'off' } })
+    await flow.until(() => flow.exits.length > 0)
+    expect(flow.exits).toEqual([{ kind: 'quit' }])
   })
 
   it('opens with n on the Reviews screen and goes back there', async () => {

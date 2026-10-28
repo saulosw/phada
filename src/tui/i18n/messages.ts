@@ -64,6 +64,7 @@ export interface UiMessages {
   list: { range(first: number, last: number, total: number): string; scroll: string }
   field: { apply: string; cancel: string }
   handOff: { notFound(command: string): string; failed(message: string): string }
+  quitGuard: { quit: string; stay: string; stopping: string; quitNow: string }
   requests: {
     sources: Readonly<Record<RequestSource, string>>
     publish: Readonly<Record<QueueJob['requests'][number]['publish'], string>>
@@ -123,6 +124,15 @@ export interface ReviewFlowMessages {
   moreWarnings(count: number): string
   done(elapsed: string): string
   failed: string
+  cancel: {
+    key: string
+    question: string
+    confirm: string
+    keep: string
+    cancelling: string
+    cancelled: string
+  }
+  quitWhileRunning: string
   history: {
     saved: string
     off: string

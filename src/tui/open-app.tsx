@@ -2,12 +2,12 @@ import { render as inkRender } from 'ink'
 import type { RenderOptions } from 'ink'
 import type { ReactNode } from 'react'
 import { App } from './app.js'
-import type { AppResult } from './app.js'
+import type { AppResult, StopSignal } from './app.js'
 import type { AppDeps } from './app-context.js'
 import { outputSize } from './terminal-size.js'
 import type { SizeSource } from './terminal-size.js'
 
-export type { AppResult } from './app.js'
+export type { AppResult, StopSignal } from './app.js'
 export type { AppDeps, AppStart, HandOffTarget, Scheduler } from './app-context.js'
 
 export interface RenderedApp {
@@ -16,8 +16,6 @@ export interface RenderedApp {
 }
 
 export type RenderApp = (node: ReactNode, options: RenderOptions) => RenderedApp
-
-export type StopSignal = 'SIGINT' | 'SIGTERM'
 
 export interface AppHost {
   stdin: NodeJS.ReadStream
@@ -36,9 +34,21 @@ export async function openApp(deps: AppDeps, host: AppHost): Promise<AppResult> 
     outcome = result
     rendered?.unmount()
   }
+  const listeners = new Set<(signal?: StopSignal) => void>()
+  const signals = (listener: (signal?: StopSignal) => void) => {
+    listeners.add(listener)
+    return () => {
+      listeners.delete(listener)
+    }
+  }
   try {
     rendered = render(
-      <App deps={deps} size={host.size ?? outputSize(host.stdout)} onExit={finish} />,
+      <App
+        deps={deps}
+        size={host.size ?? outputSize(host.stdout)}
+        onExit={finish}
+        signals={signals}
+      />,
       {
         stdin: host.stdin,
         stdout: host.stdout,
@@ -50,9 +60,10 @@ export async function openApp(deps: AppDeps, host: AppHost): Promise<AppResult> 
     return { kind: 'failed', error }
   }
   if (outcome !== undefined) rendered.unmount()
-  host.onSignal((signal) =>
-    finish(signal === 'SIGTERM' ? { kind: 'terminated' } : { kind: 'interrupted' }),
-  )
+  host.onSignal((signal) => {
+    if (outcome === undefined) for (const listener of listeners) listener(signal)
+    finish(signal === 'SIGTERM' ? { kind: 'terminated' } : { kind: 'interrupted' })
+  })
   try {
     await rendered.waitUntilExit()
     return outcome ?? { kind: 'quit' }

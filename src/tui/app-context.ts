@@ -99,6 +99,7 @@ export interface AppDeps {
     target: PullRequestTarget,
     mode: ReviewMode,
     onProgress: ReviewProgressSink,
+    signal: AbortSignal,
   ): Promise<RequestedReview>
 }
 
@@ -118,6 +119,14 @@ export interface ScreenControls {
   claimArrows(on: boolean): void
 }
 
+export interface QuitGuard {
+  question: string
+  stop(): Promise<void> | void
+  abort(): void
+}
+
+export type QuitGuardHold = (guard: { readonly current: QuitGuard | undefined }) => () => void
+
 export interface WorkingSignal {
   working: boolean
   start(): () => void
@@ -132,6 +141,7 @@ export const WorkingContext = createContext<WorkingSignal>({
 })
 export const ConfigWrittenContext = createContext<() => void>(() => {})
 export const ReviewStartContext = createContext<(repo?: string) => void>(() => {})
+export const QuitGuardContext = createContext<QuitGuardHold>(() => () => {})
 export const ScreenContext = createContext<ScreenControls>({
   inputActive: false,
   typing: false,
@@ -165,6 +175,14 @@ export function useConfigWritten(): () => void {
 
 export function useStartReview(): (repo?: string) => void {
   return useContext(ReviewStartContext)
+}
+
+export function useQuitGuard(guard: QuitGuard | undefined): void {
+  const hold = useContext(QuitGuardContext)
+  const latest = useRef(guard)
+  latest.current = guard
+  const held = guard !== undefined
+  useEffect(() => (held ? hold(latest) : undefined), [held, hold])
 }
 
 export function useIsWorking(): boolean {

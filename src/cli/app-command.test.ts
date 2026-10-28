@@ -800,6 +800,7 @@ describe('the review readers', () => {
             { owner: 'acme', repo: 'shop', number: 4 },
             'look',
             () => undefined,
+            new AbortController().signal,
           ),
         )
       },

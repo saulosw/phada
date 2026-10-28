@@ -24,4 +24,6 @@ export type HistorySave =
   | { status: 'not-saved'; error: string }
 
 export type RequestedReview =
-  { status: 'no-token' } | { status: 'reviewed'; detail: ReviewDetail; history: HistorySave }
+  | { status: 'no-token' }
+  | { status: 'cancelled' }
+  | { status: 'reviewed'; detail: ReviewDetail; history: HistorySave }

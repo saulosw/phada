@@ -114,6 +114,7 @@ export const english: UiMessages = {
     notFound: (command) => `${command} was not found.`,
     failed: (message) => `Could not run: ${message}`,
   },
+  quitGuard: { quit: 'quit', stay: 'stay', stopping: 'Stopping…', quitNow: 'quit now' },
   requests: {
     sources: {
       watch: 'watch',
@@ -854,6 +855,15 @@ export const english: UiMessages = {
     moreWarnings: (count) => `+${number(count)} more`,
     done: (elapsed) => `Done in ${elapsed}.`,
     failed: 'The review failed.',
+    cancel: {
+      key: 'cancel',
+      question: 'Cancel the review? Nothing will be posted.',
+      confirm: 'cancel the review',
+      keep: 'keep running',
+      cancelling: 'Cancelling…',
+      cancelled: 'Cancelled: nothing was posted.',
+    },
+    quitWhileRunning: 'A review is running: cancel it and quit?',
     history: {
       saved: 'Saved in the history.',
       off: 'Not saved: the history is off in the user config.',

@@ -115,6 +115,7 @@ export const portuguese: UiMessages = {
     notFound: (command) => `${command} não foi encontrado.`,
     failed: (message) => `Não foi possível executar: ${message}`,
   },
+  quitGuard: { quit: 'sair', stay: 'ficar', stopping: 'Parando…', quitNow: 'sair agora' },
   requests: {
     sources: {
       watch: 'watch',
@@ -867,6 +868,15 @@ export const portuguese: UiMessages = {
     moreWarnings: (count) => `+${number(count)} outros`,
     done: (elapsed) => `Pronto em ${elapsed}.`,
     failed: 'A revisão falhou.',
+    cancel: {
+      key: 'cancelar',
+      question: 'Cancelar a revisão? Nada será publicado.',
+      confirm: 'cancelar a revisão',
+      keep: 'continuar',
+      cancelling: 'Cancelando…',
+      cancelled: 'Cancelada: nada foi publicado.',
+    },
+    quitWhileRunning: 'Uma revisão está rodando: cancelar e sair?',
     history: {
       saved: 'Gravado no histórico.',
       off: 'Não gravado: o histórico está desligado na config do usuário.',

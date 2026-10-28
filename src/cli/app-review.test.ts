@@ -177,6 +177,65 @@ describe('a review the app asks for', () => {
   })
 })
 
+describe('a review the app cancels', () => {
+  function cancelling(mode: 'look' | 'publish') {
+    const controller = new AbortController()
+    let kills = 0
+    let killed = () => {}
+    const dead = new Promise<void>((resolve) => {
+      killed = resolve
+    })
+    const setup = harness({
+      killDetachedChildren: () => {
+        kills += 1
+        killed()
+      },
+      createProvider: () => ({
+        id: 'fake-cli',
+        review: async () => {
+          controller.abort()
+          await dead
+          throw new Error('Claude Code ended without an exit code (SIGTERM).')
+        },
+      }),
+    })
+    const review = appReview(setup.deps).reviewPullRequest(
+      TARGET,
+      mode,
+      () => undefined,
+      controller.signal,
+    )
+    return { ...setup, review, kills: () => kills }
+  }
+
+  it('kills the AI CLI it started, posts nothing and saves no run', async () => {
+    const { review, kills, posts, written, data } = cancelling('publish')
+
+    expect(await review).toEqual({ status: 'cancelled' })
+    expect(kills()).toBe(1)
+    expect(posts).toEqual([])
+    expect(written).toEqual([])
+    expect(existsSync(join(data, 'history.sqlite'))).toBe(false)
+  })
+
+  it('kills nothing once the review ended', async () => {
+    const controller = new AbortController()
+    let kills = 0
+    const { deps } = harness({ killDetachedChildren: () => (kills += 1) })
+
+    const review = await appReview(deps).reviewPullRequest(
+      TARGET,
+      'look',
+      () => undefined,
+      controller.signal,
+    )
+    controller.abort()
+
+    expect(review.status).toBe('reviewed')
+    expect(kills).toBe(0)
+  })
+})
+
 describe('the open pull requests of a repository', () => {
   it('lists their number, title, author and draft', async () => {
     const { deps } = harness({

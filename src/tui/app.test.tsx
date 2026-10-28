@@ -5,7 +5,7 @@ import { cleanup } from 'ink-testing-library'
 import { useState } from 'react'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { KEYS, renderApp, waitFor } from '../../test/support/tui.js'
-import { useBack, useScreenInput, useScreenKeys, useWorking } from './app-context.js'
+import { useBack, useQuitGuard, useScreenInput, useScreenKeys, useWorking } from './app-context.js'
 import type { AppDeps } from './app-context.js'
 import { SCREENS } from './screens.js'
 import type { ScreenDefinition } from './screens.js'
@@ -454,6 +454,111 @@ describe('Esc and q', () => {
     await press(KEYS.ctrlC)
     await waitFor(() => exits.length > 0)
     expect(exits).toEqual([{ kind: 'interrupted' }])
+  })
+})
+
+describe('quitting while something runs', () => {
+  function guardedScreen() {
+    const calls: string[] = []
+    let finishStop = () => {}
+    const screen: ScreenDefinition = {
+      id: 'home',
+      title: (messages) => messages.screens.home,
+      Screen: () => {
+        useQuitGuard({
+          question: 'A job is running: stop it and quit?',
+          stop: () => {
+            calls.push('stop')
+            return new Promise<void>((resolve) => {
+              finishStop = resolve
+            })
+          },
+          abort: () => calls.push('abort'),
+        })
+        return <Text>working</Text>
+      },
+    }
+    return { screen, calls, finishStop: () => finishStop() }
+  }
+
+  it.each([
+    ['q', 'q', { kind: 'quit' }],
+    ['Esc at the top', KEYS.escape, { kind: 'quit' }],
+    ['Ctrl-C', KEYS.ctrlC, { kind: 'interrupted' }],
+  ] as const)(
+    'asks on %s, stays on Esc, and quits once Enter stopped it',
+    async (_key, key, exit) => {
+      const guarded = guardedScreen()
+      const { frame, footer, press, showing, until, exits } = openApp({ screens: [guarded.screen] })
+      await showing('working')
+      await press(key)
+      await showing('A job is running: stop it and quit?')
+      expect(footer()).toContain('Enter quit')
+      expect(footer()).toContain('Esc stay')
+      expect(exits).toEqual([])
+      await press(KEYS.escape)
+      await showing('working')
+      expect(frame()).not.toContain('stop it and quit?')
+      expect(exits).toEqual([])
+      await press(key)
+      await showing('stop it and quit?')
+      await press(KEYS.enter)
+      await showing('Stopping…')
+      expect(guarded.calls).toEqual(['stop'])
+      expect(exits).toEqual([])
+      guarded.finishStop()
+      await until(() => exits.length > 0)
+      expect(exits).toEqual([exit])
+      expect(guarded.calls).toEqual(['stop'])
+    },
+  )
+
+  it('aborts and stops at once on a second Ctrl-C, asking or stopping', async () => {
+    const asking = guardedScreen()
+    const first = openApp({ screens: [asking.screen] })
+    await first.showing('working')
+    await first.press(KEYS.ctrlC)
+    await first.showing('stop it and quit?')
+    await first.press(KEYS.ctrlC)
+    await first.until(() => first.exits.length > 0)
+    expect(first.exits).toEqual([{ kind: 'interrupted' }])
+    expect(asking.calls).toEqual(['abort'])
+    cleanup()
+
+    const stopping = guardedScreen()
+    const second = openApp({ screens: [stopping.screen] })
+    await second.showing('working')
+    await second.press('q', KEYS.enter)
+    await second.showing('Stopping…')
+    expect(second.footer()).toContain('Ctrl-C quit now')
+    await second.press(KEYS.ctrlC)
+    await second.until(() => second.exits.length > 0)
+    expect(second.exits).toEqual([{ kind: 'interrupted' }])
+    expect(stopping.calls).toEqual(['stop', 'abort'])
+  })
+
+  it('quits at once when nothing runs', async () => {
+    const { press, showing, exits } = openApp()
+    await showing('Phada v1.2.3')
+    await press(KEYS.ctrlC)
+    await waitFor(() => exits.length > 0)
+    expect(exits).toEqual([{ kind: 'interrupted' }])
+  })
+
+  it.each([
+    ['pt', 'Enter sair', 'Esc ficar'],
+    ['es', 'Enter salir', 'Esc quedarse'],
+  ])('is translated (%s)', async (language, quit, stay) => {
+    const guarded = guardedScreen()
+    const { footer, press, showing } = renderApp({
+      deps: { language },
+      screens: [guarded.screen],
+    })
+    await showing('working')
+    await press('q')
+    await showing('stop it and quit?')
+    expect(footer()).toContain(quit)
+    expect(footer()).toContain(stay)
   })
 })
 

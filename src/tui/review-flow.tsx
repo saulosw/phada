@@ -13,6 +13,7 @@ import {
   useAppDeps,
   useBack,
   useMessages,
+  useQuitGuard,
   useScreenInput,
   useScreenKeys,
   useScreenSize,
@@ -404,20 +405,36 @@ function RunStep({
   const messages = useMessages()
   const theme = useTheme()
   const size = useScreenSize()
+  const m = messages.reviewFlow
   const [steps, setSteps] = useState<ReviewSteps>(NO_STEPS)
   const [outcome, setOutcome] = useState<RunOutcome>({ status: 'running' })
+  const [asking, setAsking] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
   const [, setTick] = useState(0)
   const startedAt = useRef(now().getTime())
   const request = useRef({ target, mode })
+  const controller = useRef(new AbortController())
+  const publishingNow = useRef(false)
+  const settled = useRef<Promise<void>>(Promise.resolve())
   const running = outcome.status === 'running'
+  const publishing = steps.steps.some(({ kind }) => kind === 'publish')
+  const cancellable = running && !publishing && !cancelling
+  const askingNow = asking && cancellable
   useWorking(running)
   useEffect(() => {
     let mounted = true
+    const stop = controller.current
     const clock = () => now().getTime()
     const { target: asked, mode: chosen } = request.current
-    reviewPullRequest(asked, chosen, (event) => {
-      if (mounted) setSteps((current) => stepsAfter(current, event, clock()))
-    }).then(
+    settled.current = reviewPullRequest(
+      asked,
+      chosen,
+      (event) => {
+        if (event.kind === 'publishing') publishingNow.current = true
+        if (mounted) setSteps((current) => stepsAfter(current, event, clock()))
+      },
+      stop.signal,
+    ).then(
       (review) => {
         if (mounted) setOutcome({ status: 'done', review, endedAt: clock() })
       },
@@ -427,20 +444,56 @@ function RunStep({
     )
     return () => {
       mounted = false
+      stop.abort()
     }
   }, [reviewPullRequest, now])
   useEffect(
     () => (running ? scheduler.every(TICK_MS, () => setTick((tick) => tick + 1)) : undefined),
     [running, scheduler],
   )
-  useBack(running ? () => undefined : onClose)
-  useScreenKeys(
+  const cancel = () => {
+    setAsking(false)
+    setCancelling(true)
+    controller.current.abort()
+  }
+  useQuitGuard(
     running
-      ? []
-      : [
-          { keys: '↑/↓', label: messages.list.scroll },
-          { keys: 'Esc', label: messages.keys.back },
-        ],
+      ? {
+          question: m.quitWhileRunning,
+          stop: () => {
+            controller.current.abort()
+            return publishingNow.current ? settled.current : undefined
+          },
+          abort: () => controller.current.abort(),
+        }
+      : undefined,
+  )
+  useBack(
+    !running
+      ? onClose
+      : askingNow
+        ? () => setAsking(false)
+        : cancellable
+          ? () => setAsking(true)
+          : () => undefined,
+  )
+  useScreenInput((_input, key) => {
+    if (askingNow && key.return) cancel()
+  })
+  useScreenKeys(
+    askingNow
+      ? [
+          { keys: 'Enter', label: m.cancel.confirm },
+          { keys: 'Esc', label: m.cancel.keep },
+        ]
+      : cancellable
+        ? [{ keys: 'Esc', label: m.cancel.key }]
+        : running
+          ? []
+          : [
+              { keys: '↑/↓', label: messages.list.scroll },
+              { keys: 'Esc', label: messages.keys.back },
+            ],
   )
   const draw = { messages, theme, width: size.columns }
   const time = now().getTime()
@@ -451,7 +504,16 @@ function RunStep({
   if (outcome.status === 'running') {
     const intro = [
       <Text bold>{header}</Text>,
-      <Text color={theme.colors.dim}>{messages.reviewFlow.running[mode]}</Text>,
+      <Text color={theme.colors.dim}>{m.running[mode]}</Text>,
+      ...(askingNow
+        ? [
+            <Text bold color={theme.colors.warn}>
+              {m.cancel.question}
+            </Text>,
+          ]
+        : cancelling
+          ? [<Text color={theme.colors.warn}>{m.cancel.cancelling}</Text>]
+          : []),
     ]
     const room = Math.max(size.rows - (MASCOT_FRAMES[0]?.length ?? 0) - 1, 1)
     return (
@@ -480,12 +542,19 @@ function RunStep({
     outcome.status === 'failed'
       ? [
           <Text bold>{header}</Text>,
-          <Text color={theme.colors.error}>{messages.reviewFlow.failed}</Text>,
+          <Text color={theme.colors.error}>{m.failed}</Text>,
           ...failedNodes(draw, outcome.error),
           ...spaced(stepLines(steps, target, draw, outcome.endedAt)),
           ...spaced(warningLines(steps.warnings, draw)),
         ]
-      : resultLines(outcome.review, steps, draw, elapsed, new Date(time))
+      : outcome.review.status === 'cancelled'
+        ? [
+            <Text bold>{header}</Text>,
+            <Text color={theme.colors.warn}>{m.cancel.cancelled}</Text>,
+            ...spaced(stepLines(steps, target, draw, outcome.endedAt)),
+            ...spaced(warningLines(steps.warnings, draw)),
+          ]
+        : resultLines(outcome.review, steps, draw, elapsed, new Date(time))
   return <ScrollText lines={lines} rows={size.rows} />
 }
 
@@ -579,7 +648,7 @@ function warningLines(warnings: readonly string[], { messages, theme, width }: D
 }
 
 function resultLines(
-  review: RequestedReview,
+  review: Exclude<RequestedReview, { status: 'cancelled' }>,
   steps: ReviewSteps,
   draw: DrawContext,
   elapsed: string,

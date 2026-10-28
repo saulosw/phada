@@ -55,6 +55,7 @@ import type { ReviewProvider } from './providers/types.js'
 export interface MainDeps extends WatchCommandDeps, McpCommandDeps, AppCommandDeps {
   cwd: string
   pathSize: (path: string) => Promise<number>
+  killDetachedChildren: () => void
 }
 
 export function createProvider(name: string, options: ProviderOptions): ReviewProvider {

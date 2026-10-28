@@ -115,6 +115,7 @@ export const spanish: UiMessages = {
     notFound: (command) => `No se encontró ${command}.`,
     failed: (message) => `No se pudo ejecutar: ${message}`,
   },
+  quitGuard: { quit: 'salir', stay: 'quedarse', stopping: 'Deteniendo…', quitNow: 'salir ahora' },
   requests: {
     sources: {
       watch: 'watch',
@@ -871,6 +872,15 @@ export const spanish: UiMessages = {
     moreWarnings: (count) => `+${number(count)} más`,
     done: (elapsed) => `Listo en ${elapsed}.`,
     failed: 'La revisión falló.',
+    cancel: {
+      key: 'cancelar',
+      question: '¿Cancelar la revisión? No se publicará nada.',
+      confirm: 'cancelar la revisión',
+      keep: 'seguir',
+      cancelling: 'Cancelando…',
+      cancelled: 'Cancelada: no se publicó nada.',
+    },
+    quitWhileRunning: 'Hay una revisión en curso: ¿cancelarla y salir?',
     history: {
       saved: 'Guardado en el historial.',
       off: 'No guardado: el historial está apagado en la config del usuario.',

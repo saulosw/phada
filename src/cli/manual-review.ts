@@ -65,6 +65,7 @@ export interface ManualReviewInput {
   dryRun: boolean
   waitCi: boolean
   options: ReviewOptions
+  signal?: AbortSignal
 }
 
 export interface ManualReviewReport {
@@ -135,8 +136,9 @@ export async function runManualReview(
       options: input.options,
       userLayers: prepared.userLayers,
       mcp: prepared.mcp,
+      ...(input.signal === undefined ? {} : { signal: input.signal }),
     },
-    manualReviewDeps(prepared, deps, report),
+    manualReviewDeps(prepared, deps, report, input.signal),
   )
   const { choice } = prepared
   const meta: RunMeta = {
@@ -153,9 +155,9 @@ function manualReviewDeps(
   { ref, token, choice }: PreparedReview,
   deps: ManualReviewDeps,
   { progress, reviewed }: ManualReviewReport,
+  signal: AbortSignal = new AbortController().signal,
 ): ReviewAndPublishDeps {
   const target = { ...ref, token }
-  const forever = new AbortController().signal
   return {
     fetchPullRequest: (pull) => deps.fetchPullRequest({ ...pull, token }),
     fetchReviewState: (pull) => deps.fetchReviewState({ ...pull, token }),
@@ -181,7 +183,7 @@ function manualReviewDeps(
     replyAndResolve: (threadId, body) => deps.replyAndResolve({ token, threadId, body }),
     clock: {
       now: () => deps.clock().toISOString(),
-      sleep: (ms) => deps.sleep(ms, forever),
+      sleep: (ms) => deps.sleep(ms, signal),
     },
     events: reviewAndPublishEvents(progress, reviewed),
   }

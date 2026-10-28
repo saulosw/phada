@@ -1,10 +1,11 @@
 import { Box, Text, useInput } from 'ink'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   AppDepsContext,
   ConfigWrittenContext,
   MessagesContext,
+  QuitGuardContext,
   ReviewStartContext,
   ScreenContext,
   ThemeContext,
@@ -13,7 +14,14 @@ import {
   useMessages,
   useTheme,
 } from './app-context.js'
-import type { AppDeps, KeyHint, ScreenControls, WorkingSignal } from './app-context.js'
+import type {
+  AppDeps,
+  KeyHint,
+  QuitGuard,
+  QuitGuardHold,
+  ScreenControls,
+  WorkingSignal,
+} from './app-context.js'
 import { POLL_MS, usePolled } from './data-hooks.js'
 import { ErrorBoundary } from './error-boundary.js'
 import { Footer } from './footer.js'
@@ -40,11 +48,16 @@ export type AppResult =
   | { kind: 'terminated' }
   | { kind: 'failed'; error: unknown }
 
+export type StopSignal = 'SIGINT' | 'SIGTERM'
+
+export type SignalSource = (listener: (signal?: StopSignal) => void) => () => void
+
 export interface AppProps {
   deps: AppDeps
   size: SizeSource
   onExit(result: AppResult): void
   screens?: readonly ScreenDefinition[]
+  signals?: SignalSource
 }
 
 type Overlay = 'none' | 'help' | 'palette'
@@ -57,7 +70,7 @@ const INDEX_ID = 'index'
 const REVIEW_ID = 'review'
 const GRAPH_ID = 'graph'
 
-export function App({ deps, size, onExit, screens = SCREENS }: AppProps) {
+export function App({ deps, size, onExit, screens = SCREENS, signals }: AppProps) {
   const theme = useMemo(() => resolveTheme(colorLevel(deps.env)), [deps.env])
   const [workers, setWorkers] = useState(0)
   const start = useCallback(() => {
@@ -82,7 +95,7 @@ export function App({ deps, size, onExit, screens = SCREENS }: AppProps) {
             <LoadCacheContext.Provider value={loads}>
               <ConfigWrittenContext.Provider value={configWritten}>
                 <Localized configRound={configRound}>
-                  <Shell size={size} screens={screens} onExit={onExit} />
+                  <Shell size={size} screens={screens} onExit={onExit} signals={signals} />
                 </Localized>
               </ConfigWrittenContext.Provider>
             </LoadCacheContext.Provider>
@@ -107,14 +120,21 @@ function useLanguage(configRound: number): string | undefined {
   return last.current
 }
 
+interface Quitting {
+  exit: AppResult
+  stopping: boolean
+}
+
 function Shell({
   size: source,
   screens,
   onExit,
+  signals,
 }: {
   size: SizeSource
   screens: readonly ScreenDefinition[]
   onExit(result: AppResult): void
+  signals: SignalSource | undefined
 }) {
   const messages = useMessages()
   const { start } = useAppDeps()
@@ -144,7 +164,39 @@ function Shell({
   }, [])
   const back = useRef<(() => void) | undefined>(undefined)
   const titles = screens.map((screen) => screen.title(messages))
-  const quit = () => onExit({ kind: 'quit' })
+  const guards = useRef(new Set<{ readonly current: QuitGuard | undefined }>())
+  const holdGuard = useCallback<QuitGuardHold>((guard) => {
+    guards.current.add(guard)
+    return () => {
+      guards.current.delete(guard)
+    }
+  }, [])
+  const heldGuards = useCallback(
+    () => [...guards.current].flatMap(({ current }) => (current === undefined ? [] : [current])),
+    [],
+  )
+  const [quitting, setQuitting] = useState<Quitting | undefined>()
+  useEffect(
+    () =>
+      signals?.(() => {
+        for (const guard of heldGuards()) guard.abort()
+      }),
+    [signals, heldGuards],
+  )
+  const leave = (exit: AppResult) => {
+    if (heldGuards().length === 0) return onExit(exit)
+    setOverlay('none')
+    setQuitting({ exit, stopping: false })
+  }
+  const abortAndLeave = () => {
+    for (const guard of heldGuards()) guard.abort()
+    onExit({ kind: 'interrupted' })
+  }
+  const stopAndLeave = (exit: AppResult) => {
+    setQuitting({ exit, stopping: true })
+    void Promise.allSettled(heldGuards().map((guard) => guard.stop())).then(() => onExit(exit))
+  }
+  const quit = () => leave({ kind: 'quit' })
   const show = (index: number) => {
     back.current = undefined
     setTakeover(undefined)
@@ -171,7 +223,7 @@ function Shell({
 
   const controls = useMemo<ScreenControls>(
     () => ({
-      inputActive: overlay === 'none' && !tooSmall,
+      inputActive: overlay === 'none' && !tooSmall && quitting === undefined,
       typing,
       size: { columns: size.columns, rows: Math.max(size.rows - SHELL_ROWS, 0) },
       setKeys: setScreenKeys,
@@ -182,11 +234,18 @@ function Shell({
       setTyping,
       claimArrows,
     }),
-    [overlay, tooSmall, typing, size.columns, size.rows, setTyping, claimArrows],
+    [overlay, tooSmall, typing, quitting, size.columns, size.rows, setTyping, claimArrows],
   )
 
   useInput((input, key) => {
-    if (key.ctrl && input === 'c') return onExit({ kind: 'interrupted' })
+    if (quitting !== undefined) {
+      if (key.ctrl && input === 'c') return abortAndLeave()
+      if (quitting.stopping) return
+      if (key.return) return stopAndLeave(quitting.exit)
+      if (key.escape) setQuitting(undefined)
+      return
+    }
+    if (key.ctrl && input === 'c') return leave({ kind: 'interrupted' })
     if (tooSmall) {
       if (input === 'q' || key.escape) quit()
       return
@@ -212,7 +271,7 @@ function Shell({
     if ((arrow && key.leftArrow) || (key.tab && key.shift)) return show(active - 1)
   })
 
-  if (tooSmall) return <TooSmall size={size} />
+  if (tooSmall && quitting === undefined) return <TooSmall size={size} />
 
   const current = screens[active]
   const global = globalKeys(messages, screens.length, takeover !== undefined, arrows)
@@ -257,17 +316,24 @@ function Shell({
       : []),
   ]
   const footerKeys =
-    overlay === 'palette'
-      ? [
-          { keys: '↑/↓', label: messages.keys.select },
-          { keys: 'Enter', label: messages.keys.open },
-          { keys: 'Esc', label: messages.keys.close },
-        ]
-      : overlay === 'help'
-        ? [{ keys: 'Esc', label: messages.keys.close }]
-        : typing
-          ? screenKeys
-          : [...screenKeys, ...footerGlobals(messages, takeover !== undefined, arrows)]
+    quitting !== undefined
+      ? quitting.stopping
+        ? [{ keys: 'Ctrl-C', label: messages.quitGuard.quitNow }]
+        : [
+            { keys: 'Enter', label: messages.quitGuard.quit },
+            { keys: 'Esc', label: messages.quitGuard.stay },
+          ]
+      : overlay === 'palette'
+        ? [
+            { keys: '↑/↓', label: messages.keys.select },
+            { keys: 'Enter', label: messages.keys.open },
+            { keys: 'Esc', label: messages.keys.close },
+          ]
+        : overlay === 'help'
+          ? [{ keys: 'Esc', label: messages.keys.close }]
+          : typing
+            ? screenKeys
+            : [...screenKeys, ...footerGlobals(messages, takeover !== undefined, arrows)]
 
   return (
     <Box flexDirection="column" width={size.columns} height={size.rows}>
@@ -277,6 +343,12 @@ function Shell({
         <TabBar titles={titles} active={active} width={size.columns} />
       )}
       <Box flexDirection="column" flexGrow={1} marginTop={1} overflow="hidden">
+        {quitting !== undefined && (
+          <QuitQuestion
+            questions={heldGuards().map(({ question }) => question)}
+            stopping={quitting.stopping}
+          />
+        )}
         {overlay === 'help' && (
           <Help
             global={global}
@@ -298,21 +370,26 @@ function Shell({
             }}
           />
         )}
-        <Box flexDirection="column" display={overlay === 'none' ? 'flex' : 'none'}>
+        <Box
+          flexDirection="column"
+          display={overlay === 'none' && quitting === undefined ? 'flex' : 'none'}
+        >
           <ScreenContext.Provider value={controls}>
-            <ReviewStartContext.Provider value={startReview}>
-              {takeover === 'setup' ? (
-                <Setup key={setupRun} onClose={leaveSetup} />
-              ) : takeover === 'review' ? (
-                <ReviewFlow key={reviewRun} repo={reviewRepo} onClose={() => show(active)} />
-              ) : takeover === 'language' ? (
-                <SubView onLeave={() => show(active)}>
-                  <LanguagePicker onDone={() => show(active)} />
-                </SubView>
-              ) : (
-                current !== undefined && <current.Screen key={current.id} />
-              )}
-            </ReviewStartContext.Provider>
+            <QuitGuardContext.Provider value={holdGuard}>
+              <ReviewStartContext.Provider value={startReview}>
+                {takeover === 'setup' ? (
+                  <Setup key={setupRun} onClose={leaveSetup} />
+                ) : takeover === 'review' ? (
+                  <ReviewFlow key={reviewRun} repo={reviewRepo} onClose={() => show(active)} />
+                ) : takeover === 'language' ? (
+                  <SubView onLeave={() => show(active)}>
+                    <LanguagePicker onDone={() => show(active)} />
+                  </SubView>
+                ) : (
+                  current !== undefined && <current.Screen key={current.id} />
+                )}
+              </ReviewStartContext.Provider>
+            </QuitGuardContext.Provider>
           </ScreenContext.Provider>
         </Box>
       </Box>
@@ -352,6 +429,27 @@ function globalKeys(
     { keys: 'Esc', label: messages.keys.back },
     { keys: 'q', label: messages.keys.quit },
   ]
+}
+
+function QuitQuestion({
+  questions,
+  stopping,
+}: {
+  questions: readonly string[]
+  stopping: boolean
+}) {
+  const messages = useMessages()
+  const { colors } = useTheme()
+  return (
+    <Box flexDirection="column">
+      {questions.map((question, index) => (
+        <Text key={index} bold color={colors.warn}>
+          {question}
+        </Text>
+      ))}
+      {stopping && <Text color={colors.dim}>{messages.quitGuard.stopping}</Text>}
+    </Box>
+  )
 }
 
 function TooSmall({ size }: { size: TerminalSize }) {
