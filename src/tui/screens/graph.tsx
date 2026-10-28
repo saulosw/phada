@@ -2,6 +2,13 @@ import { Box, Text } from 'ink'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 import type {
+  Connection,
+  Connections,
+  NotIndexed,
+  PackageRef,
+  RepositoryConnections,
+} from '../../app/read-connections.js'
+import type {
   IndexedRepository,
   IndexLanguage,
   IndexSymbolKind,
@@ -19,20 +26,24 @@ import {
 } from '../app-context.js'
 import type { KeyHint } from '../app-context.js'
 import { useLoaded } from '../data-hooks.js'
+import type { DataState } from '../data-hooks.js'
 import { DataView } from '../data-view.js'
 import { failedNodes, spaced, textLines } from '../frame-lines.js'
 import type { DrawContext } from '../frame-lines.js'
-import type { GraphMessages, UiMessages } from '../i18n/messages.js'
+import type { ConnectionMessages, GraphMessages, UiMessages } from '../i18n/messages.js'
 import { labeledLines } from '../labeled-lines.js'
 import { absoluteTime, relativeTime } from '../relative-time.js'
 import { useRepositoryIndexing } from '../repository-indexing.js'
 import { ScrollList, ScrollText, useSelection } from '../scroll-list.js'
 import { indented } from '../setting-lines.js'
 import { textWidth } from '../tab-layout.js'
-import { fit, oneLine, shortenHome } from '../text-fit.js'
+import { fit, namesText, oneLine, shortenHome, wrapText } from '../text-fit.js'
 import { bytesText, durationText } from '../units.js'
 
 const INDEXES_KEY = 'graph-indexes'
+const CONNECTIONS_KEY = 'graph-connections'
+const PACKAGES_SHOWN = 5
+const BRANCH_INDENT = 2
 const GAP = '  '
 const MIN_NAME_WIDTH = 12
 const SHORT_SHA = 7
@@ -42,12 +53,16 @@ const NO_VALUE = '–'
 const repoKey = ({ repo }: IndexedRepository) => repo
 
 export function GraphScreen() {
-  const { readIndexes } = useAppDeps()
+  const { readIndexes, readConnections } = useAppDeps()
   const messages = useMessages()
   const size = useScreenSize()
   const loaded = useLoaded(INDEXES_KEY, readIndexes)
+  const connections = useLoaded(CONNECTIONS_KEY, readConnections)
   const [open, setOpen] = useState<string | undefined>()
-  const indexing = useRepositoryIndexing(loaded.reload)
+  const indexing = useRepositoryIndexing(() => {
+    loaded.reload()
+    connections.reload()
+  })
   const repositories = loaded.state.status === 'ready' ? loaded.state.value.repositories : []
   const selection = useSelection(repositories, repoKey, {
     active: open === undefined,
@@ -55,10 +70,13 @@ export function GraphScreen() {
   })
   const opened = open === undefined ? undefined : repositories.find((entry) => entry.repo === open)
   const target = open === undefined ? selection.item : opened
+  const unindexed =
+    opened === undefined ? [] : unindexedRelated(connectionsOf(connections.state, opened.repo))
 
   useBack(indexing.busy ? indexing.stop : open === undefined ? undefined : () => setOpen(undefined))
   useScreenInput((input) => {
-    if (input === 'i' && target !== undefined) indexing.start(target.repo)
+    if (input === 'i' && target !== undefined) indexing.start([target.repo])
+    if (input === 'I') indexing.start(unindexed)
   })
   useScreenKeys([
     ...(open === undefined
@@ -70,6 +88,9 @@ export function GraphScreen() {
           ]
       : [{ keys: '↑/↓', label: messages.list.scroll }]),
     ...indexKeys(target, indexing.busy, messages),
+    ...(indexing.busy || unindexed.length === 0
+      ? []
+      : [{ keys: 'I', label: messages.graph.connections.indexRelated }]),
     { keys: 'r', label: messages.keys.refresh },
     ...(open !== undefined && !indexing.busy ? [{ keys: 'Esc', label: messages.keys.back }] : []),
   ])
@@ -79,13 +100,34 @@ export function GraphScreen() {
     <DataView state={loaded.state}>
       {() =>
         opened === undefined ? (
-          <RepositoryList repositories={repositories} selected={selection.index} tail={tail} />
+          <RepositoryList
+            repositories={repositories}
+            connections={connections.state}
+            selected={selection.index}
+            tail={tail}
+          />
         ) : (
-          <RepositoryView entry={opened} tail={tail} />
+          <RepositoryView entry={opened} connections={connections.state} tail={tail} />
         )
       }
     </DataView>
   )
+}
+
+function connectionsOf(
+  state: DataState<Connections>,
+  repo: string,
+): RepositoryConnections | undefined {
+  return state.status === 'ready'
+    ? state.value.repositories.find((entry) => entry.repo === repo)
+    : undefined
+}
+
+function unindexedRelated(entry: RepositoryConnections | undefined): string[] {
+  if (entry?.declared.status !== 'read') return []
+  return entry.declared.related
+    .filter(({ link }) => link.state === 'not-indexed')
+    .map(({ repo }) => repo)
 }
 
 function indexKeys(
@@ -106,14 +148,17 @@ interface ListCells {
   files: string
   symbols: string
   size: string
+  linked: string
 }
 
 function RepositoryList({
   repositories,
+  connections,
   selected,
   tail,
 }: {
   repositories: readonly IndexedRepository[]
+  connections: DataState<Connections>
   selected: number
   tail: readonly ReactNode[]
 }) {
@@ -135,7 +180,10 @@ function RepositoryList({
       </Box>
     )
   }
-  const rows = repositories.map((entry) => ({ entry, cells: listCells(entry, m) }))
+  const rows = repositories.map((entry) => ({
+    entry,
+    cells: listCells(entry, linkedCell(connections, entry.repo), m),
+  }))
   const header: ListCells = {
     name: m.columns.repo,
     state: m.columns.state,
@@ -143,6 +191,7 @@ function RepositoryList({
     files: m.columns.files,
     symbols: m.columns.symbols,
     size: m.columns.size,
+    linked: m.columns.linked,
   }
   const width = (pick: (cells: ListCells) => string) =>
     Math.max(textWidth(pick(header)), ...rows.map(({ cells }) => textWidth(pick(cells))))
@@ -152,9 +201,10 @@ function RepositoryList({
     files: width((cells) => cells.files),
     symbols: width((cells) => cells.symbols),
     size: width((cells) => cells.size),
+    linked: width((cells) => cells.linked),
   }
   const fixed = Object.values(columns).reduce((sum, value) => sum + value, 0)
-  const room = size.columns - 2 - fixed - GAP.length * 5
+  const room = size.columns - 2 - fixed - GAP.length * Object.keys(columns).length
   const nameWidth = Math.max(
     Math.min(
       width((cells) => cells.name),
@@ -170,6 +220,7 @@ function RepositoryList({
       cells.files.padStart(columns.files),
       cells.symbols.padStart(columns.symbols),
       cells.size.padStart(columns.size),
+      cells.linked.padStart(columns.linked),
     ].join(GAP)
   const indexedCount = repositories.filter(({ index }) => index.state === 'indexed').length
   return (
@@ -199,7 +250,23 @@ function RepositoryList({
   )
 }
 
-function listCells({ repo, index }: IndexedRepository, m: GraphMessages): ListCells {
+function linkedCell(state: DataState<Connections>, repo: string): string {
+  if (state.status === 'loading') return '…'
+  const entry = connectionsOf(state, repo)
+  if (entry === undefined) return NO_VALUE
+  if (entry.declared.status === 'invalid') return '!'
+  const { related } = entry.declared
+  if (related.length === 0) return NO_VALUE
+  if (entry.source.state !== 'read') return `?/${related.length}`
+  const linked = related.filter(({ link }) => link.state === 'linked').length
+  return `${linked}/${related.length}`
+}
+
+function listCells(
+  { repo, index }: IndexedRepository,
+  linked: string,
+  m: GraphMessages,
+): ListCells {
   const indexed = index.state === 'indexed' ? index : undefined
   return {
     name: oneLine(repo),
@@ -209,6 +276,7 @@ function listCells({ repo, index }: IndexedRepository, m: GraphMessages): ListCe
     symbols: indexed === undefined ? NO_VALUE : m.amount(symbolTotal(indexed.summary.symbols)),
     size:
       index.state === 'missing' || index.state === 'unreadable' ? NO_VALUE : bytesText(index.bytes),
+    linked,
   }
 }
 
@@ -233,7 +301,15 @@ function symbolTotal(symbols: Partial<Record<IndexSymbolKind, number>>): number 
   return Object.values(symbols).reduce((sum, count) => sum + (count ?? 0), 0)
 }
 
-function RepositoryView({ entry, tail }: { entry: IndexedRepository; tail: readonly ReactNode[] }) {
+function RepositoryView({
+  entry,
+  connections,
+  tail,
+}: {
+  entry: IndexedRepository
+  connections: DataState<Connections>
+  tail: readonly ReactNode[]
+}) {
   const messages = useMessages()
   const theme = useTheme()
   const { now, home } = useAppDeps()
@@ -242,6 +318,10 @@ function RepositoryView({ entry, tail }: { entry: IndexedRepository; tail: reado
   const lines: ReactNode[] = [
     <Text bold>{oneLine(entry.repo)}</Text>,
     ...section(messages.graph.detail.index, indexLines(entry.index, draw, home, now())),
+    ...section(
+      messages.graph.connections.title,
+      connectionLines(connections, entry.repo, { ...draw, width: size.columns - 2 }),
+    ),
   ]
   return (
     <Box flexDirection="column" width={size.columns}>
@@ -382,4 +462,113 @@ function extensionsText({ extensions }: LeftOutGroup, m: GraphMessages): string 
     )
   const other = extensions.slice(EXTENSIONS_SHOWN).reduce((sum, { files }) => sum + files, 0)
   return [...shown, ...(other === 0 ? [] : [m.detail.other(other)])].join(', ')
+}
+
+function connectionLines(
+  state: DataState<Connections>,
+  repo: string,
+  draw: DrawContext,
+): ReactNode[] {
+  const { messages, theme, width } = draw
+  const { colors } = theme
+  const c = messages.graph.connections
+  if (state.status === 'loading') return indented(textLines(messages.loading, width, colors.dim))
+  if (state.status === 'failed') return indented(failedNodes(draw, state.error))
+  const entry = connectionsOf(state, repo)
+  if (entry?.declared.status === 'invalid') {
+    return indented(failedNodes(draw, entry.declared.error))
+  }
+  const declared = entry?.declared
+  const lines: ReactNode[] = [
+    ...(entry?.source.state === 'not-indexed'
+      ? textLines(c.sourceNotIndexed(whyText(entry.source.why, c)), width, colors.warn)
+      : []),
+    ...(declared?.configError == null
+      ? []
+      : textLines(c.configError(oneLine(declared.configError)), width, colors.warn)),
+    ...(declared?.warnings ?? []).flatMap((warning) =>
+      textLines(oneLine(warning), width, colors.dim),
+    ),
+  ]
+  const related = declared?.related ?? []
+  if (related.length === 0) {
+    lines.push(...textLines(c.none, width), ...textLines(c.declareHint, width, colors.dim))
+  }
+  for (const connection of related) lines.push(...relatedLines(connection, repo, draw))
+  return indented(lines)
+}
+
+function relatedLines(connection: Connection, repo: string, draw: DrawContext): ReactNode[] {
+  const { messages, theme, width } = draw
+  const { colors } = theme
+  const c = messages.graph.connections
+  const { link } = connection
+  const [label, color] =
+    link.state === 'linked'
+      ? [c.linked, colors.ok]
+      : link.state === 'no-link'
+        ? [c.noLink, colors.dim]
+        : link.state === 'unknown'
+          ? [c.unknown, colors.dim]
+          : [c.notIndexed(whyText(link.why, c)), colors.warn]
+  const head = [
+    oneLine(connection.repo),
+    label,
+    ...(connection.description === undefined ? [] : [oneLine(connection.description)]),
+  ].join(' · ')
+  const lines = textLines(head, width, color)
+  if (link.state !== 'linked') return lines
+  const branches = [
+    ...byEcosystem(link.publishes).map(([ecosystem, names]) =>
+      c.publishes(
+        oneLine(repo),
+        namesText(names, PACKAGES_SHOWN),
+        c.ecosystems[ecosystem],
+        oneLine(connection.repo),
+        names.length,
+      ),
+    ),
+    ...byEcosystem(link.uses).map(([ecosystem, names]) =>
+      c.publishes(
+        oneLine(connection.repo),
+        namesText(names, PACKAGES_SHOWN),
+        c.ecosystems[ecosystem],
+        oneLine(repo),
+        names.length,
+      ),
+    ),
+  ]
+  branches.forEach((text, position) => {
+    const last = position === branches.length - 1
+    wrapText(text, width - BRANCH_INDENT - 2).forEach((line, row) => {
+      const mark = row > 0 ? (last ? ' ' : '│') : last ? '└' : '├'
+      lines.push(
+        <Text color={colors.soft}>
+          {' '.repeat(BRANCH_INDENT)}
+          {mark} {line}
+        </Text>,
+      )
+    })
+  })
+  return lines
+}
+
+function byEcosystem(packages: readonly PackageRef[]): [PackageRef['ecosystem'], string[]][] {
+  const groups = new Map<PackageRef['ecosystem'], string[]>()
+  for (const { ecosystem, name } of packages) {
+    groups.set(ecosystem, [...(groups.get(ecosystem) ?? []), name])
+  }
+  return [...groups]
+}
+
+function whyText(why: NotIndexed, c: ConnectionMessages): string {
+  switch (why.reason) {
+    case 'other-version':
+      return c.why['other-version'](optional(why.found.phadaVersion))
+    case 'unreadable':
+    case 'mirror-unreadable':
+      return c.why[why.reason](oneLine(why.error))
+    default:
+      return c.why[why.reason]
+  }
 }

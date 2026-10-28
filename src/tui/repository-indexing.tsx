@@ -11,7 +11,7 @@ import type { Theme } from './theme.js'
 
 export interface RepositoryIndexing {
   busy: boolean
-  start(repo: string): void
+  start(repos: readonly string[]): void
   stop(): void
   keys: KeyHint[]
   lines(width: number): ReactNode[]
@@ -29,8 +29,8 @@ export function useRepositoryIndexing(onEnded: () => void): RepositoryIndexing {
   }, [series.phase])
   return {
     busy,
-    start: (repo) => {
-      if (!busy) series.start([repo])
+    start: (repos) => {
+      if (!busy && repos.length > 0) series.start(repos)
     },
     stop: series.stop,
     keys: busy ? [{ keys: 'Esc', label: messages.indexing.stop }] : [],

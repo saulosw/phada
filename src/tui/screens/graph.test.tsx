@@ -1,6 +1,7 @@
 import { cleanup } from 'ink-testing-library'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { IndexingOptions, IndexingResult } from '../../app/index-repository.js'
+import type { Connections, RepositoryConnections } from '../../app/read-connections.js'
 import type { IndexedRepository, RepositoryIndexes } from '../../app/read-index.js'
 import {
   frameLines,
@@ -104,6 +105,65 @@ const EMPTY: IndexedRepository = {
   index: { state: 'empty', path: '/home/ana/.cache/phada/index/acme/empty.sqlite', bytes: 4096 },
 }
 
+const SHOP_CONNECTIONS: RepositoryConnections = {
+  repo: 'acme/shop',
+  source: { state: 'read', commit: SHA },
+  declared: {
+    status: 'read',
+    configError: null,
+    warnings: [],
+    related: [
+      {
+        repo: 'acme/ui',
+        description: 'The design system',
+        link: {
+          state: 'linked',
+          publishes: [{ ecosystem: 'npm', name: '@acme/shop-api' }],
+          uses: [
+            { ecosystem: 'npm', name: '@acme/ui' },
+            { ecosystem: 'npm', name: '@acme/icons' },
+            { ecosystem: 'python', name: 'acme-tokens' },
+          ],
+        },
+      },
+      { repo: 'acme/docs', link: { state: 'no-link' } },
+      { repo: 'acme/api', link: { state: 'not-indexed', why: { reason: 'no-mirror' } } },
+      {
+        repo: 'acme/legacy',
+        link: {
+          state: 'not-indexed',
+          why: {
+            reason: 'other-version',
+            found: { schemaVersion: '2', phadaVersion: '0.8.0' },
+            expected: { schemaVersion: '3', phadaVersion: '1.2.3' },
+          },
+        },
+      },
+    ],
+  },
+}
+
+const WEB_CONNECTIONS: RepositoryConnections = {
+  repo: 'acme/web',
+  source: { state: 'not-indexed', why: { reason: 'no-index' } },
+  declared: {
+    status: 'read',
+    configError: null,
+    warnings: [],
+    related: [{ repo: 'acme/ui', link: { state: 'unknown' } }],
+  },
+}
+
+const OLD_CONNECTIONS: RepositoryConnections = {
+  repo: 'acme/old',
+  source: { state: 'read', commit: SHA },
+  declared: { status: 'read', configError: null, warnings: [], related: [] },
+}
+
+const CONNECTIONS: Connections = {
+  repositories: [SHOP_CONNECTIONS, WEB_CONNECTIONS, OLD_CONNECTIONS],
+}
+
 interface IndexCall extends IndexingOptions {
   repo: string
   finish(result: IndexingResult): void
@@ -112,6 +172,7 @@ interface IndexCall extends IndexingOptions {
 function openGraph(
   options: {
     indexes?: () => RepositoryIndexes
+    connections?: () => Promise<Connections>
     language?: string
     deps?: Partial<AppDeps>
     size?: { columns: number; rows: number }
@@ -120,12 +181,17 @@ function openGraph(
 ) {
   const calls: IndexCall[] = []
   let reads = 0
+  let connectionReads = 0
   const app = renderApp({
     deps: {
       ...(options.language === undefined ? {} : { language: options.language }),
       readIndexes: async () => {
         reads += 1
         return options.indexes?.() ?? { repositories: [indexed('acme/shop'), MISSING, OLD] }
+      },
+      readConnections: async () => {
+        connectionReads += 1
+        return options.connections?.() ?? CONNECTIONS
       },
       indexRepository: (repo, indexing) =>
         new Promise<IndexingResult>((finish) => calls.push({ repo, ...indexing, finish })),
@@ -139,7 +205,7 @@ function openGraph(
     if (found === undefined) throw new Error(`no indexing call ${index}`)
     return found
   }
-  return { ...app, calls, call, reads: () => reads }
+  return { ...app, calls, call, reads: () => reads, connectionReads: () => connectionReads }
 }
 
 function expectFits(frame: string, columns = 80, rows = 24) {
@@ -281,6 +347,106 @@ describe('the Graph screen', () => {
     expect(call(0).signal.aborted).toBe(true)
   })
 
+  it('shows how many declared related repositories each one has and how many are linked', async () => {
+    const { frame, showing } = openGraph()
+    await showing(/acme\/shop.*12\.3 MB\s+1\/4/)
+    expect(frame()).toMatch(/Size\s+Linked/)
+    expect(frame()).toMatch(/acme\/shop.*12\.3 MB\s+1\/4/)
+    expect(frame()).toMatch(/acme\/web\s+no index.*\?\/1/)
+    expect(frame()).toMatch(/acme\/old\s+other version.*–\s*$/m)
+    expectFits(frame())
+  })
+
+  it('shows the connections of a repository after its index, with the packages each way', async () => {
+    const { frame, press, showing } = openGraph({ size: { columns: 80, rows: 60 } })
+    await showing('acme/shop')
+    await press(KEYS.enter)
+    await showing('Connections')
+    const lines = frameLines(frame()).map((line) => line.trimEnd())
+    expect(lines.findIndex((line) => line.includes('Connections'))).toBeGreaterThan(
+      lines.findIndex((line) => line.includes('Languages')),
+    )
+    const text = lines.join('\n')
+    expect(text).toMatch(/acme\/ui · linked · The design system/)
+    expect(text).toMatch(/├ acme\/shop publishes @acme\/shop-api \(npm\) → acme\/ui uses it/)
+    expect(text).toMatch(
+      /├ acme\/ui publishes @acme\/ui, @acme\/icons \(npm\) → acme\/shop uses them/,
+    )
+    expect(text).toMatch(/└ acme\/ui publishes acme-tokens \(Python\) → acme\/shop uses it/)
+    expect(text).toMatch(/acme\/docs · no link by package/)
+    expect(text).toMatch(/acme\/api · not indexed: no local copy/)
+    expect(text).toMatch(/acme\/legacy · not indexed: index made by Phada 0\.8\.0/)
+    expectFits(frame(), 80, 60)
+  })
+
+  it('says how to declare related repositories when there are none', async () => {
+    const { frame, press, showing } = openGraph({
+      indexes: () => ({ repositories: [OLD] }),
+      size: { columns: 80, rows: 40 },
+    })
+    await showing('acme/old')
+    await press(KEYS.enter)
+    await showing('No related repositories declared')
+    expect(frame()).toContain('No related repositories declared')
+    expect(frame()).toContain('context.repos')
+    expectFits(frame(), 80, 40)
+  })
+
+  it('keeps the declared repositories of one that is not indexed, saying links need its index', async () => {
+    const { frame, press, showing } = openGraph({
+      indexes: () => ({ repositories: [MISSING] }),
+      size: { columns: 80, rows: 40 },
+    })
+    await showing('acme/web')
+    await press(KEYS.enter)
+    await showing('Connections')
+    expect(frame()).toMatch(/links by package need the index and the local copy/i)
+    expect(frame()).toMatch(/acme\/ui · link not read/)
+  })
+
+  it('shows the error of the connections and keeps the index', async () => {
+    const { frame, press, showing } = openGraph({
+      connections: async () => {
+        throw new Error('git exploded')
+      },
+      size: { columns: 80, rows: 60 },
+    })
+    await showing('acme/shop')
+    await press(KEYS.enter)
+    await showing('git exploded')
+    expect(frame()).toContain('git exploded')
+    expect(frame()).toContain('Languages')
+  })
+
+  it('indexes the related repositories that are not indexed with I, then reads the connections again', async () => {
+    const { call, calls, connectionReads, footer, press, showing, until } = openGraph({
+      size: { columns: 100, rows: 60 },
+    })
+    await showing('acme/shop')
+    await press(KEYS.enter)
+    await showing('Connections')
+    expect(footer()).toContain('I index related')
+    await press('I')
+    await until(() => calls.length === 1)
+    expect(call(0).repo).toBe('acme/api')
+    const before = connectionReads()
+    call(0).finish({ kind: 'indexed', files: 10 })
+    await until(() => calls.length === 2)
+    expect(call(1).repo).toBe('acme/legacy')
+    call(1).finish({ kind: 'indexed', files: 20 })
+    await until(() => connectionReads() > before)
+    expect(connectionReads()).toBeGreaterThan(before)
+  })
+
+  it('reads the connections again on r', async () => {
+    const { connectionReads, press, showing, until } = openGraph()
+    await showing(/1\/4/)
+    const before = connectionReads()
+    await press('r')
+    await until(() => connectionReads() > before)
+    expect(connectionReads()).toBeGreaterThan(before)
+  })
+
   it('fits 80×24 in Portuguese and Spanish', async () => {
     for (const language of ['pt', 'es']) {
       const { frame, press, showing } = openGraph({ language })
@@ -288,6 +454,10 @@ describe('the Graph screen', () => {
       expectFits(frame())
       await press(KEYS.enter)
       await showing('TypeScript')
+      expectFits(frame())
+      for (let line = 0; line < 30; line += 1) await press(KEYS.down)
+      await showing('acme/legacy')
+      expect(frame()).toContain('acme/legacy')
       expectFits(frame())
       cleanup()
     }

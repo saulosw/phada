@@ -109,7 +109,7 @@ function RepositoryBrowser({ onAdd }: { onAdd(): void }) {
   )
   useScreenInput((input) => {
     if (input === 'i' && indexTarget !== undefined && !change.open && !handOff.running) {
-      return indexing.start(indexTarget.repo)
+      return indexing.start([indexTarget.repo])
     }
     if (!listing || change.open || handOff.running) return
     if (configEditable && input === 'a') return onAdd()

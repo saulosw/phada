@@ -1,4 +1,5 @@
 import type { FeedbackFinding, ListedRun, ReviewDetail } from '../../app/read-history.js'
+import type { PackageRef } from '../../app/read-connections.js'
 import type { GitHubTokenSource } from '../../app/read-home.js'
 import type { McpServerKind, NextStep } from '../../app/read-provider.js'
 import type {
@@ -230,6 +231,7 @@ export interface GraphMessages {
     files: string
     symbols: string
     size: string
+    linked: string
   }
   states: Readonly<Record<RepositoryIndexState['state'], string>>
   none: string
@@ -266,6 +268,30 @@ export interface GraphMessages {
   languages: Readonly<Record<IndexLanguage, string>>
   symbols: Readonly<Record<IndexSymbolKind, (count: number) => string>>
   leftOut: Readonly<Record<LeftOutGroup['reason'], (count: number) => string>>
+  connections: ConnectionMessages
+}
+
+export interface ConnectionMessages {
+  title: string
+  none: string
+  declareHint: string
+  sourceNotIndexed(why: string): string
+  configError(message: string): string
+  linked: string
+  noLink: string
+  notIndexed(why: string): string
+  unknown: string
+  publishes(owner: string, names: string, ecosystem: string, user: string, count: number): string
+  why: {
+    'no-index': string
+    empty: string
+    'other-version'(phadaVersion: string | null): string
+    unreadable(error: string): string
+    'no-mirror': string
+    'mirror-unreadable'(error: string): string
+  }
+  ecosystems: Readonly<Record<PackageRef['ecosystem'], string>>
+  indexRelated: string
 }
 
 type RequestSource = QueueJob['requests'][number]['source']

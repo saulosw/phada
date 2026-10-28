@@ -441,6 +441,7 @@ export const spanish: UiMessages = {
       files: 'Archivos',
       symbols: 'Símbolos',
       size: 'Tamaño',
+      linked: 'Enlazados',
     },
     states: {
       indexed: 'indexado',
@@ -515,6 +516,34 @@ export const spanish: UiMessages = {
       symlink: (count) =>
         `${number(count)} ${count === 1 ? 'enlace simbólico' : 'enlaces simbólicos'}`,
       submodule: (count) => `${number(count)} ${count === 1 ? 'submódulo' : 'submódulos'}`,
+    },
+    connections: {
+      title: 'Conexiones',
+      none: 'No hay repositorios relacionados declarados.',
+      declareHint:
+        'Lista en context.repos los repositorios que un review de este debe leer, en tu config para él o en su .phada/config.yml.',
+      sourceNotIndexed: (why) =>
+        `Los enlaces por paquete necesitan el índice y la copia local de este repositorio (${why}): pulsa i para indexarlo.`,
+      configError: (message) => `Se ignora el .phada/config.yml del commit indexado: ${message}`,
+      linked: 'enlazado',
+      noLink: 'sin enlace por paquete',
+      notIndexed: (why) => `no indexado: ${why}`,
+      unknown: 'enlace no leído',
+      publishes: (owner, names, ecosystem, user, count) =>
+        `${owner} publica ${names} (${ecosystem}) → ${user} ${count === 1 ? 'lo usa' : 'los usa'}`,
+      why: {
+        'no-index': 'sin índice',
+        empty: 'el índice no tiene commits',
+        'other-version': (version) =>
+          version === null
+            ? 'índice hecho por otra versión de Phada'
+            : `índice hecho por Phada ${version}`,
+        unreadable: (error) => `índice ilegible (${error})`,
+        'no-mirror': 'sin copia local',
+        'mirror-unreadable': (error) => `copia local ilegible (${error})`,
+      },
+      ecosystems: { npm: 'npm', go: 'Go', python: 'Python' },
+      indexRelated: 'indexar relacionados',
     },
   },
   indexing: {
