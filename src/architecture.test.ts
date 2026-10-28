@@ -235,6 +235,7 @@ const APP: Boundary = {
     '../config/errors.js',
     '../context/load-context.js',
     '../context/list-context.js',
+    '../context/phada-paths.js',
     '../context/split-diff.js',
     '../skills/errors.js',
     '../config/merge-config.js',
