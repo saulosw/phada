@@ -302,13 +302,28 @@ describe('exploring a symbol from the Graph screen', () => {
     await showing('▸ Callers')
     expect(frame()).not.toContain('src/checkout.ts:44')
     expect(frame()).toContain('function total')
-    expect(footer()).toContain('Tab screens')
+    expect(footer()).toContain('? more')
+    await press('?')
+    await showing('Enter/→')
+    expect(frame()).toMatch(/\bTab\s+next or previous screen/)
+    expect(frame()).not.toMatch(/←\/→ Tab/)
+    await press('?')
+    await showing('function total')
 
     await press(KEYS.escape)
     await showing('shop.sqlite')
     await press(KEYS.right)
     await until(() => !frame().includes('shop.sqlite'))
     expect(frame()).not.toContain('shop.sqlite')
+  })
+
+  it('lists r among the keys of the tree, which searches again', async () => {
+    const { frame, press, search, showing } = openExplorer({ screens: SCREENS })
+    await search('total')
+    await showing('function total · src/cart/total.ts:12')
+    await press('?')
+    await showing('Enter/→')
+    expect(frame()).toMatch(/\br\s+refresh/)
   })
 
   it('follows a dependency into the repository that defines it', async () => {

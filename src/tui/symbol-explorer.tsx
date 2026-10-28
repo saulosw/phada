@@ -314,6 +314,7 @@ function SymbolTree({
     { keys: '↑/↓', label: messages.keys.select },
     { keys: 'Enter/→', label: m.keys.expand },
     { keys: '←', label: m.keys.collapse },
+    { keys: 'r', label: messages.keys.refresh },
     ...(hasBack ? [{ keys: 'Esc', label: messages.keys.back }] : []),
   ])
 
