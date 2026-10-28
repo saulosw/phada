@@ -48,7 +48,14 @@ import { fetchAuthenticatedUser } from '../github/user.js'
 import { listUserRepositories } from '../github/user-repositories.js'
 import type { UserRepository } from '../github/user-repositories.js'
 import type { FetchUserOptions, GitHubUser } from '../github/user.js'
-import type { AppDeps, AppResult, AppStart, openApp, Scheduler } from '../tui/open-app.js'
+import type {
+  AppDeps,
+  AppResult,
+  AppStart,
+  openApp,
+  Scheduler,
+  StopSignal,
+} from '../tui/open-app.js'
 import type { ColorEnv } from '../tui/theme.js'
 import { appGraph } from './app-graph.js'
 import type { AppGraph } from './app-graph.js'
@@ -74,8 +81,6 @@ import { SLACK_APP_TOKEN, SLACK_BOT_TOKEN } from './review-event-sinks.js'
 import { terminalHandOff } from './terminal-hand-off.js'
 import { ensureUserRepoFile } from './user-repo-file.js'
 import type { TerminalHandOff } from './terminal-hand-off.js'
-
-export type StopSignal = 'SIGINT' | 'SIGTERM'
 
 export interface AppCommandDeps
   extends

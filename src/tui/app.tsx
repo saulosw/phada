@@ -386,7 +386,7 @@ function Shell({
               if (id === SETUP_ID) open('setup')
               else if (id === LANGUAGE_ID) open('language')
               else if (id === REVIEW_ID) startReview()
-              else if (id === INDEX_ID) show(screens.findIndex((screen) => screen.id === GRAPH_ID))
+              else if (id === INDEX_ID) showScreen(GRAPH_ID)
               else if (id === WATCH_ID) {
                 showScreen(QUEUE_ID)
                 watch.toggle()

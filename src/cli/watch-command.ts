@@ -1,7 +1,7 @@
 import { toTerminalText } from '../app/terminal-text.js'
 import { dataFiles } from '../config/data-paths.js'
 import { loadTopLevelUserLayers, userConfigFile } from '../config/user-config.js'
-import type { StopSignal } from './app-command.js'
+import type { StopSignal } from '../tui/open-app.js'
 import type { IndexFormat } from './args.js'
 import { formatError } from './format-error.js'
 import { formatWatchEvent } from './format-watch.js'
