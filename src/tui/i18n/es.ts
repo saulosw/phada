@@ -937,6 +937,10 @@ export const spanish: UiMessages = {
       look: 'Solo viendo: no se publicará nada.',
       publish: 'Revisando y publicando en el pull request.',
     },
+    notices: {
+      closed: 'Este pull request está cerrado: la revisión se hace igual.',
+      draft: 'Este pull request es un borrador: la revisión se hace igual.',
+    },
     steps: {
       fetching: (ref) => `Obteniendo ${ref}…`,
       fetched: (title) => `Pull request: ${title}`,

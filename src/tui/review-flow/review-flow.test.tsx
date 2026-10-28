@@ -438,6 +438,71 @@ describe('reviewing a pull request from the app', () => {
     expect(asked.signal.aborted).toBe(false)
   })
 
+  it.each([
+    [
+      'closed',
+      { state: 'closed' as const },
+      'This pull request is closed: the review runs anyway.',
+    ],
+    ['a draft', { draft: true }, 'This pull request is a draft: the review runs anyway.'],
+  ])(
+    'warns right under the pull request when it is %s, and keeps reviewing',
+    async (_case, pull, text) => {
+      const flow = openFlow()
+      const asked = await running(flow)
+      asked.progress({ kind: 'fetched', pullRequest: pullRequestFixture(pull) })
+      asked.progress({ kind: 'contextLoaded', report: contextReportFixture() })
+      await flow.showing('Context: 1 rule')
+      const lines = frameLines(flow.frame())
+      const fetched = lines.findIndex((line) =>
+        line.includes('✓ Pull request: Let users spend crystals'),
+      )
+      expect(lines[fetched + 1]).toContain(text)
+      expect(lines[fetched + 2]).toContain('✓ Context: 1 rule, 1 doc')
+      expect(asked.signal.aborted).toBe(false)
+      expectFits(flow.frame(), { columns: 80, rows: 24 })
+    },
+  )
+
+  it('says nothing more about an open pull request that is not a draft', async () => {
+    const flow = openFlow()
+    const asked = await running(flow)
+    asked.progress({ kind: 'fetched', pullRequest: pullRequestFixture() })
+    await flow.showing('✓ Pull request: Let users spend crystals')
+    expect(flow.frame()).not.toContain('This pull request is')
+  })
+
+  it.each([
+    [
+      'pt',
+      'Como a Phada deve revisar?',
+      'Este pull request está fechado: o review roda mesmo assim.',
+    ],
+    [
+      'es',
+      '¿Cómo debe revisarlo Phada?',
+      'Este pull request está cerrado: la revisión se hace igual.',
+    ],
+  ])('warns about a closed pull request in %s', async (language, question, text) => {
+    const flow = openFlow({ language })
+    await flow.showing('Phada')
+    await flow.press('/')
+    await flow.type('revisar')
+    await flow.press(KEYS.enter)
+    await flow.showing('Pull request:')
+    await flow.type('acme/shop#12')
+    await flow.press(KEYS.enter)
+    await flow.showing(question)
+    await flow.press(KEYS.enter)
+    await flow.until(() => flow.asked.length === 1)
+    flow.asked[0]?.progress({
+      kind: 'fetched',
+      pullRequest: pullRequestFixture({ state: 'closed' }),
+    })
+    await flow.showing(text)
+    expect(flow.frame()).toContain(text)
+  })
+
   it('cannot be cancelled once it is publishing', async () => {
     const flow = openFlow()
     const asked = await running(flow, true)

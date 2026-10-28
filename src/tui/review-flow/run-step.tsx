@@ -238,9 +238,9 @@ function stepLines(
   time: number,
 ): ReactNode[] {
   const { colors } = theme
-  return steps.map((step, index) => {
+  return steps.flatMap((step, index) => {
     const running = stepRunning(step, index === steps.length - 1)
-    return (
+    const line = (
       <Text>
         {running ? (
           <Text color={colors.accent}>› </Text>
@@ -252,6 +252,11 @@ function stepLines(
         {stepText(step, refText(target), messages, time)}
       </Text>
     )
+    if (step.kind !== 'fetch' || step.notice === undefined) return [line]
+    return [
+      line,
+      <Text color={colors.warn}>{`  ${messages.reviewFlow.notices[step.notice]}`}</Text>,
+    ]
   })
 }
 

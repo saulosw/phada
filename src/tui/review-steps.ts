@@ -4,7 +4,7 @@ import { oneLine } from './text-fit.js'
 import { durationText } from './units.js'
 
 export type ReviewStep =
-  | { kind: 'fetch'; title?: string }
+  | { kind: 'fetch'; title?: string; notice?: FetchNotice }
   | { kind: 'context'; rules: number; docs: number }
   | { kind: 'conversation'; items: number }
   | { kind: 'ci'; state: string }
@@ -23,6 +23,8 @@ export type ReviewStep =
     }
   | { kind: 'publish' }
 
+export type FetchNotice = 'closed' | 'draft'
+
 export interface ReviewSteps {
   steps: ReviewStep[]
   warnings: string[]
@@ -39,7 +41,11 @@ export function stepsAfter(state: ReviewSteps, event: ReviewProgress, now: numbe
   }
   switch (event.kind) {
     case 'fetched':
-      return replaceLast('fetch', { kind: 'fetch', title: event.pullRequest.title })
+      return replaceLast('fetch', {
+        kind: 'fetch',
+        title: event.pullRequest.title,
+        ...fetchNotice(event.pullRequest),
+      })
     case 'contextLoaded':
       return add({
         kind: 'context',
@@ -92,6 +98,13 @@ export function stepsAfter(state: ReviewSteps, event: ReviewProgress, now: numbe
     case 'passesPlanned':
       return state
   }
+}
+
+function fetchNotice({ state, draft }: { state: string; draft: boolean }): {
+  notice?: FetchNotice
+} {
+  if (state === 'closed') return { notice: 'closed' }
+  return draft ? { notice: 'draft' } : {}
 }
 
 function runningAi(steps: readonly ReviewStep[], run: AiRun): number {

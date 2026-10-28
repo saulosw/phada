@@ -630,7 +630,8 @@ src/
                          #   queue while a watch holds the lock, from readQueue) → for
                          #   publishing, the pull request and the token owner to confirm (and
                          #   the watch's PID) (confirm-step.tsx) → the steps live with the
-                         #   mascot and the AI's time on the app clock, warnings → the result
+                         #   mascot and the AI's time on the app clock, a closed or draft
+                         #   pull request said under it (reviewed anyway), warnings → the result
                          #   (time, history, warnings, reviewDetailLines()), cancelled or the
                          #   error (run-step.tsx; a watch found holding the lock when it would
                          #   publish goes back to the confirmation, as putting it in the queue);
@@ -639,9 +640,10 @@ src/
                          #   it runs (not once publishing), out once it ended; a quit guard
                          #   while it runs; flow-text.ts: the pull request line
     review-steps.ts      #   stepsAfter(): the review progress events → one step per stage
-                         #   (fetch, context, conversation, CI, CI wait, indexing, related,
-                         #   impact, skill pass, each AI run with its start and end,
-                         #   publishing) and the warnings; stepRunning(), stepFailed() (an AI
+                         #   (fetch, with a closed or draft notice, context, conversation,
+                         #   CI, CI wait, indexing, related, impact, skill pass, each AI run
+                         #   with its start and end, publishing) and the warnings;
+                         #   stepRunning(), stepFailed() (an AI
                          #   run with no answer); stepText(): a step as the review flow and
                          #   the Queue show it
     refs.ts              #   pullRef() (owner/repo#N), shortSha(): through oneLine()

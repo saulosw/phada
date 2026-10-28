@@ -48,8 +48,9 @@ output can change between minor versions.
   `v` on a repository open it in place of the tabs. Type `owner/repo#N` or a URL, or pick one of
   the open pull requests of a repository; choose **Only look** (as `phada review --dry-run`) or
   **Review and publish**, which first shows the pull request and the GitHub login that will
-  publish it; follow each step live (the fetch, context, conversation, CI, indexing, related
-  repositories, impact, each run of the AI with its time, publishing, warnings); and read the
+  publish it; follow each step live (the fetch, with a note when the pull request is closed or a
+  draft, which it still reviews, context, conversation, CI, indexing, related repositories,
+  impact, each run of the AI with its time, publishing, warnings); and read the
   result in the same detail as the Reviews screen. It is the same review as `phada review`, saved
   in the history unless `history: false`, with the AI CLI in its own process group. `Esc` while
   it runs asks before cancelling: the AI CLI is stopped, nothing is posted and nothing is saved;

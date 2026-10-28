@@ -917,6 +917,10 @@ export const english: UiMessages = {
       look: 'Only looking: nothing will be posted.',
       publish: 'Reviewing and publishing on the pull request.',
     },
+    notices: {
+      closed: 'This pull request is closed: the review runs anyway.',
+      draft: 'This pull request is a draft: the review runs anyway.',
+    },
     steps: {
       fetching: (ref) => `Fetching ${ref}…`,
       fetched: (title) => `Pull request: ${title}`,

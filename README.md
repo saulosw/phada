@@ -179,7 +179,8 @@ screen open the review in place of the tabs:
 3. **For publishing**, the pull request and the GitHub login that will publish it (the owner of
    the token) to confirm: `Enter` publishes, `Esc` goes back. Without a token it does not offer to
    publish.
-4. **The steps, live**: the pull request fetched, the context, the conversation, the CI, the
+4. **The steps, live**: the pull request fetched (with a note under it when it is closed or a
+   draft, which it still reviews, as `phada review` does), the context, the conversation, the CI, the
    indexing (`N of M files`), the related repositories, the impact, each run of the AI (review,
    verify, recheck, skill) with its time, publishing, and the warnings. `Esc` asks before
    cancelling (`Enter` cancels, `Esc` keeps it running): Phada stops the AI CLI, posts nothing

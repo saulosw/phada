@@ -140,6 +140,7 @@ export interface ReviewFlowMessages {
     openQueue: string
   }
   running: Readonly<Record<ReviewMode, string>>
+  notices: { closed: string; draft: string }
   steps: {
     fetching(ref: string): string
     fetched(title: string): string
