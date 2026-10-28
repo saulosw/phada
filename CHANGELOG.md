@@ -21,6 +21,11 @@ output can change between minor versions.
   other uses (npm, Go, Python), without a link, or not indexed and why. They are read from the
   index and the local copy on your machine, never fetched; `I` indexes the related repositories
   that are not indexed.
+- Exploring a symbol on the Graph screen: `s` on an open repository searches a name in the graph
+  the review uses, linked to the indexed related repositories → its definitions to pick one → a
+  tree of its callers and dependencies that opens one level at a time with `Enter`/`→` and closes
+  with `←`, crossing into the linked repositories, 20 items per level with how many more and when
+  the graph cut the list short. A name not found or a repository not indexed offers `i`.
 
 ## 0.10.0 - 2026-10-27
 

@@ -153,6 +153,18 @@ src/
                          #   one) or not read while the repository itself is not; manifests read
                          #   from the existing mirror at the index's snapshot, no fetch; readers
                          #   injected
+    local-repository.ts  #   openLocalRepository(): the read-only index at its snapshot and the
+                         #   existing mirror's files of that commit → packages, the root
+                         #   .phada/config.yml and readText, the index kept open (or why it is
+                         #   not indexed); indexedSnapshot(); declaredRelated(): the related
+                         #   repositories as a review merges them; readers injected
+    explore-graph.ts     #   openGraphExplorer(): the RepositoryGraph of a repository (with its
+                         #   observed relations) linked with linkGraphs() to the declared related
+                         #   repositories that are indexed and linked by package (each of those
+                         #   linked back to it); search() → definitions, callers() and
+                         #   dependencies() of one definition, routed to the graph of its
+                         #   repository, LEVEL_MAX (20) per level with the count left out and
+                         #   capped; close() closes every index; indexedCommit(); Explored<T>
     read-index.ts        #   readIndexes(): each repository of the screens with its index read
                          #   only (missing, other version with both, unreadable with the reason,
                          #   empty, or indexed: the latest snapshot of the default branch, its
@@ -213,7 +225,9 @@ src/
                          #   USER_CONFIG_TEMPLATE, applyUserConfigPlan() on the local files);
                          #   pullModel (pullOllamaModel() at OLLAMA_HOST, ollamaFetch injectable);
                          #   indexRepository (indexForApp()); readRepositoryFolder and
-                         #   initRepository (the app's folder, initRepository() of init.ts)
+                         #   initRepository (the app's folder, initRepository() of init.ts);
+                         #   searchSymbol, symbolCallers and symbolDependencies (appGraph() over
+                         #   openGraphExplorer(), openGraph injectable), closed on exit
     app-index.ts         #   indexForApp(): token, user layers, mirror and index of the cache as
                          #   phada index uses them → indexRepository() with the signal and the
                          #   progress (fetching, extracting); no token and failures as data
@@ -230,6 +244,10 @@ src/
                          #   and pullRequestPrompt(), the pull request and the repository files
                          #   read once) with the token of the reader it is given, no-token
                          #   without one
+    app-graph.ts         #   appGraph(): searchSymbol, symbolCallers and symbolDependencies over
+                         #   one open GraphExplorer at a time (another repository closes it, a
+                         #   search reopens it when the index has a new commit), closed with
+                         #   the app
     app-history.ts       #   appHistory(): the history for the app, opened once when its file
                          #   exists (looked for again while missing, never created), a newer,
                          #   older or unreadable file thrown on each read and looked at again
@@ -371,7 +389,8 @@ src/
                          #   (not in the setup), Ctrl-C; the size warning below 80×24
     app-context.ts       #   AppDeps (version, start, cwd, home, env, scheduler, language, now,
                          #   readLanguage, readQueue, readReviews, readReviewDetail, readRepositories,
-                         #   readRepository, readAutomation, readIndexes, readProviderSetup,
+                         #   readRepository, readAutomation, readIndexes, readConnections,
+                         #   searchSymbol, symbolCallers, symbolDependencies, readProviderSetup,
                          #   readProviders, readLearnings, readGitHub, readLocalRules, readRepositoryRules,
                          #   readPullRequestRules, handOff, planConfig, applyConfig,
                          #   ensureRepositoryFile), AppStart,
@@ -379,7 +398,8 @@ src/
                          #   useAppDeps(), useTheme(), useMessages(), useConfigWritten() (the
                          #   language read again at once), useWorking(),
                          #   useIsWorking(), useScreenKeys(), useBack(), useScreenInput() (quiet
-                         #   while a text field is focused), useScreenSize()
+                         #   while a text field is focused), useArrowKeys() (← and → to the
+                         #   screen, Tab still moves between screens), useScreenSize()
     screens.ts           #   ScreenDefinition (id, title from the catalog, Screen) and SCREENS,
                          #   in tab order
     screens/             #   one file per screen: home.tsx (the box with the mascot, version and
@@ -406,7 +426,8 @@ src/
                          #   r, read again after indexing): each declared related repository with
                          #   its packages each way, no link or why it is not indexed, or how to
                          #   declare them; i indexes or indexes again, I indexes the related
-                         #   repositories not indexed, Esc stops), automation.tsx (one page:
+                         #   repositories not indexed, Esc stops; s in the detail → a symbol
+                         #   name → the SymbolExplorer in a SubView), automation.tsx (one page:
                          #   watch, CI wait, request sources, hooks, when), provider.tsx (the
                          #   choice and its origin, the language, each AI checked on open and on
                          #   r with its next step, l to log in to the chosen CLI (again, when
@@ -475,6 +496,12 @@ src/
                          #   it cannot read → its error, no choice; languageName()
     sub-view.tsx         #   SubView: a picker shown in place of a screen's view, its keys and back
                          #   gathered, Esc (when the picker does not hold it) → onLeave()
+    symbol-explorer.tsx  #   SymbolExplorer: searchSymbol (loaded, r) → several definitions to
+                         #   pick, or the tree of one: Callers and Dependencies, Enter/→ opens a
+                         #   node one level (a caller into its callers, a dependency into its
+                         #   dependencies) with loading on it, ← closes it, +N and the cut;
+                         #   not found or not indexed as a line with i to index
+    not-indexed-text.ts  #   notIndexedText(): why a repository is not indexed, in one line
     index-series.ts      #   useIndexSeries(): AppDeps.indexRepository one repository after the
                          #   other with an AbortController (stop() cancels the current one and
                          #   starts no other; aborted on unmount), each one waiting, running with
@@ -503,7 +530,7 @@ src/
                          #   any error as one line without control characters; failedLines():
                          #   that line wrapped over ERROR_LINES at most
     scroll-list.tsx      #   useSelection() (↑/↓, PgUp/PgDn, Home/End, Enter; follows the selected
-                         #   key when the list changes), ScrollList (the rows that fit and
+                         #   key when the list changes; initialKey, select(key)), ScrollList (the rows that fit and
                          #   "n–m of N"), ScrollText (lines that scroll); listWindow()
     text-field.tsx       #   useTextField() (every key while focused, Enter applies, Esc leaves;
                          #   a write of several keys taken in order; switched after the key that

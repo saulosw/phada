@@ -51,6 +51,9 @@ export function ExampleScreen() {
 - **`useScreenInput(handler)`**: the screen's own keys, in place of Ink's `useInput`. It is quiet
   while the help or the palette is open, while the terminal is too small and while a text field
   is focused. The shell keeps `q`, `?`, `/`, `1`–`9`, `←`/`→`, `Tab`, `Esc` and `Ctrl-C`.
+- **`useArrowKeys(active)`**: while active, `←` and `→` reach the screen (a tree that opens and
+  closes nodes) instead of moving between screens; `Tab` still moves, and the footer and the help
+  say so.
 - **`useBack(handler)`**: what `Esc` does in a nested view, as closing a detail; pass `undefined`
   at the screen's top, where `Esc` quits the app.
 - **`useTextField({ initial, emptyOnFocus, onSubmit })`** (`text-field.tsx`): `focus()` it from a
@@ -108,6 +111,16 @@ language is read again at once and `onSaved(plan)` runs; a proposal that changes
 and `lines(width)` (each repository with its progress, then how it ended). The screen wires `Esc` with
 `useBack(indexing.busy ? indexing.stop : …)`, draws the lines under its own and reads its data
 again in `onEnded` (`reload()` of `useLoaded`). Leaving the screen aborts the indexing.
+
+## Exploring a symbol (`symbol-explorer.tsx`)
+
+**`<SymbolExplorer repo name>`** searches a name in the graph of a repository
+(`AppDeps.searchSymbol`, loaded under its key, `r`), lists the definitions to pick when there are
+several and draws the tree of one: `Enter`/`→` opens a node one level through
+`AppDeps.symbolCallers`/`symbolDependencies`, with loading on that node, and `←` closes it. A name
+not found or a repository that is not indexed is one line with `i` to index it, searched again
+after. The Graph screen draws it in a `SubView` from `s`; the app keeps the graph of one repository
+open (`src/cli/app-graph.ts`).
 
 ## A picker inside a screen (`sub-view.tsx`)
 
