@@ -1,5 +1,6 @@
 import { cleanup } from 'ink-testing-library'
 import { afterEach, describe, expect, it } from 'vitest'
+import type { IndexingOptions, IndexingResult } from '../../app/index-repository.js'
 import type { ListedRun } from '../../app/read-history.js'
 import type {
   ListedRepository,
@@ -595,6 +596,58 @@ describe('RepositoriesScreen', () => {
       await showing('publica → não publica')
       expectFits(frame(), { columns: 80, rows: 24 })
     })
+  })
+})
+
+describe('indexing from the Repositories screen', () => {
+  function indexing(deps: Partial<AppDeps> = {}) {
+    const calls: (IndexingOptions & { repo: string; finish(result: IndexingResult): void })[] = []
+    const view = openRepositories({
+      readRepositories: async () => busyList(),
+      readRepository: async () => shopDetail(),
+      indexRepository: (repo, options) =>
+        new Promise<IndexingResult>((finish) => calls.push({ repo, ...options, finish })),
+      ...deps,
+    })
+    const call = (index: number) => {
+      const found = calls[index]
+      if (found === undefined) throw new Error(`no indexing call ${index}`)
+      return found
+    }
+    return { ...view, calls, call }
+  }
+
+  it('indexes the selected repository with i, with its progress, and Esc stops it', async () => {
+    const { call, calls, footer, frame, press, showing, until } = indexing()
+    await showing('acme/api')
+    await press('i')
+    await until(() => calls.length === 1)
+    expect(call(0).repo).toBe('acme/api')
+    call(0).onProgress({ phase: 'extracting', done: 5, total: 50 })
+    await showing(/acme\/api · 5 of 50 files/)
+    expect(footer()).toContain('Esc stop indexing')
+    expectFits(frame(), { columns: 80, rows: 24 })
+    await press(KEYS.escape)
+    await until(() => call(0).signal.aborted)
+    call(0).finish({ kind: 'cancelled', extracted: 5, total: 50 })
+    await showing(/acme\/api · stopped at 5 of 50 files/)
+    expect(frame()).toContain('3 repositories')
+    expect(footer()).not.toContain('Esc stop indexing')
+  })
+
+  it('indexes the open repository with i', async () => {
+    const { call, calls, footer, frame, press, showing, until } = indexing()
+    await showing('acme/shop')
+    await press(KEYS.down, KEYS.enter)
+    await showing('Your config')
+    expect(footer()).toContain('i index')
+    await press('i')
+    await until(() => calls.length === 1)
+    expect(call(0).repo).toBe('acme/shop')
+    call(0).finish({ kind: 'indexed', files: 1240 })
+    await showing(/acme\/shop · 1,240 files indexed/)
+    expect(frame()).toContain('Your config')
+    expectFits(frame(), { columns: 80, rows: 24 })
   })
 })
 
