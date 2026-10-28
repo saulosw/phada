@@ -55,6 +55,7 @@ export function watchedRepository(repo: string, indexed: boolean): ListedReposit
   return {
     repo,
     origins: ['watched'],
+    publish: 'pr',
     index: {
       file: indexed ? { path: `/cache/${repo}/index.sqlite`, bytes: 2048 } : null,
       indexedSha: indexed ? SHA : null,

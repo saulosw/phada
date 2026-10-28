@@ -1,15 +1,25 @@
-import chalk from 'chalk'
+import { createRequire } from 'node:module'
+import { pathToFileURL } from 'node:url'
 import { Text } from 'ink'
 import { cleanup } from 'ink-testing-library'
 import { useState } from 'react'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
-import { KEYS, renderApp, settle, waitFor } from '../../test/support/tui.js'
+import { KEYS, renderApp, waitFor } from '../../test/support/tui.js'
 import { useBack, useScreenInput, useScreenKeys, useWorking } from './app-context.js'
 import type { AppDeps } from './app-context.js'
 import { SCREENS } from './screens.js'
 import type { ScreenDefinition } from './screens.js'
 import { FLAP_MS, Mascot, MASCOT_FRAMES } from './mascot.js'
 import type { TerminalSize } from './terminal-size.js'
+
+const inkChalk = await chalkOfInk()
+
+async function chalkOfInk(): Promise<{ level: number }> {
+  const ink = createRequire(import.meta.url).resolve('ink')
+  const chalk = createRequire(ink).resolve('chalk')
+  const loaded = (await import(pathToFileURL(chalk).href)) as { default: { level: number } }
+  return loaded.default
+}
 
 function openApp(
   options: {
@@ -234,9 +244,13 @@ describe('the language', () => {
     await until(() => footer(frame())?.includes('pantallas') === true)
     expect(footer(frame())).toContain('pantallas')
 
-    read = () => Promise.reject(new Error('Invalid config'))
+    let refused = false
+    read = () => {
+      refused = true
+      return Promise.reject(new Error('Invalid config'))
+    }
     clock.advance(2000)
-    await settle()
+    await until(() => refused)
     expect(footer(frame())).toContain('pantallas')
 
     read = async () => undefined
@@ -306,6 +320,99 @@ describe('the palette', () => {
     await press(KEYS.escape)
     await showing('Phada v1.2.3')
     expect(frame()).toContain('Phada v1.2.3')
+    expect(exits).toEqual([])
+  })
+})
+
+describe('/language', () => {
+  function openWithLanguage(options: { invalid?: string } = {}) {
+    let language: string | undefined
+    const writes: unknown[] = []
+    const app = renderApp({
+      deps: {
+        readLanguage: async () => {
+          if (options.invalid !== undefined) throw new Error(options.invalid)
+          return language
+        },
+        planConfig: async (changes) => {
+          const [change] = changes
+          const after = change?.kind === 'set' ? change.value : null
+          return {
+            ok: true,
+            plan: {
+              path: '/home/ana/.config/phada/config.yml',
+              exists: true,
+              before: '# mine\n',
+              text: `# mine\nlanguage: ${after}\n`,
+              changes: [{ key: 'language', before: language ?? null, after }],
+            },
+          }
+        },
+        applyConfig: async (plan) => {
+          writes.push(plan)
+          const [change] = plan.changes
+          if (change?.key === 'language') language = change.after ?? undefined
+          return { ok: true, written: true }
+        },
+      },
+      size: { columns: 80, rows: 24 },
+    })
+    return { ...app, writes }
+  }
+
+  it('opens the language choice from the palette, writes it and goes back speaking it', async () => {
+    const { footer, frame, press, showing, type, writes } = openWithLanguage()
+    await showing('Phada v1.2.3')
+    await press('2')
+    await showing('No config yet.')
+    expect(frame()).toContain('No config yet.')
+    await press('/')
+    await type('language')
+    await showing('❯ Language')
+    await press(KEYS.enter)
+    await showing('❯ English', 'Español')
+    expect(lines(frame())[0]).toContain('Language')
+    expect(footer()).toContain('Esc back')
+    await press(KEYS.down, KEYS.enter)
+    await showing('Save ~/.config/phada/config.yml?')
+    expect(frame()).toMatch(/language +\(not set\) → pt/)
+    await press(KEYS.enter)
+    await showing('Nenhuma config ainda.')
+    expect(frame()).toContain('Nenhuma config ainda.')
+    expect(writes).toHaveLength(1)
+  })
+
+  it('shows the error of an invalid config instead of the languages', async () => {
+    const { footer, frame, press, showing, type, writes } = openWithLanguage({
+      invalid: 'Invalid config /home/ana/.config/phada/config.yml: watch.interval: expected 5m',
+    })
+    await showing('Phada v1.2.3')
+    await press('/')
+    await type('language')
+    await showing('❯ Language')
+    await press(KEYS.enter)
+    await showing('Could not load: Invalid config')
+    expect(frame()).not.toContain('Español')
+    expect(footer()).toContain('Esc back')
+    expect(footer()).not.toContain('Enter')
+    await press(KEYS.enter, KEYS.escape)
+    await showing('Phada v1.2.3')
+    expect(writes).toEqual([])
+  })
+
+  it('goes back to the screen it came from on Esc, without writing', async () => {
+    const { exits, frame, press, showing, type, writes } = openWithLanguage()
+    await showing('Phada v1.2.3')
+    await press('/')
+    await type('lang')
+    await showing('❯ Language')
+    await press(KEYS.enter)
+    await showing('❯ English')
+    expect(frame()).toContain('Español')
+    await press(KEYS.escape)
+    await showing('Phada v1.2.3')
+    expect(frame()).not.toContain('Español')
+    expect(writes).toEqual([])
     expect(exits).toEqual([])
   })
 })
@@ -403,12 +510,12 @@ describe('the mascot', () => {
 })
 
 describe('colors', () => {
-  const level = chalk.level
+  const level = inkChalk.level
   beforeAll(() => {
-    chalk.level = 3
+    inkChalk.level = 3
   })
   afterAll(() => {
-    chalk.level = level
+    inkChalk.level = level
   })
 
   it('paints the Violeta accent in truecolor', async () => {

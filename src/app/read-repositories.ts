@@ -7,6 +7,7 @@ import { resolveWatchSettings } from '../config/watch-settings.js'
 import type { WatchedRepoSettings } from '../config/watch-settings.js'
 import { durationMs } from '../config/duration.js'
 import { DEFAULT_MIN_CONFIDENCE } from '../review/run-review.js'
+import type { PublishTarget } from '../watch/types.js'
 import type { HistoryStore, ListedRun, RepoRecord, RunRecord } from '../store/history-store.js'
 import { errorMessage } from './error-message.js'
 
@@ -37,6 +38,7 @@ export interface RepositoryIndex {
 export interface ListedRepository {
   repo: string
   origins: RepositoryOrigin[]
+  publish: PublishTarget | null
   index: RepositoryIndex
   lastReview: RunRecord | null
 }
@@ -113,6 +115,7 @@ export async function readRepositories(readers: RepositoryReaders): Promise<Repo
     [...names].map(async (repo) => ({
       repo,
       origins: originsOf(repo, state),
+      publish: state.watched.find((entry) => entry.repo === repo)?.publish ?? null,
       index: await indexOf(repo, state, readers),
       lastReview: state.lastRuns.get(repo) ?? null,
     })),

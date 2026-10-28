@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { Readable } from 'node:stream'
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it, vi } from 'vitest'
 import { memoryFiles } from '../../test/support/memory-files.js'
 import { ConfigError } from '../config/errors.js'
 import { HISTORY_MIGRATIONS } from '../store/history-migrations.js'
@@ -11,9 +11,16 @@ import { HistoryOutdatedError, openHistoryStore } from '../store/history-store.j
 import type { HistoryStore, RunRecord } from '../store/history-store.js'
 import type { AppDeps, AppHost, AppResult } from '../tui/open-app.js'
 import { runApp } from './app-command.js'
-import type { AppCommandDeps } from './app-command.js'
+import type { AppCommandDeps, StopSignal } from './app-command.js'
 import { UsageError } from './errors.js'
+import { RULES_TEMPLATE, USER_CONFIG_TEMPLATE } from './init-templates.js'
 import { pullRequestFixture } from '../../test/support/pull-request.js'
+import { memoryMirror } from '../../test/support/memory-mirror.js'
+import { createExtractor } from '../repo-map/extract.js'
+import type { GitMirrorOptions } from '../repository/git-mirror.js'
+import { CheckoutUnavailableError } from '../repository/git-checkout.js'
+import { openIndexStore } from '../store/index-store.js'
+import type { IndexingProgress } from '../app/index-repository.js'
 import { reviewState } from '../../test/support/review-state.js'
 
 function terminal(isTTY: boolean) {
@@ -35,15 +42,19 @@ function deps(
     holder?: number
     observed?: AppCommandDeps['observed']
     github?: FakeGitHub
-    during?: (deps: AppDeps) => Promise<void>
+    during?: (deps: AppDeps, host: AppHost) => Promise<void>
+    runInteractive?: AppCommandDeps['runInteractive']
+    ollamaFetch?: AppCommandDeps['ollamaFetch']
     ghToken?: string
     dataHome?: string
+    openMirror?: AppCommandDeps['openMirror']
   } = {},
 ) {
   const ghCalls: string[][] = []
   const userTokens: string[] = []
   const opened: { deps: AppDeps; host: AppHost }[] = []
   const historyPaths: string[] = []
+  const signalHandlers: ((signal?: StopSignal) => void)[] = []
   const files = memoryFiles({
     ...(options.config === undefined ? {} : { '/cfg/config.yml': options.config }),
     ...options.files,
@@ -56,11 +67,13 @@ function deps(
     files,
     stdin: terminal(options.stdin ?? true).stdin,
     stdout: terminal(options.stdout ?? true).stdout,
-    onSignal: () => {},
+    onSignal: (handler) => {
+      signalHandlers.push(handler)
+    },
     loadApp: async () => ({
       openApp: async (appDeps, host) => {
         opened.push({ deps: appDeps, host })
-        await options.during?.(appDeps)
+        await options.during?.(appDeps, host)
         return options.result ?? { kind: 'quit' }
       },
     }),
@@ -101,10 +114,23 @@ function deps(
       return { login: 'ana' }
     },
     ...(options.github ?? fakeGitHub()).readers,
+    ...(options.runInteractive === undefined ? {} : { runInteractive: options.runInteractive }),
+    ...(options.ollamaFetch === undefined ? {} : { ollamaFetch: options.ollamaFetch }),
+    openMirror:
+      options.openMirror ?? (async () => memoryMirror({ 'src/a.ts': 'export const a = 1\n' })),
+    openIndexStore: async () => openIndexStore(join(indexDir, `i${(stores += 1)}.sqlite`)),
+    createExtractor,
   }
   app.env.PHADA_DATA_HOME = options.dataHome ?? '/data'
-  return { app, opened, files, historyPaths, ghCalls, userTokens }
+  const send = (signal: StopSignal) => {
+    for (const handler of signalHandlers) handler(signal)
+  }
+  return { app, opened, files, historyPaths, ghCalls, userTokens, send }
 }
+
+const indexDir = mkdtempSync(join(tmpdir(), 'phada-app-index-'))
+let stores = 0
+afterAll(() => rmSync(indexDir, { recursive: true, force: true }))
 
 const MISSING = new UsageError('Missing the command, e.g. phada review owner/repo#123.')
 
@@ -122,6 +148,59 @@ describe('runApp', () => {
     },
   )
 
+  it.each([
+    [false, true],
+    [true, false],
+  ])('refuses the setup when stdin is a TTY: %s, stdout: %s', async (stdin, stdout) => {
+    const { app, opened } = deps({ stdin, stdout })
+    await expect(runApp(app, { setup: true })).rejects.toEqual(
+      new UsageError('phada setup needs an interactive terminal.'),
+    )
+    expect(opened).toEqual([])
+  })
+
+  it('opens on the setup while the user config file does not exist', async () => {
+    const { app, opened } = deps()
+    await runApp(app)
+    expect(opened[0]?.deps.start).toBe('setup')
+  })
+
+  it('opens on the Home once the user config file exists, even empty', async () => {
+    const { app, opened } = deps({ config: '' })
+    await runApp(app)
+    expect(opened[0]?.deps.start).toBe('home')
+  })
+
+  it('opens on the setup when asked, with a user config', async () => {
+    const { app, opened } = deps({ config: 'language: pt\n' })
+    await runApp(app, { setup: true })
+    expect(opened[0]?.deps.start).toBe('setup')
+  })
+
+  it('plans a change to the user config and writes it with the commented template', async () => {
+    const results: unknown[] = []
+    const { app, files } = deps({
+      during: async (appDeps) => {
+        const planned = await appDeps.planConfig([{ kind: 'set', key: 'language', value: 'pt' }])
+        results.push(planned)
+        if (planned.ok) results.push(await appDeps.applyConfig(planned.plan))
+      },
+    })
+    await runApp(app)
+    expect(results).toEqual([
+      {
+        ok: true,
+        plan: expect.objectContaining({
+          path: '/cfg/config.yml',
+          exists: false,
+          changes: [{ key: 'language', before: null, after: 'pt' }],
+        }),
+      },
+      { ok: true, written: true },
+    ])
+    expect(files.files.get('/cfg/config.yml')).toBe(`language: pt\n\n${USER_CONFIG_TEMPLATE}`)
+  })
+
   it('opens the app in a terminal with the version, the folder and the signals', async () => {
     const { app, opened } = deps()
     expect(await runApp(app)).toBe(0)
@@ -135,7 +214,6 @@ describe('runApp', () => {
     expect(opened[0]?.deps).not.toHaveProperty('language')
     expect(opened[0]?.host.stdin).toBe(app.stdin)
     expect(opened[0]?.host.stdout).toBe(app.stdout)
-    expect(opened[0]?.host.onSignal).toBe(app.onSignal)
   })
 
   it('hands the app only the variables of the colors, never a token', async () => {
@@ -312,6 +390,180 @@ describe('runApp', () => {
   })
 })
 
+describe('handing the terminal over', () => {
+  type Run = NonNullable<AppCommandDeps['runInteractive']>
+  type RunCall = { command: string; args: readonly string[]; options: Parameters<Run>[2] }
+
+  function runner(result: (call: RunCall) => ReturnType<Run>) {
+    const calls: RunCall[] = []
+    const run: Run = (command, args, options) => {
+      const call = { command, args, options }
+      calls.push(call)
+      return result(call)
+    }
+    return { run, calls }
+  }
+
+  function pending() {
+    let finish: (exitCode: number) => void = () => {}
+    const promise = new Promise<{ kind: 'exited'; exitCode: number }>((resolve) => {
+      finish = (exitCode) => resolve({ kind: 'exited', exitCode })
+    })
+    return { promise, finish }
+  }
+
+  it('runs the command in the folder of the app with its environment, and gives back how it ended', async () => {
+    const { run, calls } = runner(async () => ({ kind: 'exited', exitCode: 1 }))
+    const results: unknown[] = []
+    const { app } = deps({
+      env: { GITHUB_TOKEN: 'ghp_x' },
+      runInteractive: run,
+      during: async (appDeps) => {
+        results.push(
+          await appDeps.handOff({ kind: 'command', command: 'gh', args: ['auth', 'login'] }),
+        )
+      },
+    })
+    await runApp(app)
+    expect(results).toEqual([{ kind: 'exited', exitCode: 1 }])
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({
+      command: 'gh',
+      args: ['auth', 'login'],
+      options: { cwd: '/home/ana/shop', env: app.env },
+    })
+  })
+
+  it.each([
+    ['claude', 'claude', ['auth', 'login']],
+    ['codex', 'codex', ['login']],
+  ] as const)(
+    'logs in to %s without the GitHub tokens of the environment',
+    async (provider, command, args) => {
+      const { run, calls } = runner(async () => ({ kind: 'exited', exitCode: 0 }))
+      const { app } = deps({
+        env: { GITHUB_TOKEN: 'ghp_x', GH_TOKEN: 'gho_y', HOME: '/home/ana', PATH: '/usr/bin' },
+        runInteractive: run,
+        during: async (appDeps) => {
+          await appDeps.handOff({ kind: 'ai-login', provider })
+        },
+      })
+      await runApp(app)
+      expect(calls).toHaveLength(1)
+      expect(calls[0]).toMatchObject({ command, args, options: { cwd: '/home/ana/shop' } })
+      const { GITHUB_TOKEN: _github, GH_TOKEN: _gh, ...rest } = app.env
+      expect(calls[0]?.options.env).toEqual(rest)
+      expect(rest).toMatchObject({ HOME: '/home/ana', PATH: '/usr/bin' })
+    },
+  )
+
+  it.each([
+    [{ VISUAL: 'code --wait', EDITOR: 'nano' }, 'code', ['--wait']],
+    [{ VISUAL: '  ', EDITOR: ' nano  -w ' }, 'nano', ['-w']],
+    [{ EDITOR: 'emacs' }, 'emacs', []],
+    [{}, 'vi', []],
+  ])('opens a file in VISUAL, else EDITOR, else vi: %j', async (env, command, args) => {
+    const { run, calls } = runner(async ({ command }) => ({ kind: 'not-found', command }))
+    const results: unknown[] = []
+    const { app } = deps({
+      env,
+      runInteractive: run,
+      during: async (appDeps) => {
+        results.push(await appDeps.handOff({ kind: 'editor', file: '/cfg/config.yml' }))
+      },
+    })
+    await runApp(app)
+    expect(calls.map(({ command, args }) => [command, args])).toEqual([
+      [command, [...args, '/cfg/config.yml']],
+    ])
+    expect(results).toEqual([{ kind: 'not-found', command }])
+  })
+
+  it('stops reading the terminal before the command runs, so every key goes to the command', async () => {
+    const events: string[] = []
+    const { run } = runner(async () => {
+      events.push('run')
+      return { kind: 'exited', exitCode: 130 }
+    })
+    const appInput = () => {}
+    const { app } = deps({
+      runInteractive: run,
+      during: async (appDeps, host) => {
+        host.stdin.removeListener('readable', appInput)
+        await appDeps.handOff({ kind: 'ai-login', provider: 'claude' })
+      },
+    })
+    app.stdin.on('readable', appInput)
+    app.stdin.on('pause', () => events.push('pause'))
+    await runApp(app)
+    expect(events).toEqual(['pause', 'run'])
+  })
+
+  it('returns the cursor to the start of the line after the command, where the app redraws', async () => {
+    const events: string[] = []
+    const { run } = runner(async () => {
+      events.push('run')
+      return { kind: 'exited', exitCode: 0 }
+    })
+    const { app } = deps({
+      runInteractive: run,
+      during: async (appDeps) => {
+        await appDeps.handOff({ kind: 'ai-login', provider: 'codex' })
+      },
+    })
+    app.stdout = {
+      isTTY: true,
+      write: (text: string) => {
+        events.push(`write ${JSON.stringify(text)}`)
+        return true
+      },
+    }
+    await runApp(app)
+    expect(events).toEqual(['run', 'write "\\r"'])
+  })
+
+  it('leaves Ctrl-C to the command while it runs, and ends the app on it afterwards', async () => {
+    const child = pending()
+    const { run } = runner(() => child.promise)
+    const received: (StopSignal | undefined)[] = []
+    const { app, send } = deps({
+      runInteractive: run,
+      during: async (appDeps, host) => {
+        host.onSignal((signal) => received.push(signal))
+        const handOff = appDeps.handOff({ kind: 'ai-login', provider: 'codex' })
+        send('SIGINT')
+        expect(received).toEqual([])
+        child.finish(130)
+        await handOff
+        send('SIGINT')
+      },
+    })
+    await runApp(app)
+    expect(received).toEqual(['SIGINT'])
+  })
+
+  it('ends the app and the command on SIGTERM while the command runs', async () => {
+    const child = pending()
+    const { run, calls } = runner(() => child.promise)
+    const received: (StopSignal | undefined)[] = []
+    const { app, send } = deps({
+      runInteractive: run,
+      during: async (appDeps, host) => {
+        host.onSignal((signal) => received.push(signal))
+        const handOff = appDeps.handOff({ kind: 'ai-login', provider: 'codex' })
+        await vi.waitFor(() => expect(calls).toHaveLength(1))
+        expect(calls[0]?.options.signal?.aborted).toBe(false)
+        send('SIGTERM')
+        expect(received).toEqual(['SIGTERM'])
+        expect(calls[0]?.options.signal?.aborted).toBe(true)
+        child.finish(143)
+        await handOff
+      },
+    })
+    await runApp(app)
+  })
+})
+
 describe('the history of the app', () => {
   it('reads a real history without changing it, and shows one of an older Phada as such', async () => {
     const dataHome = mkdtempSync(join(tmpdir(), 'phada-app-history-'))
@@ -413,6 +665,257 @@ describe('the GitHub reader', () => {
   })
 })
 
+describe('the user repositories reader', () => {
+  it('lists the repositories of the token owner with the ones the user config watches', async () => {
+    const seen: unknown[] = []
+    const tokens: string[] = []
+    const { app } = deps({
+      config: 'watch:\n  repos:\n    - Acme/Shop\n    - other/lib\n',
+      env: { GITHUB_TOKEN: 'ghp_env' },
+      during: async (appDeps) => {
+        seen.push(await appDeps.readUserRepositories())
+      },
+    })
+    app.listRepositories = async ({ token }) => {
+      tokens.push(token)
+      return [
+        { name: 'ana/ink', private: false, fork: true, pushedAt: null },
+        { name: 'acme/shop', private: true, fork: false, pushedAt: '2026-10-26T18:00:00Z' },
+      ]
+    }
+
+    await runApp(app)
+
+    expect(tokens).toEqual(['ghp_env'])
+    expect(seen).toEqual([
+      {
+        status: 'listed',
+        repositories: [
+          {
+            name: 'acme/shop',
+            private: true,
+            fork: false,
+            pushedAt: '2026-10-26T18:00:00Z',
+            watched: true,
+            listed: true,
+          },
+          { name: 'other/lib', watched: true, listed: false },
+          {
+            name: 'ana/ink',
+            private: false,
+            fork: true,
+            pushedAt: null,
+            watched: false,
+            listed: true,
+          },
+        ],
+      },
+    ])
+    expect(JSON.stringify(seen)).not.toContain('ghp_env')
+  })
+
+  it('says there is no token without listing', async () => {
+    const seen: unknown[] = []
+    const { app } = deps({
+      during: async (appDeps) => {
+        seen.push(await appDeps.readUserRepositories())
+      },
+    })
+    app.listRepositories = async () => {
+      throw new Error('listed without a token')
+    }
+
+    await runApp(app)
+
+    expect(seen).toEqual([{ status: 'no-token', repositories: [] }])
+  })
+})
+
+describe('the indexer', () => {
+  function indexing(
+    during: (appDeps: AppDeps) => Promise<void>,
+    options: Parameters<typeof deps>[0] = {},
+  ) {
+    const mirrors: GitMirrorOptions[] = []
+    const opened = deps({
+      env: { GITHUB_TOKEN: 'ghp_env', PHADA_CACHE_HOME: '/cache' },
+      during,
+      openMirror: async (mirror) => {
+        mirrors.push(mirror)
+        return memoryMirror({
+          'src/a.ts': 'export function a() {}\n',
+          'src/b.ts': 'export function b() {}\n',
+          'README.md': '# shop\n',
+        })
+      },
+      ...options,
+    })
+    return { ...opened, mirrors }
+  }
+
+  it('indexes a repository in the mirror of the cache with the token, reporting each phase', async () => {
+    const progress: IndexingProgress[] = []
+    const seen: unknown[] = []
+    const { app, mirrors } = indexing(async (appDeps) => {
+      seen.push(
+        await appDeps.indexRepository('acme/shop', {
+          signal: new AbortController().signal,
+          onProgress: (step) => progress.push(step),
+        }),
+      )
+    })
+
+    await runApp(app)
+
+    expect(seen).toEqual([{ kind: 'indexed', files: 2 }])
+    expect(mirrors).toEqual([
+      expect.objectContaining({
+        dir: '/cache/repos/acme/shop.git',
+        owner: 'acme',
+        repo: 'shop',
+        token: 'ghp_env',
+      }),
+    ])
+    expect(progress).toEqual([
+      { phase: 'fetching' },
+      { phase: 'extracting', done: 0, total: 2 },
+      { phase: 'extracting', done: 1, total: 2 },
+      { phase: 'extracting', done: 2, total: 2 },
+    ])
+  })
+
+  it('stops when cancelled, saying how far it got', async () => {
+    const seen: unknown[] = []
+    const cancel = new AbortController()
+    cancel.abort()
+    const { app } = indexing(async (appDeps) => {
+      seen.push(
+        await appDeps.indexRepository('acme/shop', { signal: cancel.signal, onProgress: () => {} }),
+      )
+    })
+
+    await runApp(app)
+
+    expect(seen).toEqual([{ kind: 'cancelled', extracted: 0, total: 2 }])
+  })
+
+  it('gives a failure back as its message', async () => {
+    const seen: unknown[] = []
+    const { app } = indexing(
+      async (appDeps) => {
+        const options = { signal: new AbortController().signal, onProgress: () => {} }
+        seen.push(await appDeps.indexRepository('acme/secret', options))
+      },
+      {
+        env: { GITHUB_TOKEN: 'ghp_env' },
+        openMirror: async () => {
+          throw new CheckoutUnavailableError('no-access', 'Could not fetch HEAD from acme/secret')
+        },
+      },
+    )
+    await runApp(app)
+    expect(seen).toEqual([{ kind: 'failed', message: 'Could not fetch HEAD from acme/secret' }])
+  })
+
+  it('says there is no token without fetching', async () => {
+    const seen: unknown[] = []
+    const { app, mirrors } = indexing(
+      async (appDeps) => {
+        const options = { signal: new AbortController().signal, onProgress: () => {} }
+        seen.push(await appDeps.indexRepository('acme/shop', options))
+      },
+      { env: {} },
+    )
+    await runApp(app)
+    expect(seen).toEqual([{ kind: 'no-token' }])
+    expect(mirrors).toEqual([])
+  })
+})
+
+describe('the repository of the folder', () => {
+  it('finds the repository the app runs in and creates its .phada/ when asked', async () => {
+    const seen: unknown[] = []
+    const { app, files } = deps({
+      during: async (appDeps) => {
+        seen.push(await appDeps.readRepositoryFolder())
+        seen.push(await appDeps.initRepository())
+        seen.push(await appDeps.readRepositoryFolder())
+      },
+    })
+    await files.makeDir('/home/ana/shop/.git')
+
+    await runApp(app)
+
+    expect(seen).toEqual([
+      { kind: 'unconfigured', root: '/home/ana/shop' },
+      {
+        root: '/home/ana/shop',
+        files: [
+          { path: '.phada/config.yml', created: true },
+          { path: '.phada/rules.md', created: true },
+        ],
+      },
+      { kind: 'configured', root: '/home/ana/shop' },
+    ])
+    expect(files.files.has('/home/ana/shop/.phada/rules.md')).toBe(true)
+  })
+
+  it('says the folder of the app is outside a git repository', async () => {
+    const seen: unknown[] = []
+    const { app } = deps({
+      during: async (appDeps) => {
+        seen.push(await appDeps.readRepositoryFolder())
+      },
+    })
+    await runApp(app)
+    expect(seen).toEqual([{ kind: 'outside' }])
+  })
+})
+
+describe('the files of a repository in the user config folder', () => {
+  it('creates config.yml with a commented header and rules.md with the rules template when missing', async () => {
+    const seen: string[] = []
+    const { app, files } = deps({
+      during: async (appDeps) => {
+        seen.push(await appDeps.ensureRepositoryFile('Acme/Shop', 'config.yml'))
+        seen.push(await appDeps.ensureRepositoryFile('acme/shop', 'rules.md'))
+      },
+    })
+    await runApp(app)
+    expect(seen).toEqual(['/cfg/repos/acme/shop/config.yml', '/cfg/repos/acme/shop/rules.md'])
+    const config = files.files.get('/cfg/repos/acme/shop/config.yml') ?? ''
+    expect(config).toMatch(/^# .*acme\/shop/)
+    expect(config.split('\n').every((line) => line === '' || line.startsWith('#'))).toBe(true)
+    expect(files.files.get('/cfg/repos/acme/shop/rules.md')).toBe(RULES_TEMPLATE)
+  })
+
+  it('leaves a file that exists as it is', async () => {
+    const { app, files } = deps({
+      files: { '/cfg/repos/acme/shop/config.yml': 'verify: false\n' },
+      during: async (appDeps) => {
+        await appDeps.ensureRepositoryFile('acme/shop', 'config.yml')
+      },
+    })
+    await files.makeDir('/cfg/repos/acme/shop')
+    await runApp(app)
+    expect(files.files.get('/cfg/repos/acme/shop/config.yml')).toBe('verify: false\n')
+  })
+
+  it('refuses a name that would leave the folder of the repository', async () => {
+    const errors: unknown[] = []
+    const { app, files } = deps({
+      during: async (appDeps) => {
+        for (const repo of ['../etc', 'acme/..', 'acme/shop/extra', 'acme']) {
+          await appDeps.ensureRepositoryFile(repo, 'rules.md').catch((error) => errors.push(error))
+        }
+      },
+    })
+    await runApp(app)
+    expect(errors).toHaveLength(4)
+    expect([...files.files.keys()]).toEqual([])
+  })
+})
+
 describe('the provider and learnings readers', () => {
   it('read the provider chosen in the user config, its MCP servers and the checked providers', async () => {
     const seen: unknown[] = []
@@ -440,6 +943,29 @@ describe('the provider and learnings readers', () => {
         ['ollama', false],
       ],
     ])
+  })
+
+  it('pulls an Ollama model from the server OLLAMA_HOST names, with its progress', async () => {
+    const urls: string[] = []
+    const seen: unknown[] = []
+    const { app } = deps({
+      env: { OLLAMA_HOST: 'gpu-box:9000' },
+      ollamaFetch: async (input) => {
+        urls.push(String(input))
+        return new Response('{"status":"pulling manifest"}\n{"status":"success"}\n')
+      },
+      during: async (appDeps) => {
+        seen.push(
+          await appDeps.pullModel('qwen2.5-coder:7b', {
+            signal: new AbortController().signal,
+            onProgress: ({ status }) => seen.push(status),
+          }),
+        )
+      },
+    })
+    await runApp(app)
+    expect(urls).toEqual(['http://gpu-box:9000/api/pull'])
+    expect(seen).toEqual(['pulling manifest', 'success', { kind: 'pulled' }])
   })
 
   it('read the observed files of the cache folder, each by its own path', async () => {

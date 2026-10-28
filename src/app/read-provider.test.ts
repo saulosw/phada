@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { ConfigFile } from '../config/schema.js'
 import type { ConfigLayer } from '../config/types.js'
 import type { CheckedProvider } from './check-providers.js'
-import { nextStep, providerSetup, readProviders } from './read-provider.js'
+import { nextStep, providerSetup, readProviderChecks, readProviders } from './read-provider.js'
 
 const CONFIG_PATH = '/home/ana/.config/phada/config.yml'
 
@@ -98,6 +98,23 @@ describe('readProviders', () => {
       null,
       'npm install -g @openai/codex',
       'ollama serve',
+    ])
+  })
+})
+
+describe('readProviderChecks', () => {
+  it('checks every provider without a config, none chosen, each with its next step', async () => {
+    const { providers } = await readProviderChecks(CHECKERS)
+
+    expect(providers.map(({ provider, chosen }) => [provider, chosen])).toEqual([
+      ['claude', false],
+      ['codex', false],
+      ['ollama', false],
+    ])
+    expect(providers.map(({ next }) => next)).toEqual([
+      null,
+      { kind: 'install', command: 'npm install -g @openai/codex' },
+      { kind: 'serve', command: 'ollama serve' },
     ])
   })
 })

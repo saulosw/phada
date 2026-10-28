@@ -61,6 +61,7 @@ export interface CheckoutOptions {
 
 export interface FetchOptions {
   depth?: number
+  signal?: AbortSignal
 }
 
 export interface GitMirror {
@@ -120,7 +121,7 @@ class GitMirrorRepository implements GitMirror {
           staleMs: FETCH_TIMEOUT_MS + 30_000,
         },
         async () => {
-          await this.#fetchLocked(ref, keepAs, options.depth)
+          await this.#fetchLocked(ref, keepAs, options.depth, FETCH_TIMEOUT_MS, options.signal)
           const sha = await this.#resolve(keepAs)
           if (keepAs.startsWith(PULL_REFS)) await this.#dropOldPullRefs(keepAs)
           return sha
@@ -205,6 +206,7 @@ class GitMirrorRepository implements GitMirror {
     keepAs: string,
     depth = 1,
     timeoutMs = FETCH_TIMEOUT_MS,
+    signal?: AbortSignal,
   ): Promise<void> {
     const { owner, repo, token } = this.#options
     const basic = Buffer.from(`x-access-token:${token}`).toString('base64')
@@ -231,6 +233,7 @@ class GitMirrorRepository implements GitMirror {
           GIT_CONFIG_VALUE_0: `Authorization: Basic ${basic}`,
         },
         timeoutMs,
+        ...(signal === undefined ? {} : { signal }),
       },
     )
     if (fetched.exitCode !== 0) {

@@ -30,7 +30,7 @@ export const KEYS = {
   ctrlC: '\u0003',
 }
 
-export const settle = () => new Promise((resolve) => setTimeout(resolve, 50))
+const settle = () => new Promise((resolve) => setTimeout(resolve, 50))
 
 const nextTurn = () => new Promise((resolve) => setImmediate(resolve))
 
@@ -164,6 +164,7 @@ export function fakeSize(initial: TerminalSize) {
 export function fakeAppDeps(scheduler: Scheduler, overrides: Partial<AppDeps> = {}): AppDeps {
   return {
     version: '1.2.3',
+    start: 'home',
     cwd: '/home/ana/code/shop',
     home: '/home/ana',
     env: { TERM: 'xterm-256color' },
@@ -184,11 +185,27 @@ export function fakeAppDeps(scheduler: Scheduler, overrides: Partial<AppDeps> = 
       choice: { provider: 'claude', model: null, origin: { kind: 'default' } },
       providers: [],
     }),
+    readProviderChecks: async () => ({ providers: [] }),
     readLearnings: async () => ({ recorded: false, repos: [] }),
     readGitHub: async () => ({ source: null }),
+    readUserRepositories: async () => ({ status: 'no-token', repositories: [] }),
     readLocalRules: async () => ({ lens: { kind: 'built-in' }, rules: [], warnings: [] }),
     readRepositoryRules: async () => ({ status: 'no-token' }),
     readPullRequestRules: async () => ({ status: 'no-token' }),
+    handOff: async () => ({ kind: 'exited', exitCode: 0 }),
+    pullModel: async () => ({ kind: 'pulled' }),
+    planConfig: async () => ({
+      ok: false,
+      reason: 'unreadable',
+      message: 'no config in this test',
+    }),
+    applyConfig: async () => ({ ok: true, written: true }),
+    indexRepository: async () => ({ kind: 'indexed', files: 0 }),
+    readRepositoryFolder: async () => ({ kind: 'outside' }),
+    initRepository: async () => {
+      throw new Error('no repository in this test')
+    },
+    ensureRepositoryFile: async (repo, file) => `/home/ana/.config/phada/repos/${repo}/${file}`,
     ...overrides,
   }
 }
@@ -237,6 +254,15 @@ export function renderApp(
 export function frameLines(frame: string): string[] {
   return frame.split('\n')
 }
+
+export function flatFrame(frame: string): string {
+  return frame.replace(/\s+/g, ' ')
+}
+
+export const LONG_CONFIG_ERROR =
+  'Invalid config /home/ana/projects/a-rather-long-folder-name/phada-settings/config/config.yml: minConfidence: Too big: expected number to be <=100'
+
+export const CONFIG_ERROR_REASON = 'minConfidence: Too big: expected number to be <=100'
 
 export function visibleWidth(line: string): number {
   return [...line.replace(/\u001B\[[0-9;]*m/g, '')].length

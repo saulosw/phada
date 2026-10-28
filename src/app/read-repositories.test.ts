@@ -62,7 +62,9 @@ describe('readRepositories', () => {
     const lastRun = run('old/lib', { startedAt: '2026-10-20T10:00:00.000Z' })
     const list = await readRepositories(
       readers({
-        topLevelLayers: async () => [layer('user', 'watch:\n  repos: [acme/shop, Acme/API]\n')],
+        topLevelLayers: async () => [
+          layer('user', 'watch:\n  repos: [acme/shop, { repo: Acme/API, publish: false }]\n'),
+        ],
         userRepoConfigs: async () => ['acme/shop', 'zeta/web'],
         history: async () =>
           history({
@@ -89,12 +91,14 @@ describe('readRepositories', () => {
         {
           repo: 'acme/api',
           origins: ['watched'],
+          publish: 'none',
           index: { file: null, indexedSha: null, checkedAt: null },
           lastReview: null,
         },
         {
           repo: 'acme/shop',
           origins: ['watched', 'own-config', 'history'],
+          publish: 'pr',
           index: {
             file: { path: '/cache/index/acme/shop.sqlite', bytes: 2048 },
             indexedSha: 'f00dbabe',
@@ -105,12 +109,14 @@ describe('readRepositories', () => {
         {
           repo: 'zeta/web',
           origins: ['own-config'],
+          publish: null,
           index: { file: null, indexedSha: null, checkedAt: null },
           lastReview: null,
         },
         {
           repo: 'old/lib',
           origins: ['history'],
+          publish: null,
           index: { file: null, indexedSha: null, checkedAt: null },
           lastReview: lastRun,
         },

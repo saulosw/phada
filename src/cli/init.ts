@@ -1,4 +1,6 @@
-import { dirname, join, relative } from 'node:path'
+import { join, relative } from 'node:path'
+import { findRepositoryRoot } from '../app/repository-folder.js'
+import type { InitializedFile, RepositoryInit } from '../app/repository-folder.js'
 import type { LocalFileSystem } from '../config/local-files.js'
 import { userConfigDir, userRepoDir } from '../config/user-config.js'
 import type { RepositoryName } from './args.js'
@@ -29,18 +31,35 @@ interface InitTarget {
 
 export async function runInit(command: InitCommand, deps: InitDeps): Promise<string[]> {
   const target = command.global ? userTarget(command, deps) : await repositoryTarget(deps)
-  await deps.files.makeDir(target.dir)
-  const lines: string[] = []
+  const written = await writeTemplates(target, deps.files)
+  return written.map(({ path, created }) =>
+    created ? `Created ${path}` : `${path} exists, left unchanged`,
+  )
+}
+
+export async function initRepository(deps: InitDeps): Promise<RepositoryInit> {
+  const target = await repositoryTarget(deps)
+  return { root: target.shownFrom, files: await writeTemplates(target, deps.files) }
+}
+
+async function writeTemplates(
+  target: InitTarget,
+  files: LocalFileSystem,
+): Promise<InitializedFile[]> {
+  await files.makeDir(target.dir)
+  const written: InitializedFile[] = []
   for (const [name, text] of [
     ['config.yml', target.config],
     ['rules.md', RULES_TEMPLATE],
   ] as const) {
     const path = join(target.dir, name)
-    const shown = target.shownFrom === undefined ? path : relative(target.shownFrom, path)
-    const created = await deps.files.writeNew(path, text)
-    lines.push(created ? `Created ${shown}` : `${shown} exists, left unchanged`)
+    const created = await files.writeNew(path, text)
+    written.push({
+      path: target.shownFrom === undefined ? path : relative(target.shownFrom, path),
+      created,
+    })
   }
-  return lines
+  return written
 }
 
 function userTarget(command: InitCommand, deps: InitDeps): InitTarget {
@@ -51,16 +70,12 @@ function userTarget(command: InitCommand, deps: InitDeps): InitTarget {
   return { dir, config: USER_CONFIG_TEMPLATE }
 }
 
-async function repositoryTarget(deps: InitDeps): Promise<InitTarget> {
-  let dir = deps.cwd
-  while (!(await deps.files.exists(join(dir, '.git')))) {
-    const parent = dirname(dir)
-    if (parent === dir) {
-      throw new UsageError(
-        'Not inside a git repository. Run it in your repository, or use phada init --global.',
-      )
-    }
-    dir = parent
+async function repositoryTarget(deps: InitDeps): Promise<InitTarget & { shownFrom: string }> {
+  const root = await findRepositoryRoot(deps.cwd, (path) => deps.files.exists(path))
+  if (root === undefined) {
+    throw new UsageError(
+      'Not inside a git repository. Run it in your repository, or use phada init --global.',
+    )
   }
-  return { dir: join(dir, '.phada'), config: REPOSITORY_CONFIG_TEMPLATE, shownFrom: dir }
+  return { dir: join(root, '.phada'), config: REPOSITORY_CONFIG_TEMPLATE, shownFrom: root }
 }

@@ -244,6 +244,8 @@ const APP: Boundary = {
     '../config/watch-settings.js',
     '../config/duration.js',
     '../config/schema.js',
+    '../config/user-config.js',
+    '../config/user-config-edit.js',
     '../context/ignore.js',
     '../graph/impact.js',
     '../graph/linked-graph.js',
@@ -286,9 +288,11 @@ const APP: Boundary = {
     '../gh-facade/gh-server.js',
     '../gh-facade/types.js',
     '../repository/work-tree.js',
+    '../config/local-files.js',
     '../config/mcp-servers.js',
     '../config/types.js',
     '../config/schema.js',
+    '../config/user-config-edit.js',
     '../config/watch-settings.js',
     '../context/types.js',
     '../github/check-runs.js',
@@ -302,6 +306,7 @@ const APP: Boundary = {
     '../github/issue-comments.js',
     '../github/pull-request.js',
     '../github/repository.js',
+    '../github/user-repositories.js',
     '../graph/packages.js',
     '../graph/report.js',
     '../graph/repository-links.js',
@@ -594,6 +599,134 @@ describe('tui boundary rules', () => {
     ['a real timer', 'setInterval(() => {}, 450)'],
   ])('flags %s', (_case, code) => {
     expect(boundaryViolations(code, TUI)).not.toEqual([])
+  })
+})
+
+const SCREENS_DIR = 'tui/screens'
+
+function screenImports(code: string): string[] {
+  return [...code.matchAll(STATIC_MODULE), ...code.matchAll(DYNAMIC_MODULE)]
+    .map((match) => match.at(-1) ?? '')
+    .filter((specifier) => specifier.startsWith('.'))
+    .filter((specifier) => posix.dirname(posix.join(SCREENS_DIR, specifier)) === SCREENS_DIR)
+    .map((specifier) => `imports the screen '${specifier}'`)
+}
+
+describe('screen imports', () => {
+  it('accepts the shared modules of the terminal app and the use cases', () => {
+    const code = [
+      "import { PROVIDER_NAMES } from '../provider-names.js'",
+      "import { ruleLines } from '../setting-lines.js'",
+      "import type { ReadRules } from '../../app/read-rules.js'",
+    ].join('\n')
+
+    expect(screenImports(code)).toEqual([])
+  })
+
+  it.each([
+    ['a sibling screen', "import { PROVIDER_NAMES } from './provider.js'"],
+    ['a type of a sibling screen', "import type { Draw } from './repositories.js'"],
+    [
+      'a screen through the parent folder',
+      "import { ruleLines } from '../screens/repositories.js'",
+    ],
+    ['a dynamic import of a screen', "const rules = await import('./rules.js')"],
+  ])('flags %s', (_case, code) => {
+    expect(screenImports(code)).not.toEqual([])
+  })
+
+  it.each(sourcesOf({ ...TUI, dir: SCREENS_DIR }))('$name imports no other screen', ({ code }) => {
+    expect(screenImports(code)).toEqual([])
+  })
+})
+
+const PROVIDERS_DIR = 'providers'
+const CALLER_DIRS: ReadonlySet<string> = new Set(['app', 'cli', 'tui'])
+
+function callerImports(code: string): string[] {
+  return [...code.matchAll(STATIC_MODULE), ...code.matchAll(DYNAMIC_MODULE)]
+    .map((match) => match.at(-1) ?? '')
+    .filter((specifier) => specifier.startsWith('.'))
+    .filter((specifier) =>
+      CALLER_DIRS.has(posix.join(PROVIDERS_DIR, specifier).split('/')[0] ?? ''),
+    )
+    .map((specifier) => `imports the caller '${specifier}'`)
+}
+
+describe('provider imports', () => {
+  it('accepts its own files and the shared lower layers', () => {
+    const code = [
+      "import { nodeHttpFetch } from './node-http-fetch.js'",
+      "import { runCommand } from '../process/run-command.js'",
+      "import type { ReviewPrompt } from '../review/types.js'",
+    ].join('\n')
+
+    expect(callerImports(code)).toEqual([])
+  })
+
+  it.each([
+    ['a use case', "import { errorMessage } from '../app/error-message.js'"],
+    ['the CLI', "import type { MainDeps } from '../cli/args.js'"],
+    ['the terminal app', "const app = await import('../tui/open-app.js')"],
+  ])('flags %s', (_case, code) => {
+    expect(callerImports(code)).not.toEqual([])
+  })
+
+  it.each(sourcesOf({ ...TUI, dir: PROVIDERS_DIR }))(
+    '$name imports none of its callers',
+    ({ code }) => {
+      expect(callerImports(code)).toEqual([])
+    },
+  )
+})
+
+const FIXED_PAUSE = /\b(setTimeout|setInterval|settle|sleep)\s*\(/g
+const TIMERS_MODULE = /^node:timers(\/promises)?$/
+
+function testsOf(dir: string) {
+  const url = new URL(`./${dir}/`, import.meta.url)
+  return readdirSync(url, { recursive: true, encoding: 'utf8' })
+    .map((name) => name.split('\\').join('/'))
+    .filter((name) => /\.test\.tsx?$/.test(name))
+    .map((name) => ({ name, code: readFileSync(new URL(name, url), 'utf8') }))
+}
+
+function fixedPauses(code: string): string[] {
+  const timers = [...code.matchAll(STATIC_MODULE)]
+    .map(([, , specifier = '']) => specifier)
+    .filter((specifier) => TIMERS_MODULE.test(specifier))
+    .map((specifier) => `imports '${specifier}'`)
+  const calls = [...code.replace(STRING_LITERAL, "''").matchAll(FIXED_PAUSE)].map(
+    ([, name]) => `pauses with ${name}()`,
+  )
+  return [...timers, ...calls]
+}
+
+describe('pauses in the app tests', () => {
+  it('accepts waits on a condition and settings named after a pause', () => {
+    const code = [
+      "import { KEYS, renderApp, waitFor } from '../../test/support/tui.js'",
+      "await showing('Phada v1.2.3')",
+      "await until(() => footer().includes('telas'))",
+      'await waitFor(() => rejected)',
+      "const ci = { settleMs: 180_000, label: 'settle() the queue' }",
+    ].join('\n')
+
+    expect(fixedPauses(code)).toEqual([])
+  })
+
+  it.each([
+    ['settle()', 'await settle()'],
+    ['a timer', 'await new Promise((resolve) => setTimeout(resolve, 50))'],
+    ['an interval', 'const id = setInterval(tick, 10)'],
+    ['a sleep', 'await sleep(100)'],
+    ['the timers promises', "import { setTimeout as wait } from 'node:timers/promises'"],
+  ])('flags %s', (_case, code) => {
+    expect(fixedPauses(code)).not.toEqual([])
+  })
+
+  it.each(testsOf('tui'))('$name waits on a condition', ({ code }) => {
+    expect(fixedPauses(code)).toEqual([])
   })
 })
 

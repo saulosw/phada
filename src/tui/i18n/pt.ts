@@ -26,7 +26,7 @@ export const portuguese: UiMessages = {
     refresh: 'atualizar',
   },
   help: { title: 'Teclas', global: 'Em qualquer tela' },
-  palette: { title: 'Ir para', empty: 'Nenhuma tela com esse nome.' },
+  palette: { title: 'Ir para', empty: 'Nenhuma tela com esse nome.', setup: 'Setup' },
   tooSmall: (columns, rows) =>
     `O terminal tem ${columns}×${rows}. O Phada precisa de pelo menos 80×24: aumente a janela.`,
   tooSmallHint: 'q sair',
@@ -73,7 +73,7 @@ export const portuguese: UiMessages = {
       githubToken: 'O Phada precisa de um token do GitHub: faça login no gh ou defina GITHUB_TOKEN',
       githubRefused: (source) =>
         `O GitHub recusou o token de ${source}: faça login de novo ou use outro token`,
-      init: 'Crie sua config e depois adicione os repositórios a observar',
+      setup: 'Configure o Phada: GitHub, a IA, o idioma e os repositórios a observar',
       ai: {
         install: (provider) => `Instale o ${provider}`,
         login: (provider) => `Faça login no ${provider}`,
@@ -104,6 +104,10 @@ export const portuguese: UiMessages = {
   },
   list: { range: (first, last, total) => `${first}–${last} de ${total}`, scroll: 'rolar' },
   field: { apply: 'aplicar', cancel: 'cancelar' },
+  handOff: {
+    notFound: (command) => `${command} não foi encontrado.`,
+    failed: (message) => `Não foi possível executar: ${message}`,
+  },
   requests: {
     sources: {
       watch: 'watch',
@@ -287,6 +291,36 @@ export const portuguese: UiMessages = {
         shown === total ? `Últimos reviews (${total})` : `Últimos reviews (${shown} de ${total})`,
       noReviews: 'Nenhum review deste repositório ainda.',
     },
+    pick: {
+      listing: 'Listando seus repositórios no GitHub…',
+      count: (shown, total, marked) =>
+        `${shown === total ? '' : `${number(shown)} de `}${number(total)} ${total === 1 ? 'repositório' : 'repositórios'} · ${number(marked)} ${marked === 1 ? 'marcado' : 'marcados'}`,
+      noMatch: (text) => `Nenhum repositório corresponde a ${text}.`,
+      none: 'O GitHub não lista nenhum repositório para este token.',
+      failed: (message) => `Não foi possível listar seus repositórios: ${message}`,
+      typeHint: 'a adiciona um repositório pelo owner/repo.',
+      filter: 'Filtro',
+      field: 'owner/repo',
+      invalid: (value) => `${value} não é owner/repo.`,
+      private: 'privado',
+      fork: 'fork',
+      notListed: 'fora da sua lista',
+      keys: { space: 'Espaço', mark: 'marcar', filter: 'filtrar', add: 'adicionar owner/repo' },
+    },
+    edit: {
+      watch: 'observar',
+      unwatch: 'não observar',
+      publishOn: 'publicar',
+      publishOff: 'não publicar',
+      add: 'incluir',
+      config: 'config',
+      rules: 'regras',
+      addIntro:
+        'Marque os repositórios que o phada watch revisa: eles vão para watch.repos da sua config.',
+      noToken:
+        'Listar os seus repositórios precisa de um token do GitHub: gh auth login ou GITHUB_TOKEN, e depois r.',
+      editorFailed: (code) => `O editor terminou com o código ${code}.`,
+    },
   },
   automation: {
     watch: 'Watch',
@@ -360,6 +394,33 @@ export const portuguese: UiMessages = {
       http: 'por HTTP',
     },
     tools: (names) => `ferramentas: ${names}`,
+    logIn: (name) => `entrar no ${name}`,
+    loginNotCompleted: (name) => `Login no ${name} não concluído.`,
+    change: 'trocar a IA',
+    changeIntro:
+      'Escolha a IA que revisa e o modelo. A escolha é gravada no seu arquivo de config.',
+    languageKey: 'idioma',
+    language: (name) => `Idioma: ${name}`,
+    pick: {
+      choose: 'escolher',
+      modelFor: (name) => `Modelo do ${name}`,
+      cliDefault: 'O modelo padrão da CLI (sem model na sua config)',
+      typeModel: 'Digitar o nome de um modelo',
+      modelField: 'Modelo',
+      installed: 'instalado',
+      current: 'atual',
+      suggested: (size) => `sugerido · baixado antes, cerca de ${size}`,
+      pull: 'baixar',
+      serveHint: 'Suba o Ollama em outro terminal e aperte r para checar de novo.',
+      pulling: (model) => `Baixando ${model}…`,
+      progress: (done, total, percent) => `${done} de ${total} · ${percent}%`,
+      pulled: (model) => `${model} baixado.`,
+      cancelled: (model) => `Download de ${model} cancelado.`,
+      failed: (model, message) => `Não foi possível baixar ${model}: ${message}`,
+      ended: (model) => `O Ollama encerrou o download de ${model} antes do fim.`,
+      stopped: 'O Ollama não está rodando: suba com ollama serve e aperte r.',
+      cancelPull: 'cancelar o download',
+    },
   },
   learnings: {
     title: (repos) =>
@@ -466,6 +527,121 @@ export const portuguese: UiMessages = {
     nativeMessage: (message) => `Mensagem: ${message}`,
     dataBlocks: 'Blocos de dados',
     instructions: 'Instruções',
+  },
+  setup: {
+    title: { full: 'Setup', short: 'Setup' },
+    step: (number, total) => `Passo ${number} de ${total}`,
+    steps: {
+      github: 'GitHub',
+      ai: 'IA',
+      language: 'Idioma',
+      repositories: 'Repositórios',
+      graph: 'Grafo',
+      repository: 'Este repositório',
+      summary: 'Resumo',
+    },
+    skip: 'pular',
+    leave: 'sair do setup',
+    stay: 'ficar',
+    leaveQuestion: 'Sair do setup?',
+    leaveHint: 'O que você confirmou já está gravado. phada setup abre o setup de novo.',
+    continue: 'continuar',
+    github: {
+      checking: 'Verificando o token do GitHub…',
+      found: (source, login) => `Token de ${source} · @${login}`,
+      readsAs: (login) => `O Phada lê pull requests e publica reviews como @${login}.`,
+      noToken: 'Nenhum token do GitHub',
+      why: 'O Phada lê pull requests e publica reviews com um token do GitHub: GITHUB_TOKEN, GH_TOKEN ou o token do seu login no gh. Ele nunca guarda o token.',
+      logIn: 'entrar com o gh',
+      refused: (source) => `O GitHub recusou o token de ${source}.`,
+      replace: (variable) =>
+        `Ponha um token válido em ${variable}, ou remova-a para usar o login do gh.`,
+      unreachable: (message) => `Não foi possível falar com o GitHub: ${message}`,
+      notInstalled:
+        'O gh não está instalado. Instale-o de https://cli.github.com, ou exporte GITHUB_TOKEN com um token seu.',
+    },
+    ai: {
+      intro:
+        'O Phada revisa com uma AI CLI em que você está logado ou com um modelo servido pelo Ollama.',
+    },
+    repositories: {
+      intro:
+        'Marque os repositórios que o phada watch revisa: eles vão para watch.repos da sua config.',
+      noToken:
+        'Este passo precisa de um token do GitHub para listar seus repositórios: configure-o no passo GitHub (phada setup de novo), ou pule este.',
+    },
+    graph: {
+      reading: 'Lendo os repositórios que você observa…',
+      intro:
+        'O Phada mapeia o código de cada repositório observado (símbolos, chamadas, imports), para o review ver o que chama o código que muda. Um repositório por vez: o setup espera, e Esc para.',
+      none: 'Nenhum repositório observado ainda: escolha-os no passo Repositórios (phada setup de novo), ou indexe um depois com phada index owner/repo.',
+      index: 'indexar',
+      stop: 'parar',
+      waiting: 'esperando',
+      fetching: 'buscando…',
+      stopping: 'parando…',
+      progress: (done, total) => `${number(done)} de ${number(total)} arquivos`,
+      indexed: (files) => `${number(files)} arquivos indexados`,
+      cancelled: (done, total) => `parou em ${number(done)} de ${number(total)} arquivos`,
+      notStarted: 'não começou',
+      noToken: 'sem token do GitHub',
+      later:
+        'O phada watch indexa o que faltou quando estiver ocioso; phada index owner/repo indexa um agora.',
+    },
+    repository: {
+      checking: 'Procurando o repositório git desta pasta…',
+      outside: (folder) =>
+        `${folder} não está dentro de um repositório git: não há pasta .phada/ a criar aqui. Rode phada init dentro de um repositório para criar uma.`,
+      configured: (root) =>
+        `${root} já tem uma pasta .phada/: todo review deste repositório lê o config.yml e o rules.md dela.`,
+      offer: (root) => `${root} não tem uma pasta .phada/.`,
+      why: 'O phada init a cria com um config.yml comentado e um rules.md: as regras que todo review deste repositório segue, para o seu time editar e commitar.',
+      create: 'criar .phada/',
+      initialized: (root) => `phada init rodou em ${root}:`,
+      creating: 'Criando .phada/…',
+      created: (path) => `Criado ${path}`,
+      kept: (path) => `${path} já existe, mantido`,
+    },
+    summary: {
+      written: (path) => `Gravado em ${path}:`,
+      nothing: 'Nada foi gravado na sua config.',
+      skipped: (steps) => `Pulados: ${steps}`,
+      indexed: (names) => `Indexados: ${names}`,
+      left: (names) =>
+        `Ficaram para depois: ${names}. O phada watch os indexa quando estiver ocioso.`,
+      notIndexed: (names) => `Não indexados: ${names}`,
+      created: (root, files) => `Criados em ${root}: ${files}`,
+      now: 'O que fazer agora',
+      watch: 'revisa os pull requests novos dos repositórios observados',
+      review: 'revisa um pull request',
+      home: 'ir para o Início',
+    },
+  },
+  language: {
+    title: 'Idioma',
+    intro: 'O idioma deste app e dos reviews que o Phada escreve.',
+    current: 'atual',
+    choose: 'escolher',
+  },
+  config: {
+    create: (path) => `Criar ${path}?`,
+    save: (path) => `Gravar em ${path}?`,
+    unset: '(não definido)',
+    publish: { on: 'publica', off: 'não publica' },
+    planning: 'Lendo o arquivo de config…',
+    writing: 'Gravando…',
+    reformatted: 'O arquivo é regravado num formato padrão: os espaços e o recuo podem mudar.',
+    keys: { save: 'gravar', cancel: 'cancelar', again: 'ver a mudança de novo' },
+    invalidConfig: (message) =>
+      `Seu arquivo de config tem um erro, então o Phada não o altera: ${message}`,
+    invalidResult: (message) => `A mudança deixaria o arquivo de config inválido: ${message}`,
+    ollamaWithoutModel: 'O Ollama precisa de um modelo: escolha-o junto com o Ollama.',
+    lastWatchedRepo: (repo, settings) =>
+      `${repo} é o último repositório observado, e o watch também define ${settings}: edite o arquivo para tirá-lo.`,
+    notWatched: (repo) => `${repo} não é observado.`,
+    unreadable: (message) => `Não foi possível ler o arquivo de config: ${message}`,
+    failed: (message) => `Não foi possível gravar o arquivo de config: ${message}`,
+    changed: 'O arquivo de config mudou desde então: Enter mostra a mudança de novo.',
   },
 }
 

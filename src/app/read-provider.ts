@@ -1,7 +1,7 @@
 import { userMcp } from '../config/mcp-servers.js'
 import { resolveProvider } from '../config/merge-config.js'
 import type { ConfigLayer } from '../config/types.js'
-import type { ProviderName } from '../providers/types.js'
+import type { OllamaPullProgress, OllamaPullResult, ProviderName } from '../providers/types.js'
 import { checkProviders } from './check-providers.js'
 import type { CheckedProvider, ProviderCheckers } from './check-providers.js'
 
@@ -29,15 +29,27 @@ export interface ProviderSetup {
 
 export type ReportedProvider = CheckedProvider & { next: NextStep | null }
 
-export interface ProviderReport {
-  choice: ProviderChoiceView
+export interface ProviderChecks {
   providers: ReportedProvider[]
+}
+
+export interface ProviderReport extends ProviderChecks {
+  choice: ProviderChoiceView
 }
 
 export interface NextStep {
   kind: 'install' | 'login' | 'serve' | 'pull'
   command: string
 }
+
+export type { OllamaPullProgress, OllamaPullResult }
+
+export interface ModelPullOptions {
+  signal: AbortSignal
+  onProgress(progress: OllamaPullProgress): void
+}
+
+export const SUGGESTED_OLLAMA_MODEL = { name: 'qwen2.5-coder:7b', bytes: 4_683_087_332 }
 
 export interface ProviderConfigInput {
   layers: readonly ConfigLayer[]
@@ -49,9 +61,18 @@ const INSTALL: Readonly<Record<'claude' | 'codex', string>> = {
   claude: 'npm install -g @anthropic-ai/claude-code',
   codex: 'npm install -g @openai/codex',
 }
-const LOGIN: Readonly<Record<'claude' | 'codex', string>> = {
-  claude: 'claude auth login',
-  codex: 'codex login',
+const LOGIN: Readonly<Record<'claude' | 'codex', LoginCommand>> = {
+  claude: { command: 'claude', args: ['auth', 'login'] },
+  codex: { command: 'codex', args: ['login'] },
+}
+
+export interface LoginCommand {
+  command: string
+  args: readonly string[]
+}
+
+export function loginCommand(provider: 'claude' | 'codex'): LoginCommand {
+  return LOGIN[provider]
 }
 
 export function providerSetup(input: ProviderConfigInput): ProviderSetup {
@@ -85,6 +106,13 @@ export async function readProviders(
   }
 }
 
+export async function readProviderChecks(checkers: ProviderCheckers): Promise<ProviderChecks> {
+  const providers = await checkProviders(checkers, null)
+  return {
+    providers: providers.map((status) => ({ ...status, next: nextStep(status, null) ?? null })),
+  }
+}
+
 export function nextStep(status: CheckedProvider, model: string | null): NextStep | undefined {
   if (status.provider === 'ollama') {
     const { server } = status
@@ -104,7 +132,10 @@ export function nextStep(status: CheckedProvider, model: string | null): NextSte
   if (status.install.state === 'missing') {
     return { kind: 'install', command: INSTALL[status.provider] }
   }
-  if (status.login.state === 'logged-out') return { kind: 'login', command: LOGIN[status.provider] }
+  if (status.login.state === 'logged-out') {
+    const { command, args } = LOGIN[status.provider]
+    return { kind: 'login', command: [command, ...args].join(' ') }
+  }
   return undefined
 }
 
@@ -120,6 +151,6 @@ function providerChoice({ layers, configPath }: ProviderConfigInput): ProviderCh
   }
 }
 
-function hasModel(models: readonly string[], model: string): boolean {
+export function hasModel(models: readonly string[], model: string): boolean {
   return models.some((name) => name === model || name === `${model}:latest`)
 }

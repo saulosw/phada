@@ -1,6 +1,6 @@
 {
   "name": "phada",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Review GitHub pull requests with the AI you already use: Claude Code, Codex or Ollama.",
   "keywords": [
     "code-review",
@@ -36,6 +36,7 @@
     "build": "npm run clean && tsc -p tsconfig.build.json && tsx scripts/copy-grammars.ts",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "prepack": "npm run build",
+    "prepare": "node -e \"require('node:fs').existsSync('.githooks') && require('node:child_process').spawnSync('git', ['config', 'core.hooksPath', '.githooks'])\"",
     "smoke": "tsx scripts/smoke.ts",
     "test": "vitest run",
     "dev": "tsx src/bin.ts",
@@ -43,7 +44,8 @@
     "typecheck": "tsc --noEmit",
     "test:watch": "vitest",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "lint:unused": "knip"
   },
   "dependencies": {
     "execa": "^10.0.1",
@@ -59,6 +61,7 @@
     "@types/picomatch": "^4.0.3",
     "@types/react": "^19.3.0",
     "ink-testing-library": "^4.0.0",
+    "knip": "^6.43.0",
     "prettier": "^3.9.8",
     "tree-sitter-go": "^0.25.0",
     "tree-sitter-javascript": "^0.25.0",

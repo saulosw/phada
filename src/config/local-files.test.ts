@@ -1,4 +1,16 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import {
+  chmod,
+  lstat,
+  mkdtemp,
+  mkdir,
+  readdir,
+  readFile,
+  readlink,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -58,6 +70,63 @@ describe('nodeFileSystem', () => {
       { path: join(dir, 'notes', 'sub', 'a.MD'), size: 1 },
     ])
     expect(await nodeFileSystem.listDocs(join(dir, 'missing'))).toBeNull()
+  })
+})
+
+describe('nodeFileSystem.writeAtomic', () => {
+  it('writes a file in a folder it creates', async () => {
+    const path = join(dir, 'phada', 'config.yml')
+
+    await nodeFileSystem.writeAtomic(path, 'provider: claude\n')
+
+    expect(await readFile(path, 'utf8')).toBe('provider: claude\n')
+    expect(await readdir(join(dir, 'phada'))).toEqual(['config.yml'])
+  })
+
+  it('replaces a file whole with its mode, leaving no temporary file behind', async () => {
+    const path = join(dir, 'config.yml')
+    await writeFile(path, 'provider: claude\n', { mode: 0o600 })
+
+    await nodeFileSystem.writeAtomic(path, 'provider: codex\n')
+
+    expect(await readFile(path, 'utf8')).toBe('provider: codex\n')
+    expect((await stat(path)).mode & 0o777).toBe(0o600)
+    expect(await readdir(dir)).toEqual(['config.yml'])
+  })
+
+  it('writes through a link to the file it points to, keeping the link', async () => {
+    const dotfiles = join(dir, 'dotfiles')
+    const linked = join(dotfiles, 'phada.yml')
+    const config = join(dir, 'phada', 'config.yml')
+    await mkdir(dotfiles)
+    await mkdir(join(dir, 'phada'))
+    await writeFile(linked, 'provider: claude\n', { mode: 0o600 })
+    await symlink('../dotfiles/phada.yml', config)
+
+    await nodeFileSystem.writeAtomic(config, 'provider: codex\n')
+
+    expect((await lstat(config)).isSymbolicLink()).toBe(true)
+    expect(await readlink(config)).toBe('../dotfiles/phada.yml')
+    expect(await readFile(linked, 'utf8')).toBe('provider: codex\n')
+    expect((await stat(linked)).mode & 0o777).toBe(0o600)
+    expect(await readdir(dotfiles)).toEqual(['phada.yml'])
+    expect(await readdir(join(dir, 'phada'))).toEqual(['config.yml'])
+  })
+
+  it('rejects a folder it may not write, keeping the file as it was', async () => {
+    const path = join(dir, 'config.yml')
+    await writeFile(path, 'provider: claude\n')
+    await chmod(dir, 0o500)
+
+    try {
+      await expect(nodeFileSystem.writeAtomic(path, 'provider: codex\n')).rejects.toMatchObject({
+        code: 'EACCES',
+      })
+    } finally {
+      await chmod(dir, 0o700)
+    }
+    expect(await readFile(path, 'utf8')).toBe('provider: claude\n')
+    expect(await readdir(dir)).toEqual(['config.yml'])
   })
 })
 

@@ -23,6 +23,10 @@ export function memoryFiles(
       files.set(path, text)
       return true
     },
+    writeAtomic: async (path, text) => {
+      for (let dir = dirname(path); dir !== dirname(dir); dir = dirname(dir)) knownDirs.add(dir)
+      files.set(path, text)
+    },
     makeDir: async (path) => {
       for (let dir = path; dir !== dirname(dir); dir = dirname(dir)) knownDirs.add(dir)
     },

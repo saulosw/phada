@@ -7,17 +7,39 @@ output can change between minor versions.
 
 ## Unreleased
 
+## 0.10.0 - 2026-10-27
+
 ### Added
 
 - `phada` with no command, in a terminal, opens an app with what Phada has set up, running and
   reviewed: Home (GitHub, the AI, the watch, the queue, the repository maps, the last reviews and
   what to do next), Repositories, Rules (the reviewer lens, the rules and the prompt of a pull
   request), Reviews, Queue (the watch running in another terminal), Automation, Provider (each AI
-  checked: installed, logged in, Ollama running) and Learnings. It only reads, refreshes what is
-  on your machine every 2 seconds and what comes from GitHub or the AI CLIs on `r`, follows the
+  checked: installed, logged in, Ollama running) and Learnings. It refreshes what is on your
+  machine every 2 seconds and what comes from GitHub or the AI CLIs on `r`, follows the
   `language` of your config (English, Portuguese, Spanish), adapts to 16 colors, `NO_COLOR` and
   `TERM=dumb`, needs 80×24 and gives the terminal back as it was on quit, Ctrl-C or `SIGTERM`.
   Outside a terminal, `phada` alone prints the same error as before.
+- `phada setup`, and `phada` while your own `config.yml` does not exist, open the app on a setup
+  of seven steps, each one skippable: the GitHub token (with `gh auth login` handed the terminal
+  when there is none), the AI (its login handed to the CLI, `ollama serve` when Ollama is not
+  running, and the model pulled through Ollama's API with its progress, `qwen2.5-coder:7b`
+  suggested), the language, the repositories to watch (from your GitHub list or typed), their
+  map (indexed one at a time; `Esc` stops, keeping what was extracted for the idle watch or
+  `phada index` to finish), `phada init` for the repository the app runs in, and a summary with
+  what to run now. `/setup` opens it from any screen, from its first step; outside a terminal, `phada setup` is a
+  usage error.
+- The app changes your own config: on the Provider screen the AI and its model (`c`), the
+  language (`L`, or `/language` anywhere) and a new login to the AI CLI (`l`); on the
+  Repositories screen, watching or not (`w`), `publish` (`p`) and adding repositories (`a`).
+  Each change shows its values before → after and is written only once confirmed, atomically,
+  through a symbolic link, keeping the comments and the lines it does not touch (or saying that
+  the file is rewritten in a standard layout); an invalid config is shown and never edited.
+- `e` and `R` on the Repositories screen open a repository's own `config.yml` and `rules.md` of
+  your config folder in `$VISUAL`, `$EDITOR` or `vi`, created with a commented header when they
+  do not exist.
+- While a login or the editor runs, the app hands it the terminal and gets it back when it ends.
+  The login of an AI CLI runs without the GitHub tokens in its environment.
 - Without `GITHUB_TOKEN` or `GH_TOKEN`, every command uses the login of the GitHub CLI
   (`gh auth token`, or `gh auth status --show-token` on older `gh` versions), never saved or
   printed.

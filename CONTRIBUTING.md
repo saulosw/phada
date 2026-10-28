@@ -1,7 +1,8 @@
 # Contributing to Phada
 
 Thanks for helping. This guide covers running Phada from source, the checks a change must pass
-and how to send it. [AGENTS.md](AGENTS.md) describes the code layout and the architecture rules.
+and how to send it. [AGENTS.md](AGENTS.md) describes the architecture rules and
+[docs/layout.md](docs/layout.md) the code layout.
 
 ## Run from source
 
@@ -28,6 +29,7 @@ banner out of stdout).
 | `npm test`             | Runs the test suite with Vitest                                                            |
 | `npm run format`       | Formats the code with Prettier                                                             |
 | `npm run format:check` | Checks formatting                                                                          |
+| `npm run lint:unused`  | Finds unused files, exports and dependencies with Knip                                     |
 | `npm run build`        | Compiles `src/` (without tests) to `dist/`                                                 |
 | `npm run smoke`        | Packs the npm package, installs it in a temporary directory and runs the installed `phada` |
 
@@ -36,11 +38,17 @@ banner out of stdout).
 ```bash
 npm run format:check
 npm run typecheck
+npm run lint:unused
 npm test
 npm run smoke
 ```
 
-CI runs the same four commands.
+CI runs the same five commands.
+
+`npm ci` also turns on the Git hooks in `.githooks/` (`git config core.hooksPath .githooks`). The
+`pre-push` hook runs `format:check`, `typecheck`, the tests and `lint:unused`, and stops the push
+when one of them fails. In an emergency, `git push --no-verify` skips it; CI still runs the
+checks.
 
 ## Tests
 

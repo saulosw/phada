@@ -1,48 +1,132 @@
 import { Text } from 'ink'
+import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import type { ProviderReport, ProviderSetup, ReportedProvider } from '../../app/read-provider.js'
-import { useAppDeps, useMessages, useScreenKeys, useScreenSize, useTheme } from '../app-context.js'
+import type { ProviderChecks, ProviderSetup } from '../../app/read-provider.js'
+import {
+  useAppDeps,
+  useMessages,
+  useScreenInput,
+  useScreenKeys,
+  useScreenSize,
+  useTheme,
+} from '../app-context.js'
 import { useLoaded, usePolled } from '../data-hooks.js'
 import type { DataState } from '../data-hooks.js'
-import { failedText } from '../data-view.js'
-import type { UiMessages } from '../i18n/messages.js'
+import { failedNodes } from '../frame-lines.js'
+import type { DrawContext } from '../frame-lines.js'
+import { useHandOff } from '../hand-off.js'
+import { LanguagePicker, languageName } from '../language-picker.js'
+import { ProviderPicker } from '../provider-picker.js'
+import { PROVIDER_NAMES } from '../provider-names.js'
+import { aiLoginLines } from '../login-lines.js'
+import type { AiLogin } from '../login-lines.js'
+import { modelsLine, nextStepLine, stateIcon, statusParts } from '../provider-lines.js'
+import type { LoginProvider } from '../provider-lines.js'
 import { ScrollText } from '../scroll-list.js'
+import { SubView } from '../sub-view.js'
 import { textWidth } from '../tab-layout.js'
-import type { Theme } from '../theme.js'
-import { fit, namesText, oneLine, shortenHome, wrapText } from '../text-fit.js'
+import { fit, oneLine, shortenHome, wrapText } from '../text-fit.js'
 
-export const PROVIDER_NAMES: Readonly<Record<ReportedProvider['provider'], string>> = {
-  claude: 'Claude Code',
-  codex: 'Codex',
-  ollama: 'Ollama',
-}
-
-const MODELS_SHOWN = 5
 const MAX_MCP_NAME = 24
 
-interface Draw {
-  messages: UiMessages
-  theme: Theme
+interface Draw extends DrawContext {
   home: string
-  width: number
 }
 
+type Mode = 'view' | 'change' | 'language'
+
 export function ProviderScreen() {
-  const { readProviderSetup, readProviders, home } = useAppDeps()
+  const messages = useMessages()
+  const [mode, setMode] = useState<Mode>('view')
+  const [returned, setReturned] = useState(false)
+  const back = () => {
+    setReturned(true)
+    setMode('view')
+  }
+  if (mode === 'change') {
+    return (
+      <SubView onLeave={back}>
+        <ProviderPicker intro={messages.provider.changeIntro} onSaved={back} />
+      </SubView>
+    )
+  }
+  if (mode === 'language') {
+    return (
+      <SubView onLeave={back}>
+        <LanguagePicker onDone={back} />
+      </SubView>
+    )
+  }
+  return <ProviderView checkAgain={returned} onEdit={setMode} />
+}
+
+function ProviderView({
+  checkAgain,
+  onEdit,
+}: {
+  checkAgain: boolean
+  onEdit(mode: Exclude<Mode, 'view'>): void
+}) {
+  const { readProviderSetup, readProviders, readProviderChecks, readLanguage, home } = useAppDeps()
   const messages = useMessages()
   const theme = useTheme()
   const size = useScreenSize()
   const setup = usePolled(readProviderSetup)
-  const { state: checked } = useLoaded('providers', readProviders)
+  const language = usePolled(readLanguage)
+  const configRead = setup.status !== 'failed'
+  const loaded = useLoaded<ProviderChecks>(
+    configRead ? 'providers' : 'provider-checks',
+    configRead ? readProviders : readProviderChecks,
+  )
+  const { state: checked, reload } = loaded
+  const handOff = useHandOff()
+  const [login, setLogin] = useState<AiLogin>()
+  const target = checked.status === 'ready' ? loginTarget(checked.value) : undefined
+  const editable = setup.status === 'ready'
+  const checkedAgain = useRef(false)
+  useEffect(() => {
+    if (!checkAgain || checkedAgain.current) return
+    checkedAgain.current = true
+    reload()
+  }, [checkAgain, reload])
+  useScreenInput((input) => {
+    if (handOff.running) return
+    if (editable && input === 'c') return onEdit('change')
+    if (editable && input === 'L') return onEdit('language')
+    if (input !== 'l' || target === undefined) return
+    setLogin(undefined)
+    void handOff.run({ kind: 'ai-login', provider: target }).then((outcome) => {
+      if (outcome === undefined) return
+      reload()
+      setLogin({ provider: target, outcome })
+    })
+  })
   const draw: Draw = { messages, theme, home, width: size.columns }
   const lines = [
     ...choiceLines(setup, draw),
+    ...(language.status === 'ready'
+      ? [
+          <Text color={theme.colors.soft}>
+            {messages.provider.language(oneLine(languageName(language.value)))}
+          </Text>,
+        ]
+      : []),
     <Text> </Text>,
     ...providerLines(checked, draw),
+    ...aiLoginLines(login, loaded, draw),
     ...(setup.status === 'ready' ? [<Text> </Text>, ...mcpLines(setup.value, draw)] : []),
   ]
   useScreenKeys([
+    ...(editable
+      ? [
+          { keys: 'c', label: messages.provider.change },
+          { keys: 'L', label: messages.provider.languageKey },
+        ]
+      : []),
     { keys: 'r', label: messages.keys.refresh },
+    ...(target === undefined
+      ? []
+      : [{ keys: 'l', label: messages.provider.logIn(PROVIDER_NAMES[target]) }]),
     ...(lines.length > size.rows ? [{ keys: '↑/↓', label: messages.list.scroll }] : []),
   ])
   return <ScrollText lines={lines} rows={size.rows} />
@@ -54,7 +138,7 @@ function choiceLines(setup: DataState<ProviderSetup>, draw: Draw): ReactNode[] {
   const m = messages.provider
   if (setup.status === 'loading') return [<Text color={colors.dim}>{messages.loading}</Text>]
   if (setup.status === 'failed') {
-    return [<Text color={colors.error}>{failedText(messages, setup.error)}</Text>]
+    return failedNodes(draw, setup.error)
   }
   const { provider, model, origin } = setup.value.choice
   const modelText =
@@ -83,21 +167,20 @@ function choiceLines(setup: DataState<ProviderSetup>, draw: Draw): ReactNode[] {
   ]
 }
 
-function providerLines(checked: DataState<ProviderReport>, draw: Draw): ReactNode[] {
+function providerLines(checked: DataState<ProviderChecks>, draw: Draw): ReactNode[] {
   const { messages, theme } = draw
   const { colors } = theme
   const m = messages.provider
   const header = <Text bold>{m.providers}</Text>
   if (checked.status === 'loading') return [header, <Text color={colors.dim}>{m.checking}</Text>]
   if (checked.status === 'failed') {
-    return [header, <Text color={colors.error}>{failedText(messages, checked.error)}</Text>]
+    return [header, ...failedNodes(draw, checked.error)]
   }
   const nameWidth = Math.max(...Object.values(PROVIDER_NAMES).map(textWidth))
   const chosenWidth = textWidth(m.chosen)
   return [
     header,
     ...checked.value.providers.flatMap((status) => {
-      const models = modelsOf(status)
       return [
         <Text bold={status.chosen}>
           {stateIcon(status, theme)} {fit(PROVIDER_NAMES[status.provider], nameWidth)}
@@ -106,28 +189,19 @@ function providerLines(checked: DataState<ProviderReport>, draw: Draw): ReactNod
           {'  '}
           {statusParts(status, messages).join(' · ')}
         </Text>,
-        ...(models.length === 0
-          ? []
-          : [
-              <Text color={colors.dim}>
-                {'    '}
-                {m.models(models.length, namesText(models, MODELS_SHOWN))}
-              </Text>,
-            ]),
-        ...(status.next === null
-          ? []
-          : [
-              <Text>
-                {'    → '}
-                {m.steps[status.next.kind]}{' '}
-                <Text bold color={colors.accent}>
-                  {oneLine(status.next.command)}
-                </Text>
-              </Text>,
-            ]),
+        ...modelsLine(status, messages, theme),
+        ...nextStepLine(status, messages, theme),
       ]
     }),
   ]
+}
+
+function loginTarget({ providers }: ProviderChecks): LoginProvider | undefined {
+  const clis = providers.flatMap((status) =>
+    status.provider !== 'ollama' && status.install.state === 'installed' ? [status] : [],
+  )
+  const chosen = clis.find((status) => status.chosen)
+  return (chosen ?? clis.find((status) => status.login.state === 'logged-out'))?.provider
 }
 
 function mcpLines({ mcp }: ProviderSetup, draw: Draw): ReactNode[] {
@@ -153,49 +227,4 @@ function mcpLines({ mcp }: ProviderSetup, draw: Draw): ReactNode[] {
       </Text>
     )),
   ]
-}
-
-function statusParts(status: ReportedProvider, messages: UiMessages): string[] {
-  const m = messages.provider
-  if (status.provider === 'ollama') {
-    const { server } = status
-    const state =
-      server.state === 'running'
-        ? [
-            m.running(server.version === null ? null : oneLine(server.version)),
-            ...(server.models.length === 0 ? [m.noModels] : []),
-          ]
-        : server.state === 'stopped'
-          ? [m.stopped]
-          : [m.serverUnknown(m.problems[server.problem])]
-    return [...state, ...(status.baseUrl === null ? [] : [oneLine(status.baseUrl)])]
-  }
-  const { install, login } = status
-  if (install.state === 'missing') return [m.notInstalled]
-  const installPart =
-    install.state === 'installed'
-      ? m.installed(install.version === null ? null : oneLine(install.version))
-      : m.installUnknown(m.problems[install.problem])
-  if (login.state === 'logged-in') {
-    return [installPart, m.loggedIn(login.method === null ? null : oneLine(login.method))]
-  }
-  if (login.state === 'logged-out') return [installPart, m.loggedOut]
-  return login.problem === 'not-installed'
-    ? [installPart]
-    : [installPart, m.loginUnknown(m.problems[login.problem])]
-}
-
-function stateIcon(status: ReportedProvider, { colors }: Theme): ReactNode {
-  if (status.next !== null) return <Text color={colors.warn}>○</Text>
-  const ready =
-    status.provider === 'ollama'
-      ? status.server.state === 'running'
-      : status.install.state === 'installed' && status.login.state === 'logged-in'
-  return ready ? <Text color={colors.ok}>●</Text> : <Text color={colors.dim}>?</Text>
-}
-
-function modelsOf(status: ReportedProvider): string[] {
-  return status.provider === 'ollama' && status.server.state === 'running'
-    ? status.server.models
-    : []
 }

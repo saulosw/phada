@@ -532,6 +532,34 @@ describe('run', () => {
     expect(h.stderr()).toBe('')
   })
 
+  it('refuses phada setup without a terminal', async () => {
+    const h = harness()
+
+    expect(await run(['setup'], h.deps)).toBe(2)
+    expect(h.stderr()).toBe(
+      'phada: phada setup needs an interactive terminal. Run with --help for usage.\n',
+    )
+  })
+
+  it('opens the app on the setup for phada setup in a terminal', async () => {
+    const h = harness()
+    const starts: string[] = []
+    const deps: MainDeps = {
+      ...h.deps,
+      stdin: Object.assign(Readable.from([]), { isTTY: true }),
+      stdout: { write: () => true, isTTY: true },
+      loadApp: async () => ({
+        openApp: async ({ start }) => {
+          starts.push(start)
+          return { kind: 'quit' }
+        },
+      }),
+    }
+
+    expect(await run(['setup'], deps)).toBe(0)
+    expect(starts).toEqual(['setup'])
+  })
+
   it('prints the error the app failed with in one line, with the details under --debug', async () => {
     const h = harness()
     const failure = new Error('the screen broke')

@@ -13,7 +13,7 @@ import { GhFacadeError } from './types.js'
 import type { GhAnswer, GhPullData, ReadGitHub } from './types.js'
 
 export const GH_READS_PER_PASS = 60
-export const GH_SOCKET_VARIABLE = 'PHADA_GH_SOCKET'
+const GH_SOCKET_VARIABLE = 'PHADA_GH_SOCKET'
 
 const LIMIT_MESSAGE = 'phada: the GitHub read limit of this review was reached.'
 const MAX_REQUEST_BYTES = 8_000_000

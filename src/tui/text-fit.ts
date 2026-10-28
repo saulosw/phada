@@ -18,11 +18,20 @@ export function fit(text: string, width: number, cut: 'end' | 'start' = 'end'): 
     : `…${characters.slice(characters.length - width + 1).join('')}`
 }
 
-export function wrapText(text: string, width: number): string[] {
+export const ERROR_LINES = 4
+
+export function wrapText(text: string, width: number, maxLines = Infinity): string[] {
   const size = Math.max(width, 1)
-  return toTerminalText(text.replace(/\r\n?/g, '\n').replace(/\t/g, ' '))
+  const lines = toTerminalText(text.replace(/\r\n?/g, '\n').replace(/\t/g, ' '))
     .split('\n')
     .flatMap((paragraph) => wrapParagraph(paragraph.trim(), size))
+  if (lines.length <= maxLines) return lines
+  const kept = Math.max(maxLines, 1)
+  return [...lines.slice(0, kept - 1), fit(lines.slice(kept - 1).join(' '), size)]
+}
+
+export function errorLines(text: string, width: number): string[] {
+  return wrapText(oneLine(text), width, ERROR_LINES)
 }
 
 function wrapParagraph(paragraph: string, width: number): string[] {

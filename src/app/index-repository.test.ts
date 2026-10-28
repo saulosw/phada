@@ -209,6 +209,107 @@ describe('indexRepository', () => {
     expect(changed.read).toEqual([['src/a.ts']])
   })
 
+  it('stops when cancelled, keeps what it extracted, and the next run extracts only the rest', async () => {
+    const path = storePath()
+    const threeFiles = () =>
+      fakeMirror({
+        'src/a.ts': { content: 'export function a() {}\n' },
+        'src/b.ts': { content: 'export function b() {}\n' },
+        'src/c.ts': { content: 'export function c() {}\n' },
+      })
+    const cancel = new AbortController()
+    const first = deps(threeFiles().mirror, path)
+    first.deps.events.extracted = (done, total) => {
+      first.events.push(`extracted ${done}/${total}`)
+      if (done === 1) cancel.abort()
+    }
+
+    const stopped = await indexRepository({ ...INPUT, signal: cancel.signal }, first.deps)
+
+    expect(stopped).toEqual({ cancelled: true, extracted: 1, total: 3 })
+    expect(first.events).toEqual(['extracting 3', 'extracted 1/3'])
+    expect(first.closed).toHaveLength(1)
+
+    const again = threeFiles()
+    const second = deps(again.mirror, path)
+    const report = await indexRepository(
+      { ...INPUT, signal: new AbortController().signal },
+      second.deps,
+    )
+    expect('cancelled' in report ? report : report.files).toEqual({
+      total: 3,
+      indexed: 3,
+      extracted: 2,
+      reused: 1,
+    })
+    expect(again.read).toEqual([['src/b.ts', 'src/c.ts']])
+  })
+
+  it('lets a cancel from outside in while it extracts, however fast the parser answers', async () => {
+    const files = Object.fromEntries(
+      Array.from({ length: 40 }, (_, at) => [
+        `src/f${at}.ts`,
+        { content: `export const f${at} = ${at}\n` },
+      ]),
+    )
+    const { mirror } = fakeMirror(files)
+    const busyExtractor: Extractor = {
+      extract: async (language, text) => {
+        const until = performance.now() + 5
+        while (performance.now() < until);
+        return extractor.extract(language, text)
+      },
+    }
+    const cancel = new AbortController()
+    const h = deps(mirror, storePath(), {
+      extractor: busyExtractor,
+      now: () => performance.now(),
+    })
+    h.deps.events.extracting = () => {
+      setImmediate(() => cancel.abort())
+    }
+
+    const result = await indexRepository({ ...INPUT, signal: cancel.signal }, h.deps)
+
+    expect(result).toMatchObject({ cancelled: true, total: 40 })
+    expect('cancelled' in result && result.extracted).toBeLessThan(40)
+  })
+
+  it('extracts nothing when cancelled before it starts', async () => {
+    const { mirror, read } = fakeMirror({ 'src/a.ts': { content: 'export const a = 1\n' } })
+    const cancel = new AbortController()
+    cancel.abort()
+
+    const result = await indexRepository(
+      { ...INPUT, signal: cancel.signal },
+      deps(mirror, storePath()).deps,
+    )
+
+    expect(result).toEqual({ cancelled: true, extracted: 0, total: 1 })
+    expect(read).toEqual([])
+  })
+
+  it('stops the fetch when cancelled while fetching', async () => {
+    const { mirror, read } = fakeMirror({ 'src/a.ts': { content: 'export const a = 1\n' } })
+    const cancel = new AbortController()
+    const fetching: IndexRepositoryDeps['mirror'] = {
+      ...mirror,
+      fetch: (_ref, _keepAs, options) =>
+        new Promise((_resolve, reject) => {
+          options?.signal?.addEventListener('abort', () => reject(new Error('git stopped')))
+          cancel.abort()
+        }),
+    }
+
+    const result = await indexRepository(
+      { ...INPUT, signal: cancel.signal },
+      deps(fetching, storePath()).deps,
+    )
+
+    expect(result).toEqual({ cancelled: true, extracted: 0, total: 0 })
+    expect(read).toEqual([])
+  })
+
   it('extracts a blob shared by two paths once and counts both files', async () => {
     const { mirror, read } = fakeMirror({
       'a/x.ts': { content: 'export function x() {}\n' },

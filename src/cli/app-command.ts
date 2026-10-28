@@ -1,13 +1,17 @@
 import type { ProviderCheckers } from '../app/check-providers.js'
+import type { IndexingOptions } from '../app/index-repository.js'
+import { applyUserConfigPlan, planUserConfig } from '../app/edit-user-config.js'
 import { readReviewDetail, readReviews } from '../app/read-history.js'
 import { readLearnings } from '../app/read-learnings.js'
 import type { ObservedRead } from '../app/read-learnings.js'
-import { providerSetup, readProviders } from '../app/read-provider.js'
-import type { ProviderConfigInput } from '../app/read-provider.js'
+import { providerSetup, readProviderChecks, readProviders } from '../app/read-provider.js'
+import type { ModelPullOptions, ProviderConfigInput } from '../app/read-provider.js'
 import { readQueue } from '../app/read-queue.js'
 import { readAutomation } from '../app/read-automation.js'
 import type { AutomationReaders } from '../app/read-automation.js'
 import { readRepositories, readRepository } from '../app/read-repositories.js'
+import { readUserRepositories } from '../app/read-user-repositories.js'
+import { readRepositoryFolder } from '../app/repository-folder.js'
 import type { RepositoryReaders } from '../app/read-repositories.js'
 import { observedRepositories, phadaCacheDir, repositoryCache } from '../config/cache-paths.js'
 import { dataFiles } from '../config/data-paths.js'
@@ -18,18 +22,24 @@ import {
   loadUserLayers,
   userConfigFile,
 } from '../config/user-config.js'
+import type { UserRepoFile } from '../config/user-config.js'
+import type { UserConfigChange, UserConfigPlan } from '../config/user-config-edit.js'
 import { resolveWatchSettings } from '../config/watch-settings.js'
 import type { WatchSettings } from '../config/watch-settings.js'
 import { checkClaudeStatus } from '../providers/claude-status.js'
 import { checkCodexStatus } from '../providers/codex-status.js'
+import { pullOllamaModel } from '../providers/ollama-pull.js'
 import { checkOllamaStatus } from '../providers/ollama-status.js'
+import type { runInteractive } from '../process/run-interactive.js'
 import { openExistingHistoryStore, openHistoryStore } from '../store/history-store.js'
 import type { HistoryStore } from '../store/history-store.js'
 import { readObservedEdges } from '../store/observed-store.js'
 import { splitRepoName } from '../github/pull-request-ref.js'
 import { fetchAuthenticatedUser } from '../github/user.js'
+import { listUserRepositories } from '../github/user-repositories.js'
+import type { UserRepository } from '../github/user-repositories.js'
 import type { FetchUserOptions, GitHubUser } from '../github/user.js'
-import type { AppDeps, AppResult, openApp, Scheduler } from '../tui/open-app.js'
+import type { AppDeps, AppResult, AppStart, openApp, Scheduler } from '../tui/open-app.js'
 import type { ColorEnv } from '../tui/theme.js'
 import { appHistory } from './app-history.js'
 import { rulesReaders } from './app-rules.js'
@@ -37,14 +47,22 @@ import type { RulesReaderDeps } from './app-rules.js'
 import type { AppHistory } from './app-history.js'
 import { UsageError } from './errors.js'
 import { readGitHubAccess } from './github-access.js'
-import { ghTokenReader } from './github-token.js'
+import { USER_CONFIG_TEMPLATE } from './init-templates.js'
+import { ghTokenReader, readGitHubToken } from './github-token.js'
 import type { GhTokenReader, RunGh } from './github-token.js'
 import type { TextOutput } from './progress.js'
+import { indexForApp } from './app-index.js'
+import { initRepository } from './init.js'
+import type { AppIndexDeps } from './app-index.js'
 import { SLACK_APP_TOKEN, SLACK_BOT_TOKEN } from './review-event-sinks.js'
+import { terminalHandOff } from './terminal-hand-off.js'
+import { ensureUserRepoFile } from './user-repo-file.js'
+import type { TerminalHandOff } from './terminal-hand-off.js'
 
 export type StopSignal = 'SIGINT' | 'SIGTERM'
 
-export interface AppCommandDeps extends Omit<RulesReaderDeps, 'ghToken'> {
+export interface AppCommandDeps
+  extends Omit<RulesReaderDeps, 'ghToken'>, Omit<AppIndexDeps, 'ghToken'> {
   env: NodeJS.ProcessEnv
   home: string
   cwd: string
@@ -65,6 +83,9 @@ export interface AppCommandDeps extends Omit<RulesReaderDeps, 'ghToken'> {
   }
   runGh?: RunGh
   fetchUser?: (options: FetchUserOptions) => Promise<GitHubUser>
+  listRepositories?: (options: FetchUserOptions) => Promise<UserRepository[]>
+  runInteractive?: typeof runInteractive
+  ollamaFetch?: typeof globalThis.fetch
 }
 
 const EXIT_CODES: Readonly<Record<Exclude<AppResult['kind'], 'failed'>, number>> = {
@@ -74,6 +95,8 @@ const EXIT_CODES: Readonly<Record<Exclude<AppResult['kind'], 'failed'>, number>>
 }
 
 const MISSING_COMMAND = 'Missing the command, e.g. phada review owner/repo#123.'
+
+const SETUP_NEEDS_TERMINAL = 'phada setup needs an interactive terminal.'
 
 const COLOR_VARIABLES = ['NO_COLOR', 'FORCE_COLOR', 'TERM', 'COLORTERM'] as const
 
@@ -92,11 +115,18 @@ export function assertAppTerminal(
   throw new UsageError(command.debug ? "Unknown option '--debug'." : MISSING_COMMAND)
 }
 
-export async function runApp(deps: AppCommandDeps): Promise<number> {
+export async function runApp(
+  deps: AppCommandDeps,
+  options: { setup: boolean } = { setup: false },
+): Promise<number> {
   const { stdin, stdout } = deps
   if (!isTerminalInput(stdin) || !isTerminalOutput(stdout)) {
-    throw new UsageError(MISSING_COMMAND)
+    throw new UsageError(options.setup ? SETUP_NEEDS_TERMINAL : MISSING_COMMAND)
   }
+  const start: AppStart =
+    options.setup || !(await deps.files.exists(userConfigFile(deps.env, deps.home)))
+      ? 'setup'
+      : 'home'
   const { openApp } = await (deps.loadApp ?? (() => import('../tui/open-app.js')))()
   const files = dataFiles(deps.env, deps.home)
   const history = appHistory(files.history, (path) =>
@@ -105,11 +135,12 @@ export async function runApp(deps: AppCommandDeps): Promise<number> {
       open: deps.openHistoryReader ?? ((path) => openHistoryStore(path, { readOnly: true })),
     }),
   )
+  const terminal = terminalHandOff(deps)
   try {
-    const result = await openApp(await appDeps(deps, history, files.lock), {
+    const result = await openApp(await appDeps(deps, history, files.lock, terminal, start), {
       stdin,
       stdout,
-      onSignal: deps.onSignal,
+      onSignal: terminal.onSignal,
     })
     if (result.kind === 'failed') throw result.error
     return EXIT_CODES[result.kind]
@@ -118,7 +149,13 @@ export async function runApp(deps: AppCommandDeps): Promise<number> {
   }
 }
 
-async function appDeps(deps: AppCommandDeps, history: AppHistory, lock: string): Promise<AppDeps> {
+async function appDeps(
+  deps: AppCommandDeps,
+  history: AppHistory,
+  lock: string,
+  terminal: TerminalHandOff,
+  start: AppStart,
+): Promise<AppDeps> {
   let settings: WatchSettings | undefined
   const watchSettings = () =>
     loadTopLevelUserLayers(deps).then(
@@ -129,6 +166,7 @@ async function appDeps(deps: AppCommandDeps, history: AppHistory, lock: string):
   const ghToken: GhTokenReader = () => ghTokenReader(deps.env, deps.runGh)()
   const base = {
     version: deps.version,
+    start,
     cwd: deps.cwd,
     home: deps.home,
     env: colorEnv(deps.env),
@@ -155,6 +193,7 @@ async function appDeps(deps: AppCommandDeps, history: AppHistory, lock: string):
         ...(await providerConfig(deps)),
         checkers: deps.providerCheckers ?? statusCheckers(deps.env),
       }),
+    readProviderChecks: () => readProviderChecks(deps.providerCheckers ?? statusCheckers(deps.env)),
     readLearnings: async () =>
       readLearnings({
         history: await history.current(),
@@ -168,7 +207,34 @@ async function appDeps(deps: AppCommandDeps, history: AppHistory, lock: string):
         ghToken,
         fetchUser: deps.fetchUser ?? fetchAuthenticatedUser,
       }),
+    readUserRepositories: () =>
+      readUserRepositories({
+        token: () => readGitHubToken({ env: deps.env, ghToken }),
+        listRepositories: (token) => (deps.listRepositories ?? listUserRepositories)({ token }),
+        watchedRepos: async () =>
+          resolveWatchSettings(await loadTopLevelUserLayers(deps))?.repos.map(({ repo }) => repo) ??
+          [],
+      }),
     ...rulesReaders({ ...deps, ghToken }),
+    handOff: terminal.handOff,
+    pullModel: (model: string, options: ModelPullOptions) =>
+      pullOllamaModel(model, {
+        env: deps.env,
+        ...options,
+        ...(deps.ollamaFetch === undefined ? {} : { fetch: deps.ollamaFetch }),
+      }),
+    planConfig: (changes: readonly UserConfigChange[]) =>
+      planUserConfig(
+        { env: deps.env, home: deps.home, template: USER_CONFIG_TEMPLATE, changes },
+        deps.files,
+      ),
+    applyConfig: (plan: UserConfigPlan) => applyUserConfigPlan(plan, deps.files),
+    indexRepository: (repo: string, options: IndexingOptions) =>
+      indexForApp(repo, options, { ...deps, ghToken }),
+    readRepositoryFolder: () => readRepositoryFolder(deps.cwd, (path) => deps.files.exists(path)),
+    initRepository: () => initRepository(deps),
+    ensureRepositoryFile: (repo: string, file: UserRepoFile) =>
+      ensureUserRepoFile(repo, file, deps),
   }
   const language = await readLanguage().catch(() => undefined)
   return language === undefined ? base : { ...base, language }

@@ -29,6 +29,14 @@ export class CommandTimeoutError extends CommandError {
   }
 }
 
+export class CommandAbortedError extends CommandError {
+  override readonly name = 'CommandAbortedError'
+
+  constructor(command: string) {
+    super(command, `Command "${command}" was stopped before it finished.`)
+  }
+}
+
 export class CommandOutputTooLargeError extends CommandError {
   override readonly name = 'CommandOutputTooLargeError'
   readonly maxOutputLength: number

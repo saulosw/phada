@@ -323,6 +323,3 @@ export const ConfigFileSchema = z.strictObject({
 })
 
 export type ConfigFile = z.infer<typeof ConfigFileSchema>
-export type ConfigRule = z.infer<typeof RuleSchema>
-export type ReviewConfig = z.infer<typeof ReviewSchema>
-export type WatchConfig = z.infer<typeof WatchSchema>

@@ -11,14 +11,15 @@ import { useAppDeps, useMessages, useScreenKeys, useScreenSize, useTheme } from 
 import { useLoaded, usePolled } from '../data-hooks.js'
 import type { DataState } from '../data-hooks.js'
 import { DataView, failedText } from '../data-view.js'
+import type { DrawContext } from '../frame-lines.js'
 import type { UiMessages } from '../i18n/messages.js'
 import { Mascot } from '../mascot.js'
+import { PROVIDER_NAMES } from '../provider-names.js'
 import { absoluteTime, relativeTime } from '../relative-time.js'
 import { textWidth } from '../tab-layout.js'
 import type { Theme } from '../theme.js'
 import { runKey, verdictColor, verdictLabel } from '../run-text.js'
-import { fit, oneLine, shortenHome } from '../text-fit.js'
-import { PROVIDER_NAMES } from './provider.js'
+import { errorLines, fit, oneLine, shortenHome } from '../text-fit.js'
 
 const BOX_CHROME = 22
 const BOX_ROWS = 6
@@ -35,12 +36,9 @@ interface StatusLine {
   text: string
 }
 
-interface Draw {
-  messages: UiMessages
-  theme: Theme
+interface Draw extends DrawContext {
   home: string
   now: Date
-  width: number
 }
 
 export function HomeScreen() {
@@ -252,7 +250,7 @@ function graphStatus({ repositories }: HomeSnapshot, { messages }: Draw): Status
 }
 
 function recommendationLines(recommendation: Recommendation, draw: Draw): ReactNode[] {
-  const { messages, theme, home, now } = draw
+  const { messages, theme, home, now, width } = draw
   const { colors } = theme
   const m = messages.home.recommendations
   if (recommendation.kind === 'checking') {
@@ -268,10 +266,12 @@ function recommendationLines(recommendation: Recommendation, draw: Draw): ReactN
   if (recommendation.kind === 'fix-config') {
     return [
       headline(m.fixConfig(oneLine(shortenHome(recommendation.file, home)))),
-      <Text color={colors.error}>
-        {GAP}
-        {oneLine(recommendation.error)}
-      </Text>,
+      ...errorLines(recommendation.error, width - GAP.length).map((line) => (
+        <Text color={colors.error}>
+          {GAP}
+          {line}
+        </Text>
+      )),
     ]
   }
   return [
@@ -296,8 +296,8 @@ function recommendationText(
       return m.githubToken
     case 'github-refused':
       return m.githubRefused(messages.home.github.sources[recommendation.source])
-    case 'init':
-      return m.init
+    case 'setup':
+      return m.setup
     case 'ai':
       return m.ai[recommendation.step.kind](PROVIDER_NAMES[recommendation.provider])
     case 'paused': {

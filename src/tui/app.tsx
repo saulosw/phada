@@ -3,6 +3,7 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   AppDepsContext,
+  ConfigWrittenContext,
   MessagesContext,
   ScreenContext,
   ThemeContext,
@@ -12,16 +13,19 @@ import {
   useTheme,
 } from './app-context.js'
 import type { AppDeps, KeyHint, ScreenControls, WorkingSignal } from './app-context.js'
-import { usePolled } from './data-hooks.js'
+import { POLL_MS, usePolled } from './data-hooks.js'
 import { ErrorBoundary } from './error-boundary.js'
 import { Footer } from './footer.js'
 import { Help } from './help.js'
+import { LanguagePicker } from './language-picker.js'
 import { createLoadCache, LoadCacheContext } from './load-cache.js'
 import type { UiMessages } from './i18n/messages.js'
 import { uiMessagesFor } from './i18n/messages.js'
 import { Palette } from './palette.js'
 import type { PaletteEntry } from './palette.js'
 import { SCREENS } from './screens.js'
+import { Setup } from './setup/setup.js'
+import { SubView } from './sub-view.js'
 import type { ScreenDefinition } from './screens.js'
 import { TabBar } from './tab-bar.js'
 import { isTooSmall, useTerminalSize } from './terminal-size.js'
@@ -42,8 +46,11 @@ export interface AppProps {
 }
 
 type Overlay = 'none' | 'help' | 'palette'
+type Takeover = 'setup' | 'language'
 
 const SHELL_ROWS = 3
+const SETUP_ID = 'setup'
+const LANGUAGE_ID = 'language'
 
 export function App({ deps, size, onExit, screens = SCREENS }: AppProps) {
   const theme = useMemo(() => resolveTheme(colorLevel(deps.env)), [deps.env])
@@ -60,15 +67,19 @@ export function App({ deps, size, onExit, screens = SCREENS }: AppProps) {
   const working = useMemo<WorkingSignal>(() => ({ working: workers > 0, start }), [workers, start])
   const fail = useCallback((error: unknown) => onExit({ kind: 'failed', error }), [onExit])
   const loads = useMemo(() => createLoadCache(() => deps.now().getTime()), [deps])
+  const [configRound, setConfigRound] = useState(0)
+  const configWritten = useCallback(() => setConfigRound((round) => round + 1), [])
   return (
     <ErrorBoundary onError={fail}>
       <AppDepsContext.Provider value={deps}>
         <ThemeContext.Provider value={theme}>
           <WorkingContext.Provider value={working}>
             <LoadCacheContext.Provider value={loads}>
-              <Localized>
-                <Shell size={size} screens={screens} onExit={onExit} />
-              </Localized>
+              <ConfigWrittenContext.Provider value={configWritten}>
+                <Localized configRound={configRound}>
+                  <Shell size={size} screens={screens} onExit={onExit} />
+                </Localized>
+              </ConfigWrittenContext.Provider>
             </LoadCacheContext.Provider>
           </WorkingContext.Provider>
         </ThemeContext.Provider>
@@ -77,15 +88,15 @@ export function App({ deps, size, onExit, screens = SCREENS }: AppProps) {
   )
 }
 
-function Localized({ children }: { children: ReactNode }) {
-  const language = useLanguage()
+function Localized({ configRound, children }: { configRound: number; children: ReactNode }) {
+  const language = useLanguage(configRound)
   const messages = useMemo(() => uiMessagesFor(language), [language])
   return <MessagesContext.Provider value={messages}>{children}</MessagesContext.Provider>
 }
 
-function useLanguage(): string | undefined {
+function useLanguage(configRound: number): string | undefined {
   const deps = useAppDeps()
-  const polled = usePolled(deps.readLanguage)
+  const polled = usePolled(deps.readLanguage, POLL_MS, String(configRound))
   const last = useRef(deps.language)
   if (polled.status === 'ready') last.current = polled.value
   return last.current
@@ -101,10 +112,15 @@ function Shell({
   onExit(result: AppResult): void
 }) {
   const messages = useMessages()
+  const { start } = useAppDeps()
   const english = useMemo(() => uiMessagesFor('en'), [])
   const size = useTerminalSize(source)
   const tooSmall = isTooSmall(size)
   const [active, setActive] = useState(0)
+  const [takeover, setTakeover] = useState<Takeover | undefined>(
+    start === 'setup' ? 'setup' : undefined,
+  )
+  const [setupRun, setSetupRun] = useState(0)
   const [overlay, setOverlay] = useState<Overlay>('none')
   const [screenKeys, setScreenKeys] = useState<readonly KeyHint[]>([])
   const [typing, setTypingState] = useState(false)
@@ -118,8 +134,21 @@ function Shell({
   const quit = () => onExit({ kind: 'quit' })
   const show = (index: number) => {
     back.current = undefined
+    setTakeover(undefined)
     setActive((index + screens.length) % screens.length)
   }
+  const open = (next: Takeover) => {
+    back.current = undefined
+    if (next === 'setup') setSetupRun((run) => run + 1)
+    setTakeover(next)
+  }
+  const leaveSetup = () =>
+    show(
+      Math.max(
+        screens.findIndex(({ id }) => id === 'home'),
+        0,
+      ),
+    )
 
   const controls = useMemo<ScreenControls>(
     () => ({
@@ -152,6 +181,7 @@ function Shell({
     if (input === 'q') return quit()
     if (input === '?') return setOverlay('help')
     if (input === '/') return setOverlay('palette')
+    if (takeover !== undefined) return
     if (/^[1-9]$/.test(input)) {
       const index = Number(input) - 1
       if (index < screens.length) show(index)
@@ -164,16 +194,31 @@ function Shell({
   if (tooSmall) return <TooSmall size={size} />
 
   const current = screens[active]
-  const global = globalKeys(messages, screens.length)
-  const paletteEntries: PaletteEntry[] = screens.map((screen, index) => {
-    const title = titles[index] ?? screen.title(messages)
-    const englishTitle = screen.title(english)
-    return {
-      index,
-      label: title.full,
-      names: [title.full, title.short, englishTitle.full, englishTitle.short],
-    }
-  })
+  const global = globalKeys(messages, screens.length, takeover !== undefined)
+  const setupTitle = messages.setup.title
+  const languageTitle = { full: messages.language.title, short: messages.language.title }
+  const takeoverTitle = takeover === 'language' ? languageTitle : setupTitle
+  const paletteEntries: PaletteEntry[] = [
+    ...screens.map((screen, index) => {
+      const title = titles[index] ?? screen.title(messages)
+      const englishTitle = screen.title(english)
+      return {
+        id: screen.id,
+        label: title.full,
+        names: [title.full, title.short, englishTitle.full, englishTitle.short],
+      }
+    }),
+    {
+      id: SETUP_ID,
+      label: setupTitle.full,
+      names: [setupTitle.full, setupTitle.short, english.setup.title.full],
+    },
+    {
+      id: LANGUAGE_ID,
+      label: languageTitle.full,
+      names: [languageTitle.full, english.language.title],
+    },
+  ]
   const footerKeys =
     overlay === 'palette'
       ? [
@@ -185,28 +230,46 @@ function Shell({
         ? [{ keys: 'Esc', label: messages.keys.close }]
         : typing
           ? screenKeys
-          : [...screenKeys, ...footerGlobals(messages)]
+          : [...screenKeys, ...footerGlobals(messages, takeover !== undefined)]
 
   return (
     <Box flexDirection="column" width={size.columns} height={size.rows}>
-      <TabBar titles={titles} active={active} width={size.columns} />
+      {takeover !== undefined ? (
+        <TabBar titles={[takeoverTitle]} active={0} width={size.columns} />
+      ) : (
+        <TabBar titles={titles} active={active} width={size.columns} />
+      )}
       <Box flexDirection="column" flexGrow={1} marginTop={1} overflow="hidden">
         {overlay === 'help' && (
-          <Help global={global} screen={screenKeys} screenName={titles[active]?.full ?? ''} />
+          <Help
+            global={global}
+            screen={screenKeys}
+            screenName={takeover !== undefined ? takeoverTitle.full : (titles[active]?.full ?? '')}
+          />
         )}
         {overlay === 'palette' && (
           <Palette
             entries={paletteEntries}
             onClose={() => setOverlay('none')}
-            onPick={(index) => {
+            onPick={(id) => {
               setOverlay('none')
-              show(index)
+              if (id === SETUP_ID) open('setup')
+              else if (id === LANGUAGE_ID) open('language')
+              else show(screens.findIndex((screen) => screen.id === id))
             }}
           />
         )}
         <Box flexDirection="column" display={overlay === 'none' ? 'flex' : 'none'}>
           <ScreenContext.Provider value={controls}>
-            {current !== undefined && <current.Screen key={current.id} />}
+            {takeover === 'setup' ? (
+              <Setup key={setupRun} onClose={leaveSetup} />
+            ) : takeover === 'language' ? (
+              <SubView onLeave={() => show(active)}>
+                <LanguagePicker onDone={() => show(active)} />
+              </SubView>
+            ) : (
+              current !== undefined && <current.Screen key={current.id} />
+            )}
           </ScreenContext.Provider>
         </Box>
       </Box>
@@ -219,19 +282,23 @@ function Shell({
   )
 }
 
-function footerGlobals(messages: UiMessages): KeyHint[] {
+function footerGlobals(messages: UiMessages, takenOver: boolean): KeyHint[] {
   return [
-    { keys: '←/→', label: messages.keys.screens },
+    ...(takenOver ? [] : [{ keys: '←/→', label: messages.keys.screens }]),
     { keys: '/', label: messages.keys.palette },
     { keys: '?', label: messages.keys.help },
     { keys: 'q', label: messages.keys.quit },
   ]
 }
 
-function globalKeys(messages: UiMessages, screens: number): KeyHint[] {
+function globalKeys(messages: UiMessages, screens: number, takenOver: boolean): KeyHint[] {
   return [
-    { keys: '←/→ Tab', label: messages.keys.cycle },
-    { keys: `1–${Math.min(screens, 9)}`, label: messages.keys.jump },
+    ...(takenOver
+      ? []
+      : [
+          { keys: '←/→ Tab', label: messages.keys.cycle },
+          { keys: `1–${Math.min(screens, 9)}`, label: messages.keys.jump },
+        ]),
     { keys: '/', label: messages.keys.palette },
     { keys: '?', label: messages.keys.help },
     { keys: 'Esc', label: messages.keys.back },

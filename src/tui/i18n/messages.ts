@@ -11,6 +11,9 @@ import { portuguese } from './pt.js'
 export type ScreenId =
   'home' | 'repositories' | 'rules' | 'reviews' | 'queue' | 'automation' | 'provider' | 'learnings'
 
+export type SetupStepId =
+  'github' | 'ai' | 'language' | 'repositories' | 'graph' | 'repository' | 'summary'
+
 export interface ScreenTitle {
   full: string
   short: string
@@ -33,7 +36,7 @@ export interface UiMessages {
     refresh: string
   }
   help: { title: string; global: string }
-  palette: { title: string; empty: string }
+  palette: { title: string; empty: string; setup: string }
   tooSmall(columns: number, rows: number): string
   tooSmallHint: string
   home: HomeMessages
@@ -42,6 +45,7 @@ export interface UiMessages {
   time: TimeMessages
   list: { range(first: number, last: number, total: number): string; scroll: string }
   field: { apply: string; cancel: string }
+  handOff: { notFound(command: string): string; failed(message: string): string }
   requests: {
     sources: Readonly<Record<RequestSource, string>>
     publish: Readonly<Record<QueueJob['requests'][number]['publish'], string>>
@@ -56,6 +60,9 @@ export interface UiMessages {
   provider: ProviderMessages
   learnings: LearningsMessages
   rules: RulesMessages
+  setup: SetupMessages
+  language: { title: string; intro: string; current: string; choose: string }
+  config: ConfigMessages
 }
 
 export interface HomeMessages {
@@ -90,7 +97,7 @@ export interface HomeMessages {
     fixConfig(file: string): string
     githubToken: string
     githubRefused(source: string): string
-    init: string
+    setup: string
     ai: Readonly<Record<NextStep['kind'], (provider: string) => string>>
     paused(until: string, relative: string, reason: string): string
     failedJobs(count: number, ref: string, error: string | null): string
@@ -101,6 +108,92 @@ export interface HomeMessages {
     review: string
   }
   reviews: { title: string; none: string }
+}
+
+export interface SetupMessages {
+  title: ScreenTitle
+  step(number: number, total: number): string
+  steps: Readonly<Record<SetupStepId, string>>
+  skip: string
+  leave: string
+  stay: string
+  leaveQuestion: string
+  leaveHint: string
+  continue: string
+  github: {
+    checking: string
+    found(source: string, login: string): string
+    readsAs(login: string): string
+    noToken: string
+    why: string
+    logIn: string
+    refused(source: string): string
+    replace(variable: string): string
+    unreachable(message: string): string
+    notInstalled: string
+  }
+  ai: { intro: string }
+  repositories: { intro: string; noToken: string }
+  graph: {
+    reading: string
+    intro: string
+    none: string
+    index: string
+    stop: string
+    waiting: string
+    fetching: string
+    stopping: string
+    progress(done: number, total: number): string
+    indexed(files: number): string
+    cancelled(done: number, total: number): string
+    notStarted: string
+    noToken: string
+    later: string
+  }
+  repository: {
+    checking: string
+    outside(folder: string): string
+    configured(root: string): string
+    offer(root: string): string
+    why: string
+    create: string
+    initialized(root: string): string
+    creating: string
+    created(path: string): string
+    kept(path: string): string
+  }
+  summary: {
+    written(path: string): string
+    nothing: string
+    skipped(steps: string): string
+    indexed(names: string): string
+    left(names: string): string
+    notIndexed(names: string): string
+    created(root: string, files: string): string
+    now: string
+    watch: string
+    review: string
+    home: string
+  }
+}
+
+export interface ConfigMessages {
+  create(path: string): string
+  save(path: string): string
+  unset: string
+  publish: { on: string; off: string }
+  planning: string
+  writing: string
+  reformatted: string
+  keys: { save: string; cancel: string; again: string }
+  invalidConfig(message: string): string
+  invalidResult(message: string): string
+  ollamaWithoutModel: string
+  lastWatchedRepo(repo: string, settings: string): string
+  notWatched(repo: string): string
+  unreadable(message: string): string
+  failed(message: string): string
+  changed: string
 }
 
 type RequestSource = QueueJob['requests'][number]['source']
@@ -236,6 +329,35 @@ export interface RepositoriesMessages {
     reviews(shown: number, total: number): string
     noReviews: string
   }
+  pick: RepositoryPickMessages
+  edit: {
+    watch: string
+    unwatch: string
+    publishOn: string
+    publishOff: string
+    add: string
+    config: string
+    rules: string
+    addIntro: string
+    noToken: string
+    editorFailed(code: number): string
+  }
+}
+
+export interface RepositoryPickMessages {
+  listing: string
+  count(shown: number, total: number, marked: number): string
+  noMatch(text: string): string
+  none: string
+  failed(message: string): string
+  typeHint: string
+  filter: string
+  field: string
+  invalid(value: string): string
+  private: string
+  fork: string
+  notListed: string
+  keys: { space: string; mark: string; filter: string; add: string }
 }
 
 export interface AutomationMessages {
@@ -298,6 +420,32 @@ export interface ProviderMessages {
   mcpNone: string
   mcpKinds: Readonly<Record<McpServerKind, string>>
   tools(names: string): string
+  logIn(name: string): string
+  loginNotCompleted(name: string): string
+  change: string
+  changeIntro: string
+  languageKey: string
+  language(name: string): string
+  pick: {
+    choose: string
+    modelFor(name: string): string
+    cliDefault: string
+    typeModel: string
+    modelField: string
+    installed: string
+    current: string
+    suggested(size: string): string
+    pull: string
+    serveHint: string
+    pulling(model: string): string
+    progress(done: string, total: string, percent: number): string
+    pulled(model: string): string
+    cancelled(model: string): string
+    failed(model: string, message: string): string
+    ended(model: string): string
+    stopped: string
+    cancelPull: string
+  }
 }
 
 export interface LearningsMessages {

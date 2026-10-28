@@ -10,7 +10,7 @@ export type Recommendation =
   | { kind: 'fix-config'; file: string; error: string }
   | { kind: 'github-token'; command: string }
   | { kind: 'github-refused'; source: GitHubTokenSource; command: string }
-  | { kind: 'init'; command: string }
+  | { kind: 'setup'; command: string }
   | { kind: 'ai'; provider: ProviderName; step: NextStep; command: string }
   | { kind: 'paused'; until: string; reason: string; command: string }
   | { kind: 'failed-jobs'; count: number; ref: string; error: string | null; command: string }
@@ -43,7 +43,7 @@ export function recommend(local: HomeLocal, slow: HomeSlow, now: Date): Recommen
     return { kind: 'github-refused', source: github.source, command: GH_LOGIN }
   }
   if (automation !== undefined && !automation.configured) {
-    return { kind: 'init', command: 'phada init --global' }
+    return { kind: 'setup', command: 'phada setup' }
   }
   if (slow.providers.status === 'loading') return checking()
   const ai = aiStep(local, slow)

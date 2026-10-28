@@ -103,6 +103,8 @@ function fromConfigDir(dir: string, path: string): string {
   return path === '~' || path.startsWith('~/') || isAbsolute(path) ? path : join(dir, path)
 }
 
+export type UserRepoFile = 'config.yml' | 'rules.md'
+
 const REPO_CONFIG_FILES = ['config.yml', 'rules.md']
 
 export async function listUserRepoConfigs(options: {

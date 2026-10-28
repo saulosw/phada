@@ -298,6 +298,18 @@ describe('GitMirror fetch', () => {
     expect(fetch?.options.timeoutMs).toBe(120_000)
   })
 
+  it('hands the signal of the caller to the git fetch', async () => {
+    const { run, calls } = fakeRun(resolved('abc123'))
+    const dir = join(parent, 'fake-signal', 'shop.git')
+    const mirror = await openGitMirror({ dir, owner: 'acme', repo: 'shop', token: TOKEN, env, run })
+    const cancel = new AbortController()
+
+    await mirror.fetch('HEAD', 'refs/phada/index', { signal: cancel.signal })
+
+    const fetch = calls.find((call) => call.args.includes('fetch'))
+    expect(fetch?.options.signal).toBe(cancel.signal)
+  })
+
   it('drops git variables that point git at another repository or change pathspecs', async () => {
     const { run, calls } = fakeRun(resolved('abc123'))
     const mirror = await openGitMirror({

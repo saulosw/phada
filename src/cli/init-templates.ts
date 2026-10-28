@@ -99,6 +99,13 @@ ${CONTEXT}
 #     description: The ticket cited in the pull request title
 `
 
+export function userRepoConfigTemplate(repo: string): string {
+  return `# Your own Phada config for ${repo}. It takes the keys of the config.yml of your
+# config folder (provider, model, review, rules, context, ...) and wins over it for this
+# repository only.
+`
+}
+
 export const RULES_TEMPLATE = `<!--
 Rules for the review, in plain Markdown. Everything outside this comment is sent to
 the AI as an instruction, e.g.:

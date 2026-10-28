@@ -17,6 +17,7 @@ function memoryFiles(files: Record<string, string>): LocalFileSystem {
     readText: async (path) => files[path] ?? null,
     exists: async (path) => path in files,
     writeNew: async () => false,
+    writeAtomic: async () => undefined,
     makeDir: async () => undefined,
     listDocs: async () => null,
     listDir: async () => null,

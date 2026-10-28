@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bytesText, durationText } from './units.js'
+import { bytesText, durationText, modelSizeText } from './units.js'
 
 describe('durationText', () => {
   it.each([
@@ -23,5 +23,16 @@ describe('bytesText', () => {
     [3_221_225_472, '3.0 GB'],
   ])('writes %d bytes as %s', (bytes, text) => {
     expect(bytesText(bytes)).toBe(text)
+  })
+})
+
+describe('modelSizeText', () => {
+  it.each([
+    [900, '900 B'],
+    [274_000_000, '274 MB'],
+    [1_170_768_296, '1.2 GB'],
+    [4_683_087_332, '4.7 GB'],
+  ])('writes %d bytes in the decimal units Ollama shows: %s', (bytes, text) => {
+    expect(modelSizeText(bytes)).toBe(text)
   })
 })

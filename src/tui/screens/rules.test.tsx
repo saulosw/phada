@@ -29,8 +29,14 @@ function repositories(): RepositoryList {
     configError: null,
     watching: true,
     repositories: [
-      { repo: 'acme/api', origins: ['history'], index, lastReview: null },
-      { repo: 'acme/shop', origins: ['watched', 'own-config'], index, lastReview: null },
+      { repo: 'acme/api', origins: ['history'], publish: null, index, lastReview: null },
+      {
+        repo: 'acme/shop',
+        origins: ['watched', 'own-config'],
+        publish: 'pr',
+        index,
+        lastReview: null,
+      },
     ],
   }
 }
