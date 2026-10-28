@@ -1004,6 +1004,60 @@ describe('the provider and learnings readers', () => {
     expect(existsSync(join(indexDir, 'index', 'acme'))).toBe(false)
   })
 
+  it('reads the connections from the index and mirror of the cache, never creating a mirror', async () => {
+    const indexes: string[] = []
+    const { app } = deps({
+      config: 'watch:\n  repos:\n    - acme/shop\n',
+      files: { '/cfg/repos/acme/shop/config.yml': 'context:\n  repos:\n    - acme/ui\n' },
+      openIndexReader: async (path) => {
+        indexes.push(path)
+        return {
+          status: 'open',
+          index: {
+            path,
+            snapshot: {
+              sha: 'a'.repeat(40),
+              ref: 'HEAD',
+              defaultBranch: true,
+              indexedAt: '2026-10-25T11:00:00.000Z',
+              durationMs: 10,
+            },
+            summary: () => {
+              throw new Error('not used')
+            },
+            leftOut: () => [],
+            reader: () => {
+              throw new Error('not used')
+            },
+            close: () => {},
+          },
+        }
+      },
+      during: async (appDeps) => {
+        const [shop] = (await appDeps.readConnections()).repositories
+        expect(shop).toEqual({
+          repo: 'acme/shop',
+          source: { state: 'not-indexed', why: { reason: 'no-mirror' } },
+          declared: {
+            status: 'read',
+            configError: null,
+            warnings: [],
+            related: [
+              { repo: 'acme/ui', link: { state: 'not-indexed', why: { reason: 'no-mirror' } } },
+            ],
+          },
+        })
+      },
+    })
+    app.env.PHADA_CACHE_HOME = indexDir
+    await runApp(app)
+    expect(indexes.sort()).toEqual([
+      join(indexDir, 'index', 'acme', 'shop.sqlite'),
+      join(indexDir, 'index', 'acme', 'ui.sqlite'),
+    ])
+    expect(existsSync(join(indexDir, 'repos'))).toBe(false)
+  })
+
   it('read the observed files of the cache folder, each by its own path', async () => {
     const lists: string[] = []
     const reads: string[] = []

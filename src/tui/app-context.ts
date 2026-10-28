@@ -5,6 +5,7 @@ import type { AppliedUserConfig, UserConfigPlanResult } from '../app/edit-user-c
 import type { HistoryFilter, ListedRun, ReviewDetail } from '../app/read-history.js'
 import type { GitHubAccess } from '../app/read-home.js'
 import type { IndexingOptions, IndexingResult } from '../app/index-repository.js'
+import type { Connections } from '../app/read-connections.js'
 import type { RepositoryIndexes } from '../app/read-index.js'
 import type { Learnings } from '../app/read-learnings.js'
 import type {
@@ -57,6 +58,7 @@ export interface AppDeps {
   readRepository(repo: string): Promise<RepositoryDetail>
   readAutomation(): Promise<AutomationView>
   readIndexes(): Promise<RepositoryIndexes>
+  readConnections(): Promise<Connections>
   readProviderSetup(): Promise<ProviderSetup>
   readProviders(): Promise<ProviderReport>
   readProviderChecks(): Promise<ProviderChecks>

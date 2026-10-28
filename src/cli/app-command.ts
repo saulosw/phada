@@ -2,6 +2,8 @@ import type { ProviderCheckers } from '../app/check-providers.js'
 import type { IndexingOptions } from '../app/index-repository.js'
 import { applyUserConfigPlan, planUserConfig } from '../app/edit-user-config.js'
 import { readReviewDetail, readReviews } from '../app/read-history.js'
+import { readConnections } from '../app/read-connections.js'
+import type { ConnectionReaders } from '../app/read-connections.js'
 import { readIndexes } from '../app/read-index.js'
 import type { IndexReaders } from '../app/read-index.js'
 import { readLearnings } from '../app/read-learnings.js'
@@ -29,6 +31,7 @@ import type { UserConfigChange, UserConfigPlan } from '../config/user-config-edi
 import { resolveWatchSettings } from '../config/watch-settings.js'
 import type { WatchSettings } from '../config/watch-settings.js'
 import { checkClaudeStatus } from '../providers/claude-status.js'
+import { openExistingGitMirror } from '../repository/git-mirror.js'
 import { checkCodexStatus } from '../providers/codex-status.js'
 import { pullOllamaModel } from '../providers/ollama-pull.js'
 import { checkOllamaStatus } from '../providers/ollama-status.js'
@@ -193,6 +196,7 @@ async function appDeps(
     readRepository: (repo: string) => readRepository(repositoryReaders(deps, history), repo),
     readAutomation: () => readAutomation(automationReaders(deps)),
     readIndexes: () => readIndexes(indexReaders(deps, history)),
+    readConnections: () => readConnections(connectionReaders(deps, history)),
     readProviderSetup: async () => providerSetup(await providerConfig(deps)),
     readProviders: async () =>
       readProviders({
@@ -287,6 +291,20 @@ function indexReaders(deps: AppCommandDeps, history: AppHistory): IndexReaders {
           exists: (file) => deps.files.exists(file),
         })),
     fileSize: deps.pathSize,
+  }
+}
+
+function connectionReaders(deps: AppCommandDeps, history: AppHistory): ConnectionReaders {
+  const { env, home, files } = deps
+  const indexes = indexReaders(deps, history)
+  return {
+    repositories: indexes.repositories,
+    userLayers: (repo) => loadUserLayers({ env, home, files, ...splitRepoName(repo) }),
+    openIndex: (repo) => indexes.openIndex(indexes.indexPath(repo)),
+    openMirror: (repo) => {
+      const { owner, repo: name } = splitRepoName(repo)
+      return openExistingGitMirror({ dir: repositoryCache(env, home, owner, name).mirror, env })
+    },
   }
 }
 

@@ -178,6 +178,7 @@ export function fakeAppDeps(scheduler: Scheduler, overrides: Partial<AppDeps> = 
     readRepository: async (repo) => emptyRepository(repo),
     readAutomation: async () => emptyAutomation(),
     readIndexes: async () => ({ repositories: [] }),
+    readConnections: async () => ({ repositories: [] }),
     readProviderSetup: async () => ({
       choice: { provider: 'claude', model: null, origin: { kind: 'default' } },
       mcp: [],
