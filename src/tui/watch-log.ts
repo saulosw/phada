@@ -1,6 +1,6 @@
-import { errorMessage } from '../app/error-message.js'
 import type { ReviewRun } from '../app/review-and-publish.js'
 import type { WatchEnd, WatchEvent } from '../app/watch-event.js'
+import { failedText } from './data-view.js'
 import type { UiMessages } from './i18n/messages.js'
 import { refusalText } from './refusal-text.js'
 import { clockTime } from './relative-time.js'
@@ -73,7 +73,7 @@ function lineText(line: WatchLogLine, messages: UiMessages): string {
       return line.end.reason === 'aborted'
         ? l.watchAborted
         : line.end.reason === 'fatal'
-          ? l.watchFailed(reason(line.end.error))
+          ? failedText(messages, line.end.error, l.watchFailed)
           : l.watchStopped
     case 'event':
       return eventText(line.event, messages)
@@ -112,14 +112,16 @@ function eventText(event: WatchEvent, messages: UiMessages): string {
     case 'finished':
       return finishedText(event.job, event.run, messages)
     case 'retry':
-      return l.retry(ref(event.job), reason(event.error), time(event.at))
+      return failedText(messages, event.error, (why) =>
+        l.retry(ref(event.job), why, time(event.at)),
+      )
     case 'paused':
       return l.paused(
         time(event.pause.until),
         event.pause.reason === 'rate-limit' ? q.pauseReasons.rateLimit : q.pauseReasons.usageLimit,
       )
     case 'failed':
-      return l.failed(ref(event.job), reason(event.error))
+      return failedText(messages, event.error, (why) => l.failed(ref(event.job), why))
     case 'indexed':
       return l.indexed(oneLine(event.repo), shortSha(event.sha))
     case 'indexPartial':
@@ -161,7 +163,7 @@ function finishedText(job: Job, run: ReviewRun, messages: UiMessages): string {
     case 'dry-run':
       return l.dryRun(ref(job))
     case 'failed':
-      return l.publishFailed(ref(job), reason(publication.error))
+      return failedText(messages, publication.error, (why) => l.publishFailed(ref(job), why))
   }
 }
 
@@ -176,8 +178,4 @@ function time(at: string): string {
 
 function names(values: readonly string[]): string {
   return namesText(values, NAMES_SHOWN)
-}
-
-function reason(error: unknown): string {
-  return oneLine(errorMessage(error))
 }

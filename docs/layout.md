@@ -598,7 +598,8 @@ src/
                          #   app leaves the alternate screen and raw mode, redraws on return);
                          #   one at a time, a throw as a failed outcome
     data-view.tsx        #   DataView: loading, the error wrapped, or the value; failedText():
-                         #   any error as one line without control characters; failedLines():
+                         #   any error as one line without control characters (in "Could not
+                         #   load" or the catalog sentence it is given); failedLines():
                          #   that line (or the catalog sentence it is given) wrapped over
                          #   ERROR_LINES at most
     scroll-list.tsx      #   useSelection() (↑/↓, PgUp/PgDn, Home/End, Enter; follows the selected

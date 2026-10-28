@@ -232,7 +232,8 @@ than `columns`. Long content goes through `ScrollList`/`ScrollText` and `useSele
 - Every text from outside (names, paths, config values, what GitHub, git or an AI CLI answered)
   goes through `oneLine()`, or `wrapText()` (`textLines()` for drawn lines) when it spans lines;
   every error through `failedNodes(draw, error)` (wrapped over `ERROR_LINES`, so a config error
-  shows its key and reason), `failedText(messages, error)` where one line is all there is, or
+  shows its key and reason), `failedText(messages, error, say?)` where one line is all there is (`say` puts the
+  reason in a sentence of the catalogs, as the watch log does), or
   `<DataView>`. They strip control and bidi characters.
 - A frame drawn as lines takes a `DrawContext` (the catalog, the theme and the width) and draws
   them with the helpers of `frame-lines.tsx` (`textLines()`, `failedNodes()`, `spaced()`,

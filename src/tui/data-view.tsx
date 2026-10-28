@@ -6,8 +6,12 @@ import type { DataState } from './data-hooks.js'
 import type { UiMessages } from './i18n/messages.js'
 import { errorLines, oneLine } from './text-fit.js'
 
-export function failedText(messages: UiMessages, error: unknown): string {
-  return messages.failed(oneLine(errorMessage(error)))
+export function failedText(
+  messages: UiMessages,
+  error: unknown,
+  say: (message: string) => string = messages.failed,
+): string {
+  return say(oneLine(errorMessage(error)))
 }
 
 export function failedLines(
