@@ -64,13 +64,27 @@ export interface FetchOptions {
   signal?: AbortSignal
 }
 
-export interface GitMirror {
+export interface LocalMirror {
   readonly dir: string
+  listFiles(sha: string): Promise<TreeFile[]>
+  readBlobs(files: readonly TreeFile[]): AsyncIterable<{ oid: string; bytes: Uint8Array }>
+}
+
+export interface GitMirror extends LocalMirror {
   fetch(ref: string, keepAs: string, options?: FetchOptions): Promise<string>
   checkout(sha: string, options?: CheckoutOptions): Checkout
   deepen(sha: string, keepAs: string): Promise<boolean>
-  listFiles(sha: string): Promise<TreeFile[]>
-  readBlobs(files: readonly TreeFile[]): AsyncIterable<{ oid: string; bytes: Uint8Array }>
+}
+
+export type MirrorOpening =
+  { status: 'missing'; dir: string } | { status: 'open'; mirror: LocalMirror }
+
+export interface LocalMirrorOptions {
+  dir: string
+  env: NodeJS.ProcessEnv
+  run?: Run
+  runBytes?: RunBytes
+  batchBytes?: number
 }
 
 export async function openGitMirror(options: GitMirrorOptions): Promise<GitMirror> {
@@ -96,19 +110,80 @@ export async function openGitMirror(options: GitMirrorOptions): Promise<GitMirro
   return new GitMirrorRepository(options, run, options.runBytes ?? runCommandBytes, env)
 }
 
-class GitMirrorRepository implements GitMirror {
+export async function openExistingGitMirror(options: LocalMirrorOptions): Promise<MirrorOpening> {
+  if (!(await isBareRepository(options.dir))) return { status: 'missing', dir: options.dir }
+  return {
+    status: 'open',
+    mirror: new LocalGitMirror(
+      options,
+      options.run ?? runCommand,
+      options.runBytes ?? runCommandBytes,
+      gitEnvironment(options.env),
+    ),
+  }
+}
+
+class LocalGitMirror implements LocalMirror {
   readonly dir: string
+  readonly #batchBytes: number
+  protected readonly run: Run
+  protected readonly runBytes: RunBytes
+  protected readonly env: NodeJS.ProcessEnv
+
+  constructor(options: LocalMirrorOptions, run: Run, runBytes: RunBytes, env: NodeJS.ProcessEnv) {
+    this.dir = options.dir
+    this.#batchBytes = options.batchBytes ?? BLOB_BATCH_BYTES
+    this.run = run
+    this.runBytes = runBytes
+    this.env = env
+  }
+
+  async listFiles(sha: string): Promise<TreeFile[]> {
+    const result = await this.run('git', ['-C', this.dir, 'ls-tree', '-r', '-l', '-z', sha], {
+      env: this.env,
+      timeoutMs: GIT_READ_TIMEOUT_MS,
+      maxOutputLength: LIST_MAX_OUTPUT,
+    })
+    if (result.exitCode !== 0) {
+      throw new CheckoutUnavailableError(
+        'fetch-failed',
+        `Could not list the files of ${sha.slice(0, 7)}: ${firstLine(result.stderr)}`,
+      )
+    }
+    return result.stdout.split('\0').flatMap((record) => {
+      const tab = record.indexOf('\t')
+      if (tab === -1) return []
+      const [mode = '', , oid = '', size = ''] = record.slice(0, tab).split(/ +/)
+      return [{ path: record.slice(tab + 1), oid, mode, size: size === '-' ? 0 : Number(size) }]
+    })
+  }
+
+  async *readBlobs(files: readonly TreeFile[]): AsyncIterable<{ oid: string; bytes: Uint8Array }> {
+    for (const batch of batches(files, this.#batchBytes)) {
+      const total = batch.reduce((sum, file) => sum + file.size, 0)
+      const result = await this.runBytes('git', ['-C', this.dir, 'cat-file', '--batch'], {
+        env: this.env,
+        stdin: `${batch.map((file) => file.oid).join('\n')}\n`,
+        timeoutMs: FETCH_TIMEOUT_MS,
+        maxOutputLength: total + 200 * batch.length + 1024,
+      })
+      if (result.exitCode !== 0) {
+        throw new CheckoutUnavailableError(
+          'fetch-failed',
+          `Could not read files from the mirror: ${firstLine(result.stderr)}`,
+        )
+      }
+      yield* parseBatch(result.stdout)
+    }
+  }
+}
+
+class GitMirrorRepository extends LocalGitMirror implements GitMirror {
   readonly #options: GitMirrorOptions
-  readonly #run: Run
-  readonly #runBytes: RunBytes
-  readonly #env: NodeJS.ProcessEnv
 
   constructor(options: GitMirrorOptions, run: Run, runBytes: RunBytes, env: NodeJS.ProcessEnv) {
-    this.dir = options.dir
+    super(options, run, runBytes, env)
     this.#options = options
-    this.#run = run
-    this.#runBytes = runBytes
-    this.#env = env
   }
 
   async fetch(ref: string, keepAs: string, options: FetchOptions = {}): Promise<string> {
@@ -141,10 +216,10 @@ class GitMirrorRepository implements GitMirror {
   checkout(sha: string, options: CheckoutOptions = {}): Checkout {
     const keepAs = options.deepenAs
     return new GitCheckout(
-      this.#run,
+      this.run,
       this.dir,
       sha,
-      this.#env,
+      this.env,
       keepAs === undefined ? undefined : () => this.deepen(sha, keepAs),
     )
   }
@@ -162,45 +237,6 @@ class GitMirrorRepository implements GitMirror {
     }
   }
 
-  async listFiles(sha: string): Promise<TreeFile[]> {
-    const result = await this.#run('git', ['-C', this.dir, 'ls-tree', '-r', '-l', '-z', sha], {
-      env: this.#env,
-      timeoutMs: GIT_READ_TIMEOUT_MS,
-      maxOutputLength: LIST_MAX_OUTPUT,
-    })
-    if (result.exitCode !== 0) {
-      throw new CheckoutUnavailableError(
-        'fetch-failed',
-        `Could not list the files of ${sha.slice(0, 7)}: ${firstLine(result.stderr)}`,
-      )
-    }
-    return result.stdout.split('\0').flatMap((record) => {
-      const tab = record.indexOf('\t')
-      if (tab === -1) return []
-      const [mode = '', , oid = '', size = ''] = record.slice(0, tab).split(/ +/)
-      return [{ path: record.slice(tab + 1), oid, mode, size: size === '-' ? 0 : Number(size) }]
-    })
-  }
-
-  async *readBlobs(files: readonly TreeFile[]): AsyncIterable<{ oid: string; bytes: Uint8Array }> {
-    for (const batch of batches(files, this.#options.batchBytes ?? BLOB_BATCH_BYTES)) {
-      const total = batch.reduce((sum, file) => sum + file.size, 0)
-      const result = await this.#runBytes('git', ['-C', this.dir, 'cat-file', '--batch'], {
-        env: this.#env,
-        stdin: `${batch.map((file) => file.oid).join('\n')}\n`,
-        timeoutMs: FETCH_TIMEOUT_MS,
-        maxOutputLength: total + 200 * batch.length + 1024,
-      })
-      if (result.exitCode !== 0) {
-        throw new CheckoutUnavailableError(
-          'fetch-failed',
-          `Could not read files from the mirror: ${firstLine(result.stderr)}`,
-        )
-      }
-      yield* parseBatch(result.stdout)
-    }
-  }
-
   async #fetchLocked(
     ref: string,
     keepAs: string,
@@ -211,7 +247,7 @@ class GitMirrorRepository implements GitMirror {
     const { owner, repo, token } = this.#options
     const basic = Buffer.from(`x-access-token:${token}`).toString('base64')
     const url = this.#options.remoteUrl ?? `https://github.com/${owner}/${repo}`
-    const fetched = await this.#run(
+    const fetched = await this.run(
       'git',
       [
         '-C',
@@ -226,7 +262,7 @@ class GitMirrorRepository implements GitMirror {
       ],
       {
         env: {
-          ...this.#env,
+          ...this.env,
           GIT_TERMINAL_PROMPT: '0',
           GIT_CONFIG_COUNT: '1',
           GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
@@ -246,27 +282,27 @@ class GitMirrorRepository implements GitMirror {
   }
 
   async #dropOldPullRefs(kept: string): Promise<void> {
-    const listed = await this.#run(
+    const listed = await this.run(
       'git',
       ['-C', this.dir, 'for-each-ref', '--sort=-committerdate', '--format=%(refname)', PULL_REFS],
-      { env: this.#env, timeoutMs: GIT_READ_TIMEOUT_MS },
+      { env: this.env, timeoutMs: GIT_READ_TIMEOUT_MS },
     )
     if (listed.exitCode !== 0) return
     const others = listed.stdout.split('\n').filter((ref) => ref !== '' && ref !== kept)
     const old = others.slice(Math.max((this.#options.keepPullRefs ?? KEEP_PULL_REFS) - 1, 0))
     if (old.length === 0) return
-    await this.#run('git', ['-C', this.dir, 'update-ref', '--stdin'], {
-      env: this.#env,
+    await this.run('git', ['-C', this.dir, 'update-ref', '--stdin'], {
+      env: this.env,
       stdin: old.map((ref) => `delete ${ref}\n`).join(''),
       timeoutMs: GIT_READ_TIMEOUT_MS,
     })
   }
 
   async #resolve(keepAs: string): Promise<string> {
-    const result = await this.#run(
+    const result = await this.run(
       'git',
       ['-C', this.dir, 'rev-parse', '--verify', '-q', `${keepAs}^{commit}`],
-      { env: this.#env, timeoutMs: GIT_READ_TIMEOUT_MS },
+      { env: this.env, timeoutMs: GIT_READ_TIMEOUT_MS },
     )
     const sha = result.stdout.trim()
     if (result.exitCode !== 0 || sha === '') {
