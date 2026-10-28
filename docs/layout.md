@@ -31,6 +31,11 @@ src/
                          #   (injected, with the CI summary) → [checkHead] → reply and resolve
                          #   the fixed threads → createReview; never prints (the conversation
                          #   and the CI it read go out as events)
+    review-progress.ts   #   ReviewProgress: each step of a review as data (fetched, conversation
+                         #   and CI read, CI wait, context, indexing, related, impact, passes, the
+                         #   AI running a review, verify, recheck or skill run, publishing,
+                         #   warning), ReviewProgressSink; reportProgress(): ReviewProvider
+                         #   decorator that reports when the AI starts and finishes a run
     watch-repositories.ts # watchRepositories(): the watch loop — discovery with ETags, planCycle
                          #   (asking the when command before queueing), /phada review comments,
                          #   the next job through the CI gate (readCi: waiting jobs read again
@@ -277,7 +282,8 @@ src/
                          #   read with `codex mcp get --json` before the review
     classify-failure.ts  #   classifyFailure(): an error → transient, usage-limit, rate-limit,
                          #   definitive or fatal
-    review-wiring.ts     #   pullRequestReviewDeps(), ciReaders(), renderReview, reviewRunJson():
+    review-wiring.ts     #   pullRequestReviewDeps() (its progress to a ReviewProgressSink),
+                         #   reviewAndPublishEvents(), ciReaders(), renderReview, reviewRunJson():
                          #   shared by review, watch and prompt
     history-run.ts       #   historyRun(), watchRun(): a run, a failure or a ci-failing skip →
                          #   the history record
@@ -318,8 +324,10 @@ src/
     i18n/                #   fixed review text per language: messages.ts (Messages, messagesFor()),
                          #   en.ts, pt.ts, es.ts; unknown languages fall back to English
     format-error.ts      #   error → one line + exit code (2 usage, 1 failure); --debug details
-    progress.ts          #   withProgress(): ReviewProvider decorator with a live timer on a TTY;
-                         #   indexProgress(): the "Indexing N files…" lines
+    progress.ts          #   liveProgress(): a line with a live timer on a TTY, one line
+                         #   otherwise; indexProgress(): the "Indexing N files…" lines
+    print-review-progress.ts # printReviewProgress(): the review progress as the stderr lines of
+                         #   review and watch
     ci-wait-progress.ts  #   ciWaitProgress(): "Waiting for CI… 3m12s, 2 pending: …" live on a
                          #   TTY, one line at the start and one at the end otherwise
     units.ts             #   duration, tokens, bytes, counts

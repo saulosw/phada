@@ -1,11 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { reportProgress } from '../app/review-progress.js'
+import type { ReviewPass } from '../investigation/tools/tool-log.js'
 import type { ReviewOutput, ReviewPrompt, ReviewProvider } from '../providers/types.js'
-import { withProgress } from './progress.js'
+import { printReviewProgress } from './print-review-progress.js'
 import type { TextOutput } from './progress.js'
 
 const PROMPT: ReviewPrompt = { instructions: 'rules', data: 'diff', outputSchema: {} }
 const OUTPUT: ReviewOutput = { text: 'ok', durationMs: 1 }
 const CLEAR_LINE = '\r\u001B[2K'
+
+function printedRun(provider: ReviewProvider, output: TextOutput, pass: ReviewPass = 'review') {
+  return reportProgress(provider, pass, printReviewProgress(output))
+}
 
 function recorder(isTTY: boolean): TextOutput & { written: string[] } {
   const written: string[] = []
@@ -38,10 +44,10 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('withProgress', () => {
+describe('the AI running a pass, printed', () => {
   it('keeps the provider id and forwards the prompt and the output', async () => {
     const { provider, prompts, settle } = deferredProvider()
-    const wrapped = withProgress(provider, recorder(false))
+    const wrapped = printedRun(provider, recorder(false))
 
     const review = wrapped.review(PROMPT)
     settle().resolve(OUTPUT)
@@ -55,7 +61,7 @@ describe('withProgress', () => {
     const { provider, settle } = deferredProvider()
     const output = recorder(true)
 
-    const review = withProgress(provider, output).review(PROMPT)
+    const review = printedRun(provider, output).review(PROMPT)
     await vi.advanceTimersByTimeAsync(75_000)
     settle().resolve(OUTPUT)
     await review
@@ -71,7 +77,7 @@ describe('withProgress', () => {
     const { provider, settle } = deferredProvider()
     const output = recorder(false)
 
-    const review = withProgress(provider, output).review(PROMPT)
+    const review = printedRun(provider, output).review(PROMPT)
     await vi.advanceTimersByTimeAsync(30_000)
     settle().resolve(OUTPUT)
     await review
@@ -83,7 +89,7 @@ describe('withProgress', () => {
     const { provider, settle } = deferredProvider()
     const output = recorder(false)
 
-    const review = withProgress(provider, output, 'Verifying findings').review(PROMPT)
+    const review = printedRun(provider, output, 'verify').review(PROMPT)
     settle().resolve(OUTPUT)
     await review
 
@@ -92,12 +98,25 @@ describe('withProgress', () => {
     ])
   })
 
+  it('names the recheck of earlier comments', async () => {
+    const { provider, settle } = deferredProvider()
+    const output = recorder(false)
+
+    const review = printedRun(provider, output, 'recheck').review(PROMPT)
+    settle().resolve(OUTPUT)
+    await review
+
+    expect(output.written).toEqual([
+      'Rechecking open comments with fake-cli… (this can take a few minutes)\n',
+    ])
+  })
+
   it('stops the timer and clears the line when the provider fails', async () => {
     const { provider, settle } = deferredProvider()
     const output = recorder(true)
     const failure = new Error('boom')
 
-    const review = withProgress(provider, output).review(PROMPT)
+    const review = printedRun(provider, output).review(PROMPT)
     settle().reject(failure)
     await expect(review).rejects.toBe(failure)
     const writes = output.written.length
@@ -109,7 +128,7 @@ describe('withProgress', () => {
   })
 })
 
-describe('withProgress and native skills', () => {
+describe('a native skill run, printed', () => {
   it('passes a native skill run through with its own label', async () => {
     const output = recorder(false)
     const runSkill = vi.fn(async () => ({ text: 'ok', durationMs: 1, blocked: [] }))
@@ -119,7 +138,7 @@ describe('withProgress and native skills', () => {
       runSkill,
     }
 
-    const wrapped = withProgress(provider, output)
+    const wrapped = printedRun(provider, output)
     const result = await wrapped.runSkill?.({} as never)
 
     expect(result?.text).toBe('ok')
@@ -130,6 +149,6 @@ describe('withProgress and native skills', () => {
   it('does not run skills when the provider does not', () => {
     const provider: ReviewProvider = { id: 'ollama', review: () => Promise.reject(new Error('x')) }
 
-    expect(withProgress(provider, recorder(false)).runSkill).toBeUndefined()
+    expect(printedRun(provider, recorder(false)).runSkill).toBeUndefined()
   })
 })

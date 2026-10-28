@@ -71,6 +71,7 @@ import type {
 import { NOT_STARTED } from '../watch/next-job.js'
 import { ciGateReader } from './ci-gate-reader.js'
 import { printWatchEvents } from './watch-events.js'
+import { printReviewProgress } from './print-review-progress.js'
 import { watchStatusText } from './watch-status.js'
 import { ABORTED_EXIT_CODE, createStopControl, trackRunningJob } from './watch-stop.js'
 import type { StopControl } from './watch-stop.js'
@@ -79,6 +80,7 @@ export { ABORTED_EXIT_CODE }
 
 export interface WatchCommandDeps extends ReviewWiringDeps, GitHubTokenDeps {
   stdout: TextOutput
+  stderr: TextOutput
   fetchPullRequest: (options: FetchPullRequestOptions) => Promise<PullRequest>
   fetchReviewState: (options: FetchReviewStateOptions) => Promise<PullRequestReviewState>
   fetchPullComments: (options: FetchReviewStateOptions) => Promise<PullComment[]>
@@ -426,7 +428,13 @@ async function runJob(
       fetchPullComments: (pull) => deps.fetchPullComments({ ...pull, token }),
       ci: ciReaders(deps, publishTarget),
       reviewDeps: (pullRequest) =>
-        pullRequestReviewDeps(deps, publishTarget, { ...choice, detached: true }, pullRequest),
+        pullRequestReviewDeps(
+          deps,
+          publishTarget,
+          { ...choice, detached: true },
+          pullRequest,
+          printReviewProgress(deps.stderr),
+        ),
       render: renderReview,
       createReview: (pullRequest, rendered) =>
         deps.createReview({

@@ -15,16 +15,16 @@ import type { CliCommand } from './cli/args.js'
 import { requireGitHubToken } from './cli/github-token.js'
 import { formatError } from './cli/format-error.js'
 import { formatGitHubPreview } from './cli/format-github.js'
-import { formatCiLine, formatCiSection } from './cli/format-ci.js'
+import { formatCiSection } from './cli/format-ci.js'
 import { formatContextSection } from './cli/format-context.js'
-import { formatConversationLine, formatConversationSection } from './cli/format-conversation.js'
+import { formatConversationSection } from './cli/format-conversation.js'
 import { formatImpactSection } from './cli/format-impact.js'
 import { formatInvestigationLine, formatInvestigationSection } from './cli/format-investigation.js'
 import { formatRelatedSection } from './cli/format-related.js'
 import { formatPassesSection, formatSkillRunLines } from './cli/format-passes.js'
 import type { BlockedFix } from './cli/format-passes.js'
 import { blockedFixer } from './cli/blocked-fix.js'
-import { ciWaitProgress } from './cli/ci-wait-progress.js'
+import { printReviewProgress } from './cli/print-review-progress.js'
 import type { ReviewOutcome } from './review/types.js'
 import {
   formatPublishedMessage,
@@ -33,7 +33,7 @@ import {
   formatSkipMessage,
   formatWouldResolveMessage,
 } from './cli/format-publication.js'
-import { formatPullRequestSummary, formatReview } from './cli/format-review.js'
+import { formatReview } from './cli/format-review.js'
 import { messagesFor } from './cli/i18n/messages.js'
 import { runIndex } from './cli/index-command.js'
 import { runInit } from './cli/init.js'
@@ -45,6 +45,7 @@ import {
   mcpNameChecker,
   pullRequestReviewDeps,
   renderReview,
+  reviewAndPublishEvents,
   reviewRunJson,
 } from './cli/review-wiring.js'
 import { assertProviderChoice } from './cli/provider-choice.js'
@@ -213,14 +214,14 @@ function reviewAndPublishDeps(
   command: ReviewCommand,
 ): ReviewAndPublishDeps {
   const target = { ...command.ref, token }
-  const ciWait = ciWaitProgress(deps.stderr, deps.clock)
+  const progress = printReviewProgress(deps.stderr, deps.clock)
   const forever = new AbortController().signal
   return {
     fetchPullRequest: (ref) => deps.fetchPullRequest({ ...ref, token }),
     fetchReviewState: (ref) => deps.fetchReviewState({ ...ref, token }),
     fetchPullComments: (ref) => deps.fetchPullComments({ ...ref, token }),
     ci: ciReaders(deps, target),
-    reviewDeps: (pullRequest) => pullRequestReviewDeps(deps, target, choice, pullRequest),
+    reviewDeps: (pullRequest) => pullRequestReviewDeps(deps, target, choice, pullRequest, progress),
     render: renderReview,
     createReview: (pullRequest, rendered) =>
       deps.createReview({
@@ -242,21 +243,10 @@ function reviewAndPublishDeps(
       now: () => deps.clock().toISOString(),
       sleep: (ms) => deps.sleep(ms, forever),
     },
-    events: {
-      fetched: (pullRequest) => deps.stderr.write(`${formatPullRequestSummary(pullRequest)}\n`),
-      reviewed: (reviewed, pullRequest) => printReviewed(deps, command, reviewed, pullRequest),
-      publishing: () => deps.stderr.write('Publishing the review…\n'),
-      warning: (message) => deps.stderr.write(`Warning: ${toTerminalText(message)}\n`),
-      conversationRead: (conversation) => writeLine(deps, formatConversationLine(conversation)),
-      ciRead: (ci) => writeLine(deps, formatCiLine(ci)),
-      ciWaiting: (wait) => ciWait.waiting(wait),
-      ciWaited: (wait) => ciWait.waited(wait),
-    },
+    events: reviewAndPublishEvents(progress, (reviewed, pullRequest) =>
+      printReviewed(deps, command, reviewed, pullRequest),
+    ),
   }
-}
-
-function writeLine(deps: Pick<MainDeps, 'stderr'>, line: string | undefined): void {
-  if (line !== undefined) deps.stderr.write(`${line}\n`)
 }
 
 function printReviewed(

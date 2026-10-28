@@ -1,4 +1,3 @@
-import type { ReviewPrompt, ReviewProvider, SkillRunRequest } from '../providers/types.js'
 import { formatElapsed } from './units.js'
 
 export interface TextOutput {
@@ -9,38 +8,7 @@ export interface TextOutput {
 export const TICK_MS = 1000
 export const CLEAR_LINE = '\r\u001B[2K'
 
-export function withProgress(
-  provider: ReviewProvider,
-  output: TextOutput,
-  action = 'Reviewing',
-): ReviewProvider {
-  const runSkill = provider.runSkill?.bind(provider)
-  return {
-    id: provider.id,
-    async review(prompt: ReviewPrompt) {
-      const stop = showProgress(`${action} with ${provider.id}…`, output)
-      try {
-        return await provider.review(prompt)
-      } finally {
-        stop()
-      }
-    },
-    ...(runSkill === undefined
-      ? {}
-      : {
-          async runSkill(request: SkillRunRequest) {
-            const stop = showProgress(`Running the skill with ${provider.id}…`, output)
-            try {
-              return await runSkill(request)
-            } finally {
-              stop()
-            }
-          },
-        }),
-  }
-}
-
-function showProgress(label: string, output: TextOutput): () => void {
+export function liveProgress(label: string, output: TextOutput): () => void {
   if (output.isTTY !== true) {
     output.write(`${label} (this can take a few minutes)\n`)
     return () => {}
