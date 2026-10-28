@@ -13,7 +13,14 @@ export type ReviewStep =
   | { kind: 'related'; count: number }
   | { kind: 'impact'; symbols: number }
   | { kind: 'pass'; skill: string; index: number; total: number }
-  | { kind: 'ai'; provider: string; run: AiRun; startedAt: number; endedAt?: number }
+  | {
+      kind: 'ai'
+      provider: string
+      run: AiRun
+      startedAt: number
+      endedAt?: number
+      answered?: boolean
+    }
   | { kind: 'publish' }
 
 export interface ReviewSteps {
@@ -74,7 +81,7 @@ export function stepsAfter(state: ReviewSteps, event: ReviewProgress, now: numbe
         ...state,
         steps: state.steps.map((entry, at) =>
           at === runningAi(state.steps, event.run) && entry.kind === 'ai'
-            ? { ...entry, endedAt: now }
+            ? { ...entry, endedAt: now, answered: event.answered }
             : entry,
         ),
       }
@@ -91,6 +98,10 @@ function runningAi(steps: readonly ReviewStep[], run: AiRun): number {
   return steps.findLastIndex(
     (entry) => entry.kind === 'ai' && entry.run === run && entry.endedAt === undefined,
   )
+}
+
+export function stepFailed(step: ReviewStep): boolean {
+  return step.kind === 'ai' && step.answered === false
 }
 
 export function stepRunning(step: ReviewStep, last: boolean): boolean {
@@ -136,12 +147,14 @@ export function stepText(
       return s.impact(step.symbols)
     case 'pass':
       return s.pass(oneLine(step.skill), step.index, step.total)
-    case 'ai':
-      return s.ai(
+    case 'ai': {
+      const text = s.ai(
         oneLine(step.provider),
         messages.reviewFlow.runs[step.run],
         durationText((step.endedAt ?? time) - step.startedAt),
       )
+      return step.answered === false ? `${text} · ${s.noAnswer}` : text
+    }
     case 'publish':
       return s.publishing
   }

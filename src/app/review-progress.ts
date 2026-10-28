@@ -24,7 +24,7 @@ export type ReviewProgress =
   | { kind: 'passesPlanned'; plan: PassPlan[] }
   | { kind: 'passStarted'; skill: string; index: number; total: number }
   | { kind: 'aiStarted'; provider: string; run: AiRun }
-  | { kind: 'aiFinished'; provider: string; run: AiRun }
+  | { kind: 'aiFinished'; provider: string; run: AiRun; answered: boolean }
   | { kind: 'publishing' }
   | { kind: 'warning'; message: string }
 
@@ -37,10 +37,13 @@ export function reportProgress(
 ): ReviewProvider {
   const running = async <T>(run: AiRun, work: () => Promise<T>): Promise<T> => {
     progress({ kind: 'aiStarted', provider: provider.id, run })
+    let answered = false
     try {
-      return await work()
+      const output = await work()
+      answered = true
+      return output
     } finally {
-      progress({ kind: 'aiFinished', provider: provider.id, run })
+      progress({ kind: 'aiFinished', provider: provider.id, run, answered })
     }
   }
   const runSkill = provider.runSkill?.bind(provider)

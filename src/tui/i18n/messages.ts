@@ -153,6 +153,7 @@ export interface ReviewFlowMessages {
     impact(symbols: number): string
     pass(skill: string, index: number, total: number): string
     ai(provider: string, run: string, elapsed: string): string
+    noAnswer: string
     publishing: string
   }
   runs: Readonly<Record<AiRun, string>>

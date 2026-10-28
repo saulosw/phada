@@ -282,7 +282,7 @@ describe('reviewing a pull request from the app', () => {
     expect(frame()).toContain('› claude-cli: review · 12s')
     expectFits(frame(), { columns: 80, rows: 24 })
 
-    progress({ kind: 'aiFinished', provider: 'claude-cli', run: 'review' })
+    progress({ kind: 'aiFinished', provider: 'claude-cli', run: 'review', answered: true })
     asked[0]?.resolve({
       status: 'reviewed',
       detail: detail(),
@@ -394,6 +394,7 @@ describe('reviewing a pull request from the app', () => {
     const { frame, footer, press, showing } = flow
     const asked = await running(flow)
     asked.progress({ kind: 'fetched', pullRequest: pullRequestFixture() })
+    asked.progress({ kind: 'aiStarted', provider: 'claude-cli', run: 'review' })
     await showing('✓ Pull request: Let users spend crystals')
     expect(footer()).toContain('Esc cancel')
     await press(KEYS.escape)
@@ -411,9 +412,12 @@ describe('reviewing a pull request from the app', () => {
     await showing('Cancelling…')
     expect(asked.signal.aborted).toBe(true)
     expect(footer()).not.toContain('Esc')
+    asked.progress({ kind: 'aiFinished', provider: 'claude-cli', run: 'review', answered: false })
     asked.resolve({ status: 'cancelled' })
     await showing('Cancelled: nothing was posted.')
     expect(frame()).toContain('✓ Pull request: Let users spend crystals')
+    expect(frame()).toContain('✕ claude-cli: review · 0s · no answer')
+    expect(frame()).not.toContain('✓ claude-cli')
     expect(footer()).toContain('Esc back')
     expectFits(frame(), { columns: 80, rows: 24 })
     await press(KEYS.escape)

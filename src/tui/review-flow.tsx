@@ -33,7 +33,7 @@ import { Mascot, MASCOT_FRAMES } from './mascot.js'
 import { absoluteTime } from './relative-time.js'
 import { reviewDetailLines } from './review-detail.js'
 import { refusalText } from './refusal-text.js'
-import { NO_STEPS, stepRunning, stepsAfter, stepText } from './review-steps.js'
+import { NO_STEPS, stepFailed, stepRunning, stepsAfter, stepText } from './review-steps.js'
 import type { ReviewSteps } from './review-steps.js'
 import { ScrollList, ScrollText, useSelection } from './scroll-list.js'
 import { TextFieldLine, useTextField } from './text-field.js'
@@ -736,7 +736,13 @@ function stepLines(
     const running = stepRunning(step, index === steps.length - 1)
     return (
       <Text>
-        {running ? <Text color={colors.accent}>› </Text> : <Text color={colors.ok}>✓ </Text>}
+        {running ? (
+          <Text color={colors.accent}>› </Text>
+        ) : stepFailed(step) ? (
+          <Text color={colors.error}>✕ </Text>
+        ) : (
+          <Text color={colors.ok}>✓ </Text>
+        )}
         {stepText(step, refText(target), messages, time)}
       </Text>
     )

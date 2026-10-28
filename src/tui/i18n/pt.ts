@@ -946,6 +946,7 @@ export const portuguese: UiMessages = {
         `Impacto: ${number(symbols)} ${symbols === 1 ? 'símbolo alterado' : 'símbolos alterados'}`,
       pass: (skill, index, total) => `Skill ${skill} (${index} de ${total})`,
       ai: (provider, run, elapsed) => `${provider}: ${run} · ${elapsed}`,
+      noAnswer: 'sem resposta',
       publishing: 'Publicando no GitHub…',
     },
     runs: { review: 'revisão', verify: 'verificação', recheck: 'reavaliação', skill: 'skill' },

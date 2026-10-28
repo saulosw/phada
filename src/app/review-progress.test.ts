@@ -30,7 +30,7 @@ describe('reportProgress', () => {
     expect(prompts).toEqual([PROMPT])
     expect(events).toEqual([
       { kind: 'aiStarted', provider: 'fake-cli', run: 'verify' },
-      { kind: 'aiFinished', provider: 'fake-cli', run: 'verify' },
+      { kind: 'aiFinished', provider: 'fake-cli', run: 'verify', answered: true },
     ])
   })
 
@@ -41,7 +41,10 @@ describe('reportProgress', () => {
 
     await expect(reportProgress(provider, 'recheck', sink).review(PROMPT)).rejects.toBe(failure)
 
-    expect(events.map(({ kind }) => kind)).toEqual(['aiStarted', 'aiFinished'])
+    expect(events).toEqual([
+      { kind: 'aiStarted', provider: 'fake-cli', run: 'recheck' },
+      { kind: 'aiFinished', provider: 'fake-cli', run: 'recheck', answered: false },
+    ])
   })
 
   it('reports a native skill run as its own kind of run', async () => {
@@ -57,7 +60,7 @@ describe('reportProgress', () => {
     expect(run?.text).toBe('ok')
     expect(events).toEqual([
       { kind: 'aiStarted', provider: 'claude-cli', run: 'skill' },
-      { kind: 'aiFinished', provider: 'claude-cli', run: 'skill' },
+      { kind: 'aiFinished', provider: 'claude-cli', run: 'skill', answered: true },
     ])
   })
 
