@@ -15,8 +15,12 @@ export function textLines(text: string, width: number, color?: string): ReactNod
   return wrapText(text, width).map((line) => <Text color={color}>{line}</Text>)
 }
 
-export function failedNodes({ messages, theme, width }: DrawContext, error: unknown): ReactNode[] {
-  return failedLines(messages, error, width).map((line) => (
+export function failedNodes(
+  { messages, theme, width }: DrawContext,
+  error: unknown,
+  say?: (message: string) => string,
+): ReactNode[] {
+  return failedLines(messages, error, width, say).map((line) => (
     <Text color={theme.colors.error}>{line}</Text>
   ))
 }

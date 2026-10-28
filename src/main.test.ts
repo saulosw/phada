@@ -2502,6 +2502,33 @@ describe('phada watch', () => {
     })
   })
 
+  it('cleans the warning of a run it could not save before printing it', async () => {
+    const h = harness({
+      files: withConfig(),
+      listPulls: listed,
+      review: () => Promise.resolve(WITH_FINDING),
+      openHistoryStore: async (path) => {
+        const store = await openHistoryStore(join(storeDir, `unsaved-${storeCount}.sqlite`))
+        expect(path).toContain('history.sqlite')
+        return new Proxy(store, {
+          get: (target, key) => {
+            if (key === 'addRun') {
+              return () => {
+                throw new Error('disk \u001B[2Jfull')
+              }
+            }
+            const value: unknown = Reflect.get(target, key)
+            return typeof value === 'function' ? value.bind(target) : value
+          },
+        })
+      },
+    })
+
+    expect(await run(['watch', '--once', '--backfill'], h.deps)).toBe(0)
+    expect(h.stderr()).toContain('Warning: could not save the run in the history (disk [2Jfull).\n')
+    expect(h.stderr()).not.toContain('\u001B')
+  })
+
   it('saves the findings a watch review published', async () => {
     const h = harness({
       files: withConfig(),

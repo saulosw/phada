@@ -1,3 +1,4 @@
+import { toTerminalText } from '../app/terminal-text.js'
 import { dataFiles } from '../config/data-paths.js'
 import { loadTopLevelUserLayers, userConfigFile } from '../config/user-config.js'
 import type { StopSignal } from './app-command.js'
@@ -32,7 +33,7 @@ export async function runWatch(command: WatchCommand, deps: WatchCommandDeps): P
   const write = (text: string) => deps.stderr.write(text)
   const handle = await startWatch({ once: command.once, backfill: command.backfill }, deps, {
     event: (event) => write(`${formatWatchEvent(event, deps.clock())}\n`),
-    warning: (message) => write(`Warning: ${message}\n`),
+    warning: (message) => write(`Warning: ${toTerminalText(message)}\n`),
     progress: () => ({
       review: printReviewProgress(deps.stderr),
       reviewAndPublish: () => undefined,

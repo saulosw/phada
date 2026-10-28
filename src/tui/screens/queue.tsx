@@ -1,7 +1,6 @@
 import { Box, Text } from 'ink'
 import type { ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
-import { errorMessage } from '../../app/error-message.js'
 import type { QueueJob, QueueView } from '../../app/read-queue.js'
 import {
   useAppDeps,
@@ -16,6 +15,8 @@ import { useAppWatch } from '../app-watch.js'
 import type { AppWatchSession, RunningJob, WatchNotice } from '../app-watch.js'
 import { usePolled } from '../data-hooks.js'
 import { DataView } from '../data-view.js'
+import { failedNodes, textLines } from '../frame-lines.js'
+import type { DrawContext } from '../frame-lines.js'
 import type { QueueRowKind, UiMessages } from '../i18n/messages.js'
 import { labeledLines } from '../labeled-lines.js'
 import { absoluteTime, relativeTime } from '../relative-time.js'
@@ -154,7 +155,7 @@ function QueueList({
         ]
       : []),
     ...headerLines(view, { time, home, pid, watch }, messages, theme),
-    ...noticeLines(watch.notice, messages, theme),
+    ...noticeLines(watch.notice, { messages, theme, width: size.columns }),
   ]
   const kindWidth = Math.max(...Object.values(messages.queue.kinds).map(textWidth))
   const refWidth = Math.min(
@@ -223,21 +224,25 @@ function WatchLog() {
   const lines =
     watch.log.length === 0
       ? [<Text color={theme.colors.dim}>{messages.queue.log.empty}</Text>]
-      : watch.log.map((entry) => logLine(entry, messages, theme))
+      : watch.log.flatMap((entry) =>
+          textLines(watchLogText(entry, messages), size.columns, logColor(entry, theme)),
+        )
   return <ScrollText lines={lines} rows={size.rows} from="end" />
 }
 
 function logLine(entry: WatchLogEntry, messages: UiMessages, theme: Theme): ReactNode {
+  return <Text color={logColor(entry, theme)}>{watchLogText(entry, messages)}</Text>
+}
+
+function logColor(entry: WatchLogEntry, theme: Theme): string | undefined {
   const tone = watchLogTone(entry)
-  const color =
-    tone === 'ok'
-      ? theme.colors.ok
-      : tone === 'warn'
-        ? theme.colors.warn
-        : tone === 'error'
-          ? theme.colors.error
-          : undefined
-  return <Text color={color}>{watchLogText(entry, messages)}</Text>
+  return tone === 'ok'
+    ? theme.colors.ok
+    : tone === 'warn'
+      ? theme.colors.warn
+      : tone === 'error'
+        ? theme.colors.error
+        : undefined
 }
 
 interface WatchHeader {
@@ -331,16 +336,12 @@ function stateLines(view: QueueView, now: Date, messages: UiMessages, theme: The
   return lines
 }
 
-function noticeLines(
-  notice: WatchNotice | undefined,
-  messages: UiMessages,
-  { colors }: Theme,
-): ReactNode[] {
+function noticeLines(notice: WatchNotice | undefined, draw: DrawContext): ReactNode[] {
   if (notice === undefined) return []
-  const w = messages.queue.watch
+  const w = draw.messages.queue.watch
   return notice.kind === 'elsewhere'
-    ? [<Text color={colors.warn}>{w.elsewhere(notice.pid)}</Text>]
-    : [<Text color={colors.error}>{w.startFailed(oneLine(errorMessage(notice.error)))}</Text>]
+    ? [<Text color={draw.theme.colors.warn}>{w.elsewhere(notice.pid)}</Text>]
+    : failedNodes(draw, notice.error, w.startFailed)
 }
 
 function rowDetail(

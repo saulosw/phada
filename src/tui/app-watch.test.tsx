@@ -7,6 +7,7 @@ import type { ReviewProgress } from '../app/review-progress.js'
 import type { WatchEnd, WatchEvent, WatchObserver } from '../app/watch-event.js'
 import {
   emptyQueue,
+  flatFrame,
   frameLines,
   KEYS,
   minutesFrom,
@@ -207,15 +208,41 @@ describe('the watch of the app', () => {
     expect(frame()).toContain('Watch not running')
   })
 
-  it('shows what kept the watch from starting in one line', async () => {
+  it('shows what kept the watch from starting, wrapped so the key and the reason show', async () => {
     const { frame, press, showing } = openWatch({
-      watch: fakeWatch({ fail: new Error('Nothing to watch: add watch.repos\nto the config.') }),
+      watch: fakeWatch({
+        fail: new Error(
+          'Invalid config /home/ana/.config/phada/config.yml: watch.repos.0.repo: \u001B[2Jexpected owner/repo, got "acme"',
+        ),
+      }),
     })
     await showing('w start the watch')
     await press('w')
     await showing('The watch did not start')
-    expect(frame()).toContain('The watch did not start: Nothing to watch: add watch.repos to')
+    expect(flatFrame(frame())).toContain(
+      'The watch did not start: Invalid config /home/ana/.config/phada/config.yml: watch.repos.0.repo: [2Jexpected owner/repo, got "acme"',
+    )
+    expect(frame()).not.toContain('\u001B[2J')
     expect(frame()).toContain('Watch not running')
+    expectFits(frame())
+  })
+
+  it('wraps a long line of the log in full on l', async () => {
+    const { frame, press, showing, watch } = openWatch()
+    await showing('w start the watch')
+    await press('w')
+    await showing('Watch started in this app.')
+    watch.emit({
+      kind: 'failed',
+      job: JOB,
+      error: new Error(
+        'The AI CLI ended with exit code 1 after printing a long explanation of what went wrong with the review of this pull request',
+      ),
+    })
+    await showing('l log')
+    await press('l')
+    await showing('Esc back')
+    expect(flatFrame(frame())).toContain('what went wrong with the review of this pull request')
     expectFits(frame())
   })
 
