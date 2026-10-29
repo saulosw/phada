@@ -270,6 +270,53 @@ describe('reviewAndPublish', () => {
     expect(calls.events).toEqual(['fetched', 'reviewed', 'publishing'])
   })
 
+  describe('with a finding of the repository the change did not cause', () => {
+    const answer = () =>
+      reviewReportJson({
+        findings: [
+          findingFixture({ line: 3, confidence: 95 }),
+          { ...findingFixture({ line: 7, title: 'balance has no caller' }), scope: 'repository' },
+        ],
+      })
+    const withRepositoryConfig = (deps: ReviewAndPublishDeps, text: string | null) => {
+      const reviewDeps = deps.reviewDeps
+      deps.reviewDeps = (pullRequest) => ({
+        ...reviewDeps(pullRequest),
+        contextSources: {
+          ...SOURCES,
+          readTree: async () => ({
+            entries: text === null ? [] : [{ path: '.phada/config.yml', size: text.length }],
+            truncated: false,
+          }),
+          readRepoFile: async (path) => (path === '.phada/config.yml' ? text : null),
+        },
+      })
+    }
+
+    it('plans no line comment for it and keeps it as debt by default', async () => {
+      const { deps } = setup({}, PR, undefined, answer)
+      withRepositoryConfig(deps, null)
+
+      const run = await reviewAndPublish(INPUT, deps)
+
+      if (run.status !== 'reviewed') throw new Error('expected a review')
+      expect(run.plan.comments.map(({ line }) => line)).toEqual([3])
+      expect(run.rendered.comments.map(({ line }) => line)).toEqual([3])
+      const { outcome } = run.reviewed
+      expect(outcome.status === 'reviewed' && outcome.result.debt).toMatchObject([{ line: 7 }])
+    })
+
+    it('posts it as a line comment with review.debt: comments in the repository config', async () => {
+      const { deps } = setup({}, PR, undefined, answer)
+      withRepositoryConfig(deps, 'review:\n  debt: comments\n')
+
+      const run = await reviewAndPublish(INPUT, deps)
+
+      if (run.status !== 'reviewed') throw new Error('expected a review')
+      expect(run.plan.comments.map(({ line }) => line)).toEqual([3, 7])
+    })
+  })
+
   it('skips a commit Phada reviewed with threads still open, without calling the AI', async () => {
     const { deps, calls } = setup({ fetchReviewState: async () => state({ reviewedHead: true }) })
 
