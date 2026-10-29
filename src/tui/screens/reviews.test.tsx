@@ -102,6 +102,7 @@ function detail(): ReviewDetail {
         rule: null,
         skill: null,
         sources: [],
+        scope: 'change',
       },
       {
         severity: 'P1',
@@ -114,8 +115,10 @@ function detail(): ReviewDetail {
         rule: null,
         skill: null,
         sources: [],
+        scope: 'change',
       },
     ],
+    debt: [],
     worthChecking: [
       {
         severity: 'P2',
@@ -128,6 +131,7 @@ function detail(): ReviewDetail {
         rule: null,
         skill: null,
         sources: [],
+        scope: 'change',
       },
     ],
     publication: {
@@ -362,6 +366,48 @@ describe('the Reviews screen', () => {
     expect(text).toMatch(/\s+src\/cart.ts:12 applies the gift card first/)
     expect(text).toMatch(/unverified\s+Covers every coupon/)
     expect(text).not.toContain('\u0007')
+  })
+
+  it('marks the findings of the repository and lists the repository debt in 80×24', async () => {
+    const base = detail()
+    const [first] = base.findings
+    if (first === undefined) throw new Error('fixture without findings')
+    const { frame, press, showing } = openReviews({
+      detail: () => ({
+        ...base,
+        findings: [{ ...first, scope: 'repository' }],
+        debt: [
+          {
+            ...first,
+            file: 'src/legacy.ts',
+            line: 4,
+            title: 'Old total helper nobody calls\u0007',
+            scope: 'repository',
+          },
+        ],
+      }),
+    })
+    await showing('Enter open')
+    await press(KEYS.enter)
+    await showing('Repository debt (1)')
+    const text = frame()
+    expectFits(text, { columns: 80, rows: 24 })
+    expect(text).toMatch(/P0\s+src\/cart.ts:12\s+Total ignores the discount · debt\n/)
+    expect(text).toMatch(/P0\s+src\/legacy.ts:4\s+Old total helper nobody calls\n/)
+    expect(text).not.toContain('\u0007')
+  })
+
+  it('names the repository debt in the language of the app', async () => {
+    const base = detail()
+    const [first] = base.findings
+    if (first === undefined) throw new Error('fixture without findings')
+    const { press, showing } = openReviews({
+      language: 'pt-BR',
+      detail: () => ({ ...base, debt: [{ ...first, scope: 'repository' }] }),
+    })
+    await showing('Enter')
+    await press(KEYS.enter)
+    await showing('Débito do repositório (1)')
   })
 
   it('names the claims in the language of the app', async () => {

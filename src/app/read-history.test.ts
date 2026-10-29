@@ -260,6 +260,7 @@ describe('readReviewDetail', () => {
           rule: 'cents',
           skill: 'phada',
           sources: ['rule:cents'],
+          scope: 'change',
         },
       ],
       worthChecking: [],
@@ -406,6 +407,29 @@ describe('readReviewDetail', () => {
       { claim: 'Covers the cart', verdict: 'unverified', evidence: null },
     ])
     expect(reviewDetailOf({ ...RUN, resultJson: REVIEW_JSON }, []).claims).toEqual([])
+  })
+
+  it('reads the scope of each finding and the repository debt of a stored review', () => {
+    const stored = JSON.parse(REVIEW_JSON) as {
+      review: { findings: Record<string, unknown>[] } & Record<string, unknown>
+    }
+    const [finding] = stored.review.findings
+    const withDebt = JSON.stringify({
+      ...stored,
+      review: {
+        ...stored.review,
+        findings: [{ ...finding, scope: 'repository' }],
+        debt: [{ ...finding, line: 9, title: 'Old helper', scope: 'repository' }, 'not a finding'],
+      },
+    })
+
+    const detail = reviewDetailOf({ ...RUN, resultJson: withDebt }, [])
+
+    expect(detail.findings.map(({ scope }) => scope)).toEqual(['repository'])
+    expect(detail.debt).toMatchObject([{ line: 9, title: 'Old helper', scope: 'repository' }])
+    const older = reviewDetailOf({ ...RUN, resultJson: REVIEW_JSON }, [])
+    expect(older.findings.map(({ scope }) => scope)).toEqual(['change'])
+    expect(older.debt).toEqual([])
   })
 
   it('reads nothing for an unknown run or without a history', () => {

@@ -75,10 +75,14 @@ export function reviewDetailLines(
         : wrapText(detail.summary, width - 2).map((line) => <Text>{`  ${line}`}</Text>),
     ),
     ...section(d.claims(detail.claims.length), claimLines(detail.claims, messages, theme, width)),
-    ...section(d.findings(detail.findings.length), findingLines(detail.findings, theme, width)),
+    ...section(
+      d.findings(detail.findings.length),
+      findingLines(detail.findings, theme, width, d.debtMark),
+    ),
+    ...section(d.debt(detail.debt.length), findingLines(detail.debt, theme, width)),
     ...section(
       d.worthChecking(detail.worthChecking.length),
-      findingLines(detail.worthChecking, theme, width),
+      findingLines(detail.worthChecking, theme, width, d.debtMark),
     ),
     ...section(
       d.feedback(detail.published.length),
@@ -92,6 +96,7 @@ function findingLines(
   findings: readonly StoredFinding[],
   theme: Theme,
   columns: number,
+  debtMark?: string,
 ): ReactNode[] {
   const places = findings.map((finding) => place(finding.file, finding.line ?? undefined))
   const width = placeWidth(places, columns)
@@ -105,6 +110,9 @@ function findingLines(
       {fit(places[index] ?? '', width, 'start')}
       {GAP}
       {oneLine(finding.title)}
+      {debtMark !== undefined && finding.scope === 'repository' ? (
+        <Text color={theme.colors.dim}>{` · ${debtMark}`}</Text>
+      ) : null}
     </Text>,
     ...(finding.why === null
       ? []

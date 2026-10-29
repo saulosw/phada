@@ -550,6 +550,8 @@ export interface ReviewsMessages {
     claims(count: number): string
     findings(count: number): string
     worthChecking(count: number): string
+    debt(count: number): string
+    debtMark: string
     feedback(count: number): string
     nothingPosted: string
     wouldResolve(count: number): string

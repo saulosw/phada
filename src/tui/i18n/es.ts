@@ -311,6 +311,8 @@ export const spanish: UiMessages = {
       claims: (count) => `Afirmaciones de la descripción (${count})`,
       findings: (count) => `Hallazgos (${count})`,
       worthChecking: (count) => `Vale la pena revisar (${count})`,
+      debt: (count) => `Deuda del repositorio (${count})`,
+      debtMark: 'deuda',
       feedback: (count) => `Respuesta a los comentarios publicados (${count})`,
       nothingPosted: 'no se publicó nada',
       wouldResolve: (count) => `resolvería ${count}`,

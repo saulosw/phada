@@ -48,6 +48,7 @@ export interface StoredFinding {
   rule: string | null
   skill: string | null
   sources: string[]
+  scope: 'change' | 'repository'
 }
 
 export interface StoredClaim {
@@ -79,6 +80,7 @@ export interface ReviewDetail {
   summary: string | null
   claims: StoredClaim[]
   findings: StoredFinding[]
+  debt: StoredFinding[]
   worthChecking: StoredFinding[]
   publication: StoredPublication | null
   ci: StoredCi | null
@@ -155,6 +157,7 @@ export function reviewDetailOf(stored: RunRecord, published: FeedbackFinding[]):
     summary: stringOf(review?.summary) ?? null,
     claims: storedClaims(review?.claims),
     findings: storedFindings(review?.findings),
+    debt: storedFindings(review?.debt),
     worthChecking: storedFindings(review?.worthChecking),
     publication: storedPublication(result?.publication),
     ci: storedCi(result?.ci),
@@ -219,6 +222,7 @@ function storedFindings(value: unknown): StoredFinding[] {
         rule: stringOf(finding.rule) ?? null,
         skill: stringOf(finding.skill) ?? null,
         sources: stringsOf(finding.sources),
+        scope: finding.scope === 'repository' ? 'repository' : 'change',
       },
     ]
   })

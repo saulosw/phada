@@ -73,8 +73,10 @@ function detail(changes: Partial<ReviewDetail> = {}): ReviewDetail {
         rule: null,
         skill: null,
         sources: [],
+        scope: 'change',
       },
     ],
+    debt: [],
     worthChecking: [],
     publication: {
       status: 'dry-run',
