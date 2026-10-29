@@ -376,6 +376,7 @@ function findingJson(finding: Finding) {
     suggestion,
     skill,
     scope,
+    closeToCut,
   } = finding
   return {
     severity,
@@ -391,6 +392,7 @@ function findingJson(finding: Finding) {
     suggestion: suggestion ?? null,
     skill: skill ?? 'phada',
     scope: scope ?? 'change',
+    closeToCut: closeToCut === true,
   }
 }
 

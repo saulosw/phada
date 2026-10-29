@@ -82,6 +82,7 @@ describe('formatReviewJson', () => {
             suggestion: null,
             skill: 'phada',
             scope: 'change',
+            closeToCut: false,
           },
         ],
         debt: [],
@@ -94,6 +95,7 @@ describe('formatReviewJson', () => {
             suggestion: null,
             skill: 'phada',
             scope: 'change',
+            closeToCut: false,
           },
         ],
         worthCheckingOmitted: 2,
@@ -135,6 +137,23 @@ describe('formatReviewJson', () => {
         findings: [{ line: 3, scope: 'repository' }],
         debt: [{ line: 12, title: 'balance has no caller', scope: 'repository', skill: 'phada' }],
         dropped: { debt: 2 },
+      },
+    })
+  })
+
+  it('says which findings are close to the confidence cut', () => {
+    const output = formatReviewJson(pullRequestFixture(), {
+      status: 'reviewed',
+      result: {
+        ...RESULT,
+        findings: [findingFixture({ line: 3, confidence: 80, closeToCut: true })],
+      },
+    })
+
+    expect(parse(output)).toMatchObject({
+      review: {
+        findings: [{ line: 3, closeToCut: true }],
+        worthChecking: [{ line: 5, closeToCut: false }],
       },
     })
   })
