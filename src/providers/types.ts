@@ -32,6 +32,7 @@ export interface ReviewOutput {
   usage?: TokenUsage
   externalCalls?: ExternalToolCall[]
   warnings?: string[]
+  withoutTools?: true
 }
 
 export type CommandPolicy = 'read-only' | 'all' | readonly string[]

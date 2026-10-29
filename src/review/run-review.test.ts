@@ -633,7 +633,7 @@ describe('runReview with the repository tools', () => {
     )
 
     expect(passes).toEqual(['review', 'verify'])
-    expect(provider.prompts[0]?.tools).toBe(review)
+    expect(provider.prompts[0]?.tools?.definitions).toBe(review.definitions)
     expect(provider.prompts[1]?.tools).toBe(verify)
   })
 
@@ -774,6 +774,91 @@ describe('runReview with the repository tools', () => {
     if (outcome.status !== 'reviewed') throw new Error('expected a review')
     expect(outcome.result.warnings).toEqual(['model cannot call tools'])
     expect(outcome.result).not.toHaveProperty('externalCalls')
+  })
+})
+
+describe('runReview with an investigation floor', () => {
+  const diff = [
+    'diff --git a/src/a.ts b/src/a.ts',
+    '--- a/src/a.ts',
+    '+++ b/src/a.ts',
+    '@@ -1,1 +1,2 @@',
+    ' keep',
+    `+${'x'.repeat(64 * 1024)}`,
+  ].join('\n')
+  const toolbox: Toolbox = {
+    definitions: [{ name: 'read_file', description: 'r', inputSchema: { type: 'object' } }],
+    call: async () => ({ text: '', isError: false }),
+    touchedPaths: () => [],
+  }
+
+  function investigating(calls: number, output: Partial<ReviewOutput> = {}): ReviewProvider {
+    return {
+      id: 'fake-cli',
+      review: async (prompt) => {
+        for (let call = 0; call < calls; call++) await prompt.tools?.call('read_file', {})
+        return { ...OUTPUT, ...output }
+      },
+    }
+  }
+
+  async function reviewedWith(
+    provider: ReviewProvider,
+    {
+      tools = () => toolbox,
+      passes,
+    }: { tools?: (() => Toolbox) | null; passes?: SkillPass[] } = {},
+  ) {
+    const outcome = await runReview(
+      { pullRequest: pullRequestFixture({ diff }), ...(passes === undefined ? {} : { passes }) },
+      { provider, ...(tools === null ? {} : { tools }) },
+    )
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    return outcome.result
+  }
+
+  it('warns when the review pass investigated less than the diff asks for', async () => {
+    const result = await reviewedWith(investigating(4))
+
+    const warning = 'Investigated 4 times for a 64 KB diff (expected at least 6).'
+    expect(result.warnings).toEqual([warning])
+    expect(result.investigationFloor).toEqual({ expected: 6, shortfalls: [warning] })
+  })
+
+  it('does not warn when the pass reached the floor', async () => {
+    const result = await reviewedWith(investigating(6))
+
+    expect(result).not.toHaveProperty('warnings')
+    expect(result.investigationFloor).toEqual({ expected: 6, shortfalls: [] })
+  })
+
+  it('names the skill of each pass that investigated too little', async () => {
+    const result = await reviewedWith(investigating(1), {
+      passes: [
+        {
+          skill: 'code-review',
+          lens: { kind: 'skill', name: 'code-review', text: 'x', origin: 'y' },
+        },
+      ],
+    })
+
+    expect(result.warnings).toEqual([
+      'Skill code-review: investigated 1 time for a 64 KB diff (expected at least 6).',
+    ])
+  })
+
+  it('expects nothing without tools', async () => {
+    const result = await reviewedWith(investigating(0), { tools: null })
+
+    expect(result).not.toHaveProperty('warnings')
+    expect(result).not.toHaveProperty('investigationFloor')
+  })
+
+  it('expects nothing when the provider could not offer the tools to its model', async () => {
+    const result = await reviewedWith(investigating(0, { withoutTools: true }))
+
+    expect(result).not.toHaveProperty('warnings')
+    expect(result).not.toHaveProperty('investigationFloor')
   })
 })
 

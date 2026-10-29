@@ -276,6 +276,11 @@ export interface SkillBody {
   text: string
 }
 
+export interface InvestigationFloor {
+  expected: number
+  shortfalls: string[]
+}
+
 export interface ReviewResult {
   target: ReviewTarget
   providerId: string
@@ -292,6 +297,7 @@ export interface ReviewResult {
   score: Score
   dropped: DroppedFindings
   claims: Claim[]
+  investigationFloor?: InvestigationFloor
   verification?: Verification
   suggestions?: SuggestionCounts
   ignored?: string[]

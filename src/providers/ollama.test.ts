@@ -537,6 +537,7 @@ describe('OllamaProvider', () => {
       ])
       expect(bodyOf(calls[1])).not.toHaveProperty('tools')
       expect(toolCalls).toEqual([])
+      expect(output.withoutTools).toBe(true)
     })
 
     it('runs the tool calls of the model and sends the answers back', async () => {
@@ -552,6 +553,7 @@ describe('OllamaProvider', () => {
       const output = await provider.review({ ...PROMPT, tools: toolbox })
 
       expect(output.text).toBe('LGTM from fake ollama')
+      expect(output).not.toHaveProperty('withoutTools')
       expect(toolCalls).toEqual([['read_file', { path: 'src/a.ts' }]])
       const first = bodyOf(calls[1])
       const second = bodyOf(calls[2])

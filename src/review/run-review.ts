@@ -5,6 +5,11 @@ import { withKnownReferences, withRuleSeverity } from './context-findings.js'
 import { diffFingerprint } from './diff-fingerprint.js'
 import { findDiffFile, parseDiffFiles } from './diff-lines.js'
 import type { DiffFile } from './diff-lines.js'
+import {
+  countingToolbox,
+  investigationFloor,
+  investigationShortfall,
+} from './investigation-floor.js'
 import { newNonce } from './nonce.js'
 import { InvalidReviewReportError } from './errors.js'
 import { parseReviewReport } from './parse-report.js'
@@ -152,6 +157,14 @@ export async function runReview(
         ? {}
         : { suggestions: { ...suggested.counts, dropped: checked?.droppedSuggestions ?? 0 } }),
       claims: mergeClaims(answered.outputs.map(({ report }) => report.claims ?? [])),
+      ...(answered.investigatedPasses === 0
+        ? {}
+        : {
+            investigationFloor: {
+              expected: investigationFloor(pullRequest.diff),
+              shortfalls: answered.shortfalls,
+            },
+          }),
       ...(ignored.length === 0 ? {} : { ignored: [...ignored] }),
       ...(externalCalls.length === 0 ? {} : { externalCalls }),
       ...(warnings.length === 0 ? {} : { warnings }),
@@ -175,6 +188,8 @@ interface AnsweredPasses {
   durationMs: number
   usage?: TokenUsage
   warnings: string[]
+  investigatedPasses: number
+  shortfalls: string[]
 }
 
 async function runPasses(
@@ -190,6 +205,8 @@ async function runPasses(
     touched: [],
     durationMs: 0,
     warnings: [],
+    investigatedPasses: 0,
+    shortfalls: [],
   }
   let firstError: unknown
   let ran = 0
@@ -236,9 +253,10 @@ async function runPasses(
       continue
     }
     const tools = deps.tools?.('review')
+    const counted = tools === undefined ? undefined : countingToolbox(tools)
     try {
       const output = await deps.provider.review(
-        buildReviewPrompt(request, createNonce(), tools, pass),
+        buildReviewPrompt(request, createNonce(), counted?.toolbox, pass),
       )
       const report = parseReviewReport(output.text)
       const findings =
@@ -247,6 +265,18 @@ async function runPasses(
           : report.findings.map((finding) => ({ ...finding, skill: pass.skill }))
       answered.outputs.push({ output, report, findings })
       answered.warnings.push(...claimWarnings(report, pass?.skill))
+      if (counted !== undefined && output.withoutTools !== true) {
+        answered.investigatedPasses++
+        const shortfall = investigationShortfall(
+          counted.calls(),
+          request.pullRequest.diff,
+          pass?.skill,
+        )
+        if (shortfall !== undefined) {
+          answered.shortfalls.push(shortfall)
+          answered.warnings.push(shortfall)
+        }
+      }
       answered.touched.push(...(tools?.touchedPaths() ?? []))
       answered.durationMs += output.durationMs
       answered.usage = sumUsage(answered.usage, output.usage)

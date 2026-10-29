@@ -146,7 +146,8 @@ export class OllamaProvider implements ReviewProvider {
       tools !== undefined && !canUseTools
         ? [`${this.#model} does not support tool calling: reviewing without investigation.`]
         : []
-    return toReviewOutput(last, chats, performance.now() - startedAt, warnings)
+    const output = toReviewOutput(last, chats, performance.now() - startedAt, warnings)
+    return investigates || tools === undefined ? output : { ...output, withoutTools: true }
   }
 
   async #chat(
