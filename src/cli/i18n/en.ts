@@ -33,6 +33,9 @@ export const english: Messages = {
   moreFiles: (count) => formatCount(count, 'more file'),
   worthChecking: (minConfidence) => `Worth checking (confidence below ${minConfidence})`,
   moreItems: (count) => `… (+${count} more)`,
+  debt: 'Repository debt',
+  debtNote:
+    'Problems already in the repository that this change does not cause; they do not count toward the score.',
   dropped: (dropped) => {
     const reasons: ReadonlyArray<readonly [number, string]> = [
       [dropped.rejected, `${dropped.rejected} rejected by verification`],
@@ -40,6 +43,7 @@ export const english: Messages = {
       [dropped.duplicate, formatCount(dropped.duplicate, 'duplicate')],
       [dropped.belowFloor, `${dropped.belowFloor} below confidence ${CONFIDENCE_FLOOR}`],
       [dropped.invalid, `${dropped.invalid} invalid`],
+      [dropped.debt ?? 0, `${dropped.debt ?? 0} repository debt`],
     ]
     const shown = reasons.filter(([count]) => count > 0)
     const total = shown.reduce((sum, [count]) => sum + count, 0)

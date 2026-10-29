@@ -181,6 +181,44 @@ describe('formatReview', () => {
     )
   })
 
+  it('lists the repository debt after the findings worth checking, out of the counts', () => {
+    const debt = findingFixture({
+      severity: 'P2',
+      line: 12,
+      title: 'balance has no caller',
+      why: 'Nothing calls it.\nIt stays exported.',
+      scope: 'repository',
+    })
+    const output = formatReview(pullRequestFixture(), {
+      ...RESULT,
+      worthChecking: TO_CHECK,
+      debt: [debt],
+    })
+
+    expect(output).toContain(
+      [
+        '- **P2** · src/cooldown.ts:2: Magic number (confidence 55)',
+        '',
+        '## Repository debt',
+        '',
+        'Problems already in the repository that this change does not cause; they do not count toward the score.',
+        '',
+        '- **P2** · src/shop.ts:12: balance has no caller — Nothing calls it. It stays exported.',
+        '',
+        '---',
+        '3 findings · 2 worth checking ·',
+      ].join('\n'),
+    )
+  })
+
+  it("shows the skill of a finding in the terminal, the author's own view", () => {
+    const finding = findingFixture({ sources: ['docs/conventions.md'], skill: 'code-review' })
+
+    const output = formatReview(pullRequestFixture(), { ...RESULT, findings: [finding] })
+
+    expect(output).toContain('Based on: `docs/conventions.md` · skill `code-review`')
+  })
+
   it('says how many more findings are worth checking than the ones listed', () => {
     const output = formatReview(pullRequestFixture(), {
       ...RESULT,

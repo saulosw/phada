@@ -25,6 +25,8 @@ export interface Messages {
   fileColumns: readonly [string, string, string]
   moreFiles(count: number): string
   worthChecking(minConfidence: number): string
+  debt: string
+  debtNote: string
   moreItems(count: number): string
   dropped(dropped: DroppedFindings): string
   verification(verification: Verification): string

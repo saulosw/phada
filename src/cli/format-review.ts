@@ -2,6 +2,7 @@ import type { PullRequest } from '../github/pull-request.js'
 import { scoreFocus } from '../review/score.js'
 import type { FileChange, Finding, ReviewResult, Severity, Suggestion } from '../review/types.js'
 import { english } from './i18n/en.js'
+import { debtItem } from './debt-text.js'
 import { findingReferences, leftOutLine } from './finding-references.js'
 import type { Messages } from './i18n/messages.js'
 import { blockText, cell, codeFence, singleLine } from './markdown-text.js'
@@ -40,6 +41,7 @@ export function formatReview(
     filesSection(result.files, messages),
     findingsSection(result.findings, messages),
     worthCheckingSection(result, messages),
+    debtSection(result.debt ?? [], messages),
     ['---', countsLine(result, messages), leftOut(result, messages), footer(result, messages)]
       .filter((line) => line !== '')
       .join('\n'),
@@ -127,6 +129,12 @@ function worthCheckingSection(
   )
   if (worthCheckingOmitted > 0) items.push(`- ${messages.moreItems(worthCheckingOmitted)}`)
   return [`## ${messages.worthChecking(minConfidence)}`, '', ...items].join('\n')
+}
+
+function debtSection(debt: readonly Finding[], messages: Messages): string {
+  if (debt.length === 0) return ''
+  const items = debt.map((finding) => debtItem(finding, singleLine))
+  return [`## ${messages.debt}`, '', messages.debtNote, '', ...items].join('\n')
 }
 
 function countsLine(
