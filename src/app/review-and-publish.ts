@@ -139,16 +139,19 @@ export async function reviewAndPublish(
 
 function refusingAfterCancel(
   deps: PullRequestReviewDeps,
-  stopIfCancelled: () => void,
+  signal: AbortSignal | undefined,
 ): PullRequestReviewDeps {
   const watch = deps.watchProvider ?? ((provider: ReviewProvider) => provider)
   return {
     ...deps,
-    watchProvider: (provider, pass) =>
-      wrapProviderRuns(watch(provider, pass), (_run, work) => {
-        stopIfCancelled()
+    watchProvider: (provider, pass) => {
+      const refusing = wrapProviderRuns(watch(provider, pass), (_run, work) => {
+        stopIfCancelled(signal)
         return work()
-      }),
+      })
+      if (signal === undefined) return refusing
+      return { ...refusing, review: (prompt) => refusing.review({ ...prompt, signal }) }
+    },
   }
 }
 
@@ -179,7 +182,7 @@ async function reviewThenPublish(
   if (early.action === 'skip')
     return { status: 'skipped', pullRequest, reason: early.reason, reviewState: state }
 
-  const reviewDeps = refusingAfterCancel(deps.reviewDeps(pullRequest), stopIfCancelled)
+  const reviewDeps = refusingAfterCancel(deps.reviewDeps(pullRequest), input.signal)
   const review = {
     pullRequest,
     userLayers: input.userLayers,

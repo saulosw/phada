@@ -752,6 +752,19 @@ describe('reviewAndPublish cancelled', () => {
     expect(dying.calls.posts).toEqual([])
   })
 
+  it('hands the cancel to every AI run, so one can stop a request in flight', async () => {
+    const controller = new AbortController()
+    const { deps, calls } = setup({ fetchReviewState: earlierComments() })
+
+    await reviewAndPublish({ ...INPUT, signal: controller.signal }, deps)
+
+    expect(calls.log.slice(0, 3)).toEqual(['compare', 'recheck', 'review'])
+    expect(calls.prompts.map((prompt) => prompt.signal)).toEqual([
+      controller.signal,
+      controller.signal,
+    ])
+  })
+
   it('starts no other AI run once cancelled while one runs', async () => {
     const controller = new AbortController()
     const { deps, calls } = setup({ fetchReviewState: earlierComments() }, PR, async () => {

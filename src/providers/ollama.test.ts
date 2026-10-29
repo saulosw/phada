@@ -402,6 +402,27 @@ describe('OllamaProvider', () => {
     expect(error.message).toBe('Ollama did not answer within 0.3s.')
   })
 
+  it('stops the request in flight when the review is cancelled, with the cancel and not a failure', async () => {
+    const cancel = new AbortController()
+    const fake = createFakeFetch(
+      { '/api/show': [show()], '/api/chat': ['hang'] },
+      (call) => new URL(call.url).pathname,
+    )
+    const fetch: typeof globalThis.fetch = (input, init) => {
+      const answer = fake.fetch(input, init)
+      if (String(input).endsWith('/api/chat')) cancel.abort()
+      return answer
+    }
+    const provider = new OllamaProvider({ model: MODEL, env: {}, fetch, timeoutMs: 1000 })
+
+    const error = await provider.review({ ...PROMPT, signal: cancel.signal }).then(
+      () => undefined,
+      (reason: unknown) => reason,
+    )
+
+    expect(error).toBe(cancel.signal.reason)
+  })
+
   it('reports invalid-output when Ollama answers with something that is not JSON', async () => {
     const { provider } = setup({ chat: [{ status: 200, body: `<html>${FAKE_SECRET}` }] })
 

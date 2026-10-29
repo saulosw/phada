@@ -38,8 +38,8 @@ output can change between minor versions.
   result in the same detail as the Reviews screen (or its error, with the causes and the stack
   under `phada --debug`). It is the same review as `phada review`, saved
   in the history unless `history: false`, with the AI CLI in its own process group. `Esc` while
-  it runs asks before cancelling: the fetch and the indexing of the head or the AI CLI are
-  stopped, nothing is posted and nothing is saved;
+  it runs asks before cancelling: the fetch and the indexing of the head or the AI CLI (or the
+  request to Ollama) are stopped, nothing is posted and nothing is saved;
   once it publishes, it no longer cancels. `q` and `Ctrl-C` ask before quitting while a review
   runs (a second `Ctrl-C` cancels and quits at once; a `SIGTERM` cancels it without asking). While
   a `phada watch` runs, **Review and publish** becomes **Put in the queue**, as `phada enqueue

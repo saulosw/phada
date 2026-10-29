@@ -7,6 +7,7 @@ export interface ReviewPrompt {
   data: string
   outputSchema: JsonSchema
   tools?: Toolbox
+  signal?: AbortSignal
 }
 
 export type NativeSkillRef =

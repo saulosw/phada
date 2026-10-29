@@ -184,8 +184,9 @@ screen open the review in place of the tabs:
    draft, which it still reviews, as `phada review` does), the context, the conversation, the CI, the
    indexing (`N of M files`), the related repositories, the impact, each run of the AI (review,
    verify, recheck, skill) with its time, publishing, and the warnings. `Esc` asks before
-   cancelling (`Enter` cancels, `Esc` keeps it running): Phada stops the AI CLI, posts nothing
-   and saves nothing in the history. Once it publishes, it no longer cancels.
+   cancelling (`Enter` cancels, `Esc` keeps it running): Phada stops the AI CLI (or the request
+   to Ollama), posts nothing and saves nothing in the history. Once it publishes, it no longer
+   cancels.
 5. **The result**: the same detail as the Reviews screen (score, verdict, findings with their
    text, what was published or, for only look, that nothing was posted, what it would resolve or
    why it would skip, the CI), how long it took and whether the history kept it. A failed review

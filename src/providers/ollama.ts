@@ -75,7 +75,8 @@ export class OllamaProvider implements ReviewProvider {
 
   async review(prompt: ReviewPrompt): Promise<ReviewOutput> {
     const startedAt = performance.now()
-    const signal = AbortSignal.timeout(this.#timeoutMs)
+    const timeout = AbortSignal.timeout(this.#timeoutMs)
+    const signal = prompt.signal === undefined ? timeout : AbortSignal.any([prompt.signal, timeout])
     const show = OllamaShow.safeParse(await this.#post(signal, '/api/show', { model: this.#model }))
     const contextLength = contextLengthOf(show.success ? show.data.model_info : undefined)
     if (contextLength === undefined) {
@@ -199,6 +200,7 @@ export class OllamaProvider implements ReviewProvider {
       })
       text = await response.text()
     } catch (error) {
+      if (signal.aborted && !isTimeout(signal.reason)) throw signal.reason
       throw this.#transportError(error)
     }
     if (!response.ok) throw this.#statusError(response.status, text)
