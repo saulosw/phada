@@ -708,6 +708,20 @@ describe('loadContext with .claude/rules', () => {
     expect(loaded.context.rules[0]?.text).toBe('# Commits\n\nWrite commits in English.')
   })
 
+  it('reads paths that start at the root with / or ./ as relative to the repository', async () => {
+    const sources = fakeSources({
+      '.claude/rules/rooted.md': '---\npaths: /src/{api,web}/**/*.ts\n---\nReturn typed errors.\n',
+      '.claude/rules/dotted.md': '---\npaths: ./src/{api,web}/**/*.ts\n---\nLog with context.\n',
+    })
+
+    const loaded = await loadContext({ diff: DIFF, baseSha: SHA, userLayers: [], sources })
+
+    expect(loaded.report.rules.map(({ key, scope, status }) => [key, scope, status])).toEqual([
+      ['.claude/rules/dotted.md', ['src/{api,web}/**/*.ts'], 'applied'],
+      ['.claude/rules/rooted.md', ['src/{api,web}/**/*.ts'], 'applied'],
+    ])
+  })
+
   it('applies a rule whose front matter cannot be read to every file, with a warning', async () => {
     const sources = fakeSources({ '.claude/rules/broken.md': '---\npaths: lib/**\nNo end.\n' })
 
