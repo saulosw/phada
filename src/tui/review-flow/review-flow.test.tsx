@@ -896,6 +896,42 @@ describe('reviewing a pull request from the app', () => {
     expect(flow.frame()).not.toContain('Publish this review on GitHub?')
   })
 
+  it.each([
+    ['pt', 'p publicar esta revisão', 'Publicar esta revisão no GitHub?', '1 comentário na linha'],
+    [
+      'es',
+      'p publicar esta revisión',
+      '¿Publicar esta revisión en GitHub?',
+      '1 comentario en la línea',
+    ],
+  ])(
+    'asks to publish a look in the language of the app (%s)',
+    async (language, key, question, counts) => {
+      const flow = openFlow({ language })
+      await flow.showing('Phada')
+      await flow.press('/')
+      await flow.type('revisar u')
+      await flow.press(KEYS.enter)
+      await flow.showing('Pull request:')
+      await flow.type('acme/shop#12')
+      await flow.press(KEYS.enter)
+      await flow.until(() => flow.frame().includes('❯'))
+      await flow.press(KEYS.enter)
+      await flow.until(() => flow.asked.length === 1)
+      flow.asked[0]?.resolve({
+        status: 'reviewed',
+        detail: detail(),
+        history: { status: 'saved', runId: 3 },
+      })
+      await flow.until(() => flow.footer().includes(key))
+      await flow.press('p')
+      await flow.showing(question)
+      await flow.showing('@ana')
+      expect(flow.frame()).toContain(counts)
+      expectFits(flow.frame(), { columns: 80, rows: 24 })
+    },
+  )
+
   it('opens with n on the Reviews screen and goes back there', async () => {
     const { frame, footer, press, showing } = openFlow()
     await showing('Home')
