@@ -1,4 +1,5 @@
 import { destinationOf } from '../publish/feedback.js'
+import { numberOf, objectOf, parseJson, stringOf, stringsOf } from './stored-json.js'
 import type { Destination, SignalKind } from '../publish/feedback.js'
 import type {
   FindingFilter,
@@ -223,7 +224,7 @@ function emptyCounts(): FeedbackCounts {
   }
 }
 
-function storedFindings(value: unknown): StoredFinding[] {
+export function storedFindings(value: unknown): StoredFinding[] {
   if (!Array.isArray(value)) return []
   return value.flatMap((item): StoredFinding[] => {
     const finding = objectOf(item)
@@ -249,7 +250,7 @@ function storedFindings(value: unknown): StoredFinding[] {
   })
 }
 
-function storedClaims(value: unknown): StoredClaim[] {
+export function storedClaims(value: unknown): StoredClaim[] {
   if (!Array.isArray(value)) return []
   return value.flatMap((item): StoredClaim[] => {
     const claim = objectOf(item)
@@ -276,7 +277,7 @@ function storedPublication(value: unknown): StoredPublication | null {
   }
 }
 
-function storedCi(value: unknown): StoredCi | null {
+export function storedCi(value: unknown): StoredCi | null {
   const ci = objectOf(value)
   const state = stringOf(ci?.state)
   if (ci === undefined || state === undefined) return null
@@ -318,31 +319,4 @@ function storedTokens(value: unknown): StoredTokens | null {
   const output = numberOf(usage?.outputTokens)
   if (input === undefined || output === undefined) return null
   return { input, cached: numberOf(usage?.cachedInputTokens) ?? null, output }
-}
-
-function parseJson(text: string | undefined): unknown {
-  if (text === undefined) return undefined
-  try {
-    return JSON.parse(text)
-  } catch {
-    return undefined
-  }
-}
-
-function objectOf(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined
-}
-
-function stringOf(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined
-}
-
-function numberOf(value: unknown): number | undefined {
-  return typeof value === 'number' ? value : undefined
-}
-
-function stringsOf(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item) => typeof item === 'string') : []
 }

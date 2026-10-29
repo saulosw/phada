@@ -1,4 +1,10 @@
 import type { BlockedCommand } from '../providers/types.js'
+import type {
+  CiBlock,
+  CiCheckLine,
+  ConversationBlock,
+  ConversationEntry,
+} from '../app/read-run-report.js'
 import type { RelatedReport } from '../app/related-report.js'
 import type { Ci, ContextReport } from '../context/types.js'
 import type { ImpactReport } from '../graph/report.js'
@@ -30,6 +36,7 @@ const SCHEMA_VERSION = 1
 export interface ReviewJsonBlocks {
   conversation?: Conversation
   ci?: Ci
+  impactText?: string
 }
 
 export interface ResolvedCounts {
@@ -46,8 +53,9 @@ export type Publication =
       stillOpen: number
       dismissed?: number
       resolved?: ResolvedCounts
+      review?: GitHubReview
     }
-  | { status: 'failed'; error: string }
+  | { status: 'failed'; error: string; review?: GitHubReview }
   | {
       status: 'dry-run'
       review: GitHubReview
@@ -79,6 +87,7 @@ export function formatReviewJson(
   const ci = blocks.ci === undefined ? null : ciJson(blocks.ci)
   const publicationBlock = publication === null ? null : publicationJson(publication)
   const contextBlock = context === null ? null : contextJson(context)
+  const impactBlock = impact === null ? null : { ...impact, text: blocks.impactText ?? null }
   const body =
     outcome.status === 'skipped'
       ? {
@@ -92,7 +101,7 @@ export function formatReviewJson(
           conversation,
           ci,
           investigation,
-          impact,
+          impact: impactBlock,
           related: relatedJson(related),
           recheck: recheckJson(recheck),
           usage: usageReportJson(usageReport(undefined, recheck ?? undefined)),
@@ -108,7 +117,7 @@ export function formatReviewJson(
           conversation,
           ci,
           investigation,
-          impact,
+          impact: impactBlock,
           related: relatedJson(related),
           recheck: recheckJson(recheck),
           usage: usageReportJson(usageReport(outcome.result.passUsage, recheck ?? undefined)),
@@ -136,7 +145,7 @@ export function formatAlreadyReviewedJson(pr: PullRequest, reason: SkipReason): 
   return `${JSON.stringify(body, null, 2)}\n`
 }
 
-function conversationJson({ items, report }: Conversation) {
+export function conversationJson({ items, report }: Conversation): ConversationBlock {
   return {
     count: report.items,
     omitted: report.omitted,
@@ -148,17 +157,17 @@ function conversationJson({ items, report }: Conversation) {
   }
 }
 
-function conversationItemJson(item: ConversationItem) {
-  const { kind, at, author, role } = item
+function conversationItemJson(item: ConversationItem): ConversationEntry {
+  const { at, author, role } = item
   const bytes = conversationItemBytes(item)
   switch (item.kind) {
     case 'comment':
-      return { kind, at, author, role, bytes }
+      return { kind: item.kind, at, author, role, bytes }
     case 'review':
-      return { kind, at, author, role, state: item.state, bytes }
+      return { kind: item.kind, at, author, role, state: item.state, bytes }
     case 'thread':
       return {
-        kind,
+        kind: item.kind,
         at,
         author,
         role,
@@ -173,7 +182,7 @@ function conversationItemJson(item: ConversationItem) {
   }
 }
 
-function ciJson({ checks, summary, report, warnings }: Ci) {
+export function ciJson({ checks, summary, report, warnings }: Ci): CiBlock {
   return {
     state: summary.state,
     total: summary.total,
@@ -192,7 +201,7 @@ function ciJson({ checks, summary, report, warnings }: Ci) {
   }
 }
 
-function checkJson({ name, state, conclusion, annotations, log }: CiCheck) {
+function checkJson({ name, state, conclusion, annotations, log }: CiCheck): CiCheckLine {
   return {
     name,
     state,
@@ -244,20 +253,20 @@ function publicationJson(publication: Publication) {
         stillOpen,
         dismissed: publication.dismissed ?? 0,
         resolved: publication.resolved ?? { resolved: 0, failed: 0, total: 0 },
+        ...postedJson(publication.review),
       }
     }
     case 'failed':
-      return { status: publication.status, error: publication.error }
+      return {
+        status: publication.status,
+        error: publication.error,
+        ...postedJson(publication.review),
+      }
     case 'dry-run':
       return {
         status: publication.status,
         body: publication.review.body,
-        comments: publication.review.comments.map(({ path, startLine, line, body }) => ({
-          path,
-          ...(startLine === undefined ? {} : { startLine }),
-          line,
-          body,
-        })),
+        comments: commentsJson(publication.review),
         stillOpen: publication.stillOpen,
         dismissed: publication.dismissed ?? 0,
         wouldSkip: publication.wouldSkip === undefined ? null : skipJson(publication.wouldSkip),
@@ -271,6 +280,19 @@ function publicationJson(publication: Publication) {
     case 'closed-or-draft':
       return { status: publication.status }
   }
+}
+
+function postedJson(review: GitHubReview | undefined) {
+  return review === undefined ? {} : { body: review.body, lineComments: commentsJson(review) }
+}
+
+function commentsJson({ comments }: GitHubReview) {
+  return comments.map(({ path, startLine, line, body }) => ({
+    path,
+    ...(startLine === undefined ? {} : { startLine }),
+    line,
+    body,
+  }))
 }
 
 function skipJson(reason: SkipReason) {

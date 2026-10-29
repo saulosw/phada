@@ -539,6 +539,32 @@ describe('publication', () => {
     expect(parse(output)).toMatchObject({ status: 'reviewed', review: { summary: RESULT.summary } })
   })
 
+  it('keeps the body and line comments it posted, or tried to post', () => {
+    const review = {
+      body: 'Body',
+      comments: [{ path: 'src/shop.ts', startLine: 2, line: 3, body: 'Comment' }],
+    }
+    const published = formatReviewJson(pullRequestFixture(), reviewed, {
+      status: 'published',
+      url: 'https://github.com/acme/shop/pull/12#pullrequestreview-1',
+      comments: 1,
+      stillOpen: 0,
+      review,
+    })
+    const failed = formatReviewJson(pullRequestFixture(), reviewed, {
+      status: 'failed',
+      error: 'GitHub denied publishing the review.',
+      review,
+    })
+
+    expect(publicationOf(published)).toMatchObject({
+      comments: 1,
+      body: 'Body',
+      lineComments: review.comments,
+    })
+    expect(publicationOf(failed)).toMatchObject({ body: 'Body', lineComments: review.comments })
+  })
+
   it('prints a failed publication with the error', () => {
     const output = formatReviewJson(pullRequestFixture(), reviewed, {
       status: 'failed',
@@ -725,7 +751,23 @@ describe('publication', () => {
       ),
     )
 
-    expect(output).toMatchObject({ impact })
+    expect(output).toMatchObject({ impact: { ...impact, text: null } })
+    expect(
+      parse(
+        formatReviewJson(
+          pullRequestFixture(),
+          { status: 'reviewed', result: RESULT },
+          null,
+          null,
+          null,
+          impact,
+          null,
+          null,
+          undefined,
+          { impactText: 'getUser (src/users.ts:1-3): 2 callers' },
+        ),
+      ),
+    ).toMatchObject({ impact: { text: 'getUser (src/users.ts:1-3): 2 callers' } })
     expect(Object.keys(output as object).slice(-4)).toEqual([
       'impact',
       'related',

@@ -265,7 +265,7 @@ export function reviewRunJson(
     )
   }
   const { plan, rendered } = run
-  const { investigation, impact, related } = reviewed
+  const { investigation, impact, related, impactText } = reviewed
   return formatReviewJson(
     pullRequest,
     reviewed.outcome,
@@ -285,7 +285,7 @@ export function reviewRunJson(
     related,
     reviewed.recheck ?? null,
     fixFor,
-    blocks,
+    { ...blocks, ...(impactText === undefined ? {} : { impactText }) },
   )
 }
 
@@ -308,6 +308,7 @@ function toPublication(
         url: publication.url,
         ...counts,
         resolved: publication.resolved,
+        review: rendered,
       }
     case 'dry-run':
       return {
@@ -319,7 +320,7 @@ function toPublication(
         wouldResolve: publication.wouldResolve,
       }
     case 'failed':
-      return { status: 'failed', error: errorSummary(publication.error) }
+      return { status: 'failed', error: errorSummary(publication.error), review: rendered }
     default:
       return publication
   }
