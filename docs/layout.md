@@ -12,7 +12,8 @@ src/
   main.ts                # run(argv, deps): CLI flow — flags, token, then prepareReview() and
                          #   runManualReview() of manual-review.ts, printing the run (the dry
                          #   run through formatRunSections()), a history save that failed and
-                         #   the id of the saved run; no command → runApp(); createProvider()
+                         #   the id of the saved run; publish → runPublish(); no command →
+                         #   runApp(); createProvider()
   architecture.test.ts   # allowed imports of src/review/, src/publish/, src/watch/, src/context/,
                          #   src/investigation/, src/repository/, src/repo-map/, src/store/,
                          #   src/graph/, src/app/, src/skills/, src/gh-facade/, src/slack/ and
@@ -73,7 +74,18 @@ src/
                          #   when command) → a new job, a joined job (a ci-failing one queued
                          #   again) or a refusal; whenInput()
     feedback.ts          #   recordReviewFeedback(): the threads a run read and the comments it
-                         #   published → the history; refreshFeedback(): read due pull requests
+                         #   published → the history (recordFeedback(), also for a publication
+                         #   of a saved run); refreshFeedback(): read due pull requests
+    publish-saved-review.ts # publishSavedReview(): a dry run of the history (readRun injected) →
+                         #   refused (not found, not a dry run, nothing to publish, saved
+                         #   without what publishing needs, the head moved unless force),
+                         #   skipped (decideRun: a commit already reviewed or the same diff,
+                         #   unless force) or published on the commit it reviewed: planned
+                         #   against the threads now, rendered (injected), the fixed threads
+                         #   still open resolved, no AI; PublishRefusal, SavedPublication
+    stored-review.ts     #   storedReview(): the stored JSON of a dry run → the ReviewResult the
+                         #   renderer needs, its language, CI summary and the threads it would
+                         #   resolve, read strictly (zod): a missing field is undefined
     index-repository.ts  #   indexRepository(): mirror → files left out and why → indexCommit();
                          #   with a signal, a cancel stops the fetch or stops between files
                          #   (IndexCancelled), the blobs extracted kept for the next run;
@@ -225,11 +237,11 @@ src/
                          #   text|json), `rules` (--format text|json), `prompt` (--default,
                          #   --skill, --format text|json), `watch` (--once,
                          #   --backfill, --status) and `history` (--since, --limit, --stats,
-                         #   --refresh, prune --older-than, show <id> --format), `enqueue` (--publish, --format) and
+                         #   --refresh, prune --older-than, show <id> --format), `publish` (<id>, --force, --format text|json), `enqueue` (--publish, --format) and
                          #   `mcp` commands, --help, --version, no command (the app, --debug);
                          #   USAGE, SETUP_USAGE, REVIEW_USAGE, INIT_USAGE,
                          #   INDEX_USAGE, RULES_USAGE, PROMPT_USAGE, WATCH_USAGE, ENQUEUE_USAGE,
-                         #   MCP_USAGE, HISTORY_USAGE
+                         #   MCP_USAGE, HISTORY_USAGE, PUBLISH_USAGE
     app-command.ts       #   runApp(): the app when stdin and stdout are TTYs (assertAppTerminal():
                          #   else the missing command error, or --debug alone refused as an
                          #   unknown option; phada setup without them a usage error), started
@@ -280,7 +292,10 @@ src/
                          #   an abort kills the detached children of that scope only and ends as cancelled,
                          #   with no history row; enqueueReview: the watch settings
                          #   (requireWatchSettings()), the token and submitRequest() (source
-                         #   enqueue, publish pr) over the history, as phada enqueue
+                         #   enqueue, publish pr) over the history, as phada enqueue;
+                         #   publishReview (a run id): publishSavedRun() without force, as
+                         #   phada publish → PublishedReview (no token, refused, skipped or
+                         #   published with its counts, warnings and history)
     app-watch.ts         #   appWatch(): start (the lock held by another PID as data, else
                          #   startWatch() of watch-session.ts as phada watch runs it, never once
                          #   and without backfill, inside its own childScope(), whose kill() is
@@ -381,7 +396,8 @@ src/
                          #   formatStatsText/Json() (schemaVersion 1)
     format-run-report.ts #   formatRunReportText(): a run's header line (id, pull request, commit,
                          #   when, who asked, provider, how it ended), the CI of a ci-failing
-                         #   skip, then the posted review and formatRunSections(), through
+                         #   skip (and the dry run a publication came from), then the posted
+                         #   review and formatRunSections(), through
                          #   toTerminalText(); formatRunReportJson(): run and result
                          #   (schemaVersion 1)
     format-run-sections.ts # formatRunSections(): the sections of --dry-run (close to the cut,
@@ -406,6 +422,18 @@ src/
                          #   wait) with its deps and progress, then
                          #   the run saved in the history when it is on, with its feedback
                          #   (HistorySave); shared by phada review and the app
+    publish-saved.ts     #   publishSavedRun(): the history opened (missing → not found), then
+                         #   publishSavedReview() with the GitHub readers and writers of the
+                         #   token and renderReview, the publication saved as a new manual run
+                         #   (publishedRunJson(), publishedFrom) with its feedback when the
+                         #   history is on; shared by phada publish and the app
+    publish-command.ts   #   runPublish(): token, publishSavedRun(), each refusal as
+                         #   PublishRefusedError (RunNotFoundError for an unknown id), a skip
+                         #   with --force to override, the head moved under --force as a
+                         #   warning, "Published …", the resolved comments and "Saved as run N";
+                         #   --format json prints the published run's JSON
+    print-history-save.ts #  printHistorySave(), savedAsLine(): a history save that failed and
+                         #   the "Saved as run N" line, for review and publish
     history-run.ts       #   historyRun(), watchRun(): a run, a failure or a ci-failing skip →
                          #   the history record
     stored-ci.ts         #   ciSkipJson(), storedCi(): the CI of a run in its stored JSON, written
@@ -416,7 +444,7 @@ src/
     format-index.ts      #   formatIndexText(), formatIndexJson() (schemaVersion 1)
     suppress-sqlite-warning.ts # drops Node's ExperimentalWarning for the built-in SQLite
     errors.ts            #   UsageError, MissingGitHubTokenError, WatchRunningError,
-                         #   RunNotFoundError
+                         #   RunNotFoundError, PublishRefusedError
     github-token.ts      #   readGitHubToken(), requireGitHubToken(): GITHUB_TOKEN › GH_TOKEN › the
                          #   gh login; findGitHubToken(): the token and where it came from;
                          #   ghTokenReader(): gh auth token, or gh auth status
@@ -460,7 +488,10 @@ src/
                          #   texts, with its bytes), ci, investigation, impact (with the text
                          #   the AI got) and recheck blocks, and usage (the tokens of each AI
                          #   pass and their total); what a publication posted (body and line
-                         #   comments); conversationJson(), ciJson() for the dry run
+                         #   comments); the review's language, diff fingerprint and files left
+                         #   out (what phada publish needs); conversationJson(), ciJson() for
+                         #   the dry run; publishedRunJson(): a saved run's JSON with its new
+                         #   publication and publishedFrom
     markdown-text.ts     #   escapes AI text: block markers; for GitHub also HTML and mentions;
                          #   codeFence()
     review-text.ts       #   model label and short SHA
@@ -691,7 +722,12 @@ src/
                          #   or the queued or joined job or the refusal, Enter to the Queue
                          #   (enqueue-step.tsx); Esc goes one step back, asks to cancel while
                          #   it runs (not once publishing), out once it ended; a quit guard
-                         #   while it runs; flow-text.ts: the pull request line
+                         #   while it runs; p on the result of only look kept in the history →
+                         #   publish-step.tsx in its place: the pull request, the token owner
+                         #   and the counts to confirm, then publishReview() and the link or
+                         #   the refusal, Esc back to the result (the result's keys in a
+                         #   StepKeys of run-step.tsx, unmounted meanwhile); history-line.ts:
+                         #   how the history kept a run; flow-text.ts: the pull request line
     review-steps.ts      #   stepsAfter(): the review progress events → one step per stage
                          #   (fetch, with a closed or draft notice, context, conversation,
                          #   CI, CI wait, indexing, related, impact, skill pass, each AI run

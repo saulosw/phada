@@ -9,6 +9,14 @@ output can change between minor versions.
 
 ### Added
 
+- `phada publish <id>` posts on the pull request the review a `--dry-run` kept in the history,
+  exactly as it was found, without running the AI again. It refuses when the pull request moved
+  to another commit since the dry run (`--force` publishes on the commit it reviewed), plans the
+  comments against the threads on the pull request now, resolves the comments the dry run found
+  fixed, skips a commit Phada already reviewed unless `--force`, writes in the dry run's language
+  and saves the publication as a new run that names the dry run it came from. In the app, `p` on
+  the result of "Only look" publishes it after asking. The review JSON keeps the `language`, the
+  `diffFingerprint` and the `ignored` files of the review for this.
 - The review checks what the pull request title and description claim the change does
   ("prevents", "covers", "only runs on …"): each claim gets a verdict (`confirmed`,
   `contradicted` or `unverified`) with its evidence, a contradicted one that matters is also a

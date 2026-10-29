@@ -49,9 +49,10 @@ phada review https://github.com/owner/repo/pull/123 --provider codex
 Progress goes to stderr and the review to stdout, so `phada review owner/repo#123 > review.md`
 saves only the review, and `--format json` prints it as JSON for scripts. A review of a large pull
 request can take a few minutes. `phada review owner/repo#123 --dry-run` prints exactly what would
-be posted and posts nothing.
+be posted and posts nothing; `phada publish <id>` then posts exactly that, without running the
+AI again (see [Look first, publish later](#look-first-publish-later)).
 
-`phada --help` lists the commands, and `phada review --help`, `phada setup --help`,
+`phada --help` lists the commands, and `phada review --help`, `phada publish --help`, `phada setup --help`,
 `phada init --help`, `phada index --help`, `phada rules --help`, `phada prompt --help`, `phada watch --help` and
 `phada history --help` list their options. To have new pull requests and pushes reviewed without running anything, see
 [Watch mode](#watch-mode); to see what happened to the comments Phada published, see
@@ -190,6 +191,13 @@ screen open the review in place of the tabs:
    why it would skip, the CI), how long it took and whether the history kept it. A failed review
    shows its error; with `phada --debug`, also its causes and stack. `Esc` goes back to the
    screen you came from.
+6. **Publishing what you looked at**: on the result of only look, `p` asks to publish that exact
+   review (the pull request, the GitHub login and how many line comments and repository debt
+   items it posts) and `Enter` publishes it without running the AI again, as
+   [`phada publish`](#look-first-publish-later); it shows the link, or why it did not publish (the
+   pull request moved since the review, or Phada already reviewed that commit), and `Esc` goes
+   back to the result. It needs the run in the history: with `history: false` it is not offered.
+   It also publishes while a watch runs, since no new review starts.
 
 It is the same review as `phada review owner/repo#N` (with `--dry-run` for only look): the
 provider, model and MCP servers of your config for that repository, your GitHub token, and the
@@ -412,6 +420,32 @@ still open, Phada posts only a short note saying there is nothing new and how ma
 open. A finding with the same title as a Phada thread someone resolved in that file is not posted
 again either (a different finding near it still is): the run says how many findings were
 dismissed earlier and left out (`dismissed` in the JSON).
+
+### Look first, publish later
+
+Another run of the AI can find something else, so publishing after a `--dry-run` should post what
+the dry run found, not review again. `phada publish <id>` posts the dry run kept in the
+[history](#history) as run `<id>` (the id is at the end of `phada review --dry-run` and in
+`phada history`), without calling the AI:
+
+```bash
+phada review owner/repo#123 --dry-run   # … Saved as run 42: phada history show 42
+phada publish 42                        # posts exactly that review
+```
+
+It reads the pull request first and refuses when it moved to another commit since the dry run
+(`The pull request moved from a1b2c3d to 9f8e7d6 since run 42`): review it again, or use `--force`
+to publish on the commit the dry run reviewed, where the line comments still point. It plans the
+comments against the threads on the pull request now, as a review does: a finding whose thread is
+still open is not posted again, one dismissed earlier is left out, and the comments the dry run
+found fixed are resolved if they are still open. A commit Phada already reviewed is skipped
+unless `--force`, so publishing the same dry run twice posts it once. The review is written in
+the language of the dry run. Only a dry run that reviewed something can be published: a run
+already published, skipped or failed is refused, and so is a dry run saved by a version before
+`phada publish`, which did not keep everything the review needs. The publication is saved as a
+new run of the history (`phada history show` names the dry run it came from), and
+`--format json` prints its JSON, with `publishedFrom`. In the app, `p` on the result of **Only
+look** does the same, after asking.
 
 ### Comments fixed in a new commit
 
