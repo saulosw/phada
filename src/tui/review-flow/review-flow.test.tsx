@@ -810,6 +810,26 @@ describe('reviewing a pull request from the app', () => {
     },
   )
 
+  it('goes back to the mode with Esc on the queue confirmation it came back to from a running watch', async () => {
+    const flow = openFlow({ deps: { readQueue: () => new Promise<never>(() => undefined) } })
+    await flow.fromPalette()
+    await flow.press(KEYS.escape)
+    await flow.showing('t type a pull request')
+    await flow.press(KEYS.enter)
+    await flow.showing('#12')
+    await flow.press(KEYS.enter)
+    await flow.showing('Review and publish')
+    await flow.press(KEYS.down, KEYS.enter)
+    await flow.showing('@ana')
+    await flow.press(KEYS.enter)
+    await flow.until(() => flow.asked.length === 1)
+    flow.asked[0]?.resolve({ status: 'watch-running', pid: 4242 })
+    await flow.showing('Put the pull request in the queue? The watch publishes the review.')
+    await flow.press(KEYS.escape)
+    await flow.showing('How should Phada review it?')
+    expect(flow.frame()).toMatch(/❯ Review and publish/)
+  })
+
   it('still only looks here when a watch runs', async () => {
     const flow = watching(async () => ({ status: 'no-token' }))
     await flow.fromPalette()
