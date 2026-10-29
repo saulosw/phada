@@ -605,6 +605,7 @@ describe('run', () => {
         'Investigated: no tool calls',
         'Publishing the review…',
         `Published the review: ${REVIEW_URL}`,
+        'Tokens: review 3.5k in · 420 out',
         '',
       ].join('\n'),
     )
@@ -1341,6 +1342,19 @@ describe('run publishing', () => {
     )
     expect(published.stdout()).toContain('(confidence 65 · close to the cut)')
     expect(JSON.stringify(published.posts)).not.toMatch(/close to the cut/i)
+  })
+
+  it('lists the tokens of each pass at the end of the dry run and of the review', async () => {
+    const h = harness({ review: () => Promise.resolve(WITH_FINDING) })
+
+    await run([...REVIEW, '--dry-run'], h.deps)
+
+    expect(h.stdout()).toMatch(
+      /\n## Tokens\n\n- review: 3\.5k in · 420 out\n- total: 3\.5k in · 420 out\n$/,
+    )
+    expect(h.stderr()).toMatch(
+      /Dry run: nothing was posted\.\nTokens: review 3\.5k in · 420 out\n$/,
+    )
   })
 
   it('prints the dry run as JSON with the review and the publication preview', async () => {

@@ -9,6 +9,9 @@ import { formatGitHubPreview } from './cli/format-github.js'
 import { formatCiSection } from './cli/format-ci.js'
 import { formatClaimsSection } from './cli/format-claims.js'
 import { formatCloseToCutSection } from './cli/format-close-to-cut.js'
+import { formatUsageLine, formatUsageSection } from './cli/format-usage.js'
+import { usageReport } from './review/token-usage.js'
+import type { UsageReport } from './review/token-usage.js'
 import { formatContextSection } from './cli/format-context.js'
 import { formatConversationSection } from './cli/format-conversation.js'
 import { formatImpactSection } from './cli/format-impact.js'
@@ -169,6 +172,8 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
     )
     printHistorySave(deps, history)
     printRun(deps, command, reviewRun)
+    const usageLine = formatUsageLine(runUsage(reviewRun))
+    if (usageLine !== undefined) deps.stderr.write(`${usageLine}\n`)
     return 0
   } catch (error) {
     const { message, exitCode } = formatError(error, { debug })
@@ -246,7 +251,7 @@ function printRun(deps: MainDeps, command: ReviewCommand, run: ReviewRun): void 
         deps.stdout.write(
           run.status === 'nothing'
             ? formatGitHubPreview(rendered, messages)
-            : `${formatGitHubPreview(rendered, messages)}\n${closeToCutSection(run)}${claimsSection(run)}${formatContextSection(reviewed.context.report)}\n${formatConversationSection(reviewed.conversation)}\n${formatCiSection(reviewed.ci)}\n${formatImpactSection(reviewed.impact, reviewed.impactText)}\n${reviewed.related.status === 'none' ? '' : `${formatRelatedSection(reviewed.related)}\n`}${passesSection(run, fixFor)}${formatInvestigationSection(reviewed.investigation)}`,
+            : `${formatGitHubPreview(rendered, messages)}\n${closeToCutSection(run)}${claimsSection(run)}${formatContextSection(reviewed.context.report)}\n${formatConversationSection(reviewed.conversation)}\n${formatCiSection(reviewed.ci)}\n${formatImpactSection(reviewed.impact, reviewed.impactText)}\n${reviewed.related.status === 'none' ? '' : `${formatRelatedSection(reviewed.related)}\n`}${passesSection(run, fixFor)}${formatInvestigationSection(reviewed.investigation)}\n${formatUsageSection(runUsage(run))}`,
         )
       }
       deps.stderr.write('Dry run: nothing was posted.\n')
@@ -280,6 +285,12 @@ function skipLine(outcome: Extract<ReviewOutcome, { status: 'skipped' }>): strin
   if (outcome.reason === 'empty-diff') return 'Nothing to review: the pull request has no changes.'
   const skipped = (outcome.passes ?? []).map(({ skill, reason }) => `${skill} — ${reason ?? ''}`)
   return `Nothing to review: no skill applies to the changed files (${skipped.join('; ')}).`
+}
+
+function runUsage(run: ReviewRun): UsageReport {
+  if (run.status === 'skipped') return { passes: [] }
+  const { outcome, recheck } = run.reviewed
+  return usageReport(outcome.status === 'reviewed' ? outcome.result.passUsage : undefined, recheck)
 }
 
 function closeToCutSection(run: ReviewRun): string {
