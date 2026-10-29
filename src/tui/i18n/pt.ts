@@ -988,6 +988,34 @@ export const portuguese: UiMessages = {
       notSaved: (error) => `Não gravado no histórico: ${error}`,
       feedbackNotSaved: (error) => `Gravado, sem o feedback dos comentários: ${error}`,
     },
+    publish: {
+      key: 'publicar esta revisão',
+      historyOff:
+        'Para publicar esta mesma revisão depois, ligue o histórico: ele guarda a execução (history: true).',
+      question: 'Publicar esta revisão no GitHub? A IA não roda de novo: publica o que você vê.',
+      posts: 'Publica',
+      counts: (comments, debt) =>
+        `${number(comments)} ${comments === 1 ? 'comentário' : 'comentários'} na linha, ${number(debt)} ${debt === 1 ? 'item' : 'itens'} de débito do repositório`,
+      publish: 'publicar',
+      publishing: 'Publicando no GitHub…',
+      published: (url) => `Publicado: ${url}`,
+      stillOpen: (count) =>
+        `${number(count)} ${count === 1 ? 'achado ainda aberto' : 'achados ainda abertos'} de revisões anteriores, sem publicar de novo.`,
+      resolved: (count) =>
+        `${number(count)} ${count === 1 ? 'comentário corrigido resolvido' : 'comentários corrigidos resolvidos'}.`,
+      skipped: (reason) => `Não publicado: ${reason}.`,
+      failed: 'Não foi possível publicar.',
+      refusals: {
+        notFound: 'Não publicado: esta revisão não está mais no histórico.',
+        published: 'Não publicado: esta revisão já foi publicada.',
+        notADryRun: 'Não publicado: esta execução não é uma revisão de só ver.',
+        nothing: 'Não publicado: esta revisão não achou nada para publicar.',
+        outdated:
+          'Não publicado: esta execução foi guardada por uma Phada mais antiga, sem tudo o que publicar precisa.',
+        headMoved: (from, to) =>
+          `Não publicado: o pull request foi de ${from} para ${to} depois desta revisão. Revise de novo para publicar.`,
+      },
+    },
   },
 }
 

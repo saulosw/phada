@@ -974,6 +974,34 @@ export const english: UiMessages = {
       notSaved: (error) => `Not saved in the history: ${error}`,
       feedbackNotSaved: (error) => `Saved, without the comments' feedback: ${error}`,
     },
+    publish: {
+      key: 'publish this review',
+      historyOff:
+        'To publish this exact review later, turn the history on: it keeps the run (history: true).',
+      question: 'Publish this review on GitHub? The AI does not run again: it posts what you see.',
+      posts: 'Posts',
+      counts: (comments, debt) =>
+        `${number(comments)} inline ${comments === 1 ? 'comment' : 'comments'}, ${number(debt)} repository debt ${debt === 1 ? 'item' : 'items'}`,
+      publish: 'publish',
+      publishing: 'Publishing on GitHub…',
+      published: (url) => `Published: ${url}`,
+      stillOpen: (count) =>
+        `${number(count)} ${count === 1 ? 'finding' : 'findings'} still open from earlier reviews, not posted again.`,
+      resolved: (count) =>
+        `Resolved ${number(count)} fixed ${count === 1 ? 'comment' : 'comments'}.`,
+      skipped: (reason) => `Not published: ${reason}.`,
+      failed: 'Could not publish it.',
+      refusals: {
+        notFound: 'Not published: this review is no longer in the history.',
+        published: 'Not published: this review was already published.',
+        notADryRun: 'Not published: this run is not a review that only looked.',
+        nothing: 'Not published: this review found nothing to post.',
+        outdated:
+          'Not published: this run was kept by an older Phada without everything needed to publish it.',
+        headMoved: (from, to) =>
+          `Not published: the pull request moved from ${from} to ${to} since this review. Review it again to publish.`,
+      },
+    },
   },
 }
 

@@ -80,7 +80,7 @@ export function ConfirmStep({
   return <ScrollText lines={lines} rows={size.rows} />
 }
 
-function accountText(state: DataState<GitHubAccess>, messages: UiMessages): string {
+export function accountText(state: DataState<GitHubAccess>, messages: UiMessages): string {
   if (state.status === 'loading') return messages.loading
   if (state.status === 'failed') return failedText(messages, state.error)
   const access = state.value

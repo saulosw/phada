@@ -14,7 +14,7 @@ import {
   visibleWidth,
 } from '../../../test/support/tui.js'
 import type { ReviewDetail } from '../../app/read-history.js'
-import type { EnqueuedReview } from '../../app/requested-review.js'
+import type { EnqueuedReview, PublishedReview } from '../../app/requested-review.js'
 import type { JobRecord } from '../../watch/types.js'
 import type {
   OpenPullRequests,
@@ -142,6 +142,21 @@ function openFlow(
     app.clock.advance(ms)
   }
   return { ...app, asked, fromPalette, later }
+}
+
+async function looked(
+  flow: ReturnType<typeof openFlow>,
+  reviewed: ReviewDetail,
+  history: Extract<RequestedReview, { status: 'reviewed' }>['history'],
+) {
+  await flow.fromPalette()
+  await flow.type('acme/shop#12')
+  await flow.press(KEYS.enter)
+  await flow.showing('How should Phada review it?')
+  await flow.press(KEYS.enter)
+  await flow.until(() => flow.asked.length === 1)
+  flow.asked[0]?.resolve({ status: 'reviewed', detail: reviewed, history })
+  await flow.showing('Done in')
 }
 
 function expectFits(frame: string, { columns, rows }: TerminalSize) {
@@ -805,6 +820,80 @@ describe('reviewing a pull request from the app', () => {
     await flow.until(() => flow.asked.length === 1)
     expect(flow.asked[0]).toMatchObject({ target: TARGET, mode: 'look' })
     expect(flow.enqueues).toEqual([])
+  })
+
+  it('publishes with p exactly what it only looked at, after asking, and Esc goes back to the result', async () => {
+    const publishes: { runId: number; resolve(published: PublishedReview): void }[] = []
+    const flow = openFlow({
+      deps: {
+        publishReview: (runId) =>
+          new Promise((resolve) => {
+            publishes.push({ runId, resolve })
+          }),
+      },
+    })
+    const debt = detail().findings.map((finding) => ({ ...finding, scope: 'repository' as const }))
+    await looked(flow, detail({ debt }), { status: 'saved', runId: 3 })
+    expect(flow.footer()).toContain('p publish this review')
+    await flow.press('p')
+    await flow.showing('Publish this review on GitHub?')
+    await flow.showing('@ana')
+    expect(flow.frame()).toContain('The AI does not run again: it posts what you see.')
+    expect(flow.frame()).toMatch(/Pull request\s+acme\/shop#12 · Let users spend crystals/)
+    expect(flow.frame()).toMatch(/Published as\s+@ana/)
+    expect(flow.frame()).toMatch(/Posts\s+1 inline comment, 1 repository debt item/)
+    expect(flow.footer()).toContain('Enter publish')
+    expectFits(flow.frame(), { columns: 80, rows: 24 })
+    await flow.press(KEYS.enter)
+    await flow.showing('Publishing on GitHub…')
+    expect(publishes.map(({ runId }) => runId)).toEqual([3])
+    publishes[0]?.resolve({
+      status: 'published',
+      url: 'https://github.com/acme/shop/pull/12#pullrequestreview-1',
+      comments: 1,
+      stillOpen: 0,
+      resolved: 2,
+      warnings: [],
+      history: { status: 'saved', runId: 4 },
+    })
+    await flow.showing('Published: https://github.com/acme/shop/pull/12#pullrequestreview-1')
+    expect(flow.frame()).toContain('Resolved 2 fixed comments.')
+    expect(flow.frame()).toContain('Saved in the history.')
+    expectFits(flow.frame(), { columns: 80, rows: 24 })
+    await flow.press(KEYS.escape)
+    await flow.showing('Done in')
+    expect(flow.asked).toHaveLength(1)
+  })
+
+  it('says the pull request moved since the review, offering nothing but going back', async () => {
+    const flow = openFlow({
+      deps: {
+        publishReview: async () => ({
+          status: 'refused',
+          refusal: { kind: 'head-moved', from: SHA, to: 'f'.repeat(40) },
+        }),
+      },
+    })
+    await looked(flow, detail(), { status: 'saved', runId: 3 })
+    await flow.press('p')
+    await flow.showing('@ana')
+    await flow.press(KEYS.enter)
+    await flow.showing('moved from a1b2c3d to fffffff')
+    expect(flow.frame()).toContain(
+      'Not published: the pull request moved from a1b2c3d to fffffff since this review.',
+    )
+    expect(flow.frame()).toContain('Review it again to publish.')
+    expect(flow.footer()).not.toContain('Enter')
+    expectFits(flow.frame(), { columns: 80, rows: 24 })
+  })
+
+  it('does not offer to publish a look the history did not keep, and says why', async () => {
+    const flow = openFlow()
+    await looked(flow, detail(), { status: 'off' })
+    expect(flow.frame()).toContain('To publish this exact review later, turn the history on')
+    expect(flow.footer()).not.toContain('p publish')
+    await flow.press('p')
+    expect(flow.frame()).not.toContain('Publish this review on GitHub?')
   })
 
   it('opens with n on the Reviews screen and goes back there', async () => {

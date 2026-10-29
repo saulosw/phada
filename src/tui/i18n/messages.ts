@@ -178,6 +178,28 @@ export interface ReviewFlowMessages {
     notSaved(error: string): string
     feedbackNotSaved(error: string): string
   }
+  publish: {
+    key: string
+    historyOff: string
+    question: string
+    posts: string
+    counts(comments: number, debt: number): string
+    publish: string
+    publishing: string
+    published(url: string): string
+    stillOpen(count: number): string
+    resolved(count: number): string
+    skipped(reason: string): string
+    failed: string
+    refusals: {
+      notFound: string
+      published: string
+      notADryRun: string
+      nothing: string
+      outdated: string
+      headMoved(from: string, to: string): string
+    }
+  }
 }
 
 export interface HomeMessages {

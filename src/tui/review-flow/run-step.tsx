@@ -1,4 +1,5 @@
 import { Box, Text } from 'ink'
+import type { Key } from 'ink'
 import type { ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import type { PullRequestTarget, RequestedReview, ReviewMode } from '../../app/requested-review.js'
@@ -20,9 +21,13 @@ import { reviewDetailLines } from '../review-detail.js'
 import { NO_STEPS, stepFailed, stepRunning, stepsAfter, stepText } from '../review-steps.js'
 import type { ReviewSteps } from '../review-steps.js'
 import { ScrollText } from '../scroll-list.js'
-import { oneLine, wrapText } from '../text-fit.js'
+import { wrapText } from '../text-fit.js'
 import { durationText } from '../units.js'
+import type { KeyHint } from '../app-context.js'
 import { pullRequestText, refText } from './flow-text.js'
+import { historyLine } from './history-line.js'
+import { PublishStep } from './publish-step.js'
+import type { SavedLook } from './publish-step.js'
 
 const TICK_MS = 1000
 
@@ -57,6 +62,7 @@ export function RunStep({
   const [outcome, setOutcome] = useState<RunOutcome>({ status: 'running' })
   const [asking, setAsking] = useState(false)
   const [cancelling, setCancelling] = useState(false)
+  const [publishOpen, setPublishOpen] = useState(false)
   const [, setTick] = useState(0)
   const startedAt = useRef(now().getTime())
   const request = useRef({ target, mode })
@@ -119,33 +125,43 @@ export function RunStep({
         }
       : undefined,
   )
-  useBack(
-    !running
-      ? onClose
-      : askingNow
-        ? () => setAsking(false)
-        : cancellable
-          ? () => setAsking(true)
-          : () => undefined,
-  )
-  useScreenInput((_input, key) => {
-    if (askingNow && key.return) cancel()
-  })
-  useScreenKeys(
-    askingNow
-      ? [
-          { keys: 'Enter', label: m.cancel.confirm },
-          { keys: 'Esc', label: m.cancel.keep },
-        ]
+  const look = savedLook(outcome, mode)
+  const back = !running
+    ? onClose
+    : askingNow
+      ? () => setAsking(false)
       : cancellable
-        ? [{ keys: 'Esc', label: m.cancel.key }]
-        : running
-          ? []
-          : [
-              { keys: '↑/↓', label: messages.list.scroll },
-              { keys: 'Esc', label: messages.keys.back },
-            ],
-  )
+        ? () => setAsking(true)
+        : () => undefined
+  const input = (input: string, key: Key) => {
+    if (askingNow && key.return) cancel()
+    if (input === 'p' && look !== undefined) setPublishOpen(true)
+  }
+  const hints: KeyHint[] = askingNow
+    ? [
+        { keys: 'Enter', label: m.cancel.confirm },
+        { keys: 'Esc', label: m.cancel.keep },
+      ]
+    : cancellable
+      ? [{ keys: 'Esc', label: m.cancel.key }]
+      : running
+        ? []
+        : [
+            ...(look === undefined ? [] : [{ keys: 'p', label: m.publish.key }]),
+            { keys: '↑/↓', label: messages.list.scroll },
+            { keys: 'Esc', label: messages.keys.back },
+          ]
+  if (publishOpen && look !== undefined) {
+    return (
+      <PublishStep
+        target={target}
+        title={look.title ?? title}
+        look={look}
+        back={() => setPublishOpen(false)}
+      />
+    )
+  }
+  const keys = <StepKeys back={back} input={input} hints={hints} />
   const draw = { messages, theme, width: size.columns }
   const time = now().getTime()
   const header = pullRequestText(
@@ -169,6 +185,7 @@ export function RunStep({
     const room = Math.max(size.rows - (MASCOT_FRAMES[0]?.length ?? 0) - 1, 1)
     return (
       <Box flexDirection="column" width={size.columns}>
+        {keys}
         <Box>
           <Mascot />
           <Box flexDirection="column" marginLeft={2}>
@@ -206,8 +223,42 @@ export function RunStep({
             ...spaced(stepLines(steps, target, draw, outcome.endedAt)),
             ...spaced(warningLines(steps.warnings, draw)),
           ]
-        : resultLines(outcome.review, steps, draw, elapsed, new Date(time))
-  return <ScrollText lines={lines} rows={size.rows} />
+        : resultLines(outcome.review, mode, steps, draw, elapsed, new Date(time))
+  return (
+    <>
+      {keys}
+      <ScrollText lines={lines} rows={size.rows} />
+    </>
+  )
+}
+
+function StepKeys({
+  back,
+  input,
+  hints,
+}: {
+  back(): void
+  input(input: string, key: Key): void
+  hints: KeyHint[]
+}) {
+  useBack(back)
+  useScreenInput(input)
+  useScreenKeys(hints)
+  return null
+}
+
+function savedLook(outcome: RunOutcome, mode: ReviewMode): SavedLook | undefined {
+  if (mode !== 'look' || outcome.status !== 'done') return undefined
+  const { review } = outcome
+  if (review.status !== 'reviewed' || review.history.status !== 'saved') return undefined
+  const { detail } = review
+  if (detail.score === null) return undefined
+  return {
+    runId: review.history.runId,
+    title: detail.pullRequest.title,
+    comments: detail.publication?.comments ?? detail.findings.length,
+    debt: detail.debt.length,
+  }
 }
 
 function runningLines(
@@ -275,6 +326,7 @@ function warningLines(warnings: readonly string[], { messages, theme, width }: D
 
 function resultLines(
   review: Exclude<RequestedReview, { status: 'cancelled' | 'watch-running' }>,
+  mode: ReviewMode,
   steps: ReviewSteps,
   draw: DrawContext,
   elapsed: string,
@@ -284,19 +336,17 @@ function resultLines(
   const m = messages.reviewFlow
   if (review.status === 'no-token') return [<Text color={theme.colors.warn}>{m.noToken}</Text>]
   const history = review.history
-  const saved =
-    history.status === 'off'
-      ? m.history.off
-      : history.status === 'not-saved'
-        ? m.history.notSaved(oneLine(history.error))
-        : history.feedbackError === undefined
-          ? m.history.saved
-          : m.history.feedbackNotSaved(oneLine(history.feedbackError))
+  const historyOff = mode === 'look' && history.status === 'off' && review.detail.score !== null
   return [
     <Text color={theme.colors.ok}>{m.done(elapsed)}</Text>,
     <Text color={history.status === 'not-saved' ? theme.colors.warn : theme.colors.dim}>
-      {saved}
+      {historyLine(history, messages)}
     </Text>,
+    ...(historyOff
+      ? wrapText(m.publish.historyOff, draw.width).map((line) => (
+          <Text color={theme.colors.dim}>{line}</Text>
+        ))
+      : []),
     ...spaced(warningLines(steps.warnings, draw)),
     <Text> </Text>,
     ...reviewDetailLines(review.detail, draw, time),
