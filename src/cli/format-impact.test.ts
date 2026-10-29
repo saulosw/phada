@@ -95,6 +95,19 @@ describe('formatImpactSection', () => {
     )
   })
 
+  it('lists the changed symbols when the text the AI got was not kept', () => {
+    expect(formatImpactSection(used, undefined)).toBe(
+      [
+        '## Impact',
+        '',
+        '- function getUser (src/users.ts:1-3): 9 callers in 5 files',
+        '- method load (src/users.ts:5-9): 3 callers in 2 files',
+        '- class Users (src/users.ts:4-20): 0 callers in 0 files',
+        '',
+      ].join('\n'),
+    )
+  })
+
   it('explains why there is no impact', () => {
     expect(
       formatImpactSection(

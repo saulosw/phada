@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Conversation, ConversationReport } from '../publish/types.js'
 import { formatConversationLine, formatConversationSection } from './format-conversation.js'
+import { conversationJson } from './format-json.js'
 
 function report(overrides: Partial<ConversationReport> = {}): ConversationReport {
   return { items: 6, omitted: 0, resolved: 2, bots: 1, truncated: 0, bytes: 4200, ...overrides }
@@ -76,10 +77,12 @@ describe('formatConversationSection', () => {
     ]
 
     expect(
-      formatConversationSection({
-        items,
-        report: { items: 4, omitted: 3, resolved: 1, bots: 1, truncated: 1, bytes: 4200 },
-      }),
+      formatConversationSection(
+        conversationJson({
+          items,
+          report: { items: 4, omitted: 3, resolved: 1, bots: 1, truncated: 1, bytes: 4200 },
+        }),
+      ),
     ).toBe(
       [
         '## Conversation sent to the AI',
@@ -98,25 +101,27 @@ describe('formatConversationSection', () => {
   })
 
   it('says when the pull request has no conversation and when it is off', () => {
-    expect(formatConversationSection(conversation({ items: 0, bytes: 0 }))).toBe(
+    expect(formatConversationSection(conversationJson(conversation({ items: 0, bytes: 0 })))).toBe(
       '## Conversation sent to the AI\n\nNo comments, reviews or threads.\n',
     )
-    expect(formatConversationSection(undefined)).toBe('## Conversation sent to the AI\n\nOff.\n')
+    expect(formatConversationSection(null)).toBe('## Conversation sent to the AI\n\nOff.\n')
   })
 
   it('strips control characters from authors and files', () => {
-    const section = formatConversationSection({
-      items: [
-        {
-          kind: 'comment',
-          at: '2026-10-20T10:00:00Z',
-          author: 'ev\u001bil',
-          role: 'external',
-          body: '',
-        },
-      ],
-      report: report({ items: 1 }),
-    })
+    const section = formatConversationSection(
+      conversationJson({
+        items: [
+          {
+            kind: 'comment',
+            at: '2026-10-20T10:00:00Z',
+            author: 'ev\u001bil',
+            role: 'external',
+            body: '',
+          },
+        ],
+        report: report({ items: 1 }),
+      }),
+    )
     expect(section).toContain('- comment by evil (external)')
   })
 })

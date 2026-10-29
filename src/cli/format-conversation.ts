@@ -1,6 +1,6 @@
 import { CONVERSATION_BODY_BYTES, CONVERSATION_BUDGET_BYTES } from '../publish/conversation.js'
+import type { ConversationBlock, ConversationEntry } from '../app/read-run-report.js'
 import type { Conversation } from '../publish/types.js'
-import type { ConversationItem } from '../review/types.js'
 import { toTerminalText } from '../app/terminal-text.js'
 import { formatBytes, formatCount } from './units.js'
 
@@ -20,39 +20,38 @@ export function formatConversationLine({ report }: Conversation): string | undef
 
 const HEADING = '## Conversation sent to the AI\n\n'
 
-export function formatConversationSection(conversation: Conversation | undefined): string {
-  if (conversation === undefined) return `${HEADING}Off.\n`
-  const { items, report } = conversation
-  if (report.items === 0 && report.omitted === 0)
-    return `${HEADING}No comments, reviews or threads.\n`
+export function formatConversationSection(conversation: ConversationBlock | null): string {
+  if (conversation === null) return `${HEADING}Off.\n`
+  const { items, count, omitted, truncated, budget } = conversation
+  if (count === 0 && omitted === 0) return `${HEADING}No comments, reviews or threads.\n`
   const totals = [
-    `Sent: ${formatBytes(report.bytes)} of ${BUDGET}`,
-    ...(report.omitted > 0
+    `Sent: ${formatBytes(budget.used)} of ${BUDGET}`,
+    ...(omitted > 0
       ? [
-          `Left out: ${formatCount(report.omitted, 'item')} over ${BUDGET} (resolved threads, then outdated ones, then the oldest)`,
+          `Left out: ${formatCount(omitted, 'item')} over ${BUDGET} (resolved threads, then outdated ones, then the oldest)`,
         ]
       : []),
-    ...(report.truncated > 0
-      ? [`Cut: ${report.truncated} ${report.truncated === 1 ? 'body' : 'bodies'} at ${BODY}`]
+    ...(truncated > 0
+      ? [`Cut: ${truncated} ${truncated === 1 ? 'body' : 'bodies'} at ${BODY}`]
       : []),
   ]
   return `${HEADING}${items.map(itemLine).join('\n')}\n\n${totals.join('\n')}\n`
 }
 
-function itemLine(item: ConversationItem): string {
-  const by = `by ${toTerminalText(item.author)} (${item.role}), ${when(item.at)}`
+function itemLine(item: ConversationEntry): string {
+  const by = `by ${toTerminalText(item.author)} (${toTerminalText(item.role)}), ${when(item.at)}`
   switch (item.kind) {
     case 'comment':
       return `- comment ${by}`
     case 'review':
-      return `- review ${item.state} ${by}`
+      return `- review ${toTerminalText(item.state)} ${by}`
     case 'thread': {
       const where = `${toTerminalText(item.file)}${item.line === null ? '' : `:${item.line}`}`
       const notes = [
         ...(item.resolved ? ['resolved'] : []),
         ...(item.outdated ? ['outdated'] : []),
-        ...(item.replies === undefined ? [] : [replies(item.replies.length)]),
-        ...(item.omittedReplies === undefined
+        ...(item.replies === 0 ? [] : [replies(item.replies)]),
+        ...(item.omittedReplies === 0
           ? []
           : [`${replies(item.omittedReplies, 'earlier ')} not read`]),
       ]

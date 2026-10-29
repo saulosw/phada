@@ -6,18 +6,14 @@ import type { CliCommand } from './cli/args.js'
 import { requireGitHubToken } from './cli/github-token.js'
 import { formatError } from './cli/format-error.js'
 import { formatGitHubPreview } from './cli/format-github.js'
-import { formatCiSection } from './cli/format-ci.js'
-import { formatClaimsSection } from './cli/format-claims.js'
-import { formatCloseToCutSection } from './cli/format-close-to-cut.js'
-import { formatUsageLine, formatUsageSection } from './cli/format-usage.js'
+import { formatUsageLine } from './cli/format-usage.js'
+import { ciJson, conversationJson } from './cli/format-json.js'
+import { formatRunSections } from './cli/format-run-sections.js'
+import type { RunSections } from './cli/format-run-sections.js'
 import { usageReport } from './review/token-usage.js'
 import type { UsageReport } from './review/token-usage.js'
-import { formatContextSection } from './cli/format-context.js'
-import { formatConversationSection } from './cli/format-conversation.js'
-import { formatImpactSection } from './cli/format-impact.js'
-import { formatInvestigationLine, formatInvestigationSection } from './cli/format-investigation.js'
-import { formatRelatedSection } from './cli/format-related.js'
-import { formatPassesSection, formatSkillRunLines } from './cli/format-passes.js'
+import { formatInvestigationLine } from './cli/format-investigation.js'
+import { formatSkillRunLines } from './cli/format-passes.js'
 import type { BlockedFix } from './cli/format-passes.js'
 import { blockedFixer } from './cli/blocked-fix.js'
 import { printReviewProgress } from './cli/print-review-progress.js'
@@ -251,7 +247,10 @@ function printRun(deps: MainDeps, command: ReviewCommand, run: ReviewRun): void 
         deps.stdout.write(
           run.status === 'nothing'
             ? formatGitHubPreview(rendered, messages)
-            : `${formatGitHubPreview(rendered, messages)}\n${closeToCutSection(run)}${claimsSection(run)}${formatContextSection(reviewed.context.report)}\n${formatConversationSection(reviewed.conversation)}\n${formatCiSection(reviewed.ci)}\n${formatImpactSection(reviewed.impact, reviewed.impactText)}\n${reviewed.related.status === 'none' ? '' : `${formatRelatedSection(reviewed.related)}\n`}${passesSection(run, fixFor)}${formatInvestigationSection(reviewed.investigation)}\n${formatUsageSection(runUsage(run))}`,
+            : [
+                formatGitHubPreview(rendered, messages),
+                ...formatRunSections(dryRunSections(run, fixFor)),
+              ].join('\n'),
         )
       }
       deps.stderr.write('Dry run: nothing was posted.\n')
@@ -293,25 +292,33 @@ function runUsage(run: ReviewRun): UsageReport {
   return usageReport(outcome.status === 'reviewed' ? outcome.result.passUsage : undefined, recheck)
 }
 
-function closeToCutSection(run: ReviewRun): string {
-  if (run.status !== 'reviewed') return ''
-  const outcome = run.reviewed.outcome
-  if (outcome.status !== 'reviewed') return ''
-  const { findings, minConfidence } = outcome.result
-  return `${formatCloseToCutSection(findings, minConfidence)}\n`
-}
-
-function claimsSection(run: ReviewRun): string {
-  if (run.status !== 'reviewed') return ''
-  const outcome = run.reviewed.outcome
-  return outcome.status === 'reviewed' ? `${formatClaimsSection(outcome.result.claims)}\n` : ''
-}
-
-function passesSection(run: ReviewRun, fixFor: BlockedFix): string {
-  if (run.status !== 'reviewed') return ''
-  const outcome = run.reviewed.outcome
-  const passes = outcome.status === 'reviewed' ? outcome.result.passes : undefined
-  return passes === undefined ? '' : `${formatPassesSection(passes, fixFor)}\n`
+function dryRunSections(
+  run: Extract<ReviewRun, { status: 'reviewed' }>,
+  fixFor: BlockedFix,
+): RunSections {
+  const { reviewed } = run
+  const { outcome } = reviewed
+  const result = outcome.status === 'reviewed' ? outcome.result : undefined
+  return {
+    ...(result === undefined
+      ? {}
+      : {
+          closeToCut: { findings: result.findings, minConfidence: result.minConfidence },
+          claims: result.claims,
+        }),
+    context: reviewed.context.report,
+    conversation:
+      reviewed.conversation === undefined ? null : conversationJson(reviewed.conversation),
+    ci: reviewed.ci === undefined ? null : ciJson(reviewed.ci),
+    impact: {
+      report: reviewed.impact,
+      ...(reviewed.impactText === undefined ? {} : { text: reviewed.impactText }),
+    },
+    related: reviewed.related,
+    ...(result?.passes === undefined ? {} : { passes: { reports: result.passes, fixFor } }),
+    investigation: reviewed.investigation,
+    usage: runUsage(run),
+  }
 }
 
 function printHistorySave(deps: Pick<MainDeps, 'stderr'>, history: HistorySave): void {

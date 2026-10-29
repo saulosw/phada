@@ -50,11 +50,10 @@ export function formatPassesSection(passes: readonly PassReport[], fixFor?: Bloc
     if (pass.output !== undefined) outputs.push(skillOutputBlock(skill, pass.output))
     return [
       toTerminalText(`${head}${parts.join(' · ')}`),
-      ...(pass.blocked ?? []).map((item) =>
-        toTerminalText(
-          `  - blocked: ${item.input}${fixFor === undefined ? '' : ` — ${fixFor(item)}`}`,
-        ),
-      ),
+      ...(pass.blocked ?? []).map((item) => {
+        const fix = fixFor?.(item) ?? ''
+        return toTerminalText(`  - blocked: ${item.input}${fix === '' ? '' : ` — ${fix}`}`)
+      }),
     ]
   })
   return ['## Skills', '', ...lines, '', ...outputs].join('\n')
