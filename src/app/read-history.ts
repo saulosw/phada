@@ -49,6 +49,7 @@ export interface StoredFinding {
   skill: string | null
   sources: string[]
   scope: 'change' | 'repository'
+  closeToCut: boolean
 }
 
 export interface StoredClaim {
@@ -223,6 +224,7 @@ function storedFindings(value: unknown): StoredFinding[] {
         skill: stringOf(finding.skill) ?? null,
         sources: stringsOf(finding.sources),
         scope: finding.scope === 'repository' ? 'repository' : 'change',
+        closeToCut: finding.closeToCut === true,
       },
     ]
   })

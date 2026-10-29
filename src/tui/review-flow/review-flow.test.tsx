@@ -74,6 +74,7 @@ function detail(changes: Partial<ReviewDetail> = {}): ReviewDetail {
         skill: null,
         sources: [],
         scope: 'change',
+        closeToCut: false,
       },
     ],
     debt: [],

@@ -432,6 +432,29 @@ describe('readReviewDetail', () => {
     expect(older.debt).toEqual([])
   })
 
+  it('reads which findings of a stored review were close to the cut', () => {
+    const stored = JSON.parse(REVIEW_JSON) as {
+      review: { findings: Record<string, unknown>[] } & Record<string, unknown>
+    }
+    const [finding] = stored.review.findings
+    const marked = JSON.stringify({
+      ...stored,
+      review: {
+        ...stored.review,
+        findings: [
+          { ...finding, closeToCut: true },
+          { ...finding, line: 2, closeToCut: 'yes' },
+        ],
+      },
+    })
+
+    const detail = reviewDetailOf({ ...RUN, resultJson: marked }, [])
+
+    expect(detail.findings.map(({ closeToCut }) => closeToCut)).toEqual([true, false])
+    const older = reviewDetailOf({ ...RUN, resultJson: REVIEW_JSON }, [])
+    expect(older.findings.map(({ closeToCut }) => closeToCut)).toEqual([false])
+  })
+
   it('reads nothing for an unknown run or without a history', () => {
     expect(readReviewDetail(fakeHistory([RUN]), 99)).toBeUndefined()
     expect(readReviewDetail(undefined, 7)).toBeUndefined()

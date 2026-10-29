@@ -103,6 +103,7 @@ function detail(): ReviewDetail {
         skill: null,
         sources: [],
         scope: 'change',
+        closeToCut: false,
       },
       {
         severity: 'P1',
@@ -116,6 +117,7 @@ function detail(): ReviewDetail {
         skill: null,
         sources: [],
         scope: 'change',
+        closeToCut: false,
       },
     ],
     debt: [],
@@ -132,6 +134,7 @@ function detail(): ReviewDetail {
         skill: null,
         sources: [],
         scope: 'change',
+        closeToCut: false,
       },
     ],
     publication: {
@@ -395,6 +398,35 @@ describe('the Reviews screen', () => {
     expect(text).toMatch(/P0\s+src\/cart.ts:12\s+Total ignores the discount · debt\n/)
     expect(text).toMatch(/P0\s+src\/legacy.ts:4\s+Old total helper nobody calls\n/)
     expect(text).not.toContain('\u0007')
+  })
+
+  it('marks the findings close to the cut in 80×24', async () => {
+    const base = detail()
+    const [first, second] = base.findings
+    if (first === undefined || second === undefined) throw new Error('fixture without findings')
+    const { frame, press, showing } = openReviews({
+      detail: () => ({ ...base, findings: [{ ...first, closeToCut: true }, second] }),
+    })
+    await showing('Enter open')
+    await press(KEYS.enter)
+    await showing('Findings (2)')
+    const text = frame()
+    expectFits(text, { columns: 80, rows: 24 })
+    expect(text).toMatch(/P0\s+src\/cart.ts:12\s+Total ignores the discount · close to the cut\n/)
+    expect(text).toMatch(/P1\s+src\/coupon.ts\s+Coupon code is not trimmed\n/)
+  })
+
+  it('names the findings close to the cut in the language of the app', async () => {
+    const base = detail()
+    const [first] = base.findings
+    if (first === undefined) throw new Error('fixture without findings')
+    const { press, showing } = openReviews({
+      language: 'pt-BR',
+      detail: () => ({ ...base, findings: [{ ...first, closeToCut: true }] }),
+    })
+    await showing('Enter')
+    await press(KEYS.enter)
+    await showing('Total ignores the discount · rente ao corte')
   })
 
   it('names the repository debt in the language of the app', async () => {

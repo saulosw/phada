@@ -311,6 +311,7 @@ export const english: UiMessages = {
       worthChecking: (count) => `Worth checking (${count})`,
       debt: (count) => `Repository debt (${count})`,
       debtMark: 'debt',
+      closeToCutMark: 'close to the cut',
       feedback: (count) => `Feedback on the published comments (${count})`,
       nothingPosted: 'nothing was posted',
       wouldResolve: (count) => `would resolve ${count}`,

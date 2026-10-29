@@ -552,6 +552,7 @@ export interface ReviewsMessages {
     worthChecking(count: number): string
     debt(count: number): string
     debtMark: string
+    closeToCutMark: string
     feedback(count: number): string
     nothingPosted: string
     wouldResolve(count: number): string

@@ -313,6 +313,7 @@ export const spanish: UiMessages = {
       worthChecking: (count) => `Vale la pena revisar (${count})`,
       debt: (count) => `Deuda del repositorio (${count})`,
       debtMark: 'deuda',
+      closeToCutMark: 'al borde del corte',
       feedback: (count) => `Respuesta a los comentarios publicados (${count})`,
       nothingPosted: 'no se publicó nada',
       wouldResolve: (count) => `resolvería ${count}`,
