@@ -386,7 +386,8 @@ src/
                          #   the history record
     stored-ci.ts         #   ciSkipJson(), storedCi(): the CI of a run in its stored JSON, written
                          #   for a ci-failing skip and read back (validated) for the events
-    format-rules.ts      #   formatRulesText(), formatRulesJson() (schemaVersion 1)
+    format-rules.ts      #   formatRulesText() (a pull request's title "at base <sha>"),
+                         #   formatRulesJson() (schemaVersion 1)
     context-sources.ts   #   contextSourcesAt(): the repository at a commit and the local files
     format-index.ts      #   formatIndexText(), formatIndexJson() (schemaVersion 1)
     suppress-sqlite-warning.ts # drops Node's ExperimentalWarning for the built-in SQLite
@@ -402,7 +403,8 @@ src/
                          #   line comments, suggestion blocks, markers, truncation; formatResolvedReply(); formatGitHubPreview() for
                          #   --dry-run
     format-publication.ts #  skip, "Published", recheck and "Resolved" messages
-    format-context.ts    #   the "Context:" line and the context section of --dry-run
+    format-context.ts    #   the "Context at base <sha>:" line and the context section of
+                         #   --dry-run
     format-investigation.ts # the "Investigated:" line and the investigation section of --dry-run
     format-related.ts    #   the "Related:" line and the related repositories section of --dry-run
     format-impact.ts     #   the "Impact:" line and the impact section of --dry-run
@@ -733,12 +735,15 @@ src/
     select-docs.ts       #   docs by priority (including other tools' instruction files), the
                          #   60 KB budget, cutting a doc at 20 KB
     frontmatter.ts       #   readFrontmatter(): the front matter of an instruction file, line by line
+    claude-rules.ts      #   claudeRule(): a .claude/rules file → a rule named by its path, its
+                         #   paths: as the scope (every file without it or with an unreadable
+                         #   front matter), the body cut at 20 KB; CLAUDE_RULES_GLOB
     doc-scope.ts         #   docScope(): always, globs, manual or excluded, from applyTo, globs,
                          #   alwaysApply, description and excludeAgent
-    load-context.ts      #   loadContext(): config files, rules in scope, ignore, docs in scope →
-                         #   ReviewContext + report
-    list-context.ts      #   listContext(): every .phada/ folder, rule and candidate doc of a branch,
-                         #   and its review settings
+    load-context.ts      #   loadContext(): config files, rules (with the .claude/rules) in scope,
+                         #   ignore, docs in scope → ReviewContext + report; readClaudeRules()
+    list-context.ts      #   listContext(): every .phada/ folder, rule (.claude/rules included)
+                         #   and candidate doc of a branch, and its review settings
     ci-state.ts          #   ciEntries(): check runs (the latest run of each name) and commit
                          #   statuses → the checks that count,
                          #   passing, failing or pending; ciSummary(): the CI state (none, pending,

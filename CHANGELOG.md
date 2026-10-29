@@ -7,6 +7,17 @@ output can change between minor versions.
 
 ## Unreleased
 
+### Changed
+
+- The `.claude/rules/**/*.md` files of a repository are rules of the review, no longer docs: one
+  is sent when a changed file matches its `paths:` front matter (one glob or a list), or always
+  without `paths:`, named by its path, so it counts on the `Context` line, shows in `phada rules`
+  and the app's Rules screen (with its scope on the default branch, or out of scope for a pull
+  request it does not apply to) and a finding can name it as the rule it breaks. They no longer
+  take the docs' 60 KB budget, so they are not cut by the order of their names.
+- The `Context` line of a review and the title of `phada rules owner/repo#N` name the base commit
+  the rules and docs were read from (`Context at base a1b2c3d: …`).
+
 ### Fixed
 
 - Quitting the app while its watch or one of its reviews is still under way now ends the process

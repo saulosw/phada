@@ -712,10 +712,17 @@ rules that review it.
 - **Rules** from `.phada/` in the repository and from your own config (see
   [Configuration](#configuration)). They reach the AI as instructions: a change that breaks one
   is a finding that names the rule, and a rule can set the lowest severity of those findings.
+- **Claude Code rules**: each `.claude/rules/**/*.md` file at the root is a rule too, named by its
+  path (`.claude/rules/sql.md`). Its `paths:` front matter (one glob or a list, relative to the
+  root) sets the files it applies to: it is sent when a changed file matches, and left out
+  otherwise; a file without `paths:`, or whose front matter cannot be read (with a warning),
+  applies to every file. Like the other rules they have no size budget: each one is sent whole,
+  cut at 20 KB with a visible note and a warning. `disabledRules` turns one off by its path, and
+  `context.defaults: false` stops reading them.
 - **Docs** the AI reads as reference, in this order: the files your config lists; `README.md`,
   `AGENTS.md`, `CLAUDE.md`, `GEMINI.md` and `.cursor/rules/*.mdc` in the folders of the changed
   files and above them; at the root, `AGENTS.md`, `CLAUDE.md`, `.claude/CLAUDE.md`,
-  `.claude/rules/`, `.github/copilot-instructions.md`, `.github/instructions/*.instructions.md`,
+  `.github/copilot-instructions.md`, `.github/instructions/*.instructions.md`,
   `.cursor/rules/*.mdc`, `.cursorrules`, `.windsurfrules` and `GEMINI.md`; `CONTRIBUTING.md` and
   `README.md`; then the other Markdown files at the root and in `docs/` (changelogs, licenses and
   codes of conduct are left out). Docs share a 60 KB budget; a doc over 20 KB is cut at a line
@@ -731,7 +738,8 @@ rules that review it.
   the config adds more patterns. The review names every file it left out, so a change hidden in one of them is still visible to whoever reads it; when every changed file is ignored, Phada posts a short note that names them instead of a review.
 
 Phada prints what it sent before the review, e.g.
-`Context: 2 rules · 5 docs (21.3 KB, 1 omitted, 2 not applied) · 1 file ignored`, where
+`Context at base a1b2c3d: 2 rules · 5 docs (21.3 KB, 1 omitted, 2 not applied) · 1 file ignored`,
+naming the base commit the context was read from (the summary above it names the head), where
 "omitted" means a doc did not fit or could not be read and "not applied" means an instruction file
 did not apply to this change. With `--dry-run` the preview
 ends with the full list, and the JSON has a `context` block with every rule, doc and ignored file,
@@ -748,7 +756,8 @@ phada rules owner/repo#123   # the context the review of this pull request gets
 phada rules owner/repo       # everything on the default branch, scopes not checked
 ```
 
-For a pull request it lists the config files, the rules with their origin, scope and whether they
+For a pull request it reads the base commit, as the review does, and says so in its title
+(`Context for owner/repo#123 at base a1b2c3d`); it lists the config files, the rules with their origin, scope and whether they
 apply, the docs and why each one was sent or left out, and the ignored files. For a repository it
 lists every `.phada/` folder, the rules, the docs a review could read (in subfolders, only where
 there is an `AGENTS.md`, `CLAUDE.md`, `GEMINI.md` or `.cursor/rules/`) with the scope of each
@@ -1234,7 +1243,7 @@ ci:
 | `investigate`             | `false` turns the [repository investigation](#repository-investigation) off, like `--no-investigate`                                         | both (root)             |
 | `resolveThreads`          | `false` turns off the [recheck of earlier comments](#comments-fixed-in-a-new-commit), like `--no-resolve`                                    | both (root)             |
 | `mcp`                     | MCP servers the AI may use: names from your AI CLI or servers declared with `command` or `url` (see [MCP servers](#mcp-servers))             | your config             |
-| `context.defaults`        | `false` sends only the files listed in `context.files`, not the docs Phada picks                                                             | both (root)             |
+| `context.defaults`        | `false` sends only the files listed in `context.files`, not the docs Phada picks nor the `.claude/rules`                                     | both (root)             |
 | `context.files`           | Files of the repository to always send (globs allowed), first in line for the budget                                                         | both                    |
 | `context.repos`           | Other repositories the review may read (see [Related repositories](#related-repositories))                                                   | both (root)             |
 | `context.privateOnPublic` | `true` lets a private related repository be read for a public pull request                                                                   | your config             |
