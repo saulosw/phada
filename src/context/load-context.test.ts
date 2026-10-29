@@ -629,6 +629,58 @@ describe('loadContext', () => {
   })
 })
 
+describe('loadContext with .claude/rules', () => {
+  const big = (letter: string) => `${letter.repeat(19_000)}\n`
+  const sql = '---\npaths:\n  - "src/api/**"\n  - "db/**/*.sql"\n---\n\nUse parameterized queries.\n'
+  const branches = '---\npaths: docs/**\n---\nName branches feat/…\n'
+
+  it('sends the .claude/rules whose paths match a changed file as rules, whatever the docs fill', async () => {
+    const sources = fakeSources({
+      'AGENTS.md': big('a'),
+      'CLAUDE.md': big('c'),
+      'CONTRIBUTING.md': big('g'),
+      'docs/guide.md': big('d'),
+      '.claude/rules/a-branch-naming.md': branches,
+      '.claude/rules/z-sql.md': sql,
+    })
+
+    const loaded = await loadContext({ diff: DIFF, baseSha: SHA, userLayers: [], sources })
+
+    expect(loaded.context.rules).toEqual([
+      {
+        key: '.claude/rules/z-sql.md',
+        text: 'Use parameterized queries.',
+        scope: ['src/api/**', 'db/**/*.sql'],
+        origin: '.claude/rules/z-sql.md',
+      },
+    ])
+    expect(loaded.report.rules).toEqual([
+      {
+        key: '.claude/rules/a-branch-naming.md',
+        origin: '.claude/rules/a-branch-naming.md',
+        scope: ['docs/**'],
+        status: 'out-of-scope',
+      },
+      {
+        key: '.claude/rules/z-sql.md',
+        origin: '.claude/rules/z-sql.md',
+        scope: ['src/api/**', 'db/**/*.sql'],
+        status: 'applied',
+      },
+    ])
+    expect(loaded.report.docs.map((doc) => doc.path)).not.toContain('.claude/rules/z-sql.md')
+    expect(loaded.report.docs.map((doc) => doc.path)).not.toContain(
+      '.claude/rules/a-branch-naming.md',
+    )
+    expect(loaded.report.docs.map(({ path, status }) => [path, status])).toEqual([
+      ['AGENTS.md', 'included'],
+      ['CLAUDE.md', 'included'],
+      ['CONTRIBUTING.md', 'included'],
+      ['docs/guide.md', 'omitted'],
+    ])
+  })
+})
+
 describe('loadContext review options', () => {
   it('passes the review prompt and skills on', async () => {
     const sources = fakeSources({

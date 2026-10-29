@@ -1,9 +1,10 @@
 import { mergeConfig } from '../config/merge-config.js'
-import type { EffectiveConfig } from '../config/merge-config.js'
+import type { EffectiveConfig, ResolvedRule } from '../config/merge-config.js'
 import { parseConfigText } from '../config/parse-config.js'
 import type { ConfigLayer } from '../config/types.js'
 import type { RepositoryTree } from '../github/repository-files.js'
 import type { ContextDoc, ContextRule } from '../review/types.js'
+import { CLAUDE_RULES_GLOB, claudeRule } from './claude-rules.js'
 import { docScope, scopeMatcher } from './doc-scope.js'
 import type { DocFormat } from './doc-scope.js'
 import { applyIgnore, DEFAULT_IGNORE, matcher } from './ignore.js'
@@ -58,7 +59,11 @@ export async function loadContext(input: {
   const merged = mergeLayers(userLayers, repository.layers)
   warnings.push(...merged.warnings)
   const { diff, files, ignored } = applyIgnore(input.diff, [...DEFAULT_IGNORE, ...merged.ignore])
-  const rules = selectRules(merged, files)
+  const claudeRules =
+    tree === undefined || !merged.contextDefaults
+      ? []
+      : await readClaudeRules(tree, sources, sha, warnings)
+  const rules = selectRules(merged, [...merged.rules, ...claudeRules], files)
   const docs = await collectDocs(merged, tree, files, sources, sha, warnings)
   return {
     diff,
@@ -184,13 +189,36 @@ async function readRepositoryText(
   }
 }
 
+export async function readClaudeRules(
+  tree: RepositoryTree,
+  sources: ContextSources,
+  sha: string,
+  warnings: string[],
+): Promise<ResolvedRule[]> {
+  const paths = tree.entries
+    .map((entry) => entry.path)
+    .filter(matcher([CLAUDE_RULES_GLOB]))
+    .sort()
+  const texts = await mapLimit(paths, READ_CONCURRENCY, (path) =>
+    readRepositoryText(sources, path, sha, warnings),
+  )
+  return paths.flatMap((path, index) => {
+    const text = texts[index]
+    if (text === null || text === undefined) return []
+    const read = claudeRule(path, text)
+    warnings.push(...read.warnings)
+    return read.rule === undefined ? [] : [read.rule]
+  })
+}
+
 function selectRules(
   merged: EffectiveConfig,
+  rules: readonly ResolvedRule[],
   files: readonly string[],
 ): { applied: ContextRule[]; report: RuleReport[] } {
   const applied: ContextRule[] = []
   const report: RuleReport[] = []
-  for (const rule of merged.rules) {
+  for (const rule of rules) {
     const inScope = files.filter(matcher(rule.scope))
     const except = merged.disabledIn.get(rule.key) ?? []
     const turnedOff = matcher(except)

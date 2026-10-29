@@ -40,7 +40,6 @@ describe('repositoryDocCandidates', () => {
       ['AGENTS.md', 'agents'],
       ['CLAUDE.md', 'agents'],
       ['.claude/CLAUDE.md', 'agents'],
-      ['.claude/rules/api.md', 'agents'],
       ['.github/CONTRIBUTING.md', 'contributing'],
       ['README.md', 'contributing'],
       ['NOTES.md', 'other'],
@@ -200,7 +199,6 @@ describe('repositoryDocCandidates', () => {
       candidates.map(({ path, category, format, dir }) => [path, category, format, dir]),
     ).toEqual([
       ['AGENTS.md', 'agents', undefined, undefined],
-      ['.claude/rules/a.md', 'agents', undefined, undefined],
       ['.github/copilot-instructions.md', 'agents', undefined, undefined],
       ['.github/instructions/a.instructions.md', 'agents', 'instructions', ''],
       ['.github/instructions/api/b.instructions.md', 'agents', 'instructions', ''],
