@@ -81,8 +81,10 @@ describe('formatReviewJson', () => {
             reason: null,
             suggestion: null,
             skill: 'phada',
+            scope: 'change',
           },
         ],
+        debt: [],
         worthChecking: [
           {
             ...findingFixture({ severity: 'P2', confidence: 60, line: 5, fix: null }),
@@ -91,11 +93,12 @@ describe('formatReviewJson', () => {
             reason: null,
             suggestion: null,
             skill: 'phada',
+            scope: 'change',
           },
         ],
         worthCheckingOmitted: 2,
         minConfidence: 75,
-        dropped: { invalid: 0, belowFloor: 1, outsideDiff: 2, duplicate: 0, rejected: 0 },
+        dropped: { invalid: 0, belowFloor: 1, outsideDiff: 2, duplicate: 0, rejected: 0, debt: 0 },
         suggestions: null,
         verification: null,
         provider: { id: 'codex-cli', model: 'gpt-6-astra', additionalModels: ['gpt-6-mini'] },
@@ -112,6 +115,27 @@ describe('formatReviewJson', () => {
       impact: null,
       related: null,
       recheck: null,
+    })
+  })
+
+  it('prints the scope of each finding, the repository debt and the debt dropped', () => {
+    const debt = findingFixture({ line: 12, title: 'balance has no caller', scope: 'repository' })
+    const output = formatReviewJson(pullRequestFixture(), {
+      status: 'reviewed',
+      result: {
+        ...RESULT,
+        findings: [findingFixture({ line: 3, scope: 'repository' })],
+        debt: [debt],
+        dropped: { ...RESULT.dropped, debt: 2 },
+      },
+    })
+
+    expect(parse(output)).toMatchObject({
+      review: {
+        findings: [{ line: 3, scope: 'repository' }],
+        debt: [{ line: 12, title: 'balance has no caller', scope: 'repository', skill: 'phada' }],
+        dropped: { debt: 2 },
+      },
     })
   })
 

@@ -284,6 +284,7 @@ function reviewJson(result: ReviewResult, fixFor?: (blocked: BlockedCommand) => 
     claims: result.claims.map(({ claim, verdict, evidence }) => ({ claim, verdict, evidence })),
     files: result.files.map(({ path, change, findings }) => ({ path, change, findings })),
     findings: result.findings.map(findingJson),
+    debt: (result.debt ?? []).map(findingJson),
     worthChecking: result.worthChecking.map(findingJson),
     worthCheckingOmitted: result.worthCheckingOmitted,
     minConfidence: result.minConfidence,
@@ -293,6 +294,7 @@ function reviewJson(result: ReviewResult, fixFor?: (blocked: BlockedCommand) => 
       outsideDiff: dropped.outsideDiff,
       duplicate: dropped.duplicate,
       rejected: dropped.rejected,
+      debt: dropped.debt ?? 0,
     },
     verification: result.verification === undefined ? null : verificationJson(result.verification),
     suggestions: result.suggestions ?? null,
@@ -373,6 +375,7 @@ function findingJson(finding: Finding) {
     reason,
     suggestion,
     skill,
+    scope,
   } = finding
   return {
     severity,
@@ -387,6 +390,7 @@ function findingJson(finding: Finding) {
     reason: reason ?? null,
     suggestion: suggestion ?? null,
     skill: skill ?? 'phada',
+    scope: scope ?? 'change',
   }
 }
 
