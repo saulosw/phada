@@ -1,5 +1,6 @@
 import type { ReviewOutput, ReviewProvider, TokenUsage } from '../providers/types.js'
 import type { Toolbox } from '../investigation/toolbox.js'
+import { claimWarnings, mergeClaims } from './claims.js'
 import { withKnownReferences, withRuleSeverity } from './context-findings.js'
 import { diffFingerprint } from './diff-fingerprint.js'
 import { findDiffFile, parseDiffFiles } from './diff-lines.js'
@@ -150,6 +151,7 @@ export async function runReview(
       ...(suggested.counts === undefined
         ? {}
         : { suggestions: { ...suggested.counts, dropped: checked?.droppedSuggestions ?? 0 } }),
+      claims: mergeClaims(answered.outputs.map(({ report }) => report.claims ?? [])),
       ...(ignored.length === 0 ? {} : { ignored: [...ignored] }),
       ...(externalCalls.length === 0 ? {} : { externalCalls }),
       ...(warnings.length === 0 ? {} : { warnings }),
@@ -244,6 +246,7 @@ async function runPasses(
           ? report.findings
           : report.findings.map((finding) => ({ ...finding, skill: pass.skill }))
       answered.outputs.push({ output, report, findings })
+      answered.warnings.push(...claimWarnings(report, pass?.skill))
       answered.touched.push(...(tools?.touchedPaths() ?? []))
       answered.durationMs += output.durationMs
       answered.usage = sumUsage(answered.usage, output.usage)
@@ -276,7 +279,14 @@ async function runPasses(
   return answered
 }
 
-const EMPTY_REPORT: ParsedReport = { summary: '', files: [], findings: [], invalid: 0 }
+const EMPTY_REPORT: ParsedReport = {
+  summary: '',
+  files: [],
+  findings: [],
+  invalid: 0,
+  claims: [],
+  invalidClaims: 0,
+}
 
 async function runNativePass(
   request: ReviewRequest,
@@ -297,6 +307,7 @@ async function runNativePass(
       buildConvertPrompt(request, createNonce(), pass, skillOutput),
     )
     report = parseReviewReport(converted.text)
+    warnings.push(...claimWarnings(report, pass.skill))
   } catch (error) {
     if (!isAnswerFailure(error)) throw error
     warnings.push(

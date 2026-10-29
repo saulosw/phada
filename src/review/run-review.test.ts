@@ -80,8 +80,61 @@ describe('runReview', () => {
         minConfidence: 60,
         score: { value: 3, reason: '1 P1 finding (shop.ts:1)' },
         dropped: { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0, rejected: 0 },
+        claims: [],
       },
     })
+  })
+
+  it('returns the claims of the description the AI checked', async () => {
+    const claims = [
+      { claim: 'Prevents two runs on staging', verdict: 'contradicted', evidence: 'ci.yml:4' },
+    ]
+    const provider = new FakeProvider(() =>
+      Promise.resolve({ ...OUTPUT, text: reviewReportJson({ claims }) }),
+    )
+
+    const outcome = await runReview({ pullRequest: pullRequestFixture() }, { provider })
+
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(outcome.result.claims).toEqual(claims)
+    expect(outcome.result).not.toHaveProperty('warnings')
+  })
+
+  it('reviews an answer without claims as no claims, with a warning', async () => {
+    const { claims: _claims, ...withoutClaims } = JSON.parse(reviewReportJson()) as Record<
+      string,
+      unknown
+    >
+    const provider = new FakeProvider(() =>
+      Promise.resolve({ ...OUTPUT, text: JSON.stringify(withoutClaims) }),
+    )
+
+    const outcome = await runReview({ pullRequest: pullRequestFixture() }, { provider })
+
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(outcome.result.claims).toEqual([])
+    expect(outcome.result.findings).toEqual([findingFixture()])
+    expect(outcome.result.warnings).toEqual([
+      'The AI answer had no claims list: the claims of the pull request description were not checked.',
+    ])
+  })
+
+  it('warns about the claims it left out for their shape', async () => {
+    const provider = new FakeProvider(() =>
+      Promise.resolve({
+        ...OUTPUT,
+        text: reviewReportJson({
+          claims: [{ claim: 'Fast', verdict: 'maybe', evidence: '' }, 'not a claim'],
+        }),
+      }),
+    )
+
+    const outcome = await runReview({ pullRequest: pullRequestFixture() }, { provider })
+
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(outcome.result.warnings).toEqual([
+      'Left out 2 claims of the AI answer with the wrong shape.',
+    ])
   })
 
   it('asks the provider for the review report schema', async () => {
@@ -204,6 +257,7 @@ describe('runReview', () => {
       minConfidence: 60,
       score: { value: 5, reason: 'no problems found' },
       dropped: { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0, rejected: 0 },
+      claims: [],
     })
   })
 
@@ -237,6 +291,7 @@ describe('runReview', () => {
       minConfidence: 60,
       score: { value: 3, reason: '1 P1 finding (shop.ts:1)' },
       dropped: { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0, rejected: 0 },
+      claims: [],
     })
   })
 
@@ -815,6 +870,59 @@ describe('runReview with several skill passes', () => {
       [3, 'code-review'],
     ])
     expect(result.dropped.duplicate).toBe(1)
+  })
+
+  it('merges the claims of every pass, one per text, keeping the strongest verdict', async () => {
+    const claim = (text: string, verdict: string, evidence = '') => ({
+      claim: text,
+      verdict,
+      evidence,
+    })
+    const { result } = await reviewed(
+      [PHADA_PASS, SKILL_PASS],
+      [
+        {
+          ...OUTPUT,
+          text: reviewReportJson({
+            claims: [
+              claim('Prevents two runs on staging', 'confirmed', 'ci.yml:4'),
+              claim('Covers the empty cart', 'unverified'),
+            ],
+          }),
+        },
+        {
+          ...OUTPUT,
+          text: reviewReportJson({
+            claims: [
+              claim('prevents two  runs on staging', 'contradicted', 'ci.yml:9 groups by ref'),
+              claim('Covers the empty cart', 'confirmed', 'shop.test.ts:40'),
+              claim('Only runs on main', 'unverified'),
+            ],
+          }),
+        },
+      ],
+    )
+
+    expect(result.claims).toEqual([
+      claim('prevents two  runs on staging', 'contradicted', 'ci.yml:9 groups by ref'),
+      claim('Covers the empty cart', 'confirmed', 'shop.test.ts:40'),
+      claim('Only runs on main', 'unverified'),
+    ])
+  })
+
+  it('names the pass whose answer had no claims list', async () => {
+    const { claims: _claims, ...withoutClaims } = JSON.parse(reviewReportJson()) as Record<
+      string,
+      unknown
+    >
+    const { result } = await reviewed(
+      [PHADA_PASS, SKILL_PASS],
+      [answer([findingFixture()]), { ...OUTPUT, text: JSON.stringify(withoutClaims) }],
+    )
+
+    expect(result.warnings).toEqual([
+      'Skill code-review: the AI answer had no claims list: the claims of the pull request description were not checked.',
+    ])
   })
 
   it('sums time and tokens and reports each pass', async () => {

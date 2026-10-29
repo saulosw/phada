@@ -46,6 +46,7 @@ const RESULT: ReviewResult = {
   minConfidence: 60,
   score: { value: 3, reason: 'One P1 finding.' },
   dropped: { invalid: 0, belowFloor: 0, outsideDiff: 1, duplicate: 0, rejected: 0 },
+  claims: [],
   verification: {
     candidates: 3,
     confirmed: 3,

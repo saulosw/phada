@@ -640,7 +640,7 @@ describe('run', () => {
 
     expect(h.providers).toEqual([{ name: 'claude', options: { model: 'opus' } }])
     expect(h.prompts[0]?.instructions).toContain(
-      'Write summary, change, title, why and fix in pt-BR;',
+      'Write summary, change, title, why, fix, claim and evidence in pt-BR;',
     )
     expect(h.posts[0]?.body).toContain('## 🦋 5/5 (pronto para merge)')
     expect(h.posts[0]?.body).toContain('### Resumo')

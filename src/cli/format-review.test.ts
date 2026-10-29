@@ -50,6 +50,7 @@ const RESULT: ReviewResult = {
   minConfidence: 75,
   score: { value: 1, reason: '1 P0 finding (shop.ts:3)' },
   dropped: { invalid: 1, belowFloor: 1, outsideDiff: 2, duplicate: 1, rejected: 0 },
+  claims: [],
 }
 
 const TO_CHECK = [

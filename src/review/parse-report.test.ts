@@ -21,7 +21,58 @@ describe('parseReviewReport', () => {
       files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint' }],
       findings: [findingFixture()],
       invalid: 0,
+      claims: [],
+      invalidClaims: 0,
     })
+  })
+
+  it('reads the claims of the description with their verdict and evidence', () => {
+    const claims = [
+      {
+        claim: 'The concurrency group prevents two runs on staging',
+        verdict: 'contradicted',
+        evidence: '.github/workflows/deploy.yml:12 groups by the ref, not the environment',
+      },
+      { claim: 'Covers the empty cart', verdict: 'confirmed', evidence: 'src/shop.test.ts:40' },
+      { claim: 'Is backward compatible', verdict: 'unverified', evidence: '' },
+    ]
+
+    expect(parseReviewReport(reviewReportJson({ claims })).claims).toEqual(claims)
+  })
+
+  it('reads an answer without claims as no claims, marked as missing', () => {
+    const { claims: _claims, ...withoutClaims } = JSON.parse(reviewReportJson()) as Record<
+      string,
+      unknown
+    >
+
+    const parsed = parseReviewReport(JSON.stringify(withoutClaims))
+
+    expect(parsed.claims).toBeUndefined()
+    expect(parsed.findings).toEqual([findingFixture()])
+  })
+
+  it('reads claims that are not a list as missing', () => {
+    expect(parseReviewReport(reviewReportJson({ claims: 'none' })).claims).toBeUndefined()
+  })
+
+  it('drops claims with the wrong shape and counts them, trimming the texts', () => {
+    const parsed = parseReviewReport(
+      reviewReportJson({
+        claims: [
+          { claim: '  Runs only on main ', verdict: 'confirmed', evidence: ' deploy.yml:3 ' },
+          { claim: 'Fast', verdict: 'probably', evidence: '' },
+          { claim: '   ', verdict: 'unverified', evidence: '' },
+          { verdict: 'confirmed', evidence: 'x' },
+          'not an object',
+        ],
+      }),
+    )
+
+    expect(parsed.claims).toEqual([
+      { claim: 'Runs only on main', verdict: 'confirmed', evidence: 'deploy.yml:3' },
+    ])
+    expect(parsed.invalidClaims).toBe(4)
   })
 
   it('reads a report inside a json code fence with text around it', () => {

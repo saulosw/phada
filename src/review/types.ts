@@ -185,6 +185,14 @@ export interface Suggestion {
   replacement: string
 }
 
+export type ClaimVerdict = 'confirmed' | 'contradicted' | 'unverified'
+
+export interface Claim {
+  claim: string
+  verdict: ClaimVerdict
+  evidence: string
+}
+
 export interface SuggestionCounts {
   valid: number
   invalid: number
@@ -283,6 +291,7 @@ export interface ReviewResult {
   minConfidence: number
   score: Score
   dropped: DroppedFindings
+  claims: Claim[]
   verification?: Verification
   suggestions?: SuggestionCounts
   ignored?: string[]

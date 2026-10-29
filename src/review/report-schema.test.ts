@@ -13,7 +13,7 @@ const report = REVIEW_REPORT_JSON_SCHEMA as unknown as ObjectSchema
 describe('REVIEW_REPORT_JSON_SCHEMA', () => {
   it('describes the report as a strict object with every field required', () => {
     expect(report.type).toBe('object')
-    expect(report.required).toEqual(['summary', 'files', 'findings'])
+    expect(report.required).toEqual(['claims', 'summary', 'files', 'findings'])
     expect(report.additionalProperties).toBe(false)
   })
 
@@ -59,6 +59,18 @@ describe('REVIEW_REPORT_JSON_SCHEMA', () => {
 
     expect(file?.required).toEqual(['path', 'change'])
     expect(file?.additionalProperties).toBe(false)
+  })
+
+  it('requires every claim field and limits the verdict to confirmed, contradicted or unverified', () => {
+    const claim = report.properties.claims?.items as unknown as ObjectSchema & {
+      properties: Record<string, { enum?: string[]; type?: unknown }>
+    }
+
+    expect(report.properties.claims?.type).toBe('array')
+    expect(claim.required).toEqual(['claim', 'verdict', 'evidence'])
+    expect(claim.additionalProperties).toBe(false)
+    expect(claim.properties.verdict?.enum).toEqual(['confirmed', 'contradicted', 'unverified'])
+    expect(claim.properties.evidence?.type).toBe('string')
   })
 
   it('declares no JSON Schema dialect, which the Claude CLI rejects', () => {

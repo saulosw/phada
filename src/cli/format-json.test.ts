@@ -32,6 +32,7 @@ const RESULT: ReviewResult = {
   minConfidence: 75,
   score: { value: 1, reason: '1 P0 finding (shop.ts:3)' },
   dropped: { invalid: 0, belowFloor: 1, outsideDiff: 2, duplicate: 0, rejected: 0 },
+  claims: [],
 }
 
 function parse(output: string): unknown {
