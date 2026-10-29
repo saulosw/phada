@@ -726,7 +726,8 @@ src/
                          #   publish-step.tsx in its place: the pull request, the token owner
                          #   and the counts to confirm, then publishReview() and the link or
                          #   the refusal, Esc back to the result (the result's keys in a
-                         #   StepKeys of run-step.tsx, unmounted meanwhile); history-line.ts:
+                         #   StepKeys of run-step.tsx, unmounted meanwhile), a quit guard that
+                         #   waits for the write while it publishes; history-line.ts:
                          #   how the history kept a run; flow-text.ts: the pull request line
     review-steps.ts      #   stepsAfter(): the review progress events → one step per stage
                          #   (fetch, with a closed or draft notice, context, conversation,
