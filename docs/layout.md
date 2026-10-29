@@ -10,8 +10,9 @@ src/
                          #   the gh token reader (ghTokenReader) and the signals (SIGINT, SIGTERM)
                          #   named to the handler
   main.ts                # run(argv, deps): CLI flow — flags, token, then prepareReview() and
-                         #   runManualReview() of manual-review.ts, printing the run and a
-                         #   history save that failed; no command → runApp(); createProvider()
+                         #   runManualReview() of manual-review.ts, printing the run (the dry
+                         #   run through formatRunSections()), a history save that failed and
+                         #   the id of the saved run; no command → runApp(); createProvider()
   architecture.test.ts   # allowed imports of src/review/, src/publish/, src/watch/, src/context/,
                          #   src/investigation/, src/repository/, src/repo-map/, src/store/,
                          #   src/graph/, src/app/, src/skills/, src/gh-facade/, src/slack/ and
@@ -121,7 +122,16 @@ src/
                          #   AI pass and their total, publication with what a dry run
                          #   would resolve and why a publication was skipped, CI) and the
                          #   feedback of each published finding; reviewDetailOf(): the same from a run
-                         #   record (a run the app just made); no history file reads as empty
+                         #   record (a run the app just made); no history file reads as empty;
+                         #   storedFindings(), storedClaims(), storedCi()
+    read-run-report.ts   #   readRunReport(): one run of the history with every block its stored
+                         #   JSON keeps, read leniently (zod): what was posted, close to the cut,
+                         #   claims, context, conversation and CI (ConversationBlock, CiBlock,
+                         #   the shapes of the JSON), impact with its text, related, skills with
+                         #   the fix of each blocked command, investigation and tokens; a block
+                         #   the run did not keep is left out, one it kept as null is off
+    stored-json.ts       #   parseJson(), objectOf(), stringOf(), numberOf(), stringsOf(): the
+                         #   lenient reads of a stored JSON
     read-repositories.ts #   readRepositories(): watch.repos ∪ the user's repos/<owner>/<repo>/
                          #   folders ∪ the history, each with its origins, index file and last
                          #   review, watched first, then own config, then history, each by
@@ -215,7 +225,7 @@ src/
                          #   text|json), `rules` (--format text|json), `prompt` (--default,
                          #   --skill, --format text|json), `watch` (--once,
                          #   --backfill, --status) and `history` (--since, --limit, --stats,
-                         #   --refresh, prune --older-than), `enqueue` (--publish, --format) and
+                         #   --refresh, prune --older-than, show <id> --format), `enqueue` (--publish, --format) and
                          #   `mcp` commands, --help, --version, no command (the app, --debug);
                          #   USAGE, SETUP_USAGE, REVIEW_USAGE, INIT_USAGE,
                          #   INDEX_USAGE, RULES_USAGE, PROMPT_USAGE, WATCH_USAGE, ENQUEUE_USAGE,
@@ -364,8 +374,20 @@ src/
                          #   job an abort puts back
     watch-status.ts      #   watchStatusText(): readQueue() as --status in text or JSON
     history-command.ts   #   runHistory() (list, stats, --refresh) over the history use cases,
-                         #   runHistoryPrune(); the history opened only when its file exists
-    format-history.ts    #   formatHistoryText/Json(), formatStatsText/Json() (schemaVersion 1)
+                         #   runHistoryPrune(), runHistoryShow() (the history opened read-only,
+                         #   RunNotFoundError for an unknown id); the history opened only when
+                         #   its file exists
+    format-history.ts    #   formatHistoryText/Json() (each run with its id), runJson(),
+                         #   formatStatsText/Json() (schemaVersion 1)
+    format-run-report.ts #   formatRunReportText(): a run's header line (id, pull request, commit,
+                         #   when, who asked, provider, how it ended), the CI of a ci-failing
+                         #   skip, then the posted review and formatRunSections(), through
+                         #   toTerminalText(); formatRunReportJson(): run and result
+                         #   (schemaVersion 1)
+    format-run-sections.ts # formatRunSections(): the sections of --dry-run (close to the cut,
+                         #   claims, context, conversation, CI, impact, related, skills,
+                         #   investigation, tokens) from RunSections, the data the dry run and
+                         #   phada history show both have
     format-watch.ts      #   formatWatchEvent(), formatWatchStatus(), formatWatchStatusJson(); a
                          #   job waiting for CI with its deadline and pending checks, skipped
                          #   for failing CI or back in the queue
@@ -393,7 +415,8 @@ src/
     context-sources.ts   #   contextSourcesAt(): the repository at a commit and the local files
     format-index.ts      #   formatIndexText(), formatIndexJson() (schemaVersion 1)
     suppress-sqlite-warning.ts # drops Node's ExperimentalWarning for the built-in SQLite
-    errors.ts            #   UsageError, MissingGitHubTokenError, WatchRunningError
+    errors.ts            #   UsageError, MissingGitHubTokenError, WatchRunningError,
+                         #   RunNotFoundError
     github-token.ts      #   readGitHubToken(), requireGitHubToken(): GITHUB_TOKEN › GH_TOKEN › the
                          #   gh login; findGitHubToken(): the token and where it came from;
                          #   ghTokenReader(): gh auth token, or gh auth status
@@ -414,11 +437,14 @@ src/
                          #   --dry-run
     format-investigation.ts # the "Investigated:" line and the investigation section of --dry-run
     format-related.ts    #   the "Related:" line and the related repositories section of --dry-run
-    format-impact.ts     #   the "Impact:" line and the impact section of --dry-run
+    format-impact.ts     #   the "Impact:" line and the impact section of --dry-run (the text
+                         #   the AI got, or each changed symbol when the run did not keep it)
     format-conversation.ts # the "Conversation:" line and the conversation section of --dry-run
-                         #   (each item, what was left out over 16 KB and the bodies cut)
+                         #   (each item, what was left out over 16 KB and the bodies cut), the
+                         #   section from the conversation block of the JSON
     format-ci.ts         #   the "CI:" line and the CI section of --dry-run (each check, the
-                         #   annotations and logs left out, the cuts and the warnings)
+                         #   annotations and logs left out, the cuts and the warnings), the
+                         #   section from the CI block of the JSON
     format-claims.ts     #   the claims section of --dry-run: each claim of the description with
                          #   its verdict and evidence
     format-close-to-cut.ts # the "Close to the cut" section of --dry-run: their count, the
@@ -431,8 +457,10 @@ src/
     format-json.ts       #   formatReviewJson(): schemaVersion 1, with the claims, the scope of
                          #   each finding (and closeToCut), the repository debt and the debt
                          #   dropped, publication, context, conversation (each item without its
-                         #   texts, with its bytes), ci, investigation, impact and recheck
-                         #   blocks, and usage (the tokens of each AI pass and their total)
+                         #   texts, with its bytes), ci, investigation, impact (with the text
+                         #   the AI got) and recheck blocks, and usage (the tokens of each AI
+                         #   pass and their total); what a publication posted (body and line
+                         #   comments); conversationJson(), ciJson() for the dry run
     markdown-text.ts     #   escapes AI text: block markers; for GitHub also HTML and mentions;
                          #   codeFence()
     review-text.ts       #   model label and short SHA

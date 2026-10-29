@@ -39,6 +39,15 @@ output can change between minor versions.
   of the JSON and the history, in the app's review detail and next to each AI step of a review
   the app runs. Claude Code and Codex report the cached input tokens, also added to the existing
   `usage` blocks of the JSON as `cachedInputTokens`.
+- `phada history show <id>` prints a saved run with the sections of `--dry-run` (what was posted
+  or would have been, the context, conversation, CI, impact, related repositories, skills,
+  investigation, claims, findings close to the cut and tokens), after a line naming the run and how
+  it ended; `--format json` prints its history fields and its saved JSON. `phada review` ends with
+  the id of the run it saved (`Saved as run 42: phada history show 42`), and the list of
+  `phada history` starts each run with its id.
+- The JSON of a published review (and of a publication that failed) keeps the body and the line
+  comments it posted under `publication.body` and `publication.lineComments`, and the `impact`
+  block keeps the text the AI got as `impact.text`.
 
 ### Changed
 

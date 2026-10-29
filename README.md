@@ -727,6 +727,7 @@ needs it).
 phada history                         # the last 50 reviews
 phada history owner/repo --since 30d  # one repository, the last 30 days
 phada history owner/repo#123          # one pull request, with what happened to each comment
+phada history show 42                 # one run, with everything it sent and found
 phada history --stats                 # what happened to the comments, per repository
 phada history --refresh --stats       # read the comments on GitHub first
 phada history prune --older-than 180d
@@ -734,6 +735,17 @@ phada history prune --older-than 180d
 
 Each review of the watch shows who asked for it: `watch` (the polling), `enqueue`, `mcp`,
 `pr-command` or `slack`.
+
+Each run of the list starts with its id, and `phada review` ends with it when it saves the run
+(`Saved as run 42: phada history show 42`). `phada history show <id>` prints that run again with
+the sections of `--dry-run`, read from the history: what was posted on the pull request (or would
+have been), the findings close to the cut, the claims of the description, the context,
+conversation and CI sent to the AI, the impact, the related repositories, the skills, what the
+investigation read and the tokens. It starts with a line naming the run, the pull request, its
+commit, when, who asked, the provider and model, and how it ended (published with the link, dry
+run, skipped and why, failed and the error). A run saved by an older version shows the sections
+it kept. `--format json` prints the run's history fields under `run` and its saved JSON under
+`result`, with `schemaVersion: 1`.
 
 ### What happened to each comment
 
@@ -1380,7 +1392,8 @@ your own stops Phada with an error that names the file and the key.
 `phada prompt` exits with 0 when it printed the prompt, 1 when GitHub could not be read and 2
 when a skill or the `review.prompt` file is missing.
 `phada history` exits with 0 when it printed the history and 1 when the file or, with `--refresh`,
-GitHub could not be read.
+GitHub could not be read; `phada history show` exits with 1 when the history has no run with that
+id.
 `phada enqueue` exits with 0 when the request was queued or joined a job, 1 when it was refused
 or GitHub could not be read, and 2 when the command line or your config is wrong.
 `phada mcp` exits with 0 when its input ends.
