@@ -1428,6 +1428,9 @@ when a skill or the `review.prompt` file is missing.
 `phada history` exits with 0 when it printed the history and 1 when the file or, with `--refresh`,
 GitHub could not be read; `phada history show` exits with 1 when the history has no run with that
 id.
+`phada publish` exits with 0 when it published the run or skipped a commit Phada already
+reviewed, 1 when it refused the run (unknown, not a dry run, the pull request moved) or GitHub
+failed, and 2 when the command line is wrong.
 `phada enqueue` exits with 0 when the request was queued or joined a job, 1 when it was refused
 or GitHub could not be read, and 2 when the command line or your config is wrong.
 `phada mcp` exits with 0 when its input ends.
