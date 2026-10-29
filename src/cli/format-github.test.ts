@@ -38,6 +38,7 @@ const RESULT: ReviewResult = {
   providerId: 'fake-cli',
   model: 'claude-fake-1',
   durationMs: 1_000,
+  passUsage: [],
   summary: 'Adds a spend endpoint.',
   files: [{ path: 'src/shop.ts', change: 'Adds spend', findings: 2 }],
   findings: [P1, P2, OPEN],

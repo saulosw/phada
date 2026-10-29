@@ -11,6 +11,7 @@ const RESULT: ReviewResult = {
   model: 'claude-sonnet-5',
   durationMs: 131_400,
   usage: { inputTokens: 41_234, outputTokens: 13_012 },
+  passUsage: [{ pass: 'review', usage: { inputTokens: 41_234, outputTokens: 13_012 } }],
   summary: 'Adds a spend endpoint and a cooldown hook.',
   files: [
     { path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 2 },

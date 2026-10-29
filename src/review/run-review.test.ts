@@ -72,6 +72,7 @@ describe('runReview', () => {
         model: 'claude-fake-1',
         durationMs: 1234,
         usage: { inputTokens: 3512, outputTokens: 420 },
+        passUsage: [{ pass: 'review', usage: { inputTokens: 3512, outputTokens: 420 } }],
         summary: 'Adds a spend endpoint.',
         files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 1 }],
         findings: [findingFixture()],
@@ -311,6 +312,7 @@ describe('runReview', () => {
       target: expect.any(Object),
       providerId: 'fake-cli',
       durationMs: 5,
+      passUsage: [{ pass: 'review' }],
       summary: 'Adds a spend endpoint.',
       files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 0 }],
       findings: [],
@@ -345,6 +347,7 @@ describe('runReview', () => {
       model: 'claude-fake-1',
       durationMs: 1234,
       usage: { inputTokens: 3512, outputTokens: 420 },
+      passUsage: [{ pass: 'review', usage: { inputTokens: 3512, outputTokens: 420 } }],
       summary: 'Adds a spend endpoint.',
       files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 1 }],
       findings: [findingFixture()],
@@ -547,6 +550,43 @@ describe('runReview', () => {
       const outcome = await runReview(request, { provider })
 
       expect(outcome.status === 'reviewed' && outcome.result.usage).toEqual(usage)
+    })
+
+    it('lists the tokens of the review and the verification apart', async () => {
+      const cached = {
+        ...report,
+        usage: { inputTokens: 3000, cachedInputTokens: 2500, outputTokens: 400 },
+      }
+      const provider = new FakeProvider(inTurn(cached, verification))
+
+      const outcome = await runReview(request, { provider })
+
+      if (outcome.status !== 'reviewed') throw new Error('expected a review')
+      expect(outcome.result.passUsage).toEqual([
+        {
+          pass: 'review',
+          usage: { inputTokens: 3000, cachedInputTokens: 2500, outputTokens: 400 },
+        },
+        { pass: 'verify', usage: { inputTokens: 3200, outputTokens: 150 } },
+      ])
+      expect(outcome.result.usage).toEqual({
+        inputTokens: 6200,
+        cachedInputTokens: 2500,
+        outputTokens: 550,
+      })
+    })
+
+    it('lists a pass without tokens when its provider reports none', async () => {
+      const { usage: _first, ...reportWithout } = report
+      const provider = new FakeProvider(inTurn(reportWithout, verification))
+
+      const outcome = await runReview(request, { provider })
+
+      if (outcome.status !== 'reviewed') throw new Error('expected a review')
+      expect(outcome.result.passUsage).toEqual([
+        { pass: 'review' },
+        { pass: 'verify', usage: { inputTokens: 3200, outputTokens: 150 } },
+      ])
     })
 
     it('leaves usage out when neither call reports it', async () => {
@@ -1072,6 +1112,22 @@ describe('runReview with several skill passes', () => {
     ])
   })
 
+  it('lists the tokens of each skill pass, a failed answer included', async () => {
+    const { result } = await reviewed(
+      [PHADA_PASS, SKILL_PASS],
+      [
+        answer([findingFixture()]),
+        { ...OUTPUT, text: 'not a report', usage: { inputTokens: 10, outputTokens: 5 } },
+      ],
+    )
+
+    expect(result.passUsage).toEqual([
+      { pass: 'review', skill: 'phada', usage: { inputTokens: 3512, outputTokens: 420 } },
+      { pass: 'review', skill: 'code-review', usage: { inputTokens: 10, outputTokens: 5 } },
+    ])
+    expect(result.usage).toEqual({ inputTokens: 3522, outputTokens: 425 })
+  })
+
   it('sums time and tokens and reports each pass', async () => {
     const { result } = await reviewed(
       [PHADA_PASS, SKILL_PASS],
@@ -1318,6 +1374,23 @@ describe('runReview with a native skill pass', () => {
       },
     ])
     expect(outcome.result.skillBodies).toBeUndefined()
+  })
+
+  it('sums the tokens of a native skill run and its conversion in its pass', async () => {
+    const { outcome } = await nativeReview(
+      [NATIVE],
+      [{ ...OUTPUT, usage: { inputTokens: 3512, cachedInputTokens: 12, outputTokens: 420 } }],
+      skillRun({ usage: { inputTokens: 100_000, cachedInputTokens: 80_000, outputTokens: 5_000 } }),
+    )
+
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(outcome.result.passUsage).toEqual([
+      {
+        pass: 'review',
+        skill: 'code-review:code-review',
+        usage: { inputTokens: 103_512, cachedInputTokens: 80_012, outputTokens: 5_420 },
+      },
+    ])
   })
 
   it('uses the skill output as the review body when the conversion is not readable', async () => {

@@ -24,6 +24,10 @@ const RESULT: ReviewResult = {
   additionalModels: ['gpt-6-mini'],
   durationMs: 16_400,
   usage: { inputTokens: 9700, outputTokens: 417 },
+  passUsage: [
+    { pass: 'review', usage: { inputTokens: 9000, outputTokens: 400 } },
+    { pass: 'verify', usage: { inputTokens: 700, outputTokens: 17 } },
+  ],
   summary: 'Adds a spend endpoint.',
   files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 1 }],
   findings: [findingFixture({ severity: 'P0', confidence: 95, line: 3 })],

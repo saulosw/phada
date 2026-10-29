@@ -289,6 +289,14 @@ export interface InvestigationFloor {
   shortfalls: string[]
 }
 
+export type UsagePass = 'review' | 'verify' | 'recheck'
+
+export interface PassUsage {
+  pass: UsagePass
+  skill?: string
+  usage?: TokenUsage
+}
+
 export interface ReviewResult {
   target: ReviewTarget
   providerId: string
@@ -296,6 +304,7 @@ export interface ReviewResult {
   additionalModels?: string[]
   durationMs: number
   usage?: TokenUsage
+  passUsage: PassUsage[]
   summary: string
   files: FileChange[]
   findings: Finding[]

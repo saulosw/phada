@@ -20,6 +20,7 @@ import { buildReviewPrompt } from './prompt.js'
 import { scoreFindings } from './score.js'
 import { skillBodyText, skillOutputText } from './skill-output.js'
 import { checkSuggestions } from './suggestions.js'
+import { sumUsage, totalUsage } from './token-usage.js'
 import {
   CONFIDENCE_FLOOR,
   isConfidenceCut,
@@ -34,6 +35,7 @@ import type {
   Finding,
   NativeSkillRun,
   PassReport,
+  PassUsage,
   ReviewOutcome,
   ReviewRequest,
   SkillBody,
@@ -113,7 +115,13 @@ export async function runReview(
   )
   const selection = splitAtCut(kept.findings, minConfidence)
   const { findings, debt } = separateDebt(selection.findings, debtMode)
-  const totalUsage = sumUsage(answered.usage, checked?.verification.usage)
+  const passUsage: PassUsage[] = [
+    ...answered.passUsage,
+    ...(checked === undefined || checked.verification.candidates === 0
+      ? []
+      : [usageOf('verify', checked.verification.usage)]),
+  ]
+  const usage = totalUsage(passUsage)
   const ignored = request.context?.ignored ?? []
   const externalCalls = [...passExternalCalls, ...(checked?.externalCalls ?? [])]
   const warnings = [
@@ -143,7 +151,8 @@ export async function runReview(
       ...(model === undefined ? {} : { model }),
       ...(additionalModels === undefined ? {} : { additionalModels }),
       durationMs: answered.durationMs + (checked?.verification.durationMs ?? 0),
-      ...(totalUsage === undefined ? {} : { usage: totalUsage }),
+      ...(usage === undefined ? {} : { usage }),
+      passUsage,
       summary: first.report.summary,
       files: summarizeFiles(first.report.files, findings, diffFiles),
       findings,
@@ -194,7 +203,7 @@ interface AnsweredPasses {
   reports: PassReport[]
   touched: string[]
   durationMs: number
-  usage?: TokenUsage
+  passUsage: PassUsage[]
   warnings: string[]
   investigatedPasses: number
   shortfalls: string[]
@@ -212,6 +221,7 @@ async function runPasses(
     reports: [],
     touched: [],
     durationMs: 0,
+    passUsage: [],
     warnings: [],
     investigatedPasses: 0,
     shortfalls: [],
@@ -255,7 +265,7 @@ async function runPasses(
       }
       answered.outputs.push(native.answer)
       answered.durationMs += native.answer.output.durationMs
-      answered.usage = sumUsage(answered.usage, native.answer.output.usage)
+      answered.passUsage.push(usageOf('review', native.answer.output.usage, pass.skill))
       answered.warnings.push(...native.warnings)
       answered.reports.push(native.report)
       continue
@@ -266,6 +276,7 @@ async function runPasses(
       const output = await deps.provider.review(
         buildReviewPrompt(request, createNonce(), counted?.toolbox, pass),
       )
+      answered.passUsage.push(usageOf('review', output.usage, pass?.skill))
       const report = parseReviewReport(output.text)
       const findings =
         pass === undefined
@@ -287,7 +298,6 @@ async function runPasses(
       }
       answered.touched.push(...(tools?.touchedPaths() ?? []))
       answered.durationMs += output.durationMs
-      answered.usage = sumUsage(answered.usage, output.usage)
       if (pass !== undefined) {
         answered.reports.push({
           skill: pass.skill,
@@ -440,13 +450,14 @@ function otherModels(
   return others.length === 0 ? undefined : others
 }
 
-function sumUsage(
-  review: TokenUsage | undefined,
-  verification: TokenUsage | undefined,
-): TokenUsage | undefined {
-  if (review === undefined || verification === undefined) return review ?? verification
+function usageOf(
+  pass: PassUsage['pass'],
+  usage: TokenUsage | undefined,
+  skill?: string,
+): PassUsage {
   return {
-    inputTokens: review.inputTokens + verification.inputTokens,
-    outputTokens: review.outputTokens + verification.outputTokens,
+    pass,
+    ...(skill === undefined ? {} : { skill }),
+    ...(usage === undefined ? {} : { usage }),
   }
 }
