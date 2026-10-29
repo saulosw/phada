@@ -8,6 +8,7 @@ import { formatError } from './cli/format-error.js'
 import { formatGitHubPreview } from './cli/format-github.js'
 import { formatCiSection } from './cli/format-ci.js'
 import { formatClaimsSection } from './cli/format-claims.js'
+import { formatCloseToCutSection } from './cli/format-close-to-cut.js'
 import { formatContextSection } from './cli/format-context.js'
 import { formatConversationSection } from './cli/format-conversation.js'
 import { formatImpactSection } from './cli/format-impact.js'
@@ -245,7 +246,7 @@ function printRun(deps: MainDeps, command: ReviewCommand, run: ReviewRun): void 
         deps.stdout.write(
           run.status === 'nothing'
             ? formatGitHubPreview(rendered, messages)
-            : `${formatGitHubPreview(rendered, messages)}\n${claimsSection(run)}${formatContextSection(reviewed.context.report)}\n${formatConversationSection(reviewed.conversation)}\n${formatCiSection(reviewed.ci)}\n${formatImpactSection(reviewed.impact, reviewed.impactText)}\n${reviewed.related.status === 'none' ? '' : `${formatRelatedSection(reviewed.related)}\n`}${passesSection(run, fixFor)}${formatInvestigationSection(reviewed.investigation)}`,
+            : `${formatGitHubPreview(rendered, messages)}\n${closeToCutSection(run)}${claimsSection(run)}${formatContextSection(reviewed.context.report)}\n${formatConversationSection(reviewed.conversation)}\n${formatCiSection(reviewed.ci)}\n${formatImpactSection(reviewed.impact, reviewed.impactText)}\n${reviewed.related.status === 'none' ? '' : `${formatRelatedSection(reviewed.related)}\n`}${passesSection(run, fixFor)}${formatInvestigationSection(reviewed.investigation)}`,
         )
       }
       deps.stderr.write('Dry run: nothing was posted.\n')
@@ -279,6 +280,14 @@ function skipLine(outcome: Extract<ReviewOutcome, { status: 'skipped' }>): strin
   if (outcome.reason === 'empty-diff') return 'Nothing to review: the pull request has no changes.'
   const skipped = (outcome.passes ?? []).map(({ skill, reason }) => `${skill} — ${reason ?? ''}`)
   return `Nothing to review: no skill applies to the changed files (${skipped.join('; ')}).`
+}
+
+function closeToCutSection(run: ReviewRun): string {
+  if (run.status !== 'reviewed') return ''
+  const outcome = run.reviewed.outcome
+  if (outcome.status !== 'reviewed') return ''
+  const { findings, minConfidence } = outcome.result
+  return `${formatCloseToCutSection(findings, minConfidence)}\n`
 }
 
 function claimsSection(run: ReviewRun): string {

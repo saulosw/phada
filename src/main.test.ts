@@ -1325,6 +1325,24 @@ describe('run publishing', () => {
     expect(JSON.stringify(published.posts)).not.toContain('Prevents two runs')
   })
 
+  it('shows the findings close to the cut in the dry run and the terminal, never on GitHub', async () => {
+    const answer = {
+      ...OUTPUT,
+      text: reviewReportJson({ findings: [findingFixture({ line: 3, confidence: 65 })] }),
+    }
+    const dryRun = harness({ review: () => Promise.resolve(answer) })
+    const published = harness({ review: () => Promise.resolve(answer) })
+
+    await run([...REVIEW, '--dry-run'], dryRun.deps)
+    await run(REVIEW, published.deps)
+
+    expect(dryRun.stdout()).toContain(
+      '\n## Close to the cut\n\n1 close to the cut: at most 10 points above the cut of 60, another run may leave them out.\n\n- P1 · src/shop.ts:3: spend has no auth (confidence 65)\n\n## Claims of the description',
+    )
+    expect(published.stdout()).toContain('(confidence 65 · close to the cut)')
+    expect(JSON.stringify(published.posts)).not.toMatch(/close to the cut/i)
+  })
+
   it('prints the dry run as JSON with the review and the publication preview', async () => {
     const h = harness({ review: () => Promise.resolve(WITH_FINDING) })
 
