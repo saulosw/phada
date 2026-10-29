@@ -72,13 +72,13 @@ describe('prompts of a pull request without conversation', () => {
   })
 
   it.each([
-    ['bare', BARE, 'ad64d9fad33e7bef72885b75100a1b2e84a7cddb2adb5c1d2cafd5be43b1425f'],
+    ['bare', BARE, '5c5fffd6e9b588a8bee6559e4539246de1607b013e78f69d4ce76a95ee078551'],
     [
       'with context, impact and related repositories',
       RICH,
-      '9145318ab6b5050b663757a0bc34b0850039397adaaeff86df59865ed24fbb92',
+      'df40955749c2962c1ac64c0fc7d28081bec1d3d78d3613a60bc91c88f1427d85',
     ],
-  ])('keeps the verify prompt of 0.8.0 byte for byte (%s)', (_case, request, expected) => {
+  ])('keeps the verify prompt byte for byte (%s)', (_case, request, expected) => {
     expect(digest(buildVerifyPrompt(request, CANDIDATES, NONCE))).toBe(expected)
   })
 })

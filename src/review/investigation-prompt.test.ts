@@ -146,8 +146,10 @@ describe('verification prompt with the repository tools', () => {
 
     expect(prompt.tools).toBe(toolbox)
     expect(prompt.instructions).toContain(
-      'Use the tools to check the code a candidate depends on before you reject it.',
+      'Use the tools to check the code a candidate depends on before you reject it,\nand to find its condition in this repository',
     )
+    expect(prompt.instructions).toContain('reject it when you\ncannot find the condition.')
+    expect(prompt.instructions).not.toContain('Without the repository')
     expect(prompt.instructions).toContain(
       'depends on code that neither the diff nor the\n  repository supports.',
     )

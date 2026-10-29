@@ -53,9 +53,9 @@ describe('prompts of a pull request without checks', () => {
     )
   })
 
-  it('keep the verify prompt of 0.8.0 byte for byte', () => {
+  it('keep the verify prompt byte for byte', () => {
     expect(digest(buildVerifyPrompt({ ...BARE, ci: [] }, CANDIDATES, NONCE))).toBe(
-      'ad64d9fad33e7bef72885b75100a1b2e84a7cddb2adb5c1d2cafd5be43b1425f',
+      '5c5fffd6e9b588a8bee6559e4539246de1607b013e78f69d4ce76a95ee078551',
     )
   })
 })

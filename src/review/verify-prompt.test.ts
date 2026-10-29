@@ -22,8 +22,8 @@ function verifyPrompt(language?: string) {
 
 describe('buildVerifyPrompt', () => {
   it.each([
-    [undefined, '11f7dd6988901d9b27ebd9ad11c72377408a8ab772aa80bc2d5052dcdf82fe03'],
-    ['pt-BR', 'b20fc7c0852d170d8d2a13ef8594438c7bd4752e45ed8d8346da8832e9818ebe'],
+    [undefined, 'c111b45f6649d105edf41f5fa36e8c583d83b25398640db8f4af80b99c2672d5'],
+    ['pt-BR', 'a35454d6d7baa0ccb59cf23062d60630011277d22397454012a6baeceb925f34'],
   ])('keeps the verifier instructions word for word (language %s)', (language, digest) => {
     const { instructions } = verifyPrompt(language)
 
@@ -47,6 +47,20 @@ describe('buildVerifyPrompt', () => {
       '- confirmed: the diff shows the problem and it happens as described when that\n  code runs, even if only rarely;',
     )
     expect(instructions).not.toContain('in practice')
+  })
+
+  it('confirms the condition of the claimed effect in this repository, not in a library', () => {
+    const { instructions } = verifyPrompt()
+
+    expect(instructions).toContain('A problem is real only if it can happen in this repository.')
+    expect(instructions).toContain(
+      '(a configuration, the callers, the log\nlevel, a flag, the inputs that reach that code)',
+    )
+    expect(instructions).toContain('how a library or the language behaves is not enough')
+    expect(instructions).toContain('name the missing condition in\nreason.')
+    expect(instructions).toContain(
+      'Without the repository, reject a candidate when the diff does not show its\ncondition and it is not evident.',
+    )
   })
 
   it('confirms an instruction aimed at reviewers that hides in the pull request', () => {
@@ -217,7 +231,7 @@ describe('buildVerifyPrompt with repository context', () => {
 })
 
 describe('buildVerifyPrompt with the review focus the user chose', () => {
-  const DEFAULT_DIGEST = '11f7dd6988901d9b27ebd9ad11c72377408a8ab772aa80bc2d5052dcdf82fe03'
+  const DEFAULT_DIGEST = 'c111b45f6649d105edf41f5fa36e8c583d83b25398640db8f4af80b99c2672d5'
   const digest = (text: string) => createHash('sha256').update(text).digest('hex')
   const skillPass: SkillPass = {
     skill: 'code-review',
