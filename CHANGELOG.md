@@ -29,6 +29,17 @@ output can change between minor versions.
   `scope` of each finding, the `debt` list and the `debt` dropped; the app marks them in the
   review's detail.
 
+- A finding at most 10 points above the confidence cut is marked "close to the cut", since
+  another run of the same commit may leave it out: in the terminal review (with their count), in a
+  "Close to the cut" section of `--dry-run`, as `closeToCut` in the JSON and the history, and in
+  the app's review detail. The comments posted on the pull request do not change.
+- `phada review` ends with the tokens of each AI pass (review passes, verification, recheck, a
+  native skill with its conversion) and their total, with the input tokens read from the
+  provider's cache, on stderr; the same counts are in a "Tokens" section of `--dry-run`, in `usage`
+  of the JSON and the history, in the app's review detail and next to each AI step of a review
+  the app runs. Claude Code and Codex report the cached input tokens, also added to the existing
+  `usage` blocks of the JSON as `cachedInputTokens`.
+
 ### Changed
 
 - The "Based on" line of a published comment names only the evidence and the rule; the skill that

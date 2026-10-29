@@ -285,6 +285,13 @@ prints:
   - **P0 · Must fix**: security holes, data loss, crashes, wrong money handling;
   - **P1 · Should fix**: bugs, incorrect behavior, edge cases, race conditions, leaks;
   - **P2 · Consider**: maintainability or design risks with a concrete consequence.
+
+  A finding at most 10 points above the cut is marked **close to the cut**: the AI does not
+  rate a finding the same way every time, so another run of the same commit may leave it out.
+  The mark and their count show in the terminal review, in a "Close to the cut" section of
+  `--dry-run`, in `closeToCut` of each finding in `--format json` and the history, and in the
+  review's detail in the app; the comments posted on the pull request do not carry it.
+
 - **Worth checking**: up to five findings with confidence from 50 up to the cut, one line each.
   They do not change the score.
 - **Repository debt**: problems that are real but that this change neither introduces nor worsens
@@ -294,6 +301,16 @@ prints:
   (rejected by verification, outside the diff, duplicates, below confidence 50, not in the
   expected shape, or repository debt with `review.debt: off`) and the provider, model, time and
   tokens.
+
+At the end, `phada review` prints on stderr the tokens of each call to the AI (each review pass,
+one per skill, the verification and the recheck of earlier comments; a native skill counts its run
+and the conversion of its output together) and their total: the input tokens, how many of them
+came from the provider's cache, and the output tokens, e.g.
+`Tokens: review 812.0k in (640.0k cached) · 9.0k out; verify 120.0k in · 2.0k out; total 932.0k in (640.0k cached) · 11.0k out`.
+A provider that does not report them shows `not reported` (Ollama reports no cache). The same
+counts are in a "Tokens" section of `--dry-run`, in `usage` of `--format json` and the history
+(`passes` with `pass`, `skill` and `usage`, and the `total`), in the review's detail in the app
+and next to each AI step while the app runs a review.
 
 By default (turn it off with `--no-verify` or `verify: false`), the first pass asks the AI for every
 candidate from confidence 25 instead of 50, and Phada makes a second call to the same AI before

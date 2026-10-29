@@ -43,8 +43,8 @@ src/
                          #   and CI read, CI wait, context, indexing, related, impact, passes, the
                          #   AI running a review, verify, recheck or skill run, publishing,
                          #   warning), ReviewProgressSink; reportProgress(): ReviewProvider
-                         #   decorator that reports when the AI starts and finishes a run, and
-                         #   whether it answered
+                         #   decorator that reports when the AI starts and finishes a run,
+                         #   whether it answered and the tokens it reported
     wrap-provider-runs.ts #  wrapProviderRuns(): a ReviewProvider whose review and skill runs go
                          #   through a wrapper (the progress report, the refusal once cancelled)
     requested-review.ts  #   a review the person asks for in the app: ReviewMode (look, publish),
@@ -116,8 +116,9 @@ src/
     read-history.ts      #   readReviews(), readFindings() (destination and marks of each),
                          #   readFeedbackStats() (feedbackStats() per repository, ruleStats() per
                          #   rule), readReviewDetail(): one run with what its stored JSON keeps
-                         #   (score, summary, claims, findings with their scope, repository
-                         #   debt, publication with what a dry run
+                         #   (score, summary, claims, findings with their scope and whether
+                         #   they were close to the cut, repository debt, the tokens of each
+                         #   AI pass and their total, publication with what a dry run
                          #   would resolve and why a publication was skipped, CI) and the
                          #   feedback of each published finding; reviewDetailOf(): the same from a run
                          #   record (a run the app just made); no history file reads as empty
@@ -420,13 +421,18 @@ src/
                          #   annotations and logs left out, the cuts and the warnings)
     format-claims.ts     #   the claims section of --dry-run: each claim of the description with
                          #   its verdict and evidence
+    format-close-to-cut.ts # the "Close to the cut" section of --dry-run: their count, the
+                         #   margin and each finding with its confidence
+    format-usage.ts      #   formatUsageLine(): the "Tokens:" line that ends phada review;
+                         #   formatUsageSection(): the tokens section of --dry-run
     finding-references.ts #  the "Based on" line: sources (a CI check named as such), rule and,
                          #   for the author only (terminal), skill of a finding; on GitHub
                          #   neither local files nor the skill
     format-json.ts       #   formatReviewJson(): schemaVersion 1, with the claims, the scope of
-                         #   each finding, the repository debt and the debt dropped, publication,
-                         #   context, conversation (each item without its texts, with its bytes),
-                         #   ci, investigation, impact and recheck blocks
+                         #   each finding (and closeToCut), the repository debt and the debt
+                         #   dropped, publication, context, conversation (each item without its
+                         #   texts, with its bytes), ci, investigation, impact and recheck
+                         #   blocks, and usage (the tokens of each AI pass and their total)
     markdown-text.ts     #   escapes AI text: block markers; for GitHub also HTML and mentions;
                          #   codeFence()
     review-text.ts       #   model label and short SHA
@@ -599,7 +605,8 @@ src/
     model-pull.tsx       #   useModelPull(onPulled): AppDeps.pullModel with an AbortController
                          #   (cancel(), aborted on unmount); modelPullLines(): the status, a bar
                          #   with bytes and percent, and how it ended
-    units.ts             #   durationText(), bytesText(), modelSizeText() (decimal, as Ollama)
+    units.ts             #   durationText(), tokensText(), bytesText(), modelSizeText()
+                         #   (decimal, as Ollama)
     run-text.ts          #   runKey(), verdictLabel(), verdictColor(), sourceOf(): a run of the
                          #   history as the screens list it
     data-hooks.ts        #   usePolled() (local data, at once, every 2 s on the scheduler and when
@@ -660,7 +667,7 @@ src/
     review-steps.ts      #   stepsAfter(): the review progress events → one step per stage
                          #   (fetch, with a closed or draft notice, context, conversation,
                          #   CI, CI wait, indexing, related, impact, skill pass, each AI run
-                         #   with its start and end, publishing) and the warnings;
+                         #   with its start, end and tokens, publishing) and the warnings;
                          #   stepRunning(), stepFailed() (an AI
                          #   run with no answer); stepText(): a step as the review flow and
                          #   the Queue show it
@@ -683,8 +690,9 @@ src/
                          #   score, verdict, status, when, CI, publication (nothing posted,
                          #   would resolve, would skip and why), summary, claims of the
                          #   description with verdict and evidence, findings with their
-                         #   body (a finding of the repository marked as debt), repository debt,
-                         #   worth checking, feedback (Reviews and the review flow)
+                         #   body (a finding of the repository marked as debt, one close to the
+                         #   cut marked), repository debt, worth checking, the tokens of each
+                         #   AI pass and their total, feedback (Reviews and the review flow)
     palette.tsx          #   Palette: screens, the setup, the language, review, index and watch
                          #   (/watch: the Queue, and the watch started or the stop question) filtered by name (the catalog's and
                          #   English, without accents), ↑/↓, Enter, Esc; matchEntries()
@@ -883,7 +891,8 @@ src/
     work-dirs.ts         #   openWorkDir(), closeWorkDir(), removeOpenWorkDirs() (Ctrl-C),
                          #   sweepOrphanWorkDirs(): the phada-native-* folders
   providers/             # ReviewProvider and its implementations
-    types.ts             #   ReviewProvider, ReviewPrompt, ReviewOutput, ProviderError; ProviderStatus
+    types.ts             #   ReviewProvider, ReviewPrompt, ReviewOutput, TokenUsage (input, the
+                         #   part of it read from cache, output), ProviderError; ProviderStatus
                          #   (CliStatus, OllamaStatus)
     cli-run.ts           #   shared by AI CLIs: temp dir, env without GitHub tokens, typed errors
     redact-secrets.ts    #   redacts token patterns from CLI output in error messages
@@ -1000,7 +1009,10 @@ src/
                          #   PublishTarget, PullRecord, PauseState, JobStatus (waiting for CI),
                          #   FailureKind
   review/                # the engine: data in, result out
-    types.ts             #   ReviewRequest, Finding, ReviewResult, ReviewOutcome, …
+    types.ts             #   ReviewRequest, Finding (closeToCut), ReviewResult (passUsage),
+                         #   PassUsage, ReviewOutcome, …
+    token-usage.ts       #   sumUsage(), totalUsage(); usageReport(): the tokens of each AI pass
+                         #   of a review and of the recheck, with their total
     prompt-parts.ts      #   text shared by the review and verification prompts: rules section,
                          #   docs block, conversation block and its rules, CI block and its rules
                          #   (a check cited as ci:<name>), related repositories
@@ -1044,7 +1056,9 @@ src/
     verify-findings.ts   #   verifyCandidates(), applyVerdicts()
     context-findings.ts  #   known rule and sources on each finding (ci:<name> of a failing check);
                          #   the severity a rule sets
-    select-findings.ts   #   candidate filtering, confidence cut, worth checking, ordering
+    select-findings.ts   #   candidate filtering, confidence cut, worth checking, ordering; the
+                         #   kept findings at most CLOSE_TO_CUT_MARGIN (10) above the cut marked
+                         #   closeToCut
     score.ts             #   scoreFindings(): the 0–5 score, computed by Phada
     debt.ts              #   withoutDroppedDebt() (review.debt: off), separateDebt() (summary):
                          #   the findings of the repository the change did not cause
@@ -1056,7 +1070,8 @@ src/
                          #   the claims of the description merged; the calls of each pass with
                          #   tools against its minimum (investigationFloor, a warning below it);
                          #   the repository debt split by review.debt (DEFAULT_DEBT_MODE: summary),
-                         #   out of the score
+                         #   out of the score; the tokens of each pass (a native skill with its
+                         #   conversion, an answer that did not parse included) and the verify
 scripts/smoke.ts         # packs the package, installs the tarball, runs the installed `phada`
 scripts/copy-grammars.ts # build step: the tree-sitter grammars into dist/grammars/
 test/fixtures/bin/       # fake AI CLIs used by the provider and status tests
