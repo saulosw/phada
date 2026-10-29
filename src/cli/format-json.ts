@@ -37,6 +37,7 @@ export interface ReviewJsonBlocks {
   conversation?: Conversation
   ci?: Ci
   impactText?: string
+  language?: string
 }
 
 export interface ResolvedCounts {
@@ -111,7 +112,7 @@ export function formatReviewJson(
           status: outcome.status,
           verdict: reviewVerdict(outcome.result),
           pullRequest,
-          review: reviewJson(outcome.result, fixFor),
+          review: reviewJson(outcome.result, fixFor, blocks.language),
           publication: publicationBlock,
           context: contextBlock,
           conversation,
@@ -303,7 +304,11 @@ function skipJson(reason: SkipReason) {
   }
 }
 
-function reviewJson(result: ReviewResult, fixFor?: (blocked: BlockedCommand) => string) {
+function reviewJson(
+  result: ReviewResult,
+  fixFor?: (blocked: BlockedCommand) => string,
+  language?: string,
+) {
   const { score, dropped } = result
   return {
     score: { value: score.value, reason: score.reason },
@@ -351,6 +356,9 @@ function reviewJson(result: ReviewResult, fixFor?: (blocked: BlockedCommand) => 
         })),
       })) ?? null,
     skillBodies: result.skillBodies ?? null,
+    language: language ?? null,
+    diffFingerprint: result.target.diffFingerprint ?? null,
+    ignored: result.ignored ?? [],
   }
 }
 

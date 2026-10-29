@@ -242,6 +242,7 @@ export function reviewRunJson(
   const { reviewed } = run
   const context = reviewed.context.report
   const blocks = {
+    ...(reviewed.language === undefined ? {} : { language: reviewed.language }),
     ...(reviewed.conversation === undefined ? {} : { conversation: reviewed.conversation }),
     ...(reviewed.ci === undefined ? {} : { ci: reviewed.ci }),
   }

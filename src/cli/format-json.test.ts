@@ -112,6 +112,9 @@ describe('formatReviewJson', () => {
         usage: { inputTokens: 9700, cachedInputTokens: null, outputTokens: 417 },
         passes: null,
         skillBodies: null,
+        language: null,
+        diffFingerprint: null,
+        ignored: [],
       },
       publication: null,
       context: null,
@@ -135,6 +138,36 @@ describe('formatReviewJson', () => {
           },
         ],
         total: { inputTokens: 9700, cachedInputTokens: null, outputTokens: 417 },
+      },
+    })
+  })
+
+  it('keeps what publishing the review later needs: its language, diff fingerprint and files left out', () => {
+    const output = formatReviewJson(
+      pullRequestFixture(),
+      {
+        status: 'reviewed',
+        result: {
+          ...RESULT,
+          target: { ...RESULT.target, diffFingerprint: '0123456789abcdef' },
+          ignored: ['package-lock.json'],
+        },
+      },
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      undefined,
+      { language: 'pt-BR' },
+    )
+
+    expect(parse(output)).toMatchObject({
+      review: {
+        language: 'pt-BR',
+        diffFingerprint: '0123456789abcdef',
+        ignored: ['package-lock.json'],
       },
     })
   })
