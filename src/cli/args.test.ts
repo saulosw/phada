@@ -500,6 +500,36 @@ describe('parseCliArgs history', () => {
     })
   })
 
+  it('reads show with a run id and its format', () => {
+    expect(parseCliArgs(['history', 'show', '12'])).toEqual({
+      kind: 'history-show',
+      id: 12,
+      format: 'text',
+      debug: false,
+    })
+    expect(parseCliArgs(['history', 'show', '7', '--format', 'json', '--debug'])).toEqual({
+      kind: 'history-show',
+      id: 7,
+      format: 'json',
+      debug: true,
+    })
+  })
+
+  it.each([
+    [['history', 'show'], 'phada history show needs a run id, e.g. phada history show 12.'],
+    [['history', 'show', '0'], 'Invalid run id "0". Use a whole number from 1.'],
+    [['history', 'show', '-3'], "Unknown option '-3'."],
+    [['history', 'show', '1.5'], 'Invalid run id "1.5". Use a whole number from 1.'],
+    [['history', 'show', 'abc'], 'Invalid run id "abc". Use a whole number from 1.'],
+    [['history', 'show', '99999999999999999999'], 'Invalid run id "99999999999999999999".'],
+    [['history', 'show', '1', '2'], 'phada history show takes one run id.'],
+    [['history', 'show', '1', '--stats'], 'phada history show takes only --format.'],
+    [['history', 'show', '1', '--limit', '3'], 'phada history show takes only --format.'],
+    [['history', 'show', '1', '--format', 'yaml'], 'Invalid --format "yaml". Use text or json.'],
+  ])('refuses %j', (argv, message) => {
+    expect(() => parseCliArgs(argv)).toThrow(message)
+  })
+
   it.each([
     [['history', '--limit', '0'], 'Invalid --limit "0". Use a whole number from 1.'],
     [['history', '--since', '5x'], 'Invalid --since "5x". Use a duration like 30d, 12h or 90m.'],
@@ -538,6 +568,11 @@ describe('parseCliArgs history', () => {
       kind: 'help',
       text: HISTORY_USAGE,
     })
+    expect(parseCliArgs(['history', 'show', '--help'])).toEqual({
+      kind: 'help',
+      text: HISTORY_USAGE,
+    })
+    expect(HISTORY_USAGE).toContain('phada history show <id> [--format text|json]')
     expect(HISTORY_USAGE.startsWith('Usage: phada history [<owner/repo[#N]>] [options]')).toBe(true)
     expect(USAGE).toContain('history                Show past reviews and what happened to')
   })

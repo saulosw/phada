@@ -31,7 +31,7 @@ import { runIndex } from './cli/index-command.js'
 import { runInit } from './cli/init.js'
 import { runPrompt } from './cli/prompt-command.js'
 import { runRules } from './cli/rules-command.js'
-import { runHistory, runHistoryPrune } from './cli/history-command.js'
+import { runHistory, runHistoryPrune, runHistoryShow } from './cli/history-command.js'
 import { reviewRunJson } from './cli/review-wiring.js'
 import { prepareReview, runManualReview } from './cli/manual-review.js'
 import type { ReviewRun } from './app/review-and-publish.js'
@@ -123,6 +123,10 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
       await runHistory(command, deps)
       return 0
     }
+    if (command.kind === 'history-show') {
+      await runHistoryShow(command, deps)
+      return 0
+    }
     if (command.kind === 'history-prune') {
       await runHistoryPrune(command, deps)
       return 0
@@ -167,9 +171,15 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
       },
     )
     printHistorySave(deps, history)
-    printRun(deps, command, reviewRun)
-    const usageLine = formatUsageLine(runUsage(reviewRun))
-    if (usageLine !== undefined) deps.stderr.write(`${usageLine}\n`)
+    try {
+      printRun(deps, command, reviewRun)
+      const usageLine = formatUsageLine(runUsage(reviewRun))
+      if (usageLine !== undefined) deps.stderr.write(`${usageLine}\n`)
+    } finally {
+      if (history.status === 'saved') {
+        deps.stderr.write(`Saved as run ${history.runId}: phada history show ${history.runId}\n`)
+      }
+    }
     return 0
   } catch (error) {
     const { message, exitCode } = formatError(error, { debug })

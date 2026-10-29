@@ -606,6 +606,7 @@ describe('run', () => {
         'Publishing the review…',
         `Published the review: ${REVIEW_URL}`,
         'Tokens: review 3.5k in · 420 out',
+        'Saved as run 1: phada history show 1',
         '',
       ].join('\n'),
     )
@@ -1237,9 +1238,11 @@ describe('run publishing', () => {
     expect(h.prompts).toHaveLength(0)
     expect(h.posts).toHaveLength(0)
     expect(h.stdout()).toBe('')
-    expect(h.stderr().split('\n').at(-2)).toBe(
+    expect(h.stderr().split('\n').slice(-3)).toEqual([
       'a1b2c3d already reviewed by Phada; 1 thread still open. Use --force to review again.',
-    )
+      'Saved as run 1: phada history show 1',
+      '',
+    ])
   })
 
   it('skips the same commit when its review found nothing', async () => {
@@ -1353,8 +1356,52 @@ describe('run publishing', () => {
       /\n## Tokens\n\n- review: 3\.5k in · 420 out\n- total: 3\.5k in · 420 out\n$/,
     )
     expect(h.stderr()).toMatch(
-      /Dry run: nothing was posted\.\nTokens: review 3\.5k in · 420 out\n$/,
+      /Dry run: nothing was posted\.\nTokens: review 3\.5k in · 420 out\nSaved as run 1: phada history show 1\n$/,
     )
+  })
+
+  it('shows a saved dry run again with phada history show, section by section', async () => {
+    const h = harness({ review: () => Promise.resolve(WITH_FINDING) })
+    await run([...REVIEW, '--dry-run'], h.deps)
+    const dryRun = h.stdout()
+    const file = h.historyFiles[0]?.split(' → ')[1] ?? ''
+    const shown: string[] = []
+    const deps: MainDeps = {
+      ...h.deps,
+      files: { ...h.deps.files, exists: async (path) => path === '/data/history.sqlite' },
+      env: { ...h.deps.env, PHADA_DATA_HOME: '/data' },
+      openHistoryReader: (path) => {
+        shown.push(path)
+        return openHistoryStore(file, { readOnly: true })
+      },
+      stdout: { write: (text: string) => shown.push(text) },
+    }
+
+    expect(await run(['history', 'show', '1'], deps)).toBe(0)
+
+    expect(shown[0]).toBe('/data/history.sqlite')
+    const [header, title, blank, ...rest] = (shown[1] ?? '').split('\n')
+    expect(header).toMatch(
+      /^Run 1 · acme\/shop#12 at a1b2c3d · .+ · manual · claude\/claude-fake-1 · dry run$/,
+    )
+    expect([title, blank]).toEqual(['Let users spend crystals', ''])
+    expect(rest.join('\n')).toBe(dryRun)
+  })
+
+  it('says which run a missing id is not', async () => {
+    const h = harness({ review: () => Promise.resolve(WITH_FINDING) })
+    await run([...REVIEW, '--dry-run'], h.deps)
+    const file = h.historyFiles[0]?.split(' → ')[1] ?? ''
+    const errors: string[] = []
+    const deps: MainDeps = {
+      ...h.deps,
+      files: { ...h.deps.files, exists: async () => true },
+      openHistoryReader: () => openHistoryStore(file, { readOnly: true }),
+      stderr: { write: (text: string) => errors.push(text) },
+    }
+
+    expect(await run(['history', 'show', '4'], deps)).toBe(1)
+    expect(errors.join('')).toBe('phada: No run 4 in the history.\n')
   })
 
   it('prints the dry run as JSON with the review and the publication preview', async () => {

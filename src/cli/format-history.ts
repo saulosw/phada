@@ -101,7 +101,7 @@ function statsLine(stats: RepoStats): string {
   ].join(' · ')
 }
 
-function runJson(run: RunRecord) {
+export function runJson(run: RunRecord) {
   return {
     id: run.id ?? null,
     jobId: run.jobId ?? null,

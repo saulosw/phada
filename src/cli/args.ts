@@ -48,6 +48,7 @@ export type CliCommand =
       debug: boolean
     }
   | { kind: 'history-prune'; olderThanMs: number; debug: boolean }
+  | { kind: 'history-show'; id: number; format: IndexFormat; debug: boolean }
   | { kind: 'mcp'; debug: boolean }
   | {
       kind: 'enqueue'
@@ -336,6 +337,7 @@ Environment:
   PHADA_CACHE_HOME   Folder of the mirrors and indexes (default: ~/.cache/phada)`
 
 export const HISTORY_USAGE = `Usage: phada history [<owner/repo[#N]>] [options]
+       phada history show <id> [--format text|json]
        phada history prune --older-than <age>
 
 Shows the reviews kept in the local history and what happened to the
@@ -343,6 +345,10 @@ comments Phada published: fixed, dismissed (resolved without a change),
 ignored (left open until the pull request closed) or still open, and which
 ones got a negative reaction or a reply. Reads only this machine, unless
 --refresh.
+
+show <id> prints one review of the list as the dry run does: what was
+posted (or would have been), the context, conversation, CI, impact, related
+repositories, skills, investigation, claims and tokens it kept.
 
 Options:
   --since <age>        Only the last <age>, e.g. 30d, 12h
@@ -705,6 +711,7 @@ function parseHistoryArgs(argv: readonly string[]): CliCommand {
   if (olderThan !== undefined) {
     throw new UsageError('--older-than only works with phada history prune.')
   }
+  if (positionals[0] === 'show') return parseHistoryShow(positionals.slice(1), values)
   if (positionals.length > 1) {
     throw new UsageError('Give one repository or pull request at a time.')
   }
@@ -737,6 +744,36 @@ function parseHistoryArgs(argv: readonly string[]): CliCommand {
     format,
     debug: values.debug,
   }
+}
+
+function parseHistoryShow(
+  positionals: readonly string[],
+  values: {
+    since?: string
+    limit?: string
+    stats: boolean
+    refresh: boolean
+    format?: string
+    debug: boolean
+  },
+): CliCommand {
+  if (values.since !== undefined || values.limit !== undefined || values.stats || values.refresh) {
+    throw new UsageError('phada history show takes only --format.')
+  }
+  const [input] = positionals
+  if (input === undefined) {
+    throw new UsageError('phada history show needs a run id, e.g. phada history show 12.')
+  }
+  if (positionals.length > 1) throw new UsageError('phada history show takes one run id.')
+  const id = Number(input)
+  if (!/^\d+$/.test(input) || !Number.isSafeInteger(id) || id < 1) {
+    throw new UsageError(`Invalid run id "${input}". Use a whole number from 1.`)
+  }
+  const format = values.format ?? 'text'
+  if (format !== 'text' && format !== 'json') {
+    throw new UsageError(`Invalid --format "${format}". Use text or json.`)
+  }
+  return { kind: 'history-show', id, format, debug: values.debug }
 }
 
 function ageMs(text: string): number | undefined {

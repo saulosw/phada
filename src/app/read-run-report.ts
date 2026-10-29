@@ -79,7 +79,8 @@ export interface RunReport {
   result: unknown
   title: string | null
   posted?: PostedReview
-  review?: { minConfidence: number; findings: StoredFinding[]; claims: StoredClaim[] }
+  closeToCut?: { minConfidence: number; findings: StoredFinding[] }
+  claims?: StoredClaim[]
   context?: ContextReport | null
   conversation?: ConversationBlock | null
   ci?: CiBlock | null
@@ -99,7 +100,7 @@ export function readRunReport(
   return stored === undefined ? undefined : runReportOf(stored)
 }
 
-export function runReportOf(stored: RunRecord): RunReport {
+function runReportOf(stored: RunRecord): RunReport {
   const { resultJson, ...run } = stored
   const result = parseJson(resultJson)
   const json = objectOf(result) ?? {}
@@ -111,15 +112,8 @@ export function runReportOf(stored: RunRecord): RunReport {
     result: result ?? null,
     title: stringOf(objectOf(json.pullRequest)?.title) ?? null,
     ...defined('posted', postedOf(json.publication)),
-    ...(review === undefined
-      ? {}
-      : {
-          review: {
-            minConfidence: numberOf(review.minConfidence) ?? 0,
-            findings: storedFindings(review.findings),
-            claims: storedClaims(review.claims),
-          },
-        }),
+    ...defined('closeToCut', closeToCutOf(review)),
+    ...(Array.isArray(review?.claims) ? { claims: storedClaims(review.claims) } : {}),
     ...defined('context', blockOf(json, 'context', ContextSchema)),
     ...defined('conversation', blockOf(json, 'conversation', ConversationSchema)),
     ...defined('ci', ci),
@@ -145,6 +139,16 @@ function blockOf<T>(
   if (json[key] === null) return null
   const parsed = schema.safeParse(json[key])
   return parsed.success ? parsed.data : undefined
+}
+
+function closeToCutOf(
+  review: Record<string, unknown> | undefined,
+): RunReport['closeToCut'] | undefined {
+  const minConfidence = numberOf(review?.minConfidence)
+  const findings = review?.findings
+  if (minConfidence === undefined || !Array.isArray(findings)) return undefined
+  const marked = findings.every((finding) => typeof objectOf(finding)?.closeToCut === 'boolean')
+  return marked ? { minConfidence, findings: storedFindings(findings) } : undefined
 }
 
 function postedOf(value: unknown): PostedReview | undefined {
