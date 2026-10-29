@@ -62,6 +62,8 @@ export const english: Messages = {
     severity: { P0: 'P0 · Must fix', P1: 'P1 · Should fix', P2: 'P2 · Consider' },
     findingCount: (count) => formatCount(count, 'finding'),
     worthCheckingCount: (count) => `${count} worth checking`,
+    closeToCut: 'close to the cut',
+    closeToCutCount: (count) => `${count} close to the cut`,
     tokens: (input, output) => `${input} in / ${output} out`,
   },
   github: {

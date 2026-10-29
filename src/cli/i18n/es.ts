@@ -80,6 +80,8 @@ export const spanish: Messages = {
     },
     findingCount: (value) => count(value, 'hallazgo', 'hallazgos'),
     worthCheckingCount: (value) => `${value} para revisar`,
+    closeToCut: 'al borde del corte',
+    closeToCutCount: (value) => `${value} al borde del corte`,
     tokens: (input, output) => `${input} de entrada / ${output} de salida`,
   },
   github: {

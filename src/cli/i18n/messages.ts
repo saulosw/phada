@@ -39,6 +39,8 @@ export interface Messages {
     severity: Readonly<Record<Severity, string>>
     findingCount(count: number): string
     worthCheckingCount(count: number): string
+    closeToCut: string
+    closeToCutCount(count: number): string
     tokens(input: string, output: string): string
   }
   github: {

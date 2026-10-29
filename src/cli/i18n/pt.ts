@@ -76,6 +76,8 @@ export const portuguese: Messages = {
     },
     findingCount: (value) => count(value, 'problema', 'problemas'),
     worthCheckingCount: (value) => `${value} para verificar`,
+    closeToCut: 'rente ao corte',
+    closeToCutCount: (value) => `${value} rente ao corte`,
     tokens: (input, output) => `${input} de entrada / ${output} de saída`,
   },
   github: {

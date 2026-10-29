@@ -211,6 +211,31 @@ describe('formatReview', () => {
     )
   })
 
+  it('marks the findings close to the cut and counts them', () => {
+    const [first, second, third] = RESULT.findings
+    if (first === undefined || second === undefined || third === undefined) throw new Error()
+    const findings = [first, { ...second, closeToCut: true as const }, third]
+
+    const output = formatReview(pullRequestFixture(), { ...RESULT, findings })
+
+    expect(output).toContain(
+      '2. **src/shop.ts:7**: Concurrent spends are charged once (confidence 95 · close to the cut)',
+    )
+    expect(output).toContain('3. **src/cooldown.ts:18**: Timer leaks (confidence 85)\n')
+    expect(output).toContain('---\n3 findings · 1 close to the cut · ')
+  })
+
+  it('marks a finding close to the cut in Portuguese and Spanish', () => {
+    const findings = [findingFixture({ closeToCut: true })]
+    const pt = formatReview(pullRequestFixture(), { ...RESULT, findings }, messagesFor('pt-BR'))
+    const es = formatReview(pullRequestFixture(), { ...RESULT, findings }, messagesFor('es'))
+
+    expect(pt).toContain('(confiança 90 · rente ao corte)')
+    expect(pt).toContain('1 problema · 1 rente ao corte · ')
+    expect(es).toContain('(confianza 90 · al borde del corte)')
+    expect(es).toContain('1 hallazgo · 1 al borde del corte · ')
+  })
+
   it("shows the skill of a finding in the terminal, the author's own view", () => {
     const finding = findingFixture({ sources: ['docs/conventions.md'], skill: 'code-review' })
 

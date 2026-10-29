@@ -85,6 +85,15 @@ function plan(
 }
 
 describe('formatGitHubReview body', () => {
+  it('publishes the same review whether findings are close to the cut or not', () => {
+    const close = (finding: Finding): Finding => ({ ...finding, closeToCut: true })
+    const marked = result({ findings: RESULT.findings.map(close) })
+
+    expect(formatGitHubReview(marked, plan([close(P1), close(P2)], [close(OPEN)]))).toEqual(
+      formatGitHubReview(RESULT, PLAN),
+    )
+  })
+
   it('writes the score, summary, files, counts, worth checking, drops and marker', () => {
     expect(formatGitHubReview(RESULT, PLAN).body).toBe(
       [

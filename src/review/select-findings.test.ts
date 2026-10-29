@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { findingFixture } from '../../test/support/finding.js'
 import { parseDiffFiles } from './diff-lines.js'
 import {
+  CLOSE_TO_CUT_MARGIN,
   isConfidenceCut,
   prepareCandidates,
   splitAtCut,
@@ -263,7 +264,7 @@ describe('prepareCandidates and splitAtCut', () => {
     )
 
     expect(selection).toEqual({
-      findings: [{ ...usersFinding(11, 'twice'), confidence: 90 }],
+      findings: [{ ...usersFinding(11, 'twice'), confidence: 90, closeToCut: true }],
       worthChecking: [{ ...usersFinding(12, 'unsure'), confidence: 70 }],
       worthCheckingOmitted: 0,
       belowFloor: 1,
@@ -285,6 +286,33 @@ describe('splitAtCut', () => {
       worthCheckingOmitted: 0,
       belowFloor: 2,
     })
+  })
+
+  it('marks the kept findings at most 10 points above the cut as close to it', () => {
+    const findings = [59, 60, 70, 71].map((confidence) =>
+      findingFixture({ confidence, title: `problem ${confidence}` }),
+    )
+
+    const split = splitAtCut(findings, 60)
+
+    expect(CLOSE_TO_CUT_MARGIN).toBe(10)
+    expect(split.findings).toEqual([
+      findingFixture({ confidence: 71, title: 'problem 71' }),
+      findingFixture({ confidence: 70, title: 'problem 70', closeToCut: true }),
+      findingFixture({ confidence: 60, title: 'problem 60', closeToCut: true }),
+    ])
+    expect(split.worthChecking).toEqual([findingFixture({ confidence: 59, title: 'problem 59' })])
+  })
+
+  it('measures the margin from the cut in force', () => {
+    const findings = [80, 81].map((confidence) =>
+      findingFixture({ confidence, title: `problem ${confidence}` }),
+    )
+
+    expect(splitAtCut(findings, 70).findings.map((finding) => finding.closeToCut)).toEqual([
+      undefined,
+      true,
+    ])
   })
 
   it('does not change the order of the findings it was given', () => {

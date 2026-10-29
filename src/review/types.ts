@@ -182,6 +182,7 @@ export interface Finding {
   suggestion?: Suggestion
   skill?: string
   scope?: FindingScope
+  closeToCut?: true
 }
 
 export interface Suggestion {
