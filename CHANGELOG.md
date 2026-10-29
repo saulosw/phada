@@ -23,9 +23,10 @@ output can change between minor versions.
   finding, and the summary no longer repeats an unchecked claim as fact. The claims show in the
   "Claims of the description" section of `--dry-run`, in `review.claims` of the JSON and the
   history, and in the review's detail in the app; they are not posted on the pull request.
-- The review pass is asked for a minimum number of investigation calls that grows with the diff
-  (one per 10 KB, from 3 to 15), and for a look at what changed CI workflows, container files,
-  infrastructure code and package manifests affect. A pass that falls short gets a warning
+- On a diff of 30 KB or more, or one that changes CI workflows, container files, infrastructure
+  code or package manifests, the review pass is asked for a minimum number of investigation calls
+  that grows with the diff (one per 10 KB, from 3 to 15), and for a look at what those CI and
+  infrastructure files affect; smaller diffs get no minimum. A pass that falls short gets a warning
   (`Investigated 4 times for a 124 KB diff (expected at least 12).`), shown with the minimum in the
   investigation section of `--dry-run` and in `investigation.floor` of the JSON.
 

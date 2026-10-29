@@ -888,6 +888,7 @@ describe('runReview with an investigation floor', () => {
     ' keep',
     `+${'x'.repeat(64 * 1024)}`,
   ].join('\n')
+  const smallDiff = diff.replace(/x+$/, 'x'.repeat(2_000))
   const toolbox: Toolbox = {
     definitions: [{ name: 'read_file', description: 'r', inputSchema: { type: 'object' } }],
     call: async () => ({ text: '', isError: false }),
@@ -909,10 +910,14 @@ describe('runReview with an investigation floor', () => {
     {
       tools = () => toolbox,
       passes,
-    }: { tools?: (() => Toolbox) | null; passes?: SkillPass[] } = {},
+      diff: reviewed = diff,
+    }: { tools?: (() => Toolbox) | null; passes?: SkillPass[]; diff?: string } = {},
   ) {
     const outcome = await runReview(
-      { pullRequest: pullRequestFixture({ diff }), ...(passes === undefined ? {} : { passes }) },
+      {
+        pullRequest: pullRequestFixture({ diff: reviewed }),
+        ...(passes === undefined ? {} : { passes }),
+      },
       { provider, ...(tools === null ? {} : { tools }) },
     )
     if (outcome.status !== 'reviewed') throw new Error('expected a review')
@@ -947,6 +952,13 @@ describe('runReview with an investigation floor', () => {
     expect(result.warnings).toEqual([
       'Skill code-review: investigated 1 time for a 64 KB diff (expected at least 6).',
     ])
+  })
+
+  it('expects no minimum for a small diff without CI or infrastructure files', async () => {
+    const result = await reviewedWith(investigating(0), { diff: smallDiff })
+
+    expect(result).not.toHaveProperty('warnings')
+    expect(result).not.toHaveProperty('investigationFloor')
   })
 
   it('expects nothing without tools', async () => {

@@ -1100,10 +1100,11 @@ gives the AI tools of its own:
 
 The tools only read that commit: no path outside the repository, no symbolic link, no binary or file
 over 1 MB. Each review pass gets up to 40 calls and 512 KB of results; the verifier investigates
-too, with its own budget. The review pass is also asked for a minimum number of calls that grows
-with the diff: one for every 10 KB of the diff after ignored files, at least 3 and at most 15. When
-the diff changes CI workflows, container files, infrastructure code (Terraform, deploy and
-Kubernetes configs) or package manifests, the AI is told to check what each of them affects. What the tools return comes from the pull request head, written by its
+too, with its own budget. When the diff after ignored files is 30 KB or more, or changes CI
+workflows, container files, infrastructure code (Terraform, deploy and Kubernetes configs) or package
+manifests, the review pass is also asked for a minimum number of calls that grows with the diff: one
+for every 10 KB, at least 3 and at most 15; for those CI and infrastructure files the AI is told to
+check what each of them affects. Smaller diffs get no minimum. What the tools return comes from the pull request head, written by its
 author, so it is data for the AI, never instructions. Findings still point to a line of the diff,
 and the files the AI read to support them show up in their sources. The mirror stays for the
 next review of the repository, which then fetches only what changed.

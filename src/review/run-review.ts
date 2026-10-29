@@ -33,6 +33,7 @@ import {
 import type {
   DebtMode,
   Finding,
+  InvestigationFloor,
   NativeSkillRun,
   PassReport,
   PassUsage,
@@ -174,14 +175,7 @@ export async function runReview(
         ? {}
         : { suggestions: { ...suggested.counts, dropped: checked?.droppedSuggestions ?? 0 } }),
       claims: mergeClaims(answered.outputs.map(({ report }) => report.claims ?? [])),
-      ...(answered.investigatedPasses === 0
-        ? {}
-        : {
-            investigationFloor: {
-              expected: investigationFloor(pullRequest.diff),
-              shortfalls: answered.shortfalls,
-            },
-          }),
+      ...floorOf(answered, investigationFloor(pullRequest.diff)),
       ...(ignored.length === 0 ? {} : { ignored: [...ignored] }),
       ...(externalCalls.length === 0 ? {} : { externalCalls }),
       ...(warnings.length === 0 ? {} : { warnings }),
@@ -460,4 +454,12 @@ function usageOf(
     ...(skill === undefined ? {} : { skill }),
     ...(usage === undefined ? {} : { usage }),
   }
+}
+
+function floorOf(
+  answered: Pick<AnsweredPasses, 'investigatedPasses' | 'shortfalls'>,
+  expected: number | undefined,
+): { investigationFloor?: InvestigationFloor } {
+  if (answered.investigatedPasses === 0 || expected === undefined) return {}
+  return { investigationFloor: { expected, shortfalls: answered.shortfalls } }
 }

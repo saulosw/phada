@@ -244,12 +244,7 @@ describe('reviewPullRequest', () => {
       totals: { symbols: 1, callers: 1, files: 1 },
     })
     expect(result.investigation).toMatchObject({ status: 'used', totals: { calls: 1 } })
-    expect(result.investigation.floor).toEqual({
-      expected: 3,
-      shortfalls: [
-        expect.stringMatching(/^Investigated 1 time for a .+ diff \(expected at least 3\)\.$/),
-      ],
-    })
+    expect(result.investigation).not.toHaveProperty('floor')
   })
 
   it('leaves out of the graph what the base config ignores, whatever the head config says', async () => {

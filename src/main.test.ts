@@ -601,7 +601,6 @@ describe('run', () => {
         'Indexing 1 file…',
         'Impact: no indexed symbols changed',
         'Reviewing with fake-cli… (this can take a few minutes)',
-        'Warning: Investigated 0 times for a 523 B diff (expected at least 3).',
         'Investigated: no tool calls',
         'Publishing the review…',
         `Published the review: ${REVIEW_URL}`,

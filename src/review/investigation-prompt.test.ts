@@ -250,8 +250,17 @@ describe('review prompt with an investigation floor', () => {
   const withDiff = (diff: string) =>
     buildReviewPrompt({ pullRequest: pullRequestFixture({ diff }) }, NONCE, toolbox).instructions
 
+  it('asks for no number of tool calls for a small diff without CI or infrastructure files', () => {
+    expect(withDiff(fileDiff('src/a.ts', 2_000))).not.toContain('tool calls before you answer')
+  })
+
+  it('asks for the minimum for a small diff that changes CI or infrastructure files', () => {
+    expect(withDiff(fileDiff('.github/workflows/deploy.yml', 2_000))).toContain(
+      'This diff is 2 KB: make at least 3 tool calls before you answer.',
+    )
+  })
+
   it.each([
-    ['a small diff', 2_000, 'This diff is 2 KB: make at least 3 tool calls before you answer.'],
     [
       'a medium diff',
       64 * 1024,
