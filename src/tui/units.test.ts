@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bytesText, durationText, modelSizeText } from './units.js'
+import { bytesText, durationText, modelSizeText, tokensText } from './units.js'
 
 describe('durationText', () => {
   it.each([
@@ -12,6 +12,15 @@ describe('durationText', () => {
     [86_400_000, '24h'],
   ])('writes %d ms as %s', (ms, text) => {
     expect(durationText(ms)).toBe(text)
+  })
+})
+
+describe('tokensText', () => {
+  it('writes counts below a thousand as they are, then in k and M', () => {
+    expect(tokensText(420)).toBe('420')
+    expect(tokensText(3512)).toBe('3.5k')
+    expect(tokensText(999_960)).toBe('1.0M')
+    expect(tokensText(2_400_000)).toBe('2.4M')
   })
 })
 

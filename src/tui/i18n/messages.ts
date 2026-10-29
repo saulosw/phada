@@ -553,6 +553,10 @@ export interface ReviewsMessages {
     debt(count: number): string
     debtMark: string
     closeToCutMark: string
+    tokens: string
+    tokenCounts(input: string, cached: string | undefined, output: string): string
+    notReported: string
+    total: string
     feedback(count: number): string
     nothingPosted: string
     wouldResolve(count: number): string

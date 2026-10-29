@@ -73,6 +73,23 @@ export interface StoredCi {
   checks: { name: string; state: string }[]
 }
 
+export interface StoredTokens {
+  input: number
+  cached: number | null
+  output: number
+}
+
+export interface StoredPassUsage {
+  pass: string
+  skill: string | null
+  tokens: StoredTokens | null
+}
+
+export interface StoredUsage {
+  passes: StoredPassUsage[]
+  total: StoredTokens | null
+}
+
 export interface ReviewDetail {
   run: RunRecord
   pullRequest: { url: string; title: string | null }
@@ -85,6 +102,7 @@ export interface ReviewDetail {
   worthChecking: StoredFinding[]
   publication: StoredPublication | null
   ci: StoredCi | null
+  usage: StoredUsage | null
   published: FeedbackFinding[]
 }
 
@@ -162,6 +180,7 @@ export function reviewDetailOf(stored: RunRecord, published: FeedbackFinding[]):
     worthChecking: storedFindings(review?.worthChecking),
     publication: storedPublication(result?.publication),
     ci: storedCi(result?.ci),
+    usage: storedUsage(result?.usage, review?.usage),
     published,
   }
 }
@@ -273,6 +292,32 @@ function storedCi(value: unknown): StoredCi | null {
       return name === undefined || checkState === undefined ? [] : [{ name, state: checkState }]
     }),
   }
+}
+
+function storedUsage(value: unknown, reviewTotal: unknown): StoredUsage | null {
+  const usage = objectOf(value)
+  if (usage === undefined) {
+    const total = storedTokens(reviewTotal)
+    return total === null ? null : { passes: [], total }
+  }
+  const passes = Array.isArray(usage.passes) ? usage.passes : []
+  return {
+    passes: passes.flatMap((item): StoredPassUsage[] => {
+      const entry = objectOf(item)
+      const pass = stringOf(entry?.pass)
+      if (entry === undefined || pass === undefined) return []
+      return [{ pass, skill: stringOf(entry.skill) ?? null, tokens: storedTokens(entry.usage) }]
+    }),
+    total: storedTokens(usage.total),
+  }
+}
+
+function storedTokens(value: unknown): StoredTokens | null {
+  const usage = objectOf(value)
+  const input = numberOf(usage?.inputTokens)
+  const output = numberOf(usage?.outputTokens)
+  if (input === undefined || output === undefined) return null
+  return { input, cached: numberOf(usage?.cachedInputTokens) ?? null, output }
 }
 
 function parseJson(text: string | undefined): unknown {

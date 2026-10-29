@@ -87,6 +87,7 @@ function detail(changes: Partial<ReviewDetail> = {}): ReviewDetail {
       reason: null,
     },
     ci: null,
+    usage: null,
     published: [],
     ...changes,
   }

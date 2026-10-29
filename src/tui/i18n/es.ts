@@ -314,6 +314,11 @@ export const spanish: UiMessages = {
       debt: (count) => `Deuda del repositorio (${count})`,
       debtMark: 'deuda',
       closeToCutMark: 'al borde del corte',
+      tokens: 'Tokens',
+      tokenCounts: (input, cached, output) =>
+        `${input} de entrada${cached === undefined ? '' : ` (${cached} en caché)`} · ${output} de salida`,
+      notReported: 'no informado',
+      total: 'total',
       feedback: (count) => `Respuesta a los comentarios publicados (${count})`,
       nothingPosted: 'no se publicó nada',
       wouldResolve: (count) => `resolvería ${count}`,

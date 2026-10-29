@@ -455,6 +455,49 @@ describe('readReviewDetail', () => {
     expect(older.findings.map(({ closeToCut }) => closeToCut)).toEqual([false])
   })
 
+  it('reads the tokens of each AI pass of a stored review and their total', () => {
+    const stored = JSON.parse(REVIEW_JSON) as Record<string, unknown>
+    const withUsage = JSON.stringify({
+      ...stored,
+      usage: {
+        passes: [
+          {
+            pass: 'review',
+            skill: 'code-review',
+            usage: { inputTokens: 900, cachedInputTokens: 600, outputTokens: 40 },
+          },
+          { pass: 'verify', skill: null, usage: null },
+          { pass: 'recheck', skill: null, usage: { inputTokens: 'many' } },
+          'not a pass',
+        ],
+        total: { inputTokens: 900, cachedInputTokens: null, outputTokens: 40 },
+      },
+    })
+
+    expect(reviewDetailOf({ ...RUN, resultJson: withUsage }, []).usage).toEqual({
+      passes: [
+        { pass: 'review', skill: 'code-review', tokens: { input: 900, cached: 600, output: 40 } },
+        { pass: 'verify', skill: null, tokens: null },
+        { pass: 'recheck', skill: null, tokens: null },
+      ],
+      total: { input: 900, cached: null, output: 40 },
+    })
+  })
+
+  it('reads the total tokens of a review stored before the passes were kept', () => {
+    const stored = JSON.parse(REVIEW_JSON) as { review: Record<string, unknown> }
+    const older = JSON.stringify({
+      ...stored,
+      review: { ...stored.review, usage: { inputTokens: 3512, outputTokens: 420 } },
+    })
+
+    expect(reviewDetailOf({ ...RUN, resultJson: older }, []).usage).toEqual({
+      passes: [],
+      total: { input: 3512, cached: null, output: 420 },
+    })
+    expect(reviewDetailOf({ ...RUN, resultJson: REVIEW_JSON }, []).usage).toBeNull()
+  })
+
   it('reads nothing for an unknown run or without a history', () => {
     expect(readReviewDetail(fakeHistory([RUN]), 99)).toBeUndefined()
     expect(readReviewDetail(undefined, 7)).toBeUndefined()

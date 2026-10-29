@@ -5,6 +5,7 @@ import type {
   ReviewDetail,
   StoredClaim,
   StoredFinding,
+  StoredTokens,
 } from '../app/read-history.js'
 import type { DrawContext } from './frame-lines.js'
 import type { UiMessages } from './i18n/messages.js'
@@ -14,6 +15,7 @@ import { sourceOf } from './run-text.js'
 import { textWidth } from './tab-layout.js'
 import type { Theme } from './theme.js'
 import { fit, oneLine, wrapText } from './text-fit.js'
+import { tokensText } from './units.js'
 import { pullRef, shortSha } from './refs.js'
 
 const PLACE_SHARE = 0.4
@@ -81,6 +83,7 @@ export function reviewDetailLines(
       d.worthChecking(detail.worthChecking.length),
       findingLines(detail.worthChecking, theme, width, d),
     ),
+    ...section(d.tokens, usageLines(detail.usage, messages, width)),
     ...section(
       d.feedback(detail.published.length),
       feedbackLines(detail.published, messages, theme, width),
@@ -130,6 +133,41 @@ function markText(finding: StoredFinding, marks: FindingMarks, theme: Theme): Re
   return shown.length === 0 ? null : (
     <Text color={theme.colors.dim}>{shown.map((mark) => ` · ${mark}`).join('')}</Text>
   )
+}
+
+function usageLines(
+  usage: ReviewDetail['usage'],
+  messages: UiMessages,
+  columns: number,
+): ReactNode[] {
+  if (usage === null) return []
+  const d = messages.reviews.detail
+  const runs: Readonly<Record<string, string>> = messages.reviewFlow.runs
+  const rows: [string, StoredTokens | null][] = [
+    ...usage.passes.map(({ pass, skill, tokens }): [string, StoredTokens | null] => [
+      skill === null ? (runs[pass] ?? oneLine(pass)) : oneLine(skill),
+      tokens,
+    ]),
+    ...(usage.total === null ? [] : [[d.total, usage.total] as [string, StoredTokens]]),
+  ]
+  const width = Math.min(
+    Math.max(0, ...rows.map(([label]) => textWidth(label))),
+    Math.floor(columns * PLACE_SHARE),
+  )
+  return rows.map(([label, tokens]) => (
+    <Text>
+      {'  '}
+      {fit(label, width)}
+      {GAP}
+      {tokens === null
+        ? d.notReported
+        : d.tokenCounts(
+            tokensText(tokens.input),
+            tokens.cached === null ? undefined : tokensText(tokens.cached),
+            tokensText(tokens.output),
+          )}
+    </Text>
+  ))
 }
 
 function claimLines(

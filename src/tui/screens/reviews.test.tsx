@@ -145,6 +145,7 @@ function detail(): ReviewDetail {
       reason: null,
     },
     ci: { state: 'failing', failing: ['lint'], pending: ['e2e'], checks: [] },
+    usage: null,
     published: [
       published({ destination: 'fixed', marks: ['fixed'] }),
       published({
@@ -414,6 +415,59 @@ describe('the Reviews screen', () => {
     expectFits(text, { columns: 80, rows: 24 })
     expect(text).toMatch(/P0\s+src\/cart.ts:12\s+Total ignores the discount · close to the cut\n/)
     expect(text).toMatch(/P1\s+src\/coupon.ts\s+Coupon code is not trimmed\n/)
+  })
+
+  it('lists the tokens of each AI pass and their total in 80×24', async () => {
+    const { frame, press, showing } = openReviews({
+      detail: () => ({
+        ...detail(),
+        findings: [],
+        worthChecking: [],
+        published: [],
+        usage: {
+          passes: [
+            {
+              pass: 'review',
+              skill: 'code-review\u0007',
+              tokens: { input: 812_000, cached: 640_000, output: 9_000 },
+            },
+            {
+              pass: 'verify',
+              skill: null,
+              tokens: { input: 120_000, cached: null, output: 2_000 },
+            },
+            { pass: 'recheck', skill: null, tokens: null },
+          ],
+          total: { input: 932_000, cached: 640_000, output: 11_000 },
+        },
+      }),
+    })
+    await showing('Enter open')
+    await press(KEYS.enter)
+    await showing('Tokens')
+    const text = frame()
+    expectFits(text, { columns: 80, rows: 24 })
+    expect(text).toMatch(/code-review\s+812\.0k in \(640\.0k cached\) · 9\.0k out\n/)
+    expect(text).toMatch(/verify\s+120\.0k in · 2\.0k out\n/)
+    expect(text).toMatch(/recheck\s+not reported\n/)
+    expect(text).toMatch(/total\s+932\.0k in \(640\.0k cached\) · 11\.0k out\n/)
+    expect(text).not.toContain('\u0007')
+  })
+
+  it('names the tokens in the language of the app', async () => {
+    const { press, showing } = openReviews({
+      language: 'pt-BR',
+      detail: () => ({
+        ...detail(),
+        findings: [],
+        worthChecking: [],
+        published: [],
+        usage: { passes: [], total: { input: 3512, cached: null, output: 420 } },
+      }),
+    })
+    await showing('Enter')
+    await press(KEYS.enter)
+    await showing('3.5k de entrada · 420 de saída')
   })
 
   it('names the findings close to the cut in the language of the app', async () => {

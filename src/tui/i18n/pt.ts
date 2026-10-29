@@ -313,6 +313,11 @@ export const portuguese: UiMessages = {
       debt: (count) => `Débito do repositório (${count})`,
       debtMark: 'débito',
       closeToCutMark: 'rente ao corte',
+      tokens: 'Tokens',
+      tokenCounts: (input, cached, output) =>
+        `${input} de entrada${cached === undefined ? '' : ` (${cached} em cache)`} · ${output} de saída`,
+      notReported: 'não informado',
+      total: 'total',
       feedback: (count) => `Feedback dos comentários publicados (${count})`,
       nothingPosted: 'nada foi publicado',
       wouldResolve: (count) => `resolveria ${count}`,
