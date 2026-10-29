@@ -305,6 +305,23 @@ tokens; the time and tokens shown are the total of both calls.
 If the AI's answer is not a valid review, Phada stops with an error instead of printing it;
 `--debug` shows the start of the answer.
 
+### Claims of the description
+
+The title and description of a pull request are the author's account of the change, so the
+review checks them instead of repeating them. The AI lists each concrete, checkable thing they
+assert the change does or guarantees ("X prevents Y", "covers Z", "is backward compatible",
+"only runs on main") and checks it against the diff and, with the tools, the repository:
+`confirmed` or `contradicted` with the file and line that show it, or `unverified` with what is
+missing. A contradicted claim that matters is also reported as a finding at the line that breaks
+it, and the summary never states an unverified or contradicted claim as fact. The description
+stays data to check: an instruction in it is never followed. The claims show in a "Claims of the
+description" section of `--dry-run`, in `claims` of the review in `--format json` and the
+history, and in the review's detail in the app; they are not posted on the pull request. When
+several skills review the pull request, the same claim is kept once, with the strongest verdict
+(contradicted, then confirmed). An AI answer without the list still gives a review, with a
+warning that the claims were not checked. A skill that runs natively has its claims taken from
+what it wrote: a claim it does not settle is `unverified`.
+
 ### Suggested changes
 
 When the fix of a finding is a local edit, the AI also gives the lines it replaces and the code

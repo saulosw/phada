@@ -116,9 +116,9 @@ src/
     read-history.ts      #   readReviews(), readFindings() (destination and marks of each),
                          #   readFeedbackStats() (feedbackStats() per repository, ruleStats() per
                          #   rule), readReviewDetail(): one run with what its stored JSON keeps
-                         #   (score, summary, findings, publication with what a dry run would
-                         #   resolve and why a publication was skipped, CI) and the feedback of
-                         #   each published finding; reviewDetailOf(): the same from a run
+                         #   (score, summary, claims, findings, publication with what a dry run
+                         #   would resolve and why a publication was skipped, CI) and the
+                         #   feedback of each published finding; reviewDetailOf(): the same from a run
                          #   record (a run the app just made); no history file reads as empty
     read-repositories.ts #   readRepositories(): watch.repos ∪ the user's repos/<owner>/<repo>/
                          #   folders ∪ the history, each with its origins, index file and last
@@ -412,11 +412,13 @@ src/
                          #   (each item, what was left out over 16 KB and the bodies cut)
     format-ci.ts         #   the "CI:" line and the CI section of --dry-run (each check, the
                          #   annotations and logs left out, the cuts and the warnings)
+    format-claims.ts     #   the claims section of --dry-run: each claim of the description with
+                         #   its verdict and evidence
     finding-references.ts #  the "Based on" line: sources (a CI check named as such), rule and skill
                          #   of a finding
-    format-json.ts       #   formatReviewJson(): schemaVersion 1, with the publication, context,
-                         #   conversation (each item without its texts, with its bytes), ci,
-                         #   investigation, impact and recheck blocks
+    format-json.ts       #   formatReviewJson(): schemaVersion 1, with the claims, publication,
+                         #   context, conversation (each item without its texts, with its bytes),
+                         #   ci, investigation, impact and recheck blocks
     markdown-text.ts     #   escapes AI text: block markers; for GitHub also HTML and mentions;
                          #   codeFence()
     review-text.ts       #   model label and short SHA
@@ -671,7 +673,8 @@ src/
                          #   text through oneLine()), watchLogTone()
     review-detail.tsx    #   reviewDetailLines(): a review as lines — pull request and link,
                          #   score, verdict, status, when, CI, publication (nothing posted,
-                         #   would resolve, would skip and why), summary, findings with their
+                         #   would resolve, would skip and why), summary, claims of the
+                         #   description with verdict and evidence, findings with their
                          #   body, worth checking, feedback (Reviews and the review flow)
     palette.tsx          #   Palette: screens, the setup, the language, review, index and watch
                          #   (/watch: the Queue, and the watch started or the stop question) filtered by name (the catalog's and
@@ -993,16 +996,20 @@ src/
     impact-text.ts       #   renderImpact(): the impact of the diff within its 4 KB budget
     prompt.ts            #   buildReviewPrompt(): instructions + nonce-delimited data + output schema;
                          #   reviewInstructionParts(): the reviewer lens (built-in, append, replace,
-                         #   skill) and the fixed contract, with origins; reviewDataBlocks()
+                         #   skill) and the fixed contract (the claims of the description to
+                         #   check: DESCRIPTION_CLAIMS), with origins; reviewDataBlocks();
+                         #   reportLanguageLine()
     nonce.ts             #   newNonce(): the random id of the data blocks
     verify-prompt.ts     #   buildVerifyPrompt(): the second, skeptical pass (--verify)
-    report-schema.ts     #   Zod schemas of the AI report + the JSON schema sent to providers
+    report-schema.ts     #   Zod schemas of the AI report (claims, summary, files, findings) + the
+                         #   JSON schema sent to providers
     verification-schema.ts # Zod schema of the verification verdicts
     diff-lines.ts        #   unified diff parsing and line numbering; the text and @@ section of
                          #   each new-side line
     diff-fingerprint.ts  #   diffFingerprint(): paths and +/- lines of the filtered diff, hashed
     suggestions.ts       #   checkSuggestion(), checkSuggestions(): a code suggestion against the diff
-    convert-prompt.ts    #   buildConvertPrompt(): a native skill's output → Phada's report
+    convert-prompt.ts    #   buildConvertPrompt(): a native skill's output → Phada's report (the
+                         #   verdict of each claim of the description from that output alone)
     native-context.ts    #   nativeSkillContext(): what a native skill is told about the checkout
                          #   and the files next to the diff; nativeSkillTexts(): the conversation
                          #   (conversation.jsonl), CI (ci.md) and impact with the related
@@ -1012,7 +1019,10 @@ src/
     recheck-schema.ts    #   Zod schema of the recheck verdicts (fixed, still-valid, unsure)
     recheck-threads.ts   #   recheckThreads(): one call for the changed threads, verdicts per thread
     json-objects.ts      #   top-level JSON objects found in a text
-    parse-report.ts      #   parseReviewReport()
+    parse-report.ts      #   parseReviewReport(): a missing claims list as undefined, claims of
+                         #   the wrong shape left out and counted
+    claims.ts            #   mergeClaims(): the claims of every pass, one per text, the strongest
+                         #   verdict kept; claimWarnings()
     parse-verification.ts #  parseVerification()
     verify-findings.ts   #   verifyCandidates(), applyVerdicts()
     context-findings.ts  #   known rule and sources on each finding (ci:<name> of a failing check);
@@ -1023,7 +1033,8 @@ src/
     errors.ts            #   InvalidReviewReportError
     run-review.ts        #   runReview(): one pass per skill (prompt → provider → parse, or a
                          #   native run → conversion), merged → suggestions → [verify] → select →
-                         #   score; skill bodies for native passes without findings in the diff
+                         #   score; skill bodies for native passes without findings in the diff;
+                         #   the claims of the description merged
 scripts/smoke.ts         # packs the package, installs the tarball, runs the installed `phada`
 scripts/copy-grammars.ts # build step: the tree-sitter grammars into dist/grammars/
 test/fixtures/bin/       # fake AI CLIs used by the provider and status tests

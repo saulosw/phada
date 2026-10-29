@@ -7,6 +7,15 @@ output can change between minor versions.
 
 ## Unreleased
 
+### Added
+
+- The review checks what the pull request title and description claim the change does
+  ("prevents", "covers", "only runs on …"): each claim gets a verdict (`confirmed`,
+  `contradicted` or `unverified`) with its evidence, a contradicted one that matters is also a
+  finding, and the summary no longer repeats an unchecked claim as fact. The claims show in the
+  "Claims of the description" section of `--dry-run`, in `review.claims` of the JSON and the
+  history, and in the review's detail in the app; they are not posted on the pull request.
+
 ### Changed
 
 - The `.claude/rules/**/*.md` files of a repository are rules of the review, no longer docs: one
