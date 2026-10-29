@@ -1,5 +1,6 @@
 import type { ReviewPrompt } from '../providers/types.js'
 import type { McpServerInfo, Toolbox } from '../investigation/toolbox.js'
+import { investigationFloorText } from './investigation-floor.js'
 import { annotateDiff } from './diff-lines.js'
 import {
   block,
@@ -111,7 +112,7 @@ export interface PromptPart {
 export type InstructionOptions = Pick<
   ReviewRequest,
   'language' | 'verify' | 'context' | 'impact' | 'related' | 'conversation' | 'ci'
-> & { toolNames?: readonly string[]; mcpServers?: readonly McpServerInfo[] }
+> & { toolNames?: readonly string[]; mcpServers?: readonly McpServerInfo[]; diff?: string }
 
 const PHADA = 'phada'
 
@@ -135,6 +136,7 @@ export function buildReviewPrompt(
       ...request,
       ...(toolNames === undefined ? {} : { toolNames }),
       mcpServers: mcpServersOf(tools),
+      diff: request.pullRequest.diff,
     },
     pass,
   )
@@ -201,6 +203,7 @@ export function reviewInstructionParts(
     ci,
     toolNames,
     mcpServers,
+    diff,
   }: InstructionOptions,
   pass?: SkillPass,
 ): PromptPart[] {
@@ -229,7 +232,15 @@ export function reviewInstructionParts(
     phada('contract', DESCRIPTION_CLAIMS),
     phada('contract', `${CONFIDENCE_SCALE}\nReport every candidate rated ${floor} or higher.`),
     phada('contract', SEVERITY),
-    phada('context', diffScope(context, toolNames, mcpServers)),
+    phada(
+      'context',
+      diffScope(
+        context,
+        toolNames,
+        mcpServers,
+        diff === undefined ? '' : investigationFloorText(diff),
+      ),
+    ),
     phada('contract', LINE_NUMBERS),
     phada('contract', OUTPUT_FORMAT),
     phada('contract', [UNTRUSTED_DATA, ...languageLine].join('\n')),

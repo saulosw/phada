@@ -95,6 +95,7 @@ export async function inspectPrompt(input: {
     verify: loaded.options.verify ?? true,
     ...(loaded.options.language === undefined ? {} : { language: loaded.options.language }),
     ...(input.investigate ? { toolNames: REVIEW_TOOL_NAMES } : {}),
+    diff: loaded.diff,
   }
   const passes = planned.passes ?? [{ skill: BUILT_IN_SKILL, lens: { kind: 'default' } }]
   const plans: PassPlan[] =

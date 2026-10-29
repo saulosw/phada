@@ -186,8 +186,9 @@ export function diffScope(
   context: ReviewContext | undefined,
   toolNames?: readonly string[],
   mcpServers: readonly McpServerInfo[] = [],
+  floor = '',
 ): string {
-  if (toolNames !== undefined) return investigation(toolNames, mcpServers)
+  if (toolNames !== undefined) return investigation(toolNames, mcpServers, floor)
   return hasContext(context) ? DIFF_WITH_CONTEXT : DIFF_ONLY
 }
 
@@ -217,6 +218,7 @@ shows who changed a file or lines and in which pull request.`
 export function investigation(
   toolNames: readonly string[],
   mcpServers: readonly McpServerInfo[] = [],
+  floor = '',
 ): string {
   const reading = toolNames.filter((name) => !GRAPH_TOOL_NAMES.has(name))
   const graph = toolNames.includes('callers')
@@ -228,7 +230,7 @@ export function investigation(
 ${reading.join(', ')} tools.${graph} Before you report, check what the diff affects: the
 callers of the functions it changes, the definitions it uses and the rest of each
 changed file. Still review every file of the diff. Read only what helps you judge
-the change.
+the change.${floor === '' ? '' : `\n${floor}`}
 A finding still points to a numbered line of the diff: when the problem shows up
 outside the diff, put it on the diff line that causes it. List the files you read
 that support a finding in sources.

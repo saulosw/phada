@@ -236,3 +236,71 @@ describe('review prompt with MCP servers', () => {
     expect(plain.instructions).not.toContain('MCP servers')
   })
 })
+
+describe('review prompt with an investigation floor', () => {
+  const fileDiff = (path: string, bytes = 200) =>
+    [
+      `diff --git a/${path} b/${path}`,
+      `--- a/${path}`,
+      `+++ b/${path}`,
+      '@@ -1,1 +1,2 @@',
+      ' keep',
+      `+${'x'.repeat(bytes)}`,
+    ].join('\n')
+  const withDiff = (diff: string) =>
+    buildReviewPrompt({ pullRequest: pullRequestFixture({ diff }) }, NONCE, toolbox).instructions
+
+  it.each([
+    ['a small diff', 2_000, 'This diff is 2 KB: make at least 3 tool calls before you answer.'],
+    [
+      'a medium diff',
+      64 * 1024,
+      'This diff is 64 KB: make at least 6 tool calls before you answer.',
+    ],
+    [
+      'a large diff',
+      124 * 1024,
+      'This diff is 124 KB: make at least 12 tool calls before you answer.',
+    ],
+    [
+      'a huge diff',
+      900 * 1024,
+      'This diff is 900 KB: make at least 15 tool calls before you answer.',
+    ],
+  ])('asks for a number of tool calls that grows with %s', (_case, bytes, floor) => {
+    expect(withDiff(fileDiff('src/a.ts', bytes))).toContain(floor)
+  })
+
+  it('names the changed CI and infrastructure files as targets of the investigation', () => {
+    const instructions = withDiff(
+      [
+        fileDiff('src/a.ts'),
+        fileDiff('.github/workflows/deploy.yml'),
+        fileDiff('docker/Dockerfile'),
+        fileDiff('infra/main.tf'),
+        fileDiff('package.json'),
+      ].join('\n'),
+    )
+
+    expect(instructions).toContain(
+      'This diff changes CI workflows, container files, infrastructure code and package manifests:',
+    )
+    expect(instructions).toContain('check what each changed one affects')
+  })
+
+  it('names only the kinds of files the diff changes', () => {
+    expect(withDiff(fileDiff('requirements-dev.txt'))).toContain(
+      'This diff changes package manifests:',
+    )
+  })
+
+  it('leaves the targets out when the diff changes no CI or infrastructure file', () => {
+    expect(withDiff(fileDiff('src/workflows/deploy.ts'))).not.toContain('This diff changes')
+  })
+
+  it('asks for no floor without tools', () => {
+    const { instructions } = buildReviewPrompt({ pullRequest: pullRequestFixture() }, NONCE)
+
+    expect(instructions).not.toContain('tool calls')
+  })
+})
