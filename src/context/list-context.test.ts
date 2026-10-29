@@ -19,6 +19,13 @@ function sources(files: Record<string, string>, truncated = false): ContextSourc
 
 const REF = 'main'
 
+const userLayer = (config: ConfigLayer['config']): ConfigLayer => ({
+  kind: 'user',
+  dir: '',
+  configLabel: 'user:config.yml',
+  config,
+})
+
 describe('listContext', () => {
   it('lists the rules of every .phada folder with their scope, severity and disabled state', async () => {
     const { report } = await listContext({
@@ -60,6 +67,40 @@ describe('listContext', () => {
       { path: '.phada/config.yml', origin: 'repository', status: 'loaded' },
       { path: 'api/.phada/rules.md', origin: 'repository', status: 'loaded' },
     ])
+  })
+
+  it('lists the .claude/rules as rules with their paths, not as docs', async () => {
+    const { report } = await listContext({
+      ref: REF,
+      userLayers: [userLayer({ disabledRules: ['.claude/rules/old.md'] })],
+      sources: sources({
+        '.claude/rules/sql.md': '---\npaths:\n  - "db/**/*.sql"\n---\nUse parameterized queries.\n',
+        '.claude/rules/style.md': 'Prefer small functions.\n',
+        '.claude/rules/old.md': 'Old.\n',
+      }),
+    })
+
+    expect(report.rules).toEqual([
+      {
+        key: '.claude/rules/old.md',
+        origin: '.claude/rules/old.md',
+        scope: ['**'],
+        status: 'disabled',
+      },
+      {
+        key: '.claude/rules/sql.md',
+        origin: '.claude/rules/sql.md',
+        scope: ['db/**/*.sql'],
+        status: 'listed',
+      },
+      {
+        key: '.claude/rules/style.md',
+        origin: '.claude/rules/style.md',
+        scope: ['**'],
+        status: 'listed',
+      },
+    ])
+    expect(report.docs).toEqual([])
   })
 
   it('lists the docs with the scope of instruction files, without a budget', async () => {
