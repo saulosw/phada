@@ -89,6 +89,7 @@ function detail(): ReviewDetail {
     verdict: 'blocking',
     score: { value: 2, reason: 'A P0 bug in the cart total.' },
     summary: 'The cart total drops the discount when a coupon and a gift card are used together.',
+    claims: [],
     findings: [
       {
         severity: 'P0',
@@ -336,6 +337,45 @@ describe('the Reviews screen', () => {
     )
     expect(text).not.toContain('\u0007')
     expectFits(text, { columns: 80, rows: 40 })
+  })
+
+  it('shows the claims of the description with their verdict and evidence in 80×24', async () => {
+    const { frame, press, showing } = openReviews({
+      detail: () => ({
+        ...detail(),
+        claims: [
+          {
+            claim: 'Keeps the discount with a gift card\u0007',
+            verdict: 'contradicted',
+            evidence: 'src/cart.ts:12 applies the gift card first',
+          },
+          { claim: 'Covers every coupon', verdict: 'unverified', evidence: null },
+        ],
+      }),
+    })
+    await showing('Enter open')
+    await press(KEYS.enter)
+    await showing('Claims of the description (2)')
+    const text = frame()
+    expectFits(text, { columns: 80, rows: 24 })
+    expect(text).toMatch(/contradicted\s+Keeps the discount with a gift card\n/)
+    expect(text).toMatch(/\s+src\/cart.ts:12 applies the gift card first/)
+    expect(text).toMatch(/unverified\s+Covers every coupon/)
+    expect(text).not.toContain('\u0007')
+  })
+
+  it('names the claims in the language of the app', async () => {
+    const { frame, press, showing } = openReviews({
+      language: 'pt-BR',
+      detail: () => ({
+        ...detail(),
+        claims: [{ claim: 'Covers every coupon', verdict: 'unverified', evidence: null }],
+      }),
+    })
+    await showing('Enter')
+    await press(KEYS.enter)
+    await showing('Afirmações da descrição (1)')
+    expect(frame()).toMatch(/não conferida\s+Covers every coupon/)
   })
 
   it('scrolls the detail in 80×24', async () => {

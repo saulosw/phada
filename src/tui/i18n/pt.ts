@@ -282,6 +282,11 @@ export const portuguese: UiMessages = {
       slack: 'Slack',
     },
     ciStates: { none: 'sem checks', pending: 'pendente', passing: 'passando', failing: 'falhando' },
+    claimVerdicts: {
+      confirmed: 'confirmada',
+      contradicted: 'contradita',
+      unverified: 'não conferida',
+    },
     outcomes: { fixed: 'corrigido', dismissed: 'dispensado', ignored: 'ignorado', open: 'aberto' },
     marks: {
       fixed: 'corrigido',
@@ -302,6 +307,7 @@ export const portuguese: UiMessages = {
       comments: (count) => `${count} ${count === 1 ? 'comentário' : 'comentários'}`,
       error: 'Erro',
       summary: 'Resumo',
+      claims: (count) => `Afirmações da descrição (${count})`,
       findings: (count) => `Achados (${count})`,
       worthChecking: (count) => `Vale conferir (${count})`,
       feedback: (count) => `Feedback dos comentários publicados (${count})`,

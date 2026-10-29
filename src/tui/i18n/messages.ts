@@ -533,6 +533,7 @@ export interface ReviewsMessages {
   sources: Readonly<Record<ReviewSource, string>>
   ciStates: Readonly<Record<string, string>>
   outcomes: Readonly<Record<FeedbackFinding['destination'], string>>
+  claimVerdicts: Readonly<Record<string, string>>
   marks: Readonly<Record<FeedbackFinding['marks'][number], string>>
   detail: {
     score: string
@@ -546,6 +547,7 @@ export interface ReviewsMessages {
     comments(count: number): string
     error: string
     summary: string
+    claims(count: number): string
     findings(count: number): string
     worthChecking(count: number): string
     feedback(count: number): string

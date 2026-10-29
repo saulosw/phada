@@ -386,6 +386,28 @@ describe('readReviewDetail', () => {
     expect(detail.run).not.toHaveProperty('resultJson')
   })
 
+  it('reads the claims of the description a stored review checked', () => {
+    const stored = JSON.parse(REVIEW_JSON) as { review: Record<string, unknown> }
+    const withClaims = JSON.stringify({
+      ...stored,
+      review: {
+        ...stored.review,
+        claims: [
+          { claim: 'Prevents two runs', verdict: 'contradicted', evidence: 'ci.yml:4' },
+          { claim: 'Covers the cart', verdict: 'unverified' },
+          { verdict: 'confirmed', evidence: 'x' },
+          'not a claim',
+        ],
+      },
+    })
+
+    expect(reviewDetailOf({ ...RUN, resultJson: withClaims }, []).claims).toEqual([
+      { claim: 'Prevents two runs', verdict: 'contradicted', evidence: 'ci.yml:4' },
+      { claim: 'Covers the cart', verdict: 'unverified', evidence: null },
+    ])
+    expect(reviewDetailOf({ ...RUN, resultJson: REVIEW_JSON }, []).claims).toEqual([])
+  })
+
   it('reads nothing for an unknown run or without a history', () => {
     expect(readReviewDetail(fakeHistory([RUN]), 99)).toBeUndefined()
     expect(readReviewDetail(undefined, 7)).toBeUndefined()

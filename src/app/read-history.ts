@@ -50,6 +50,12 @@ export interface StoredFinding {
   sources: string[]
 }
 
+export interface StoredClaim {
+  claim: string
+  verdict: string
+  evidence: string | null
+}
+
 export interface StoredPublication {
   status: string
   url: string | null
@@ -71,6 +77,7 @@ export interface ReviewDetail {
   verdict: NonNullable<RunRecord['verdict']> | null
   score: { value: number; reason: string | null } | null
   summary: string | null
+  claims: StoredClaim[]
   findings: StoredFinding[]
   worthChecking: StoredFinding[]
   publication: StoredPublication | null
@@ -146,6 +153,7 @@ export function reviewDetailOf(stored: RunRecord, published: FeedbackFinding[]):
     score:
       scoreValue === null ? null : { value: scoreValue, reason: stringOf(score?.reason) ?? null },
     summary: stringOf(review?.summary) ?? null,
+    claims: storedClaims(review?.claims),
     findings: storedFindings(review?.findings),
     worthChecking: storedFindings(review?.worthChecking),
     publication: storedPublication(result?.publication),
@@ -213,6 +221,17 @@ function storedFindings(value: unknown): StoredFinding[] {
         sources: stringsOf(finding.sources),
       },
     ]
+  })
+}
+
+function storedClaims(value: unknown): StoredClaim[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item): StoredClaim[] => {
+    const claim = objectOf(item)
+    const text = stringOf(claim?.claim)
+    const verdict = stringOf(claim?.verdict)
+    if (text === undefined || verdict === undefined) return []
+    return [{ claim: text, verdict, evidence: stringOf(claim?.evidence) ?? null }]
   })
 }
 

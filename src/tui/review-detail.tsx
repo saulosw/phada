@@ -1,6 +1,11 @@
 import { Text } from 'ink'
 import type { ReactNode } from 'react'
-import type { FeedbackFinding, ReviewDetail, StoredFinding } from '../app/read-history.js'
+import type {
+  FeedbackFinding,
+  ReviewDetail,
+  StoredClaim,
+  StoredFinding,
+} from '../app/read-history.js'
 import type { DrawContext } from './frame-lines.js'
 import type { UiMessages } from './i18n/messages.js'
 import { labeledLines } from './labeled-lines.js'
@@ -69,6 +74,7 @@ export function reviewDetailLines(
         ? []
         : wrapText(detail.summary, width - 2).map((line) => <Text>{`  ${line}`}</Text>),
     ),
+    ...section(d.claims(detail.claims.length), claimLines(detail.claims, messages, theme, width)),
     ...section(d.findings(detail.findings.length), findingLines(detail.findings, theme, width)),
     ...section(
       d.worthChecking(detail.worthChecking.length),
@@ -106,6 +112,36 @@ function findingLines(
           <Text color={theme.colors.dim}>{`${BODY_INDENT}${line}`}</Text>
         ))),
   ])
+}
+
+function claimLines(
+  claims: readonly StoredClaim[],
+  messages: UiMessages,
+  theme: Theme,
+  columns: number,
+): ReactNode[] {
+  const verdicts: Readonly<Record<string, string>> = messages.reviews.claimVerdicts
+  const labels = claims.map(({ verdict }) => verdicts[verdict] ?? oneLine(verdict))
+  const width = Math.max(0, ...labels.map(textWidth))
+  return claims.flatMap((claim, index) => [
+    <Text>
+      {'  '}
+      <Text color={claimColor(claim.verdict, theme)}>{fit(labels[index] ?? '', width)}</Text>
+      {GAP}
+      {oneLine(claim.claim)}
+    </Text>,
+    ...(claim.evidence === null || claim.evidence.trim() === ''
+      ? []
+      : wrapText(claim.evidence, columns - BODY_INDENT.length).map((line) => (
+          <Text color={theme.colors.dim}>{`${BODY_INDENT}${line}`}</Text>
+        ))),
+  ])
+}
+
+function claimColor(verdict: string, { colors }: Theme): string | undefined {
+  if (verdict === 'contradicted') return colors.error
+  if (verdict === 'confirmed') return colors.ok
+  return colors.warn
 }
 
 function feedbackLines(

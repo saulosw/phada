@@ -60,6 +60,7 @@ function detail(changes: Partial<ReviewDetail> = {}): ReviewDetail {
     verdict: 'comments',
     score: { value: 3, reason: 'One P1.' },
     summary: 'Adds a spend endpoint.',
+    claims: [],
     findings: [
       {
         severity: 'P1',
