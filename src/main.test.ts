@@ -1304,6 +1304,26 @@ describe('run publishing', () => {
     )
   })
 
+  it('shows the claims of the description in the dry run and its JSON, never on GitHub', async () => {
+    const claims = [
+      { claim: 'Prevents two runs on staging', verdict: 'contradicted', evidence: 'ci.yml:4' },
+    ]
+    const answer = { ...OUTPUT, text: reviewReportJson({ findings: [], claims }) }
+    const markdown = harness({ review: () => Promise.resolve(answer) })
+    const json = harness({ review: () => Promise.resolve(answer) })
+    const published = harness({ review: () => Promise.resolve(answer) })
+
+    await run([...REVIEW, '--dry-run'], markdown.deps)
+    await run([...REVIEW, '--dry-run', '--format', 'json'], json.deps)
+    await run(REVIEW, published.deps)
+
+    expect(markdown.stdout()).toContain(
+      '\n## Claims of the description\n\n- contradicted: Prevents two runs on staging (ci.yml:4)\n\n## Context',
+    )
+    expect(JSON.parse(json.stdout())).toMatchObject({ review: { claims } })
+    expect(JSON.stringify(published.posts)).not.toContain('Prevents two runs')
+  })
+
   it('prints the dry run as JSON with the review and the publication preview', async () => {
     const h = harness({ review: () => Promise.resolve(WITH_FINDING) })
 
