@@ -998,6 +998,7 @@ export const portuguese: UiMessages = {
         `${number(comments)} ${comments === 1 ? 'comentário' : 'comentários'} na linha, ${number(debt)} ${debt === 1 ? 'item' : 'itens'} de débito do repositório`,
       publish: 'publicar',
       publishing: 'Publicando no GitHub…',
+      quitWhilePublishing: 'Uma publicação está em andamento: esperar por ela e sair?',
       published: (url) => `Publicado: ${url}`,
       stillOpen: (count) =>
         `${number(count)} ${count === 1 ? 'achado ainda aberto' : 'achados ainda abertos'} de revisões anteriores, sem publicar de novo.`,

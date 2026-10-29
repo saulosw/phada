@@ -865,6 +865,43 @@ describe('reviewing a pull request from the app', () => {
     expect(flow.asked).toHaveLength(1)
   })
 
+  it('asks before quitting while it publishes a look, and quits once it is published', async () => {
+    const publishes: { resolve(published: PublishedReview): void }[] = []
+    const flow = openFlow({
+      deps: {
+        publishReview: () =>
+          new Promise((resolve) => {
+            publishes.push({ resolve })
+          }),
+      },
+    })
+    await looked(flow, detail(), { status: 'saved', runId: 3 })
+    await flow.press('p')
+    await flow.showing('@ana')
+    await flow.press(KEYS.enter)
+    await flow.showing('Publishing on GitHub…')
+    await flow.press('q')
+    await flow.showing('A publication is under way: wait for it and quit?')
+    expect(flow.exits).toEqual([])
+    await flow.press(KEYS.escape)
+    await flow.showing('Publishing on GitHub…')
+    await flow.press('q')
+    await flow.showing('wait for it and quit?')
+    await flow.press(KEYS.enter)
+    await flow.showing('Stopping…')
+    expect(flow.exits).toEqual([])
+    publishes[0]?.resolve({
+      status: 'published',
+      url: 'https://github.com/acme/shop/pull/12#pullrequestreview-1',
+      comments: 1,
+      stillOpen: 0,
+      resolved: 0,
+      warnings: [],
+    })
+    await flow.until(() => flow.exits.length > 0)
+    expect(flow.exits).toEqual([{ kind: 'quit' }])
+  })
+
   it('says the pull request moved since the review, offering nothing but going back', async () => {
     const flow = openFlow({
       deps: {

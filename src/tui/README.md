@@ -143,12 +143,13 @@ keeps it running; once it publishes, `Esc` does nothing. It holds a quit guard w
 it ends, `Esc` leaves the flow; the result is drawn with the module the screen that lists such
 results also uses (`reviewDetailLines()` of `review-detail.tsx`). With a watch holding the lock
 (`readQueue`), publishing becomes a request in the queue (`AppDeps.enqueueReview`), and `Enter`
-on its result opens the Queue; `reviewPullRequest` reads the lock again before publishing and
-answers `watch-running`, which takes the flow back to that confirmation. A view that opens in
-place of a step's result and must come back to it without running the step again (publishing
-what only look found, `p`) is drawn by that step in place of its lines, while the step's own keys
-live in a child component that is unmounted meanwhile, so the two never hold `useBack` or the
-footer at once. Each step is its own file in `review-flow/`, as the setup's are in `setup/`.
+on its result opens the Queue; `reviewPullRequest` reads the lock again right before the review
+starts and answers `watch-running`, which takes the flow back to that confirmation. A view that
+opens in place of a step's result and must come back to it without running the step again
+(publishing what only look found, `p`) is drawn by that step in place of its lines, while the
+step's own keys live in a child component that is unmounted meanwhile, so the two never hold
+`useBack` or the footer at once; while it writes to GitHub it holds a quit guard whose `stop()`
+waits for the write. Each step is its own file in `review-flow/`, as the setup's are in `setup/`.
 
 ## Quitting while something runs (`useQuitGuard`)
 

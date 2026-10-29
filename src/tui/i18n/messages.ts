@@ -186,6 +186,7 @@ export interface ReviewFlowMessages {
     counts(comments: number, debt: number): string
     publish: string
     publishing: string
+    quitWhilePublishing: string
     published(url: string): string
     stillOpen(count: number): string
     resolved(count: number): string

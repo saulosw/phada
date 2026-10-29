@@ -984,6 +984,7 @@ export const english: UiMessages = {
         `${number(comments)} inline ${comments === 1 ? 'comment' : 'comments'}, ${number(debt)} repository debt ${debt === 1 ? 'item' : 'items'}`,
       publish: 'publish',
       publishing: 'Publishing on GitHub…',
+      quitWhilePublishing: 'A publication is under way: wait for it and quit?',
       published: (url) => `Published: ${url}`,
       stillOpen: (count) =>
         `${number(count)} ${count === 1 ? 'finding' : 'findings'} still open from earlier reviews, not posted again.`,

@@ -1,12 +1,13 @@
 import { Text } from 'ink'
 import type { ReactNode } from 'react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { PublishRefusal } from '../../app/publish-saved-review.js'
 import type { PublishedReview, PullRequestTarget } from '../../app/requested-review.js'
 import {
   useAppDeps,
   useBack,
   useMessages,
+  useQuitGuard,
   useScreenInput,
   useScreenKeys,
   useScreenSize,
@@ -51,15 +52,25 @@ export function PublishStep({
   const m = messages.reviewFlow
   const github = useLoaded('github', readGitHub)
   const [state, setState] = useState<DataState<PublishedReview> | undefined>(undefined)
+  const settled = useRef<Promise<void>>(Promise.resolve())
   const access = github.state.status === 'ready' ? github.state.value : undefined
   const canPublish = state === undefined && access !== undefined && access.source !== null
   const publishing = state?.status === 'loading'
   useWorking(publishing)
   useBack(publishing ? () => undefined : back)
+  useQuitGuard(
+    publishing
+      ? {
+          question: m.publish.quitWhilePublishing,
+          stop: () => settled.current,
+          abort: () => undefined,
+        }
+      : undefined,
+  )
   useScreenInput((_input, key) => {
     if (!key.return || !canPublish) return
     setState({ status: 'loading' })
-    publishReview(look.runId).then(
+    settled.current = publishReview(look.runId).then(
       (value) => setState({ status: 'ready', value }),
       (error: unknown) => setState({ status: 'failed', error }),
     )
