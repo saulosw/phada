@@ -1990,6 +1990,8 @@ describe('run rules', () => {
   const RULE_FILES = {
     '.github/instructions/shop.instructions.md': '---\napplyTo: "src/**"\n---\nUse cents.\n',
     '.github/instructions/web.instructions.md': '---\napplyTo: "web/**"\n---\nUse hooks.\n',
+    '.claude/rules/sql.md': '---\npaths: "src/**"\n---\nUse parameterized queries.\n',
+    '.claude/rules/web.md': '---\npaths: [web/**]\n---\nUse hooks.\n',
   }
 
   it('asks for a token that can read the repository', async () => {
@@ -2006,13 +2008,17 @@ describe('run rules', () => {
     expect(await run(['rules', 'acme/shop#12'], h.deps)).toBe(0)
 
     expect(h.treeFetches).toEqual([{ sha: '0000000000000000000000000000000000000000' }])
-    expect(h.stdout()).toContain('Context for acme/shop#12 at 0000000\n')
+    expect(h.stdout()).toContain('Context for acme/shop#12 at base 0000000\n')
     expect(h.stdout()).toContain(
       '- .github/instructions/shop.instructions.md (37 B, applies to src/**)\n',
     )
     expect(h.stdout()).toContain(
       '- .github/instructions/web.instructions.md (37 B, out of scope: web/**)\n',
     )
+    expect(h.stdout()).toContain(
+      'Rules:\n- .claude/rules/sql.md (.claude/rules/sql.md, src/**)\n- .claude/rules/web.md (.claude/rules/web.md, web/**, out of scope)\n',
+    )
+    expect(h.stdout()).not.toMatch(/- \.claude\/rules\/sql\.md \(\d+ B/)
     expect(h.providers).toEqual([])
     expect(h.mirrors).toEqual([])
     expect(h.stateFetches).toEqual([])
@@ -2038,6 +2044,20 @@ describe('run rules', () => {
       pullRequest: null,
       repository: { owner: 'acme', repo: 'shop', ref: 'trunk' },
     })
+    expect(output.context.rules).toEqual([
+      {
+        key: '.claude/rules/sql.md',
+        origin: '.claude/rules/sql.md',
+        scope: ['src/**'],
+        status: 'listed',
+      },
+      {
+        key: '.claude/rules/web.md',
+        origin: '.claude/rules/web.md',
+        scope: ['web/**'],
+        status: 'listed',
+      },
+    ])
     expect(output.context.docs).toEqual([
       expect.objectContaining({
         path: '.github/instructions/shop.instructions.md',

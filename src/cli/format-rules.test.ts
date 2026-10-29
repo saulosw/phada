@@ -18,7 +18,7 @@ describe('formatRulesText', () => {
 
     expect(text).toBe(
       [
-        'Context for acme/api#7 at abc1234',
+        'Context for acme/api#7 at base abc1234',
         '',
         'Config files:',
         '- .phada/config.yml (repository)',
