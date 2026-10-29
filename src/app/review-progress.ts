@@ -17,7 +17,7 @@ export type ReviewProgress =
   | { kind: 'ciRead'; ci: Ci }
   | { kind: 'ciWaiting'; wait: CiWaiting }
   | { kind: 'ciWaited'; wait: CiWaited }
-  | { kind: 'contextLoaded'; report: ContextReport }
+  | { kind: 'contextLoaded'; report: ContextReport; baseSha: string }
   | { kind: 'indexing'; total: number }
   | { kind: 'indexed'; done: number; total: number }
   | { kind: 'relatedReady'; report: RelatedReport }

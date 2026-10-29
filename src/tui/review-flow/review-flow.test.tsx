@@ -236,7 +236,7 @@ describe('reviewing a pull request from the app', () => {
 
     const progress = asked[0]?.progress ?? (() => undefined)
     progress({ kind: 'fetched', pullRequest: pullRequestFixture() })
-    progress({ kind: 'contextLoaded', report: contextReportFixture() })
+    progress({ kind: 'contextLoaded', report: contextReportFixture(), baseSha: 'b'.repeat(40) })
     progress({
       kind: 'conversationRead',
       conversation: {
@@ -512,7 +512,11 @@ describe('reviewing a pull request from the app', () => {
       const flow = openFlow()
       const asked = await running(flow)
       asked.progress({ kind: 'fetched', pullRequest: pullRequestFixture(pull) })
-      asked.progress({ kind: 'contextLoaded', report: contextReportFixture() })
+      asked.progress({
+        kind: 'contextLoaded',
+        report: contextReportFixture(),
+        baseSha: 'b'.repeat(40),
+      })
       await flow.showing('Context: 1 rule')
       const lines = frameLines(flow.frame())
       const fetched = lines.findIndex((line) =>

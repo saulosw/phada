@@ -43,7 +43,7 @@ export function printReviewProgress(
         return ciWait.waited(event.wait)
       case 'contextLoaded':
         for (const warning of event.report.warnings) warn(warning)
-        return writeLine(formatContextLine(event.report))
+        return writeLine(formatContextLine(event.report, event.baseSha))
       case 'indexing':
         return index.extracting(event.total)
       case 'indexed':

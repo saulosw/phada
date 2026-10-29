@@ -205,7 +205,7 @@ export function pullRequestReviewDeps(
       events: { warning, indexing, indexed },
     },
     events: {
-      contextLoaded: (report) => progress({ kind: 'contextLoaded', report }),
+      contextLoaded: (report, baseSha) => progress({ kind: 'contextLoaded', report, baseSha }),
       warning,
       indexing,
       indexed,

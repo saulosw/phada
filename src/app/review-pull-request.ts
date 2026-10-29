@@ -81,7 +81,7 @@ export interface PullRequestReviewInput {
 }
 
 export interface PullRequestReviewEvents {
-  contextLoaded(report: ContextReport): void
+  contextLoaded(report: ContextReport, baseSha: string): void
   warning(message: string): void
   indexing(total: number): void
   indexed(done: number, total: number): void
@@ -135,7 +135,7 @@ export async function loadPullRequestContext(
     userLayers: input.userLayers,
     sources: deps.contextSources,
   })
-  deps.events.contextLoaded(loaded.report)
+  deps.events.contextLoaded(loaded.report, input.pullRequest.baseSha)
   return loaded
 }
 

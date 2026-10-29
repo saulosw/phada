@@ -597,7 +597,7 @@ describe('run', () => {
       [
         'Fetching acme/shop#12…',
         'acme/shop#12 · a1b2c3d · 2 files · +15 −1 · 523 B diff',
-        'Context: no rules or docs',
+        'Context at base 0000000: no rules or docs',
         'Indexing 1 file…',
         'Impact: no indexed symbols changed',
         'Reviewing with fake-cli… (this can take a few minutes)',
@@ -1451,7 +1451,25 @@ describe('run with config and repository context', () => {
     expect(h.prompts[0]?.instructions).toContain('[orm-only] (files: **)\nUse the ORM.')
     expect(h.prompts[0]?.instructions).toContain('in pt-BR')
     expect(h.prompts[0]?.data).toContain('=== AGENTS.md ===\nKeep handlers thin.')
-    expect(h.stderr()).toContain('Context: 1 rule · 1 doc (19 B)\n')
+    expect(h.stderr()).toContain('Context at base 0000000: 1 rule · 1 doc (19 B)\n')
+  })
+
+  it('sends the .claude/rules whose paths match the changed files as rules, naming the base', async () => {
+    const h = harness({
+      repoFiles: {
+        '.claude/rules/greeting.md': '---\npaths:\n  - "src/**/*.ts"\n---\nGreet in English.\n',
+        '.claude/rules/web.md': '---\npaths: web/**\n---\nUse hooks.\n',
+      },
+    })
+
+    expect(await run(['review', 'acme/shop#12', '--dry-run'], h.deps)).toBe(0)
+
+    expect(h.prompts[0]?.instructions).toContain(
+      '[.claude/rules/greeting.md] (files: src/**/*.ts)\nGreet in English.',
+    )
+    expect(h.prompts[0]?.instructions).not.toContain('Use hooks.')
+    expect(h.prompts[0]?.data).not.toContain('=== .claude/rules/')
+    expect(h.stderr()).toContain('Context at base 0000000: 1 rule · 0 docs\n')
   })
 
   it('strips control characters from warnings about the repository config', async () => {

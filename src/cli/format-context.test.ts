@@ -9,10 +9,12 @@ const EMPTY = contextReportFixture({
   budget: { limit: 60_000, used: 0 },
 })
 
+const BASE = 'abc1234def5678901234567890123456789abcde'
+
 describe('formatContextLine', () => {
-  it('counts the applied rules, the docs sent with their size, what was omitted and ignored', () => {
-    expect(formatContextLine(contextReportFixture())).toBe(
-      'Context: 1 rule · 2 docs (23.6 KB, 1 omitted) · 1 file ignored',
+  it('names the base and counts the applied rules, the docs sent with their size, what was omitted and ignored', () => {
+    expect(formatContextLine(contextReportFixture(), BASE)).toBe(
+      'Context at base abc1234: 1 rule · 2 docs (23.6 KB, 1 omitted) · 1 file ignored',
     )
   })
 
@@ -27,7 +29,7 @@ describe('formatContextLine', () => {
       budget: { limit: 60_000, used: 0 },
     })
 
-    expect(formatContextLine(report)).toBe('Context: 2 rules · 0 docs · 2 files ignored')
+    expect(formatContextLine(report, BASE)).toBe('Context at base abc1234: 2 rules · 0 docs · 2 files ignored')
   })
 
   it('counts the docs that did not apply apart from the omitted ones', () => {
@@ -45,13 +47,13 @@ describe('formatContextLine', () => {
       budget: { limit: 60_000, used: 10 },
     })
 
-    expect(formatContextLine(report)).toBe(
-      'Context: 0 rules · 1 doc (10 B, 1 omitted, 3 not applied)',
+    expect(formatContextLine(report, BASE)).toBe(
+      'Context at base abc1234: 0 rules · 1 doc (10 B, 1 omitted, 3 not applied)',
     )
   })
 
   it('says when nothing was sent', () => {
-    expect(formatContextLine(EMPTY)).toBe('Context: no rules or docs')
+    expect(formatContextLine(EMPTY, BASE)).toBe('Context at base abc1234: no rules or docs')
   })
 })
 
