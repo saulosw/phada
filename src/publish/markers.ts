@@ -5,7 +5,7 @@ export const FINDING_MARKER = '<!-- phada:finding -->'
 const REVIEW_MARKER =
   /<!-- phada:review sha=([0-9a-f]{40}) findings=(\d+)(?: diff=([0-9a-f]{16}))? -->\s*$/
 const THREAD_TITLE = /^\*\*(P[0-2])\*\* · (.+) · [^·]+ \d+$/
-const TRAILING_FINDING_MARKER = /<!-- phada:finding -->\s*$/
+const TRAILING_FINDING_MARKER = /<!-- phada:finding(?: skill=[^\s<>]+)? -->\s*$/
 const TRAILING_RESOLVED_MARKER = /<!-- phada:resolved sha=[0-9a-f]{40} -->\s*$/
 
 export interface ReviewMarker {
@@ -24,6 +24,11 @@ export function parseReviewMarker(body: string): ReviewMarker | undefined {
   if (match === null) return undefined
   const [, sha = '', findings = '', diff] = match
   return { sha, findings: Number(findings), ...(diff === undefined ? {} : { diff }) }
+}
+
+export function findingMarker(skill: string | undefined): string {
+  if (skill === undefined) return FINDING_MARKER
+  return `<!-- phada:finding skill=${encodeURIComponent(skill).replace(/%3A/g, ':')} -->`
 }
 
 export function hasFindingMarker(body: string): boolean {

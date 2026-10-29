@@ -1,6 +1,6 @@
 import type { ReviewComment } from '../github/create-review.js'
 import { redactSecrets } from '../providers/redact-secrets.js'
-import { FINDING_MARKER, reviewMarker } from '../publish/markers.js'
+import { findingMarker, reviewMarker } from '../publish/markers.js'
 import type { PublicationPlan } from '../publish/types.js'
 import type { CiSummary } from '../context/types.js'
 import { scoreFocus } from '../review/score.js'
@@ -291,7 +291,7 @@ function findingComment(finding: Finding, limit: number, messages: Messages): Re
 
 function commentBody(finding: Finding, limit: number, messages: Messages, suggestion = ''): string {
   const parts = { title: finding.title, why: finding.why, fix: finding.fix ?? '' }
-  const references = findingReferences(finding, messages, { withLocalFiles: false })
+  const references = findingReferences(finding, messages, 'public')
   const render = () => {
     const fix = githubBlock(parts.fix)
     return [
@@ -300,7 +300,7 @@ function commentBody(finding: Finding, limit: number, messages: Messages, sugges
       ...(fix === '' ? [] : [`**${messages.fix}:** ${fix}`]),
       ...(suggestion === '' ? [] : [suggestion]),
       ...(references === '' ? [] : [`<sub>${references}</sub>`]),
-      FINDING_MARKER,
+      findingMarker(finding.skill),
     ].join('\n\n')
   }
   fit(parts, ['why', 'fix', 'title'], render, limit, messages)

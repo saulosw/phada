@@ -726,6 +726,23 @@ describe('formatGitHubReview comments', () => {
     )
   })
 
+  it('keeps the skill out of the footer and in the hidden marker of the comment', () => {
+    const fromSkill = findingFixture({
+      rule: 'orm-only',
+      sources: ['docs/conventions.md', 'ci:test'],
+      skill: 'code-review:code-review',
+    })
+    const onlySkill = findingFixture({ skill: 'security' })
+    const [first, second] = formatGitHubReview(RESULT, plan([fromSkill, onlySkill])).comments
+
+    expect(first?.body).toContain(
+      '<sub>Based on: `docs/conventions.md` · CI check `test` · rule `orm-only`</sub>\n\n<!-- phada:finding skill=code-review:code-review -->',
+    )
+    expect(first?.body).not.toContain('skill `')
+    expect(second?.body).not.toContain('Based on')
+    expect(second?.body.endsWith('<!-- phada:finding skill=security -->')).toBe(true)
+  })
+
   it('names a source in a related repository as owner/repo:path', () => {
     const crossing = findingFixture({ sources: ['acme/web:src/pages/invoice-page.ts:12'] })
     const [comment] = formatGitHubReview(RESULT, plan([crossing])).comments

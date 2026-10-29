@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   FINDING_MARKER,
+  findingMarker,
   hasFindingMarker,
   hasResolvedMarker,
   parseReviewMarker,
@@ -64,6 +65,27 @@ describe('hasFindingMarker', () => {
 
   it('ignores a marker followed by more text', () => {
     expect(hasFindingMarker(`\`${FINDING_MARKER}\` quoted in a reply`)).toBe(false)
+  })
+
+  it('finds the marker that names the skill of the finding', () => {
+    expect(hasFindingMarker(`Title\n\n${findingMarker('code-review:code-review')}`)).toBe(true)
+    expect(hasFindingMarker(`\`${findingMarker('x')}\` quoted`)).toBe(false)
+  })
+})
+
+describe('findingMarker', () => {
+  it('names the skill of the finding, hidden from the reader', () => {
+    expect(findingMarker('code-review:code-review')).toBe(
+      '<!-- phada:finding skill=code-review:code-review -->',
+    )
+  })
+
+  it('is the plain marker for a finding of the built-in review', () => {
+    expect(findingMarker(undefined)).toBe(FINDING_MARKER)
+  })
+
+  it('encodes a skill name that could close the comment early', () => {
+    expect(findingMarker('a --> b')).toBe('<!-- phada:finding skill=a%20--%3E%20b -->')
   })
 })
 
