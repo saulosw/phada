@@ -21,8 +21,18 @@ output can change between minor versions.
   (`Investigated 4 times for a 124 KB diff (expected at least 12).`), shown with the minimum in the
   investigation section of `--dry-run` and in `investigation.floor` of the JSON.
 
+- Each finding has a scope: `change`, or `repository` when the problem is real but the pull
+  request neither introduces nor worsens it. With `review.debt: summary` (the default) the
+  findings of the repository are listed under "Repository debt" in the review body instead of
+  being posted as line comments, and they count neither in the score nor in the verdict;
+  `comments` posts them as before and `off` drops them. The JSON and the history carry the
+  `scope` of each finding, the `debt` list and the `debt` dropped; the app marks them in the
+  review's detail.
+
 ### Changed
 
+- The "Based on" line of a published comment names only the evidence and the rule; the skill that
+  found the finding is kept in the hidden marker of the comment, the JSON and the history.
 - The verifier confirms a finding only when it can happen in the repository under review: it looks
   for the condition the claimed effect depends on (a setting, the callers, the log level, a flag)
   and rejects the finding, naming the missing condition, when the repository does not meet it.

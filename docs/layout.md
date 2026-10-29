@@ -116,7 +116,8 @@ src/
     read-history.ts      #   readReviews(), readFindings() (destination and marks of each),
                          #   readFeedbackStats() (feedbackStats() per repository, ruleStats() per
                          #   rule), readReviewDetail(): one run with what its stored JSON keeps
-                         #   (score, summary, claims, findings, publication with what a dry run
+                         #   (score, summary, claims, findings with their scope, repository
+                         #   debt, publication with what a dry run
                          #   would resolve and why a publication was skipped, CI) and the
                          #   feedback of each published finding; reviewDetailOf(): the same from a run
                          #   record (a run the app just made); no history file reads as empty
@@ -398,9 +399,14 @@ src/
                          #   --show-token on an old gh, asked once, no token on any failure
     github-access.ts     #   readGitHubAccess(): where the token comes from and its owner's login,
                          #   a refused token (401) or the error of the read; never the token
-    format-review.ts     #   pull request summary (stderr) and the Markdown review (stdout)
+    format-review.ts     #   pull request summary (stderr) and the Markdown review (stdout),
+                         #   with the repository debt after worth checking
+    debt-text.ts         #   debtItem(): one line of the repository debt (severity, place,
+                         #   title, why cut at 200 characters)
     format-github.ts     #   the review as GitHub Markdown: body (the CI line under the score),
-                         #   line comments, suggestion blocks, markers, truncation; formatResolvedReply(); formatGitHubPreview() for
+                         #   line comments, suggestion blocks, markers (the skill of a finding in
+                         #   its hidden marker), the "Repository debt" section (20 lines at most),
+                         #   truncation; formatResolvedReply(); formatGitHubPreview() for
                          #   --dry-run
     format-publication.ts #  skip, "Published", recheck and "Resolved" messages
     format-context.ts    #   the "Context at base <sha>:" line and the context section of
@@ -414,9 +420,11 @@ src/
                          #   annotations and logs left out, the cuts and the warnings)
     format-claims.ts     #   the claims section of --dry-run: each claim of the description with
                          #   its verdict and evidence
-    finding-references.ts #  the "Based on" line: sources (a CI check named as such), rule and skill
-                         #   of a finding
-    format-json.ts       #   formatReviewJson(): schemaVersion 1, with the claims, publication,
+    finding-references.ts #  the "Based on" line: sources (a CI check named as such), rule and,
+                         #   for the author only (terminal), skill of a finding; on GitHub
+                         #   neither local files nor the skill
+    format-json.ts       #   formatReviewJson(): schemaVersion 1, with the claims, the scope of
+                         #   each finding, the repository debt and the debt dropped, publication,
                          #   context, conversation (each item without its texts, with its bytes),
                          #   ci, investigation, impact and recheck blocks
     markdown-text.ts     #   escapes AI text: block markers; for GitHub also HTML and mentions;
@@ -675,7 +683,8 @@ src/
                          #   score, verdict, status, when, CI, publication (nothing posted,
                          #   would resolve, would skip and why), summary, claims of the
                          #   description with verdict and evidence, findings with their
-                         #   body, worth checking, feedback (Reviews and the review flow)
+                         #   body (a finding of the repository marked as debt), repository debt,
+                         #   worth checking, feedback (Reviews and the review flow)
     palette.tsx          #   Palette: screens, the setup, the language, review, index and watch
                          #   (/watch: the Queue, and the watch started or the stop question) filtered by name (the catalog's and
                          #   English, without accents), ↑/↓, Enter, Esc; matchEntries()
@@ -690,12 +699,13 @@ src/
                          #   uiMessagesFor()), en.ts, pt.ts, es.ts; unknown languages fall back to
                          #   English
   config/                # the config files: .phada/ in the repository and the user's own
-    schema.ts            #   Zod schema of config.yml (ci: read, wait, onFailure, checks);
-                         #   LANGUAGE_TAG
+    schema.ts            #   Zod schema of config.yml (ci: read, wait, onFailure, checks;
+                         #   review.debt: summary, comments or off); LANGUAGE_TAG, DEBT_MODES
     parse-config.ts      #   parseConfigText(): YAML → config or an error naming the key
     merge-config.ts      #   mergeConfig(): layers → options, rules, files, ignore with origins (pure),
                          #   the ci settings with DEFAULT_CI (read, 15 min wait, onFailure: review)
-                         #   for what no layer sets; resolveProvider(): provider and model as a pair
+                         #   for what no layer sets, review.debt with its origin;
+                         #   resolveProvider(): provider and model as a pair
     mcp-servers.ts       #   userMcp(), resolveMcp(): MCP server names and declared servers, with
                          #   ${VAR} expanded from the environment
     user-config.ts       #   the user's folder (PHADA_CONFIG_HOME › XDG › ~/.config/phada),
@@ -896,8 +906,9 @@ src/
                          #   progress (status, completed, total) and pulled, cancelled (the
                          #   signal), stopped or failed (Ollama's error line, HTTP status)
   publish/               # pure: what to publish, data in, decision out
-    markers.ts           #   the review (with the diff fingerprint), finding and resolved markers,
-                         #   read only at the end of a body; findingTitle()
+    markers.ts           #   the review (with the diff fingerprint), finding (findingMarker():
+                         #   with the skill, older ones without it still read) and resolved
+                         #   markers, read only at the end of a body; findingTitle()
     phada-state.ts       #   Phada's own reviews and open threads (author = token owner + marker);
                          #   resolvedByPhada(), reviewedShaOf()
     feedback.ts          #   threadFeedback(): each Phada thread → outcome (fixed, dismissed,
@@ -1007,8 +1018,8 @@ src/
                          #   10 KB of diff, 3–15); investigationFloorText(): that minimum and the
                          #   changed CI, container, infrastructure and manifest files for the
                          #   prompt; investigationShortfall(), countingToolbox()
-    report-schema.ts     #   Zod schemas of the AI report (claims, summary, files, findings) + the
-                         #   JSON schema sent to providers
+    report-schema.ts     #   Zod schemas of the AI report (claims, summary, files, findings with
+                         #   their scope: change or repository) + the JSON schema sent to providers
     verification-schema.ts # Zod schema of the verification verdicts
     diff-lines.ts        #   unified diff parsing and line numbering; the text and @@ section of
                          #   each new-side line
@@ -1035,13 +1046,17 @@ src/
                          #   the severity a rule sets
     select-findings.ts   #   candidate filtering, confidence cut, worth checking, ordering
     score.ts             #   scoreFindings(): the 0–5 score, computed by Phada
+    debt.ts              #   withoutDroppedDebt() (review.debt: off), separateDebt() (summary):
+                         #   the findings of the repository the change did not cause
     verdict.ts           #   reviewVerdict(): clean, comments or blocking, from the findings
     errors.ts            #   InvalidReviewReportError
     run-review.ts        #   runReview(): one pass per skill (prompt → provider → parse, or a
                          #   native run → conversion), merged → suggestions → [verify] → select →
                          #   score; skill bodies for native passes without findings in the diff;
                          #   the claims of the description merged; the calls of each pass with
-                         #   tools against its minimum (investigationFloor, a warning below it)
+                         #   tools against its minimum (investigationFloor, a warning below it);
+                         #   the repository debt split by review.debt (DEFAULT_DEBT_MODE: summary),
+                         #   out of the score
 scripts/smoke.ts         # packs the package, installs the tarball, runs the installed `phada`
 scripts/copy-grammars.ts # build step: the tree-sitter grammars into dist/grammars/
 test/fixtures/bin/       # fake AI CLIs used by the provider and status tests

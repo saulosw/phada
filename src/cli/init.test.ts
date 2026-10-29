@@ -120,6 +120,9 @@ describe('config templates with review focus and skills', () => {
     expect(template).toContain('# review:')
     expect(template).toContain('#   prompt:')
     expect(template).toContain('#   skills: [phada, security-review]')
+    expect(template).toContain(
+      '#   debt: summary              # problems the change did not cause: summary, comments or off',
+    )
   })
 })
 
