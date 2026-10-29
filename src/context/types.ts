@@ -1,4 +1,9 @@
-import type { CiSettings, DeclaredRepository, ReviewSettings } from '../config/merge-config.js'
+import type {
+  CiSettings,
+  DebtSetting,
+  DeclaredRepository,
+  ReviewSettings,
+} from '../config/merge-config.js'
 import type { RepositoryTree } from '../github/repository-files.js'
 import type { CiCheck, CiCheckState, ReviewContext } from '../review/types.js'
 import type { DocCategory } from './select-docs.js'
@@ -57,6 +62,7 @@ export interface ContextOptions {
   resolveThreads?: boolean
   conversation?: boolean
   ci: CiSettings
+  debt?: DebtSetting
   review?: ReviewSettings
 }
 

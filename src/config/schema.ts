@@ -151,7 +151,10 @@ const Command = z
   .min(1)
   .regex(/^[^\n*,]+$/, 'write the command without line breaks, commas or *')
 
+export const DEBT_MODES = ['summary', 'comments', 'off'] as const
+
 const ReviewSchema = z.strictObject({
+  debt: z.enum(DEBT_MODES, { error: 'use summary, comments or off' }).optional(),
   prompt: z
     .strictObject({
       file: z.string().trim().min(1),

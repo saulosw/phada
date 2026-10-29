@@ -146,6 +146,7 @@ export interface ReviewRequest {
   language?: string
   minConfidence?: number
   verify?: boolean
+  debt?: DebtMode
   context?: ReviewContext
   impact?: DiffImpact
   related?: RelatedSummary[]
@@ -236,6 +237,7 @@ export interface DroppedFindings {
   outsideDiff: number
   duplicate: number
   rejected: number
+  debt?: number
 }
 
 export interface PassReport {
@@ -296,6 +298,7 @@ export interface ReviewResult {
   summary: string
   files: FileChange[]
   findings: Finding[]
+  debt?: Finding[]
   worthChecking: Finding[]
   worthCheckingOmitted: number
   minConfidence: number

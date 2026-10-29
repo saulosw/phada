@@ -137,6 +137,68 @@ describe('runReview', () => {
     ])
   })
 
+  describe('with findings of the repository the change did not cause', () => {
+    const change = findingFixture({ severity: 'P2', line: 3, title: 'magic number' })
+    const debt = findingFixture({ severity: 'P0', line: 12, title: 'balance nobody calls' })
+    const unsureDebt = findingFixture({ line: 11, title: 'old helper', confidence: 55 })
+    const provider = () =>
+      new FakeProvider(() =>
+        Promise.resolve({
+          ...OUTPUT,
+          text: reviewReportJson({
+            findings: [
+              change,
+              { ...debt, scope: 'repository' },
+              { ...unsureDebt, scope: 'repository' },
+            ],
+          }),
+        }),
+      )
+
+    it('lists them as debt apart from the findings and leaves them out of the score by default', async () => {
+      const outcome = await runReview(
+        { pullRequest: pullRequestFixture() },
+        { provider: provider() },
+      )
+
+      if (outcome.status !== 'reviewed') throw new Error('expected a review')
+      expect(outcome.result.findings).toEqual([change])
+      expect(outcome.result.debt).toEqual([{ ...debt, scope: 'repository' }])
+      expect(outcome.result.worthChecking).toEqual([{ ...unsureDebt, scope: 'repository' }])
+      expect(outcome.result.score).toEqual({ value: 4, reason: '1 P2 finding (shop.ts:3)' })
+      expect(outcome.result.files).toEqual([
+        { path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 1 },
+      ])
+      expect(outcome.result.dropped).not.toHaveProperty('debt')
+    })
+
+    it('keeps them among the findings, scored, with debt: comments', async () => {
+      const outcome = await runReview(
+        { pullRequest: pullRequestFixture(), debt: 'comments' },
+        { provider: provider() },
+      )
+
+      if (outcome.status !== 'reviewed') throw new Error('expected a review')
+      expect(outcome.result.findings).toEqual([{ ...debt, scope: 'repository' }, change])
+      expect(outcome.result).not.toHaveProperty('debt')
+      expect(outcome.result.score.value).toBe(1)
+    })
+
+    it('drops and counts them with debt: off', async () => {
+      const outcome = await runReview(
+        { pullRequest: pullRequestFixture(), debt: 'off' },
+        { provider: provider() },
+      )
+
+      if (outcome.status !== 'reviewed') throw new Error('expected a review')
+      expect(outcome.result.findings).toEqual([change])
+      expect(outcome.result.worthChecking).toEqual([])
+      expect(outcome.result).not.toHaveProperty('debt')
+      expect(outcome.result.dropped.debt).toBe(2)
+      expect(outcome.result.score.value).toBe(4)
+    })
+  })
+
   it('asks the provider for the review report schema', async () => {
     const provider = new FakeProvider(() => Promise.resolve(OUTPUT))
 

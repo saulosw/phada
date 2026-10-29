@@ -31,6 +31,16 @@ describe('parseConfigText', () => {
     expect(parseConfigText('ci:\n  onFailure: block\n').ok).toBe(false)
   })
 
+  it('reads review.debt as summary, comments or off', () => {
+    expect(parseConfigText('review:\n  debt: comments\n')).toEqual({
+      ok: true,
+      config: { review: { debt: 'comments' } },
+    })
+    expect(parseConfigText('review:\n  debt: summary\n').ok).toBe(true)
+    expect(parseConfigText('review:\n  debt: off\n').ok).toBe(true)
+    expect(parseConfigText('review:\n  debt: hide\n').ok).toBe(false)
+  })
+
   it('reads every key', () => {
     const text = [
       'provider: codex',

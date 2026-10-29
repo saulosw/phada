@@ -75,6 +75,7 @@ export async function loadContext(input: {
       ...(merged.resolveThreads === undefined ? {} : { resolveThreads: merged.resolveThreads }),
       ...(merged.conversation === undefined ? {} : { conversation: merged.conversation }),
       ci: merged.ci,
+      ...(merged.review.debt === undefined ? {} : { debt: merged.review.debt.mode }),
       ...(merged.review.prompt === undefined && merged.review.skills === undefined
         ? {}
         : { review: merged.review }),

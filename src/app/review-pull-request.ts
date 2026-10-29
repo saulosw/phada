@@ -361,6 +361,7 @@ export async function reviewPullRequest(
         language,
         minConfidence: options.minConfidence ?? loaded.options.minConfidence,
         verify: options.verify ?? loaded.options.verify ?? true,
+        ...(loaded.options.debt === undefined ? {} : { debt: loaded.options.debt }),
         context: loaded.context,
         ...(impact === undefined ? {} : { impact }),
         ...(related === undefined ? {} : { related }),

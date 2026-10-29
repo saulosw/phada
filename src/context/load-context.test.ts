@@ -268,6 +268,15 @@ describe('loadContext', () => {
     })
   })
 
+  it('takes what to do with the repository debt from the config', async () => {
+    const sources = fakeSources({ '.phada/config.yml': 'review:\n  debt: comments' })
+
+    const loaded = await loadContext({ diff: DIFF, baseSha: SHA, userLayers: [], sources })
+
+    expect(loaded.options.debt).toBe('comments')
+    expect(loaded.options.review).toBeUndefined()
+  })
+
   it('passes the related repositories and privateOnPublic on', async () => {
     const sources = fakeSources({ '.phada/config.yml': 'context:\n  repos: [acme/web]' })
     const userLayers = [userLayer({ context: { repos: ['acme/sdk'], privateOnPublic: true } })]

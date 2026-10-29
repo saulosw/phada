@@ -2,6 +2,7 @@ import type { ReviewOutput, ReviewProvider, TokenUsage } from '../providers/type
 import type { Toolbox } from '../investigation/toolbox.js'
 import { claimWarnings, mergeClaims } from './claims.js'
 import { withKnownReferences, withRuleSeverity } from './context-findings.js'
+import { separateDebt, withoutDroppedDebt } from './debt.js'
 import { diffFingerprint } from './diff-fingerprint.js'
 import { findDiffFile, parseDiffFiles } from './diff-lines.js'
 import type { DiffFile } from './diff-lines.js'
@@ -29,6 +30,7 @@ import {
   VERIFY_CANDIDATE_FLOOR,
 } from './select-findings.js'
 import type {
+  DebtMode,
   Finding,
   NativeSkillRun,
   PassReport,
@@ -40,6 +42,7 @@ import type {
 import { verifyCandidates } from './verify-findings.js'
 
 export const DEFAULT_MIN_CONFIDENCE = 60
+export const DEFAULT_DEBT_MODE: DebtMode = 'summary'
 
 export interface RunReviewDeps {
   provider: ReviewProvider
@@ -103,10 +106,13 @@ export async function runReview(
         deps.tools?.('verify'),
       )
     : undefined
-  const selection = splitAtCut(
+  const debtMode = request.debt ?? DEFAULT_DEBT_MODE
+  const kept = withoutDroppedDebt(
     withRuleSeverity(checked?.findings ?? prepared.candidates, request.context),
-    minConfidence,
+    debtMode,
   )
+  const selection = splitAtCut(kept.findings, minConfidence)
+  const { findings, debt } = separateDebt(selection.findings, debtMode)
   const totalUsage = sumUsage(answered.usage, checked?.verification.usage)
   const ignored = request.context?.ignored ?? []
   const externalCalls = [...passExternalCalls, ...(checked?.externalCalls ?? [])]
@@ -139,18 +145,20 @@ export async function runReview(
       durationMs: answered.durationMs + (checked?.verification.durationMs ?? 0),
       ...(totalUsage === undefined ? {} : { usage: totalUsage }),
       summary: first.report.summary,
-      files: summarizeFiles(first.report.files, selection.findings, diffFiles),
-      findings: selection.findings,
+      files: summarizeFiles(first.report.files, findings, diffFiles),
+      findings,
+      ...(debt.length === 0 ? {} : { debt }),
       worthChecking: selection.worthChecking,
       worthCheckingOmitted: selection.worthCheckingOmitted,
       minConfidence,
-      score: scoreFindings(selection.findings),
+      score: scoreFindings(findings),
       dropped: {
         invalid: answered.outputs.reduce((sum, { report }) => sum + report.invalid, 0),
         belowFloor: prepared.belowFloor + selection.belowFloor,
         outsideDiff: prepared.outsideDiff,
         duplicate: prepared.duplicate,
         rejected: checked?.verification.rejected.length ?? 0,
+        ...(kept.dropped === 0 ? {} : { debt: kept.dropped }),
       },
       ...(checked === undefined ? {} : { verification: checked.verification }),
       ...(suggested.counts === undefined
