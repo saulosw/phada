@@ -6,6 +6,7 @@ import type {
   HistoryStore,
   SignalSource,
 } from '../store/history-store.js'
+import type { Finding } from '../review/types.js'
 import { errorMessage } from './error-message.js'
 import type { ReviewRun } from './review-and-publish.js'
 
@@ -31,17 +32,28 @@ export interface FeedbackRefreshDeps {
 export function recordReviewFeedback(
   history: HistoryStore,
   run: ReviewRun,
+  meta: FeedbackMeta,
+): void {
+  const published =
+    run.status === 'reviewed' && run.publication.status === 'published' ? run.plan.comments : []
+  recordFeedback(history, run.pullRequest, run.reviewState, published, meta)
+}
+
+export function recordFeedback(
+  history: HistoryStore,
+  pullRequest: { repo: string; number: number; headSha: string },
+  reviewState: PullRequestReviewState | undefined,
+  published: readonly Finding[],
   { runId, source, now }: FeedbackMeta,
 ): void {
-  const { pullRequest } = run
-  if (run.reviewState !== undefined) {
+  if (reviewState !== undefined) {
     history.observeFeedback(
-      observation(pullRequest.repo, pullRequest.number, run.reviewState, source, now),
+      observation(pullRequest.repo, pullRequest.number, reviewState, source, now),
     )
   }
-  if (run.status !== 'reviewed' || run.publication.status !== 'published') return
+  if (published.length === 0) return
   history.recordPublished(
-    run.plan.comments.map((finding) => ({
+    published.map((finding) => ({
       repo: pullRequest.repo,
       number: pullRequest.number,
       commitSha: pullRequest.headSha,

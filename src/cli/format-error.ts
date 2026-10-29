@@ -8,6 +8,7 @@ import { HistoryStoreError } from '../store/history-store.js'
 import { IndexStoreError } from '../store/index-store.js'
 import {
   MissingGitHubTokenError,
+  PublishRefusedError,
   RunNotFoundError,
   UsageError,
   WatchRunningError,
@@ -64,7 +65,8 @@ function describe(error: unknown): { summary: string; exitCode: 1 | 2 } {
   if (
     error instanceof WatchRunningError ||
     error instanceof HistoryStoreError ||
-    error instanceof RunNotFoundError
+    error instanceof RunNotFoundError ||
+    error instanceof PublishRefusedError
   ) {
     return { summary: error.message, exitCode: 1 }
   }

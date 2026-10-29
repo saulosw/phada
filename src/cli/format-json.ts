@@ -146,6 +146,15 @@ export function formatAlreadyReviewedJson(pr: PullRequest, reason: SkipReason): 
   return `${JSON.stringify(body, null, 2)}\n`
 }
 
+export function publishedRunJson(
+  stored: Readonly<Record<string, unknown>>,
+  publication: Publication,
+  publishedFrom: number,
+): string {
+  const body = { ...stored, publication: publicationJson(publication), publishedFrom }
+  return `${JSON.stringify(body, null, 2)}\n`
+}
+
 export function conversationJson({ items, report }: Conversation): ConversationBlock {
   return {
     count: report.items,

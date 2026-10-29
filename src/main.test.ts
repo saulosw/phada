@@ -1388,6 +1388,74 @@ describe('run publishing', () => {
     expect(rest.join('\n')).toBe(dryRun)
   })
 
+  it('publishes a saved dry run with phada publish, exactly as it was found and without the AI', async () => {
+    const h = harness({ review: () => Promise.resolve(WITH_FINDING) })
+    await run([...REVIEW, '--dry-run'], h.deps)
+    const dryRun = h.stdout()
+    const asked = { prompts: h.prompts.length, providers: h.providers.length }
+    const deps: MainDeps = {
+      ...h.deps,
+      files: { ...h.deps.files, exists: async () => true },
+    }
+
+    expect(await run(['publish', '1'], deps)).toBe(0)
+
+    expect(h.posts).toHaveLength(1)
+    const [post] = h.posts
+    expect(post?.commitSha).toBe(HEAD_SHA)
+    expect(dryRun).toContain(post?.body ?? 'no body')
+    expect(post?.comments).toEqual([expect.objectContaining({ path: 'src/shop.ts', line: 3 })])
+    expect({ prompts: h.prompts.length, providers: h.providers.length }).toEqual(asked)
+    expect(h.stderr()).toMatch(
+      /Saved as run 1: phada history show 1\nPublished the review with 1 inline comment: https:\/\/github\.com\/acme\/shop\/pull\/12#pullrequestreview-\d+\nSaved as run 2: phada history show 2\n$/,
+    )
+  })
+
+  it('refuses to publish a dry run once the pull request moved, unless --force', async () => {
+    const newer = 'f'.repeat(40)
+    const h = harness({
+      review: () => Promise.resolve(WITH_FINDING),
+      pullHead: () => Promise.resolve({ state: 'open', draft: false, headSha: newer }),
+    })
+    await run([...REVIEW, '--dry-run'], h.deps)
+    const errors: string[] = []
+    const deps: MainDeps = {
+      ...h.deps,
+      files: { ...h.deps.files, exists: async () => true },
+      stderr: { write: (text: string) => errors.push(text) },
+    }
+
+    expect(await run(['publish', '1'], deps)).toBe(1)
+    expect(errors.join('')).toBe(
+      'phada: The pull request moved from a1b2c3d to fffffff since run 1: review it again, or use --force to publish run 1 on a1b2c3d.\n',
+    )
+    expect(h.posts).toEqual([])
+
+    errors.length = 0
+    expect(await run(['publish', '1', '--force'], deps)).toBe(0)
+    expect(h.posts.map(({ commitSha }) => commitSha)).toEqual([HEAD_SHA])
+    expect(errors[0]).toBe(
+      'Warning: the pull request moved from a1b2c3d to fffffff since run 1; the review is on a1b2c3d, the commit the dry run reviewed.\n',
+    )
+  })
+
+  it('refuses to publish a run that was already published', async () => {
+    const h = harness({ review: () => Promise.resolve(WITH_FINDING) })
+    await run(REVIEW, h.deps)
+    const errors: string[] = []
+    const deps: MainDeps = {
+      ...h.deps,
+      files: { ...h.deps.files, exists: async () => true },
+      stderr: { write: (text: string) => errors.push(text) },
+    }
+
+    expect(await run(['publish', '1'], deps)).toBe(1)
+    expect(errors.join('')).toMatch(
+      /^phada: Run 1 is already published \(https:\/\/github\.com\/acme\/shop\/pull\/12#pullrequestreview-\d+\): phada publish takes the run of a phada review --dry-run\.\n$/,
+    )
+    expect(h.posts).toHaveLength(1)
+  })
+
   it('says which run a missing id is not', async () => {
     const h = harness({ review: () => Promise.resolve(WITH_FINDING) })
     await run([...REVIEW, '--dry-run'], h.deps)

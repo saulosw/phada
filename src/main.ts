@@ -35,7 +35,8 @@ import { runHistory, runHistoryPrune, runHistoryShow } from './cli/history-comma
 import { reviewRunJson } from './cli/review-wiring.js'
 import { prepareReview, runManualReview } from './cli/manual-review.js'
 import type { ReviewRun } from './app/review-and-publish.js'
-import type { HistorySave } from './app/requested-review.js'
+import { printHistorySave, savedAsLine } from './cli/print-history-save.js'
+import { runPublish } from './cli/publish-command.js'
 import { assertProviderChoice } from './cli/provider-choice.js'
 import type { ProviderOptions } from './cli/provider-choice.js'
 export { assertProviderChoice } from './cli/provider-choice.js'
@@ -127,6 +128,10 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
       await runHistoryShow(command, deps)
       return 0
     }
+    if (command.kind === 'publish') {
+      await runPublish(command, deps)
+      return 0
+    }
     if (command.kind === 'history-prune') {
       await runHistoryPrune(command, deps)
       return 0
@@ -170,15 +175,14 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
         reviewed: (reviewed, pullRequest) => printReviewed(deps, command, reviewed, pullRequest),
       },
     )
-    printHistorySave(deps, history)
+    printHistorySave(deps.stderr, history)
     try {
       printRun(deps, command, reviewRun)
       const usageLine = formatUsageLine(runUsage(reviewRun))
       if (usageLine !== undefined) deps.stderr.write(`${usageLine}\n`)
     } finally {
-      if (history.status === 'saved') {
-        deps.stderr.write(`Saved as run ${history.runId}: phada history show ${history.runId}\n`)
-      }
+      const saved = savedAsLine(history)
+      if (saved !== undefined) deps.stderr.write(`${saved}\n`)
     }
     return 0
   } catch (error) {
@@ -328,19 +332,6 @@ function dryRunSections(
     ...(result?.passes === undefined ? {} : { passes: { reports: result.passes, fixFor } }),
     investigation: reviewed.investigation,
     usage: runUsage(run),
-  }
-}
-
-function printHistorySave(deps: Pick<MainDeps, 'stderr'>, history: HistorySave): void {
-  if (history.status === 'not-saved') {
-    deps.stderr.write(
-      `Warning: ${toTerminalText(history.error)}. This review is not saved in the history.\n`,
-    )
-  }
-  if (history.status === 'saved' && history.feedbackError !== undefined) {
-    deps.stderr.write(
-      `Warning: could not save the comments' feedback in the history (${toTerminalText(history.feedbackError)}).\n`,
-    )
   }
 }
 

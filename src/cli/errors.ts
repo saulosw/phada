@@ -28,3 +28,7 @@ export class RunNotFoundError extends Error {
 
 export const NOTHING_TO_WATCH =
   'Nothing to watch: list the repositories under watch: in your own config, e.g. watch: { repos: [owner/repo] } in ~/.config/phada/config.yml.'
+
+export class PublishRefusedError extends Error {
+  override readonly name = 'PublishRefusedError'
+}

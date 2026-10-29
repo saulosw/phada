@@ -8,6 +8,7 @@ import {
   INDEX_USAGE,
   INIT_USAGE,
   PROMPT_USAGE,
+  PUBLISH_USAGE,
   REVIEW_USAGE,
   RULES_USAGE,
   SETUP_USAGE,
@@ -55,7 +56,7 @@ describe('parseCliArgs', () => {
     ],
     [
       ['reveiw', 'acme/shop#12'],
-      'Unknown command "reveiw". Available: setup, review, init, index, rules, prompt, watch, enqueue, mcp, history.',
+      'Unknown command "reveiw". Available: setup, review, publish, init, index, rules, prompt, watch, enqueue, mcp, history.',
     ],
     [['--verify'], "Unknown option '--verify'."],
     [
@@ -575,6 +576,42 @@ describe('parseCliArgs history', () => {
     expect(HISTORY_USAGE).toContain('phada history show <id> [--format text|json]')
     expect(HISTORY_USAGE.startsWith('Usage: phada history [<owner/repo[#N]>] [options]')).toBe(true)
     expect(USAGE).toContain('history                Show past reviews and what happened to')
+  })
+})
+
+describe('parseCliArgs publish', () => {
+  it('reads a run id with --force and the format', () => {
+    expect(parseCliArgs(['publish', '12'])).toEqual({
+      kind: 'publish',
+      id: 12,
+      force: false,
+      format: 'text',
+      debug: false,
+    })
+    expect(parseCliArgs(['publish', '7', '--force', '--format', 'json', '--debug'])).toEqual({
+      kind: 'publish',
+      id: 7,
+      force: true,
+      format: 'json',
+      debug: true,
+    })
+  })
+
+  it.each([
+    [['publish'], 'phada publish needs a run id, e.g. phada publish 12.'],
+    [['publish', '0'], 'Invalid run id "0". Use a whole number from 1.'],
+    [['publish', 'acme/shop#12'], 'Invalid run id "acme/shop#12". Use a whole number from 1.'],
+    [['publish', '1', '2'], 'phada publish takes one run id.'],
+    [['publish', '1', '--format', 'markdown'], 'Invalid --format "markdown". Use text or json.'],
+    [['publish', '1', '--dry-run'], "Unknown option '--dry-run'."],
+  ])('refuses %j', (argv, message) => {
+    expect(() => parseCliArgs(argv)).toThrow(message)
+  })
+
+  it('prints its help, listed in the commands', () => {
+    expect(parseCliArgs(['publish', '--help'])).toEqual({ kind: 'help', text: PUBLISH_USAGE })
+    expect(PUBLISH_USAGE.startsWith('Usage: phada publish <id> [options]')).toBe(true)
+    expect(USAGE).toContain('publish <id>           Publish a dry run kept in the history')
   })
 })
 
