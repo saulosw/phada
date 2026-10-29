@@ -197,8 +197,9 @@ screen open the review in place of the tabs:
    items it posts) and `Enter` publishes it without running the AI again, as
    [`phada publish`](#look-first-publish-later); it shows the link, or why it did not publish (the
    pull request moved since the review, or Phada already reviewed that commit), and `Esc` goes
-   back to the result. It needs the run in the history: with `history: false` it is not offered.
-   It also publishes while a watch runs, since no new review starts.
+   back to the result, which no longer offers `p` once it is published. It needs the run in the
+   history: with `history: false` it is not offered. It also publishes while a watch runs, since
+   no new review starts.
 
 It is the same review as `phada review owner/repo#N` (with `--dry-run` for only look): the
 provider, model and MCP servers of your config for that repository, your GitHub token, and the

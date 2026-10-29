@@ -59,9 +59,9 @@ output can change between minor versions.
   comments against the threads on the pull request now, resolves the comments the dry run found
   fixed, skips a commit Phada already reviewed unless `--force`, writes in the dry run's language
   and saves the publication as a new run that names the dry run it came from. In the app, `p` on
-  the result of "Only look" publishes it after asking, and quitting while it publishes asks first
-  and waits for the publication. The review JSON keeps the `language`, the
-  `diffFingerprint` and the `ignored` files of the review for this.
+  the result of "Only look" publishes it after asking (once: then `p` is no longer offered), and
+  quitting while it publishes asks first and waits for the publication. The review JSON keeps the
+  `language`, the `diffFingerprint` and the `ignored` files of the review for this.
 - The review checks what the pull request title and description claim the change does
   ("prevents", "covers", "only runs on …"): each claim gets a verdict (`confirmed`,
   `contradicted` or `unverified`) with its evidence, a contradicted one that matters is also a

@@ -865,6 +865,39 @@ describe('reviewing a pull request from the app', () => {
     expect(flow.asked).toHaveLength(1)
   })
 
+  it.each<[string, PublishedReview, string]>([
+    [
+      'published',
+      {
+        status: 'published',
+        url: 'https://github.com/acme/shop/pull/12#pullrequestreview-1',
+        comments: 1,
+        stillOpen: 0,
+        resolved: 0,
+        warnings: [],
+      },
+      'Published:',
+    ],
+    [
+      'found already reviewed',
+      { status: 'skipped', reason: { kind: 'already-reviewed' }, headSha: SHA },
+      'Not published',
+    ],
+  ])('no longer offers p once the look was %s', async (_outcome, published, shown) => {
+    const flow = openFlow({ deps: { publishReview: async () => published } })
+    await looked(flow, detail(), { status: 'saved', runId: 3 })
+    await flow.press('p')
+    await flow.showing('@ana')
+    await flow.press(KEYS.enter)
+    await flow.showing(shown)
+    await flow.press(KEYS.escape)
+    await flow.showing('Done in')
+    expect(flow.footer()).not.toContain('p publish')
+    await flow.press('p')
+    expect(flow.frame()).not.toContain('Publish this review on GitHub?')
+    expect(flow.frame()).toContain('Done in')
+  })
+
   it('asks before quitting while it publishes a look, and quits once it is published', async () => {
     const publishes: { resolve(published: PublishedReview): void }[] = []
     const flow = openFlow({

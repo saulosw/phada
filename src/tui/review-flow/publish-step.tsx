@@ -39,11 +39,13 @@ export function PublishStep({
   title,
   look,
   back,
+  onSettled,
 }: {
   target: PullRequestTarget
   title: string | null
   look: SavedLook
   back(): void
+  onSettled(): void
 }) {
   const { readGitHub, publishReview } = useAppDeps()
   const messages = useMessages()
@@ -71,7 +73,10 @@ export function PublishStep({
     if (!key.return || !canPublish) return
     setState({ status: 'loading' })
     settled.current = publishReview(look.runId).then(
-      (value) => setState({ status: 'ready', value }),
+      (value) => {
+        setState({ status: 'ready', value })
+        if (value.status === 'published' || value.status === 'skipped') onSettled()
+      },
       (error: unknown) => setState({ status: 'failed', error }),
     )
   })

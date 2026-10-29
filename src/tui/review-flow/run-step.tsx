@@ -63,6 +63,7 @@ export function RunStep({
   const [asking, setAsking] = useState(false)
   const [cancelling, setCancelling] = useState(false)
   const [publishOpen, setPublishOpen] = useState(false)
+  const [settledOnGitHub, setSettledOnGitHub] = useState(false)
   const [, setTick] = useState(0)
   const startedAt = useRef(now().getTime())
   const request = useRef({ target, mode })
@@ -126,6 +127,7 @@ export function RunStep({
       : undefined,
   )
   const look = savedLook(outcome, mode)
+  const publishable = settledOnGitHub ? undefined : look
   const back = !running
     ? onClose
     : askingNow
@@ -135,7 +137,7 @@ export function RunStep({
         : () => undefined
   const input = (input: string, key: Key) => {
     if (askingNow && key.return) cancel()
-    if (input === 'p' && look !== undefined) setPublishOpen(true)
+    if (input === 'p' && publishable !== undefined) setPublishOpen(true)
   }
   const hints: KeyHint[] = askingNow
     ? [
@@ -147,7 +149,7 @@ export function RunStep({
       : running
         ? []
         : [
-            ...(look === undefined ? [] : [{ keys: 'p', label: m.publish.key }]),
+            ...(publishable === undefined ? [] : [{ keys: 'p', label: m.publish.key }]),
             { keys: '↑/↓', label: messages.list.scroll },
             { keys: 'Esc', label: messages.keys.back },
           ]
@@ -158,6 +160,7 @@ export function RunStep({
         title={look.title ?? title}
         look={look}
         back={() => setPublishOpen(false)}
+        onSettled={() => setSettledOnGitHub(true)}
       />
     )
   }
