@@ -13,7 +13,7 @@ const SCHEMA_VERSION = 1
 
 export function formatRunReportText(report: RunReport): string {
   const head = [
-    headerLine(report.run),
+    headerLine(report.run, report.publishedFrom),
     ...(report.title === null ? [] : [singleLine(report.title)]),
     ...(report.checks === undefined ? [] : [checksLine(report.checks)]),
   ]
@@ -30,7 +30,7 @@ export function formatRunReportJson(report: RunReport): string {
   return `${JSON.stringify(body, null, 2)}\n`
 }
 
-function headerLine(run: Omit<RunRecord, 'resultJson'>): string {
+function headerLine(run: Omit<RunRecord, 'resultJson'>, publishedFrom?: number): string {
   const provider = run.model === undefined ? run.provider : `${run.provider}/${run.model}`
   return [
     `Run ${run.id ?? '?'}`,
@@ -38,7 +38,11 @@ function headerLine(run: Omit<RunRecord, 'resultJson'>): string {
     formatLocalTime(new Date(run.startedAt)),
     run.requestSource ?? run.source,
     ...(provider === undefined ? [] : [provider]),
-    singleLine(statusText(run)),
+    singleLine(
+      publishedFrom === undefined
+        ? statusText(run)
+        : `${statusText(run)} from run ${publishedFrom}`,
+    ),
   ].join(' · ')
 }
 

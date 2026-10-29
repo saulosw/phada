@@ -78,6 +78,7 @@ export interface RunReport {
   run: Omit<RunRecord, 'resultJson'>
   result: unknown
   title: string | null
+  publishedFrom?: number
   posted?: PostedReview
   closeToCut?: { minConfidence: number; findings: StoredFinding[] }
   claims?: StoredClaim[]
@@ -111,6 +112,7 @@ function runReportOf(stored: RunRecord): RunReport {
     run,
     result: result ?? null,
     title: stringOf(objectOf(json.pullRequest)?.title) ?? null,
+    ...defined('publishedFrom', numberOf(json.publishedFrom)),
     ...defined('posted', postedOf(json.publication)),
     ...defined('closeToCut', closeToCutOf(review)),
     ...(Array.isArray(review?.claims) ? { claims: storedClaims(review.claims) } : {}),

@@ -21,7 +21,7 @@ import type { ImpactReport } from '../graph/report.js'
 import type { InvestigationReport } from '../investigation/tools/report.js'
 import type { Conversation } from '../publish/types.js'
 import type { ReviewResult } from '../review/types.js'
-import { formatAlreadyReviewedJson, formatReviewJson } from './format-json.js'
+import { formatAlreadyReviewedJson, formatReviewJson, publishedRunJson } from './format-json.js'
 import type { Publication } from './format-json.js'
 import { formatLocalTime } from './units.js'
 import type { HistoryCommandDeps } from './history-command.js'
@@ -587,6 +587,24 @@ describe('runHistoryShow', () => {
       / · codex\/gpt-6-astra · published https:\/\/github\.com\/acme\/shop\/pull\/12#pullrequestreview-1$/,
     )
     expect(h.stdout()).toContain('\n## Phada review\n\nAdds a spend endpoint.\n')
+  })
+
+  it('names the dry run a publication came from', async () => {
+    const h = harness()
+    const url = 'https://github.com/acme/shop/pull/12#pullrequestreview-1'
+    const stored = JSON.parse(fullJson(DRY_RUN)) as Record<string, unknown>
+    const json = publishedRunJson(
+      stored,
+      { status: 'published', url, comments: 1, stillOpen: 0, review: PREVIEW },
+      7,
+    )
+    await h.seed((store) => store.addRun(storedRun(json, { status: 'published', url })))
+
+    await runHistoryShow(SHOW, h.deps)
+
+    expect(h.stdout().split('\n')[0]).toMatch(
+      / · published https:\/\/github\.com\/acme\/shop\/pull\/12#pullrequestreview-1 from run 7$/,
+    )
   })
 
   it('shows what a run of an older version kept', async () => {
