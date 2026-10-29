@@ -68,6 +68,7 @@ function runLine(run: RunRecord): string {
     run.url ?? run.reason ?? run.error,
   ].flatMap((part) => (part === undefined ? [] : [singleLine(part)]))
   return [
+    String(run.id ?? '').padStart(4),
     formatLocalTime(new Date(run.startedAt)),
     `${run.repo}#${run.number}`,
     shortSha(run.headSha),
