@@ -65,6 +65,7 @@ const CodexEvent = z.discriminatedUnion('type', [
     type: z.literal('turn.completed'),
     usage: z.object({
       input_tokens: z.number().optional(),
+      cached_input_tokens: z.number().optional(),
       output_tokens: z.number().optional(),
     }),
   }),
@@ -250,9 +251,13 @@ function parseEvents(stdout: string): CodexEvent[] {
 
 function lastTurnUsage(events: readonly CodexEvent[]): TokenUsage | undefined {
   const turn = events.findLast((event) => event.type === 'turn.completed')
-  return turn === undefined
-    ? undefined
-    : { inputTokens: turn.usage.input_tokens ?? 0, outputTokens: turn.usage.output_tokens ?? 0 }
+  if (turn === undefined) return undefined
+  const { input_tokens, cached_input_tokens, output_tokens } = turn.usage
+  return {
+    inputTokens: input_tokens ?? 0,
+    ...(cached_input_tokens === undefined ? {} : { cachedInputTokens: cached_input_tokens }),
+    outputTokens: output_tokens ?? 0,
+  }
 }
 
 function parseJson(text: string): unknown {

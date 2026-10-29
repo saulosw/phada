@@ -362,6 +362,9 @@ function toTokenUsage(usage: ClaudeUsage): TokenUsage {
       (usage.input_tokens ?? 0) +
       (usage.cache_creation_input_tokens ?? 0) +
       (usage.cache_read_input_tokens ?? 0),
+    ...(usage.cache_read_input_tokens === undefined
+      ? {}
+      : { cachedInputTokens: usage.cache_read_input_tokens }),
     outputTokens: usage.output_tokens ?? 0,
   }
 }

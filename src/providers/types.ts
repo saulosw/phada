@@ -21,6 +21,7 @@ export interface ExternalToolCall {
 
 export interface TokenUsage {
   inputTokens: number
+  cachedInputTokens?: number
   outputTokens: number
 }
 

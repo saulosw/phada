@@ -95,7 +95,7 @@ describe('ClaudeCliProvider', () => {
       text: 'LGTM from fake',
       model: 'claude-fake-1',
       durationMs: expect.any(Number),
-      usage: { inputTokens: 3512, outputTokens: 420 },
+      usage: { inputTokens: 3512, cachedInputTokens: 500, outputTokens: 420 },
     })
     expect(output.durationMs).toBeGreaterThan(0)
   })
