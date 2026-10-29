@@ -71,6 +71,7 @@ describe('formatReviewJson', () => {
       review: {
         score: { value: 1, reason: '1 P0 finding (shop.ts:3)' },
         summary: 'Adds a spend endpoint.',
+        claims: [],
         files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 1 }],
         findings: [
           {
@@ -112,6 +113,19 @@ describe('formatReviewJson', () => {
       related: null,
       recheck: null,
     })
+  })
+
+  it('prints the claims of the description with their verdict and evidence', () => {
+    const claims = [
+      { claim: 'Prevents two runs on staging', verdict: 'contradicted', evidence: 'ci.yml:4' },
+      { claim: 'Covers the empty cart', verdict: 'unverified', evidence: '' },
+    ] as const
+    const output = formatReviewJson(pullRequestFixture(), {
+      status: 'reviewed',
+      result: { ...RESULT, claims: [...claims] },
+    })
+
+    expect(parse(output)).toMatchObject({ review: { claims } })
   })
 
   it('prints the skill of each finding and every pass', () => {

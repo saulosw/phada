@@ -281,6 +281,7 @@ function reviewJson(result: ReviewResult, fixFor?: (blocked: BlockedCommand) => 
   return {
     score: { value: score.value, reason: score.reason },
     summary: result.summary,
+    claims: result.claims.map(({ claim, verdict, evidence }) => ({ claim, verdict, evidence })),
     files: result.files.map(({ path, change, findings }) => ({ path, change, findings })),
     findings: result.findings.map(findingJson),
     worthChecking: result.worthChecking.map(findingJson),
