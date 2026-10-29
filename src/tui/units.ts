@@ -13,6 +13,19 @@ export function durationText(ms: number): string {
   return parts.join('')
 }
 
+const TOKEN_UNITS = ['k', 'M']
+
+export function tokensText(count: number): string {
+  if (count < 1000) return String(count)
+  let scaled = count / 1000
+  let unit = 0
+  while (Math.round(scaled * 10) >= 10_000 && unit < TOKEN_UNITS.length - 1) {
+    scaled /= 1000
+    unit += 1
+  }
+  return `${scaled.toFixed(1)}${TOKEN_UNITS[unit]}`
+}
+
 export function bytesText(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   let scaled = bytes / 1024

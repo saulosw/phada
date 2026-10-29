@@ -1,5 +1,5 @@
 import type { ListedRun, RunRecord } from '../app/read-history.js'
-import type { UiMessages } from './i18n/messages.js'
+import type { ReviewSource, UiMessages } from './i18n/messages.js'
 import type { Theme } from './theme.js'
 
 export function runKey(run: ListedRun): string {
@@ -21,4 +21,8 @@ export function verdictColor(
   if (verdict === 'comments') return colors.warn
   if (verdict === 'blocking' || verdict === 'failed') return colors.error
   return colors.dim
+}
+
+export function sourceOf(run: ListedRun): ReviewSource {
+  return run.requestSource ?? run.source
 }

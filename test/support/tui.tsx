@@ -34,9 +34,29 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 50))
 
 const nextTurn = () => new Promise((resolve) => setImmediate(resolve))
 
-export async function waitFor(ready: () => boolean, timeoutMs = 3000): Promise<void> {
+export class WaitTimeoutError extends Error {
+  constructor(awaited: string, timeoutMs: number, lastFrame: string | undefined) {
+    super(
+      `Waited ${timeoutMs} ms for ${awaited}` +
+        (lastFrame === undefined ? '' : `; the last frame was:\n${lastFrame}`),
+    )
+    this.name = 'WaitTimeoutError'
+  }
+}
+
+export interface WaitOptions {
+  timeoutMs?: number
+  awaited?: string
+  lastFrame?: () => string
+}
+
+export async function waitFor(ready: () => boolean, options: WaitOptions = {}): Promise<void> {
+  const timeoutMs = options.timeoutMs ?? 3000
   const deadline = Date.now() + timeoutMs
-  while (!ready() && Date.now() < deadline) {
+  while (!ready()) {
+    if (Date.now() >= deadline) {
+      throw new WaitTimeoutError(options.awaited ?? String(ready), timeoutMs, options.lastFrame?.())
+    }
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
   await settle()
@@ -164,7 +184,9 @@ export function fakeSize(initial: TerminalSize) {
 export function fakeAppDeps(scheduler: Scheduler, overrides: Partial<AppDeps> = {}): AppDeps {
   return {
     version: '1.2.3',
+    pid: 1000,
     start: 'home',
+    debug: false,
     cwd: '/home/ana/code/shop',
     home: '/home/ana',
     env: { TERM: 'xterm-256color' },
@@ -177,6 +199,11 @@ export function fakeAppDeps(scheduler: Scheduler, overrides: Partial<AppDeps> = 
     readRepositories: async () => emptyRepositories(),
     readRepository: async (repo) => emptyRepository(repo),
     readAutomation: async () => emptyAutomation(),
+    readIndexes: async () => ({ repositories: [] }),
+    readConnections: async () => ({ repositories: [] }),
+    searchSymbol: async () => ({ state: 'not-indexed', why: { reason: 'no-index' } }),
+    symbolCallers: async () => ({ state: 'not-indexed', why: { reason: 'no-index' } }),
+    symbolDependencies: async () => ({ state: 'not-indexed', why: { reason: 'no-index' } }),
     readProviderSetup: async () => ({
       choice: { provider: 'claude', model: null, origin: { kind: 'default' } },
       mcp: [],
@@ -206,6 +233,17 @@ export function fakeAppDeps(scheduler: Scheduler, overrides: Partial<AppDeps> = 
       throw new Error('no repository in this test')
     },
     ensureRepositoryFile: async (repo, file) => `/home/ana/.config/phada/repos/${repo}/${file}`,
+    parsePullRequest: (text) => {
+      const [, owner, repo, number] = /^([\w.-]+)\/([\w.-]+)#(\d+)$/.exec(text.trim()) ?? []
+      return owner === undefined || repo === undefined
+        ? undefined
+        : { owner, repo, number: Number(number) }
+    },
+    readOpenPullRequests: async () => ({ status: 'no-token' }),
+    reviewPullRequest: async () => ({ status: 'no-token' }),
+    enqueueReview: async () => ({ status: 'no-token' }),
+    publishReview: async () => ({ status: 'no-token' }),
+    startWatch: async () => ({ status: 'elsewhere', pid: 4242 }),
     ...overrides,
   }
 }
@@ -233,8 +271,13 @@ export function renderApp(
   const press = (...keys: string[]) => writeKeys(app.stdin, keys)
   const type = async (text: string) => press(...[...text])
   const listening = () => app.stdin.listenerCount('readable') > 0
-  const until = (ready: () => boolean) => waitFor(() => listening() && ready())
-  const showing = (...expected: (string | RegExp)[]) => until(() => shows(frame(), ...expected))
+  const until = (ready: () => boolean, awaited = String(ready)) =>
+    waitFor(() => listening() && ready(), { awaited, lastFrame: frame })
+  const showing = (...expected: (string | RegExp)[]) =>
+    until(
+      () => shows(frame(), ...expected),
+      `the frame to show ${expected.map((text) => String(text)).join(', ')}`,
+    )
   const footer = () => frameLines(frame()).at(-1) ?? ''
   return {
     app,

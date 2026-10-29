@@ -6,7 +6,13 @@ import { InvalidReviewReportError } from '../review/errors.js'
 import { SkillError } from '../skills/errors.js'
 import { HistoryStoreError } from '../store/history-store.js'
 import { IndexStoreError } from '../store/index-store.js'
-import { MissingGitHubTokenError, UsageError, WatchRunningError } from './errors.js'
+import {
+  MissingGitHubTokenError,
+  PublishRefusedError,
+  RunNotFoundError,
+  UsageError,
+  WatchRunningError,
+} from './errors.js'
 import { toTerminalText } from '../app/terminal-text.js'
 
 export interface FormattedError {
@@ -56,7 +62,12 @@ function describe(error: unknown): { summary: string; exitCode: 1 | 2 } {
   if (error instanceof SkillError) return { summary: error.message, exitCode: 2 }
   if (error instanceof InvalidPullRequestRefError) return { summary: error.message, exitCode: 2 }
   if (error instanceof MissingGitHubTokenError) return { summary: error.message, exitCode: 1 }
-  if (error instanceof WatchRunningError || error instanceof HistoryStoreError) {
+  if (
+    error instanceof WatchRunningError ||
+    error instanceof HistoryStoreError ||
+    error instanceof RunNotFoundError ||
+    error instanceof PublishRefusedError
+  ) {
     return { summary: error.message, exitCode: 1 }
   }
   if (error instanceof DiffTooLargeError) {

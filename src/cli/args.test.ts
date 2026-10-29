@@ -8,6 +8,7 @@ import {
   INDEX_USAGE,
   INIT_USAGE,
   PROMPT_USAGE,
+  PUBLISH_USAGE,
   REVIEW_USAGE,
   RULES_USAGE,
   SETUP_USAGE,
@@ -55,7 +56,7 @@ describe('parseCliArgs', () => {
     ],
     [
       ['reveiw', 'acme/shop#12'],
-      'Unknown command "reveiw". Available: setup, review, init, index, rules, prompt, watch, enqueue, mcp, history.',
+      'Unknown command "reveiw". Available: setup, review, publish, init, index, rules, prompt, watch, enqueue, mcp, history.',
     ],
     [['--verify'], "Unknown option '--verify'."],
     [
@@ -500,6 +501,36 @@ describe('parseCliArgs history', () => {
     })
   })
 
+  it('reads show with a run id and its format', () => {
+    expect(parseCliArgs(['history', 'show', '12'])).toEqual({
+      kind: 'history-show',
+      id: 12,
+      format: 'text',
+      debug: false,
+    })
+    expect(parseCliArgs(['history', 'show', '7', '--format', 'json', '--debug'])).toEqual({
+      kind: 'history-show',
+      id: 7,
+      format: 'json',
+      debug: true,
+    })
+  })
+
+  it.each([
+    [['history', 'show'], 'phada history show needs a run id, e.g. phada history show 12.'],
+    [['history', 'show', '0'], 'Invalid run id "0". Use a whole number from 1.'],
+    [['history', 'show', '-3'], "Unknown option '-3'."],
+    [['history', 'show', '1.5'], 'Invalid run id "1.5". Use a whole number from 1.'],
+    [['history', 'show', 'abc'], 'Invalid run id "abc". Use a whole number from 1.'],
+    [['history', 'show', '99999999999999999999'], 'Invalid run id "99999999999999999999".'],
+    [['history', 'show', '1', '2'], 'phada history show takes one run id.'],
+    [['history', 'show', '1', '--stats'], 'phada history show takes only --format.'],
+    [['history', 'show', '1', '--limit', '3'], 'phada history show takes only --format.'],
+    [['history', 'show', '1', '--format', 'yaml'], 'Invalid --format "yaml". Use text or json.'],
+  ])('refuses %j', (argv, message) => {
+    expect(() => parseCliArgs(argv)).toThrow(message)
+  })
+
   it.each([
     [['history', '--limit', '0'], 'Invalid --limit "0". Use a whole number from 1.'],
     [['history', '--since', '5x'], 'Invalid --since "5x". Use a duration like 30d, 12h or 90m.'],
@@ -538,8 +569,49 @@ describe('parseCliArgs history', () => {
       kind: 'help',
       text: HISTORY_USAGE,
     })
+    expect(parseCliArgs(['history', 'show', '--help'])).toEqual({
+      kind: 'help',
+      text: HISTORY_USAGE,
+    })
+    expect(HISTORY_USAGE).toContain('phada history show <id> [--format text|json]')
     expect(HISTORY_USAGE.startsWith('Usage: phada history [<owner/repo[#N]>] [options]')).toBe(true)
     expect(USAGE).toContain('history                Show past reviews and what happened to')
+  })
+})
+
+describe('parseCliArgs publish', () => {
+  it('reads a run id with --force and the format', () => {
+    expect(parseCliArgs(['publish', '12'])).toEqual({
+      kind: 'publish',
+      id: 12,
+      force: false,
+      format: 'text',
+      debug: false,
+    })
+    expect(parseCliArgs(['publish', '7', '--force', '--format', 'json', '--debug'])).toEqual({
+      kind: 'publish',
+      id: 7,
+      force: true,
+      format: 'json',
+      debug: true,
+    })
+  })
+
+  it.each([
+    [['publish'], 'phada publish needs a run id, e.g. phada publish 12.'],
+    [['publish', '0'], 'Invalid run id "0". Use a whole number from 1.'],
+    [['publish', 'acme/shop#12'], 'Invalid run id "acme/shop#12". Use a whole number from 1.'],
+    [['publish', '1', '2'], 'phada publish takes one run id.'],
+    [['publish', '1', '--format', 'markdown'], 'Invalid --format "markdown". Use text or json.'],
+    [['publish', '1', '--dry-run'], "Unknown option '--dry-run'."],
+  ])('refuses %j', (argv, message) => {
+    expect(() => parseCliArgs(argv)).toThrow(message)
+  })
+
+  it('prints its help, listed in the commands', () => {
+    expect(parseCliArgs(['publish', '--help'])).toEqual({ kind: 'help', text: PUBLISH_USAGE })
+    expect(PUBLISH_USAGE.startsWith('Usage: phada publish <id> [options]')).toBe(true)
+    expect(USAGE).toContain('publish <id>           Publish a dry run kept in the history')
   })
 })
 

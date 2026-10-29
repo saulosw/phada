@@ -1,5 +1,5 @@
 import type { ReviewRun } from '../app/review-and-publish.js'
-import type { ReviewRequestInput, SubmitResult } from '../app/submit-request.js'
+import type { WatchEvent } from '../app/watch-event.js'
 import { refusalText } from './format-request.js'
 import type { HistoryStatus, RunRecord, StatusJob } from '../store/history-store.js'
 import type { JobRecord, PauseState } from '../watch/types.js'
@@ -17,34 +17,11 @@ export interface HourlyReviews {
   max: number
 }
 
-export type WatchEventView =
-  | { kind: 'baseline'; repo: string; count: number }
-  | { kind: 'queued'; job: JobRecord }
-  | { kind: 'superseded'; job: JobRecord }
-  | { kind: 'started'; job: JobRecord }
-  | { kind: 'waiting'; job: JobRecord }
-  | { kind: 'ciFailing'; job: JobRecord }
-  | { kind: 'ciCleared'; job: JobRecord }
-  | { kind: 'finished'; job: JobRecord; run: ReviewRun }
-  | { kind: 'retry'; job: JobRecord; at: string; error: unknown }
-  | { kind: 'paused'; pause: PauseState }
-  | { kind: 'failed'; job: JobRecord; error: unknown }
-  | { kind: 'indexed'; repo: string; sha: string }
-  | { kind: 'indexPartial'; repo: string }
-  | { kind: 'feedback'; repo: string; number: number; threads: number }
-  | { kind: 'warning'; message: string }
-  | { kind: 'limited'; count: number; until: string }
-  | {
-      kind: 'refused'
-      request: ReviewRequestInput
-      result: SubmitResult & { status: 'refused' }
-    }
-
-export function formatWatchEvent(event: WatchEventView, at: Date): string {
+export function formatWatchEvent(event: WatchEvent, at: Date): string {
   return `[${clock(at)}] ${toTerminalText(eventText(event))}`
 }
 
-function eventText(event: WatchEventView): string {
+function eventText(event: WatchEvent): string {
   switch (event.kind) {
     case 'baseline':
       return `${event.repo}: ${formatCount(event.count, 'open pull request')} recorded as they are; new pushes will be reviewed.`

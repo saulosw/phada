@@ -7,11 +7,8 @@ import type { RepositoryPackages } from '../graph/packages.js'
 import { createExtractor } from '../repo-map/extract.js'
 import { CheckoutUnavailableError } from '../repository/git-checkout.js'
 import type { IndexStore } from '../store/index-store.js'
-import {
-  openRelatedRepositories,
-  RELATED_INDEX_BUDGET_MS,
-  RELATED_REF,
-} from './related-repositories.js'
+import { RELATED_REF } from '../store/index-store.js'
+import { openRelatedRepositories, RELATED_INDEX_BUDGET_MS } from './related-repositories.js'
 import type { RelatedDeps } from './related-repositories.js'
 
 const extractor = createExtractor()

@@ -1,9 +1,16 @@
 import type { ReviewOutput, ReviewProvider, TokenUsage } from '../providers/types.js'
 import type { Toolbox } from '../investigation/toolbox.js'
+import { claimWarnings, mergeClaims } from './claims.js'
 import { withKnownReferences, withRuleSeverity } from './context-findings.js'
+import { separateDebt, withoutDroppedDebt } from './debt.js'
 import { diffFingerprint } from './diff-fingerprint.js'
 import { findDiffFile, parseDiffFiles } from './diff-lines.js'
 import type { DiffFile } from './diff-lines.js'
+import {
+  countingToolbox,
+  investigationFloor,
+  investigationShortfall,
+} from './investigation-floor.js'
 import { newNonce } from './nonce.js'
 import { InvalidReviewReportError } from './errors.js'
 import { parseReviewReport } from './parse-report.js'
@@ -13,6 +20,7 @@ import { buildReviewPrompt } from './prompt.js'
 import { scoreFindings } from './score.js'
 import { skillBodyText, skillOutputText } from './skill-output.js'
 import { checkSuggestions } from './suggestions.js'
+import { sumUsage, totalUsage } from './token-usage.js'
 import {
   CONFIDENCE_FLOOR,
   isConfidenceCut,
@@ -23,9 +31,12 @@ import {
   VERIFY_CANDIDATE_FLOOR,
 } from './select-findings.js'
 import type {
+  DebtMode,
   Finding,
+  InvestigationFloor,
   NativeSkillRun,
   PassReport,
+  PassUsage,
   ReviewOutcome,
   ReviewRequest,
   SkillBody,
@@ -34,6 +45,7 @@ import type {
 import { verifyCandidates } from './verify-findings.js'
 
 export const DEFAULT_MIN_CONFIDENCE = 60
+export const DEFAULT_DEBT_MODE: DebtMode = 'summary'
 
 export interface RunReviewDeps {
   provider: ReviewProvider
@@ -97,11 +109,20 @@ export async function runReview(
         deps.tools?.('verify'),
       )
     : undefined
-  const selection = splitAtCut(
+  const debtMode = request.debt ?? DEFAULT_DEBT_MODE
+  const kept = withoutDroppedDebt(
     withRuleSeverity(checked?.findings ?? prepared.candidates, request.context),
-    minConfidence,
+    debtMode,
   )
-  const totalUsage = sumUsage(answered.usage, checked?.verification.usage)
+  const selection = splitAtCut(kept.findings, minConfidence)
+  const { findings, debt } = separateDebt(selection.findings, debtMode)
+  const passUsage: PassUsage[] = [
+    ...answered.passUsage,
+    ...(checked === undefined || checked.verification.candidates === 0
+      ? []
+      : [usageOf('verify', checked.verification.usage)]),
+  ]
+  const usage = totalUsage(passUsage)
   const ignored = request.context?.ignored ?? []
   const externalCalls = [...passExternalCalls, ...(checked?.externalCalls ?? [])]
   const warnings = [
@@ -131,25 +152,30 @@ export async function runReview(
       ...(model === undefined ? {} : { model }),
       ...(additionalModels === undefined ? {} : { additionalModels }),
       durationMs: answered.durationMs + (checked?.verification.durationMs ?? 0),
-      ...(totalUsage === undefined ? {} : { usage: totalUsage }),
+      ...(usage === undefined ? {} : { usage }),
+      passUsage,
       summary: first.report.summary,
-      files: summarizeFiles(first.report.files, selection.findings, diffFiles),
-      findings: selection.findings,
+      files: summarizeFiles(first.report.files, findings, diffFiles),
+      findings,
+      ...(debt.length === 0 ? {} : { debt }),
       worthChecking: selection.worthChecking,
       worthCheckingOmitted: selection.worthCheckingOmitted,
       minConfidence,
-      score: scoreFindings(selection.findings),
+      score: scoreFindings(findings),
       dropped: {
         invalid: answered.outputs.reduce((sum, { report }) => sum + report.invalid, 0),
         belowFloor: prepared.belowFloor + selection.belowFloor,
         outsideDiff: prepared.outsideDiff,
         duplicate: prepared.duplicate,
         rejected: checked?.verification.rejected.length ?? 0,
+        ...(kept.dropped === 0 ? {} : { debt: kept.dropped }),
       },
       ...(checked === undefined ? {} : { verification: checked.verification }),
       ...(suggested.counts === undefined
         ? {}
         : { suggestions: { ...suggested.counts, dropped: checked?.droppedSuggestions ?? 0 } }),
+      claims: mergeClaims(answered.outputs.map(({ report }) => report.claims ?? [])),
+      ...floorOf(answered, investigationFloor(pullRequest.diff)),
       ...(ignored.length === 0 ? {} : { ignored: [...ignored] }),
       ...(externalCalls.length === 0 ? {} : { externalCalls }),
       ...(warnings.length === 0 ? {} : { warnings }),
@@ -171,8 +197,10 @@ interface AnsweredPasses {
   reports: PassReport[]
   touched: string[]
   durationMs: number
-  usage?: TokenUsage
+  passUsage: PassUsage[]
   warnings: string[]
+  investigatedPasses: number
+  shortfalls: string[]
 }
 
 async function runPasses(
@@ -187,7 +215,10 @@ async function runPasses(
     reports: [],
     touched: [],
     durationMs: 0,
+    passUsage: [],
     warnings: [],
+    investigatedPasses: 0,
+    shortfalls: [],
   }
   let firstError: unknown
   let ran = 0
@@ -228,25 +259,39 @@ async function runPasses(
       }
       answered.outputs.push(native.answer)
       answered.durationMs += native.answer.output.durationMs
-      answered.usage = sumUsage(answered.usage, native.answer.output.usage)
+      answered.passUsage.push(usageOf('review', native.answer.output.usage, pass.skill))
       answered.warnings.push(...native.warnings)
       answered.reports.push(native.report)
       continue
     }
     const tools = deps.tools?.('review')
+    const counted = tools === undefined ? undefined : countingToolbox(tools)
     try {
       const output = await deps.provider.review(
-        buildReviewPrompt(request, createNonce(), tools, pass),
+        buildReviewPrompt(request, createNonce(), counted?.toolbox, pass),
       )
+      answered.passUsage.push(usageOf('review', output.usage, pass?.skill))
       const report = parseReviewReport(output.text)
       const findings =
         pass === undefined
           ? report.findings
           : report.findings.map((finding) => ({ ...finding, skill: pass.skill }))
       answered.outputs.push({ output, report, findings })
+      answered.warnings.push(...claimWarnings(report, pass?.skill))
+      if (counted !== undefined && output.withoutTools !== true) {
+        answered.investigatedPasses++
+        const shortfall = investigationShortfall(
+          counted.calls(),
+          request.pullRequest.diff,
+          pass?.skill,
+        )
+        if (shortfall !== undefined) {
+          answered.shortfalls.push(shortfall)
+          answered.warnings.push(shortfall)
+        }
+      }
       answered.touched.push(...(tools?.touchedPaths() ?? []))
       answered.durationMs += output.durationMs
-      answered.usage = sumUsage(answered.usage, output.usage)
       if (pass !== undefined) {
         answered.reports.push({
           skill: pass.skill,
@@ -276,7 +321,14 @@ async function runPasses(
   return answered
 }
 
-const EMPTY_REPORT: ParsedReport = { summary: '', files: [], findings: [], invalid: 0 }
+const EMPTY_REPORT: ParsedReport = {
+  summary: '',
+  files: [],
+  findings: [],
+  invalid: 0,
+  claims: [],
+  invalidClaims: 0,
+}
 
 async function runNativePass(
   request: ReviewRequest,
@@ -297,6 +349,7 @@ async function runNativePass(
       buildConvertPrompt(request, createNonce(), pass, skillOutput),
     )
     report = parseReviewReport(converted.text)
+    warnings.push(...claimWarnings(report, pass.skill))
   } catch (error) {
     if (!isAnswerFailure(error)) throw error
     warnings.push(
@@ -391,13 +444,22 @@ function otherModels(
   return others.length === 0 ? undefined : others
 }
 
-function sumUsage(
-  review: TokenUsage | undefined,
-  verification: TokenUsage | undefined,
-): TokenUsage | undefined {
-  if (review === undefined || verification === undefined) return review ?? verification
+function usageOf(
+  pass: PassUsage['pass'],
+  usage: TokenUsage | undefined,
+  skill?: string,
+): PassUsage {
   return {
-    inputTokens: review.inputTokens + verification.inputTokens,
-    outputTokens: review.outputTokens + verification.outputTokens,
+    pass,
+    ...(skill === undefined ? {} : { skill }),
+    ...(usage === undefined ? {} : { usage }),
   }
+}
+
+function floorOf(
+  answered: Pick<AnsweredPasses, 'investigatedPasses' | 'shortfalls'>,
+  expected: number | undefined,
+): { investigationFloor?: InvestigationFloor } {
+  if (answered.investigatedPasses === 0 || expected === undefined) return {}
+  return { investigationFloor: { expected, shortfalls: answered.shortfalls } }
 }

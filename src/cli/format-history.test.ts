@@ -76,9 +76,9 @@ describe('formatHistoryText', () => {
 
     expect(formatHistoryText([RUN, skipped, asked], 3, undefined)).toBe(
       [
-        `${local(STARTED)}  acme/shop#3  a1b2c3d  watch       published  claude/opus · score 4 · 2 findings · https://github.com/acme/shop/pull/3#pullrequestreview-1`,
-        `${local(STARTED)}  acme/shop#3  a1b2c3d  manual      skipped    claude · same-diff`,
-        `${local(STARTED)}  acme/shop#3  a1b2c3d  pr-command  published  claude/opus · score 4 · 2 findings · https://github.com/acme/shop/pull/3#pullrequestreview-1`,
+        `   1  ${local(STARTED)}  acme/shop#3  a1b2c3d  watch       published  claude/opus · score 4 · 2 findings · https://github.com/acme/shop/pull/3#pullrequestreview-1`,
+        `   2  ${local(STARTED)}  acme/shop#3  a1b2c3d  manual      skipped    claude · same-diff`,
+        `   3  ${local(STARTED)}  acme/shop#3  a1b2c3d  pr-command  published  claude/opus · score 4 · 2 findings · https://github.com/acme/shop/pull/3#pullrequestreview-1`,
         '',
       ].join('\n'),
     )

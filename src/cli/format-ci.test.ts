@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Ci, CiReport, CiSummary } from '../context/types.js'
 import type { CiCheck } from '../review/types.js'
 import { formatCiLine, formatCiSection } from './format-ci.js'
+import { ciJson } from './format-json.js'
 
 const NO_CUTS: CiReport = {
   annotations: 0,
@@ -63,17 +64,19 @@ describe('formatCiSection', () => {
       { name: 'build', state: 'passing' },
     ]
     const section = formatCiSection(
-      ci({ state: 'failing', total: 4, failing: ['test', 'lint'], pending: ['e2e'] }, checks, {
-        report: {
-          annotations: 2,
-          omittedAnnotations: 30,
-          logs: 1,
-          omittedLogs: 1,
-          truncated: 2,
-          bytes: 5300,
-        },
-        warnings: ['Job logs were not read: the token lacks actions:read'],
-      }),
+      ciJson(
+        ci({ state: 'failing', total: 4, failing: ['test', 'lint'], pending: ['e2e'] }, checks, {
+          report: {
+            annotations: 2,
+            omittedAnnotations: 30,
+            logs: 1,
+            omittedLogs: 1,
+            truncated: 2,
+            bytes: 5300,
+          },
+          warnings: ['Job logs were not read: the token lacks actions:read'],
+        }),
+      ),
     )
 
     expect(section).toBe(
@@ -98,13 +101,15 @@ describe('formatCiSection', () => {
   it('says when the head has no checks, keeping the warnings, and when CI is off', () => {
     expect(
       formatCiSection(
-        ci({ state: 'none', total: 0, failing: [], pending: [] }, [], {
-          warnings: ['CI check runs were not read: the token lacks checks:read'],
-        }),
+        ciJson(
+          ci({ state: 'none', total: 0, failing: [], pending: [] }, [], {
+            warnings: ['CI check runs were not read: the token lacks checks:read'],
+          }),
+        ),
       ),
     ).toBe(
       '## CI sent to the AI\n\nNo checks.\nWarnings:\n- CI check runs were not read: the token lacks checks:read\n',
     )
-    expect(formatCiSection(undefined)).toBe('## CI sent to the AI\n\nOff.\n')
+    expect(formatCiSection(null)).toBe('## CI sent to the AI\n\nOff.\n')
   })
 })

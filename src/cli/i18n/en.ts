@@ -33,6 +33,9 @@ export const english: Messages = {
   moreFiles: (count) => formatCount(count, 'more file'),
   worthChecking: (minConfidence) => `Worth checking (confidence below ${minConfidence})`,
   moreItems: (count) => `… (+${count} more)`,
+  debt: 'Repository debt',
+  debtNote:
+    'Problems already in the repository that this change does not cause; they do not count toward the score.',
   dropped: (dropped) => {
     const reasons: ReadonlyArray<readonly [number, string]> = [
       [dropped.rejected, `${dropped.rejected} rejected by verification`],
@@ -40,6 +43,7 @@ export const english: Messages = {
       [dropped.duplicate, formatCount(dropped.duplicate, 'duplicate')],
       [dropped.belowFloor, `${dropped.belowFloor} below confidence ${CONFIDENCE_FLOOR}`],
       [dropped.invalid, `${dropped.invalid} invalid`],
+      [dropped.debt ?? 0, `${dropped.debt ?? 0} repository debt`],
     ]
     const shown = reasons.filter(([count]) => count > 0)
     const total = shown.reduce((sum, [count]) => sum + count, 0)
@@ -58,6 +62,8 @@ export const english: Messages = {
     severity: { P0: 'P0 · Must fix', P1: 'P1 · Should fix', P2: 'P2 · Consider' },
     findingCount: (count) => formatCount(count, 'finding'),
     worthCheckingCount: (count) => `${count} worth checking`,
+    closeToCut: 'close to the cut',
+    closeToCutCount: (count) => `${count} close to the cut`,
     tokens: (input, output) => `${input} in / ${output} out`,
   },
   github: {

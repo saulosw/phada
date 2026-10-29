@@ -4,13 +4,16 @@ import type { Messages } from './i18n/messages.js'
 
 const LOCAL_PREFIX = 'local:'
 
+type ReferenceReader = 'author' | 'public'
+
 export function findingReferences(
   finding: Finding,
   messages: Messages,
-  { withLocalFiles = true }: { withLocalFiles?: boolean } = {},
+  reader: ReferenceReader = 'author',
 ): string {
+  const forAuthor = reader === 'author'
   const sources = (finding.sources ?? []).filter(
-    (source) => withLocalFiles || !source.startsWith(LOCAL_PREFIX),
+    (source) => forAuthor || !source.startsWith(LOCAL_PREFIX),
   )
   const references = [
     ...sources.map((source) =>
@@ -19,7 +22,9 @@ export function findingReferences(
         : codeSpan(source),
     ),
     ...(finding.rule === undefined ? [] : [`${messages.rule} ${codeSpan(finding.rule)}`]),
-    ...(finding.skill === undefined ? [] : [`${messages.skill} ${codeSpan(finding.skill)}`]),
+    ...(finding.skill === undefined || !forAuthor
+      ? []
+      : [`${messages.skill} ${codeSpan(finding.skill)}`]),
   ]
   return references.length === 0 ? '' : `${messages.basedOn}: ${references.join(' · ')}`
 }

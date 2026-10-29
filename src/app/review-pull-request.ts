@@ -49,6 +49,7 @@ import { fromOutsideAuthor, hasMcp, mcpOff, openMcp } from './open-mcp.js'
 import type { ConnectMcp, OpenedMcp } from './open-mcp.js'
 import type { NativeRunner, NativeRunnerDeps, NativeRunnerInput } from './native-skill.js'
 import { buildPasses } from './review-passes.js'
+import { stopIfCancelled } from './review-cancelled.js'
 import type { PassPlan, SkillCatalog } from './review-passes.js'
 import type { ReadGitHub } from '../gh-facade/types.js'
 import type { SkippedRepository } from './select-related.js'
@@ -76,10 +77,11 @@ export interface PullRequestReviewInput {
   viewer?: string
   conversation?: Conversation
   ci?: Ci
+  signal?: AbortSignal
 }
 
 export interface PullRequestReviewEvents {
-  contextLoaded(report: ContextReport): void
+  contextLoaded(report: ContextReport, baseSha: string): void
   warning(message: string): void
   indexing(total: number): void
   indexed(done: number, total: number): void
@@ -133,7 +135,7 @@ export async function loadPullRequestContext(
     userLayers: input.userLayers,
     sources: deps.contextSources,
   })
-  deps.events.contextLoaded(loaded.report)
+  deps.events.contextLoaded(loaded.report, input.pullRequest.baseSha)
   return loaded
 }
 
@@ -153,8 +155,11 @@ export async function reviewPullRequest(
   input: PullRequestReviewInput,
   deps: PullRequestReviewDeps,
 ): Promise<PullRequestReview> {
-  const { pullRequest, options } = input
+  const { pullRequest, options, signal } = input
+  const stop = () => stopIfCancelled(signal)
+  stop()
   const loaded = input.loaded ?? (await loadPullRequestContext(input, deps))
+  stop()
   const language = options.language ?? loaded.options.language
   const investigate = options.investigate ?? loaded.options.investigate ?? true
   const keepAs = `refs/phada/pull/${pullRequest.number}`
@@ -167,11 +172,13 @@ export async function reviewPullRequest(
     skills: deps.skills,
     native: deps.runsSkills ?? false,
   })
+  stop()
   for (const warning of planned.warnings) deps.events.warning(warning)
   if (planned.passes !== undefined) deps.events.passesPlanned?.(planned.plan)
 
   let investigation: Investigation | undefined
   let mirror: GitMirror | undefined
+  let headCheckout: Checkout | undefined
   let native: NativeRunner | undefined
   let unavailable: string | undefined
   let head: HeadGraph = {}
@@ -190,17 +197,25 @@ export async function reviewPullRequest(
       let fetched: { mirror: GitMirror; sha: string; checkout: Checkout } | undefined
       try {
         const opened = await deps.openMirror()
-        const sha = await opened.fetch(pullRequest.headSha, keepAs)
+        const sha = await opened.fetch(
+          pullRequest.headSha,
+          keepAs,
+          signal === undefined ? {} : { signal },
+        )
         mirror = opened
-        fetched = { mirror: opened, sha, checkout: opened.checkout(sha, { deepenAs: keepAs }) }
+        headCheckout = opened.checkout(sha, { deepenAs: keepAs })
+        fetched = { mirror: opened, sha, checkout: headCheckout }
       } catch (error) {
+        stopIfCancelled(signal, error)
         if (!(error instanceof CheckoutUnavailableError)) throw error
         unavailable = error.message
         relatedReason = error.message
         deps.events.warning(`${error.message}: reviewing without investigation.`)
       }
+      stop()
       if (fetched !== undefined) {
-        head = await openHeadGraph(pullRequest, loaded, fetched, deps)
+        head = await openHeadGraph(pullRequest, loaded, fetched, deps, signal)
+        stop()
         if (loaded.repos.length > 0 && deps.related !== undefined) {
           try {
             const related = await openRelated(
@@ -214,10 +229,12 @@ export async function reviewPullRequest(
             skipped = related.skipped
             relatedStatus = 'used'
           } catch (error) {
+            stopIfCancelled(signal, error)
             relatedReason = errorMessage(error)
             deps.events.warning(`${relatedReason}: reviewing without related repositories.`)
           }
         }
+        stop()
         const changed = changedLines(loaded.diff)
         let graph: RepositoryGraph | undefined
         if (head.graph !== undefined) {
@@ -227,6 +244,7 @@ export async function reviewPullRequest(
             impact = linked.impact
             kept = linked.kept
           } catch (error) {
+            stopIfCancelled(signal, error)
             const message = errorMessage(error)
             deps.events.warning(graphFailure(message))
             head = { ...head, reason: message }
@@ -256,6 +274,7 @@ export async function reviewPullRequest(
             ...(item.graph === undefined ? {} : { graph: item.graph }),
           })),
         })
+        stop()
       }
     }
     impactReport = buildImpactReport({
@@ -298,6 +317,7 @@ export async function reviewPullRequest(
         ? undefined
         : input.conversation.items
     const ci = input.ci === undefined || input.ci.checks.length === 0 ? undefined : input.ci.checks
+    stop()
     const provider = deps.createProvider(
       investigation !== undefined && !outside && input.mcp.names.length > 0,
     )
@@ -328,17 +348,20 @@ export async function reviewPullRequest(
         },
       )
     }
+    stop()
     const recheck = await recheckEarlier(input, loaded, language, {
       provider: () => watch(provider, 'recheck'),
       tools: () => investigation?.tools('recheck'),
       warning: deps.events.warning,
     })
+    stop()
     const outcome = await runReview(
       {
         pullRequest: { ...pullRequest, diff: loaded.diff },
         language,
         minConfidence: options.minConfidence ?? loaded.options.minConfidence,
         verify: options.verify ?? loaded.options.verify ?? true,
+        ...(loaded.options.debt === undefined ? {} : { debt: loaded.options.debt }),
         context: loaded.context,
         ...(impact === undefined ? {} : { impact }),
         ...(related === undefined ? {} : { related }),
@@ -367,6 +390,7 @@ export async function reviewPullRequest(
       findings: reviewed?.findings ?? [],
       external: reviewed?.externalCalls ?? [],
       ...mcpReports(investigation !== undefined, outside, input.mcp, mcpOpened),
+      ...(reviewed?.investigationFloor === undefined ? {} : { floor: reviewed.investigationFloor }),
     })
     return {
       outcome,
@@ -386,7 +410,8 @@ export async function reviewPullRequest(
     }
   } finally {
     await native?.close()
-    await investigation?.close()
+    if (investigation === undefined) await headCheckout?.close()
+    else await investigation.close()
     for (const item of opened) await item.close()
     head.store?.close()
     head.observed?.close()
@@ -417,6 +442,7 @@ async function recheckEarlier(
       run.tools(),
     )
   } catch (error) {
+    stopIfCancelled(input.signal, error)
     run.warning(`Earlier comments were not rechecked: ${errorMessage(error)}`)
     return undefined
   }
@@ -472,6 +498,7 @@ async function openHeadGraph(
   loaded: LoadedContext,
   opened: { mirror: GitMirror; sha: string; checkout: Checkout },
   deps: PullRequestReviewDeps,
+  signal: AbortSignal | undefined,
 ): Promise<HeadGraph> {
   const { mirror, sha, checkout } = opened
   let store: IndexStore | undefined
@@ -481,7 +508,14 @@ async function openHeadGraph(
     store = await deps.openIndexStore()
     const deadline = deps.now() + REVIEW_INDEX_BUDGET_MS
     const result = await indexForReview(
-      { sha, ref: `refs/phada/pull/${pullRequest.number}`, files, ignore: loaded.ignore, deadline },
+      {
+        sha,
+        ref: `refs/phada/pull/${pullRequest.number}`,
+        files,
+        ignore: loaded.ignore,
+        deadline,
+        ...(signal === undefined ? {} : { signal }),
+      },
       {
         mirror,
         store,
@@ -491,6 +525,7 @@ async function openHeadGraph(
       },
     )
     if (!result.complete) {
+      stopIfCancelled(signal)
       deps.events.warning(
         `Index of ${pullRequest.repo} is not ready (${result.progress}): reviewing without the repository graph. Run phada index ${pullRequest.repo}, or the next review continues it.`,
       )
@@ -522,6 +557,7 @@ async function openHeadGraph(
   } catch (error) {
     store?.close()
     observed?.close()
+    stopIfCancelled(signal, error)
     const message = errorMessage(error)
     deps.events.warning(
       error instanceof IndexStoreError || error instanceof CheckoutUnavailableError

@@ -52,7 +52,15 @@ export function formatInvestigationSection(report: InvestigationReport): string 
     ),
     ...(report.mcp ?? []).map(serverLine),
   ]
-  return `${heading}${lines.length === 0 ? 'No tool calls.' : lines.join('\n')}\n`
+  return `${heading}${lines.length === 0 ? 'No tool calls.' : lines.join('\n')}\n${floorText(report)}`
+}
+
+function floorText({ floor }: InvestigationReport): string {
+  if (floor === undefined) return ''
+  const shortfalls = floor.shortfalls.map((text) => `Warning: ${toTerminalText(text)}`)
+  return ['', `Expected at least ${floor.expected} calls per review pass.`, ...shortfalls, ''].join(
+    '\n',
+  )
 }
 
 function callLine({

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { uiMessagesFor } from './i18n/messages.js'
-import { absoluteTime, relativeTime } from './relative-time.js'
+import { absoluteTime, clockTime, relativeTime } from './relative-time.js'
 
 const NOW = new Date('2026-10-25T12:00:00.000Z')
 const at = (seconds: number) => new Date(NOW.getTime() + seconds * 1000).toISOString()
@@ -44,5 +44,11 @@ describe('relativeTime', () => {
 describe('absoluteTime', () => {
   it('shows the local date and time to the minute', () => {
     expect(absoluteTime(new Date(2026, 9, 5, 9, 7, 30).toISOString())).toBe('2026-10-05 09:07')
+  })
+})
+
+describe('clockTime', () => {
+  it('shows the local hours, minutes and seconds', () => {
+    expect(clockTime(new Date(2026, 9, 5, 9, 7, 3).getTime())).toBe('09:07:03')
   })
 })

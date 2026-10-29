@@ -226,6 +226,7 @@ const APP: Boundary = {
   dir: 'app',
   values: new Set([
     'node:path',
+    'zod',
     '../gh-facade/gh-server.js',
     '../process/work-dirs.js',
     '../repository/work-tree.js',
@@ -235,6 +236,7 @@ const APP: Boundary = {
     '../config/errors.js',
     '../context/load-context.js',
     '../context/list-context.js',
+    '../context/phada-paths.js',
     '../context/split-diff.js',
     '../skills/errors.js',
     '../config/merge-config.js',
@@ -325,6 +327,7 @@ const APP: Boundary = {
     '../repository/checkout.js',
     '../repository/git-checkout.js',
     '../repository/git-mirror.js',
+    '../review/token-usage.js',
     '../review/types.js',
     '../store/index-store.js',
     '../store/history-store.js',

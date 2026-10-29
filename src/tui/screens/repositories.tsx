@@ -17,17 +17,19 @@ import {
   useScreenInput,
   useScreenKeys,
   useScreenSize,
+  useStartReview,
   useTheme,
 } from '../app-context.js'
 import { configChangeLines, useConfigChange } from '../config-change.js'
 import { usePolled } from '../data-hooks.js'
 import { DataView, failedText } from '../data-view.js'
-import { failedNodes } from '../frame-lines.js'
+import { failedNodes, spaced } from '../frame-lines.js'
 import { useHandOff } from '../hand-off.js'
 import type { HandOffOutcome } from '../hand-off.js'
 import type { UiMessages } from '../i18n/messages.js'
 import { labeledLines } from '../labeled-lines.js'
 import { absoluteTime, relativeTime } from '../relative-time.js'
+import { useRepositoryIndexing } from '../repository-indexing.js'
 import { RepositoryPicker } from '../repository-picker.js'
 import { verdictColor, verdictLabel } from '../run-text.js'
 import { ScrollList, ScrollText, useSelection } from '../scroll-list.js'
@@ -37,10 +39,10 @@ import { textWidth } from '../tab-layout.js'
 import type { Theme } from '../theme.js'
 import { fit, oneLine, shortenHome, wrapText } from '../text-fit.js'
 import { bytesText } from '../units.js'
+import { shortSha } from '../refs.js'
 
 const GAP = '  '
 const MIN_NAME_WIDTH = 16
-const SHORT_SHA = 7
 
 const repoKey = ({ repo }: ListedRepository) => repo
 
@@ -70,6 +72,7 @@ function RepositoryBrowser({ onAdd }: { onAdd(): void }) {
   const handOff = useHandOff()
   const [edited, setEdited] = useState<HandOffOutcome>()
   const change = useConfigChange(readAgain)
+  const indexing = useRepositoryIndexing(readAgain)
   const list = state.status === 'ready' ? state.value : undefined
   const repositories = list?.repositories ?? []
   const listing = open === undefined && list !== undefined
@@ -81,6 +84,7 @@ function RepositoryBrowser({ onAdd }: { onAdd(): void }) {
   const configEditable = listing && list.configError === null
   const watched = item?.origins.includes('watched') ?? false
   const publishes = item?.publish === 'pr'
+  const indexTarget = open === undefined ? item : repositories.find((entry) => entry.repo === open)
 
   const editFile = async (repo: string, file: UserRepoFile) => {
     setEdited(undefined)
@@ -95,8 +99,23 @@ function RepositoryBrowser({ onAdd }: { onAdd(): void }) {
     setEdited(outcome)
   }
 
-  useBack(change.open ? change.cancel : open === undefined ? undefined : () => setOpen(undefined))
+  useBack(
+    indexing.busy
+      ? indexing.stop
+      : change.open
+        ? change.cancel
+        : open === undefined
+          ? undefined
+          : () => setOpen(undefined),
+  )
+  const startReview = useStartReview()
   useScreenInput((input) => {
+    if (input === 'i' && indexTarget !== undefined && !change.open && !handOff.running) {
+      return indexing.start([indexTarget.repo])
+    }
+    if (input === 'v' && indexTarget !== undefined && !change.open && !handOff.running) {
+      return startReview(indexTarget.repo)
+    }
     if (!listing || change.open || handOff.running) return
     if (configEditable && input === 'a') return onAdd()
     if (item === undefined) return
@@ -110,11 +129,24 @@ function RepositoryBrowser({ onAdd }: { onAdd(): void }) {
     if (input === 'R') void editFile(item.repo, 'rules.md')
   })
   const e = messages.repositories.edit
+  const indexKeys = indexing.busy
+    ? indexing.keys
+    : indexTarget === undefined
+      ? []
+      : [
+          {
+            keys: 'i',
+            label:
+              indexTarget.index.file === null ? messages.indexing.index : messages.indexing.again,
+          },
+        ]
   useScreenKeys(
     open !== undefined
       ? [
           { keys: '↑/↓', label: messages.list.scroll },
-          { keys: 'Esc', label: messages.keys.back },
+          { keys: 'v', label: e.review },
+          ...indexKeys,
+          ...(indexing.busy ? [] : [{ keys: 'Esc', label: messages.keys.back }]),
         ]
       : change.open
         ? change.keys
@@ -125,6 +157,7 @@ function RepositoryBrowser({ onAdd }: { onAdd(): void }) {
                   { keys: '↑/↓', label: messages.keys.select },
                   { keys: 'Enter', label: messages.keys.open },
                 ]),
+            ...(indexing.busy ? indexKeys : []),
             ...(configEditable && item !== undefined
               ? [{ keys: 'w', label: watched ? e.unwatch : e.watch }]
               : []),
@@ -137,12 +170,18 @@ function RepositoryBrowser({ onAdd }: { onAdd(): void }) {
               : [
                   { keys: 'e', label: e.config },
                   { keys: 'R', label: e.rules },
+                  { keys: 'v', label: e.review },
                 ]),
+            ...(indexing.busy ? [] : indexKeys),
           ],
   )
-  if (open !== undefined) return <RepositoryDetailView repo={open} />
+  const indexLines = indexing.lines(size.columns)
+  if (open !== undefined) {
+    return <RepositoryDetailView repo={open} tail={spaced(indexLines)} />
+  }
   const draw = { messages, theme, home, width: size.columns }
   const tail = [
+    ...indexLines,
     ...(edited === undefined ? [] : editorOutcomeLines(edited, messages, theme)),
     ...configChangeLines(change.state, draw),
   ]
@@ -335,13 +374,25 @@ function EmptyRepositories({ list }: { list: RepositoryList }) {
   )
 }
 
-function RepositoryDetailView({ repo }: { repo: string }) {
+function RepositoryDetailView({ repo, tail }: { repo: string; tail: readonly ReactNode[] }) {
   const { readRepository } = useAppDeps()
+  const size = useScreenSize()
   const state = usePolled(() => readRepository(repo), undefined, repo)
-  return <DataView state={state}>{(detail) => <RepositoryDetailLines detail={detail} />}</DataView>
+  return (
+    <Box flexDirection="column" width={size.columns}>
+      <DataView state={state}>
+        {(detail) => <RepositoryDetailLines detail={detail} rows={size.rows - tail.length} />}
+      </DataView>
+      {tail.map((node, position) => (
+        <Text key={`tail-${position}`} wrap="truncate-end">
+          {node}
+        </Text>
+      ))}
+    </Box>
+  )
 }
 
-function RepositoryDetailLines({ detail }: { detail: RepositoryDetail }) {
+function RepositoryDetailLines({ detail, rows }: { detail: RepositoryDetail; rows: number }) {
   const messages = useMessages()
   const theme = useTheme()
   const { colors } = theme
@@ -407,7 +458,7 @@ function RepositoryDetailLines({ detail }: { detail: RepositoryDetail }) {
         : reviewLines(detail.reviews.runs, time, messages, theme),
     ),
   ]
-  return <ScrollText lines={lines} rows={size.rows} />
+  return <ScrollText lines={lines} rows={Math.max(rows, 1)} />
 }
 
 function watchLines(
@@ -467,7 +518,7 @@ function indexLines(
     index.indexedSha === null
       ? undefined
       : [
-          index.indexedSha.slice(0, SHORT_SHA),
+          shortSha(index.indexedSha),
           ...(index.checkedAt === null
             ? []
             : [

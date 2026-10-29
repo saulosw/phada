@@ -5,7 +5,7 @@ import { cleanup } from 'ink-testing-library'
 import { useState } from 'react'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { KEYS, renderApp, waitFor } from '../../test/support/tui.js'
-import { useBack, useScreenInput, useScreenKeys, useWorking } from './app-context.js'
+import { useBack, useQuitGuard, useScreenInput, useScreenKeys, useWorking } from './app-context.js'
 import type { AppDeps } from './app-context.js'
 import { SCREENS } from './screens.js'
 import type { ScreenDefinition } from './screens.js'
@@ -47,11 +47,14 @@ afterEach(() => cleanup())
 
 describe('the tabs', () => {
   it.each([
-    ['en', 'Home  Repositories  Rules  Reviews  Queue  Automation  Provider  Learnings'],
-    ['pt', 'Início  Repositórios  Regras  Reviews  Fila  Automações  Provider  Aprendizados'],
+    ['en', 'Home  Repositories  Rules  Reviews  Queue  Automation  Provider  Graph  Learnings'],
+    [
+      'pt',
+      'Início  Repositórios  Regras  Reviews  Fila  Automações  Provider  Grafo  Aprendizados',
+    ],
     [
       'es',
-      'Inicio  Repositorios  Reglas  Revisiones  Cola  Automatización  Proveedor  Aprendizajes',
+      'Inicio  Repositorios  Reglas  Revisiones  Cola  Automatización  Proveedor  Grafo  Aprendizajes',
     ],
   ])('show the full names when they fit (%s)', async (language, tabs) => {
     const { frame, until } = openApp({ language, size: { columns: 160, rows: 30 } })
@@ -60,9 +63,9 @@ describe('the tabs', () => {
   })
 
   it.each([
-    ['en', 'Home  Repositories  Rules  Reviews  Queue  Automation  Provider  Learnings'],
-    ['pt', 'Início  Repos  Regras  Reviews  Fila  Auto  IA  Aprend.'],
-    ['es', 'Inicio  Repos  Reglas  Revis.  Cola  Auto  IA  Aprend.'],
+    ['en', 'Home  Repos  Rules  Reviews  Queue  Auto  AI  Graph  Learn'],
+    ['pt', 'Início  Repos  Regras  Reviews  Fila  Auto  IA  Grafo  Aprend.'],
+    ['es', 'Inicio  Repos  Reglas  Revis.  Cola  Auto  IA  Grafo  Aprend.'],
   ])('fit 80 columns (%s)', async (language, tabs) => {
     const { frame, until } = openApp({ language, size: { columns: 80, rows: 24 } })
     await until(() => lines(frame())[0]?.trim() === tabs)
@@ -75,21 +78,21 @@ describe('the tabs', () => {
   it.each([
     [
       'en',
-      '[Home] Repositories  Rules  Reviews  Queue  Automation  Provider  Learnings',
+      '[Home] Repos  Rules  Reviews  Queue  Auto  AI  Graph  Learn',
       '3',
-      'Home  Repositories [Rules] Reviews  Queue  Automation  Provider  Learnings',
+      'Home  Repos [Rules] Reviews  Queue  Auto  AI  Graph  Learn',
     ],
     [
       'pt',
-      '[Início] Repos  Regras  Reviews  Fila  Auto  IA  Aprend.',
+      '[Início] Repos  Regras  Reviews  Fila  Auto  IA  Grafo  Aprend.',
       '8',
-      'Início  Repos  Regras  Reviews  Fila  Auto  IA [Aprend.]',
+      'Início  Repos  Regras  Reviews  Fila  Auto  IA [Grafo] Aprend.',
     ],
     [
       'es',
-      '[Inicio] Repos  Reglas  Revis.  Cola  Auto  IA  Aprend.',
+      '[Inicio] Repos  Reglas  Revis.  Cola  Auto  IA  Grafo  Aprend.',
       '4',
-      'Inicio  Repos  Reglas [Revis.] Cola  Auto  IA  Aprend.',
+      'Inicio  Repos  Reglas [Revis.] Cola  Auto  IA  Grafo  Aprend.',
     ],
   ])(
     'mark the active tab with brackets when the terminal has no colors or styles (%s)',
@@ -175,9 +178,11 @@ describe('navigation', () => {
     await press(KEYS.shiftTab)
     await showing('showing repositories')
     expect(frame()).toContain('showing repositories')
-    await press('9', KEYS.right)
-    await showing('showing rules')
-    expect(frame()).toContain('showing rules')
+    await press('9')
+    await showing('showing learnings')
+    await press(KEYS.right)
+    await showing('showing home')
+    expect(frame()).toContain('showing home')
   })
 
   it('draws the screens it is given instead of its own', async () => {
@@ -374,7 +379,7 @@ describe('/language', () => {
     expect(lines(frame())[0]).toContain('Language')
     expect(footer()).toContain('Esc back')
     await press(KEYS.down, KEYS.enter)
-    await showing('Save ~/.config/phada/config.yml?')
+    await showing('Save to ~/.config/phada/config.yml?')
     expect(frame()).toMatch(/language +\(not set\) → pt/)
     await press(KEYS.enter)
     await showing('Nenhuma config ainda.')
@@ -449,6 +454,111 @@ describe('Esc and q', () => {
     await press(KEYS.ctrlC)
     await waitFor(() => exits.length > 0)
     expect(exits).toEqual([{ kind: 'interrupted' }])
+  })
+})
+
+describe('quitting while something runs', () => {
+  function guardedScreen() {
+    const calls: string[] = []
+    let finishStop = () => {}
+    const screen: ScreenDefinition = {
+      id: 'home',
+      title: (messages) => messages.screens.home,
+      Screen: () => {
+        useQuitGuard({
+          question: 'A job is running: stop it and quit?',
+          stop: () => {
+            calls.push('stop')
+            return new Promise<void>((resolve) => {
+              finishStop = resolve
+            })
+          },
+          abort: () => calls.push('abort'),
+        })
+        return <Text>working</Text>
+      },
+    }
+    return { screen, calls, finishStop: () => finishStop() }
+  }
+
+  it.each([
+    ['q', 'q', { kind: 'quit' }],
+    ['Esc at the top', KEYS.escape, { kind: 'quit' }],
+    ['Ctrl-C', KEYS.ctrlC, { kind: 'interrupted' }],
+  ] as const)(
+    'asks on %s, stays on Esc, and quits once Enter stopped it',
+    async (_key, key, exit) => {
+      const guarded = guardedScreen()
+      const { frame, footer, press, showing, until, exits } = openApp({ screens: [guarded.screen] })
+      await showing('working')
+      await press(key)
+      await showing('A job is running: stop it and quit?')
+      expect(footer()).toContain('Enter quit')
+      expect(footer()).toContain('Esc stay')
+      expect(exits).toEqual([])
+      await press(KEYS.escape)
+      await showing('working')
+      expect(frame()).not.toContain('stop it and quit?')
+      expect(exits).toEqual([])
+      await press(key)
+      await showing('stop it and quit?')
+      await press(KEYS.enter)
+      await showing('Stopping…')
+      expect(guarded.calls).toEqual(['stop'])
+      expect(exits).toEqual([])
+      guarded.finishStop()
+      await until(() => exits.length > 0)
+      expect(exits).toEqual([exit])
+      expect(guarded.calls).toEqual(['stop'])
+    },
+  )
+
+  it('aborts and stops at once on a second Ctrl-C, asking or stopping', async () => {
+    const asking = guardedScreen()
+    const first = openApp({ screens: [asking.screen] })
+    await first.showing('working')
+    await first.press(KEYS.ctrlC)
+    await first.showing('stop it and quit?')
+    await first.press(KEYS.ctrlC)
+    await first.until(() => first.exits.length > 0)
+    expect(first.exits).toEqual([{ kind: 'interrupted' }])
+    expect(asking.calls).toEqual(['abort'])
+    cleanup()
+
+    const stopping = guardedScreen()
+    const second = openApp({ screens: [stopping.screen] })
+    await second.showing('working')
+    await second.press('q', KEYS.enter)
+    await second.showing('Stopping…')
+    expect(second.footer()).toContain('Ctrl-C quit now')
+    await second.press(KEYS.ctrlC)
+    await second.until(() => second.exits.length > 0)
+    expect(second.exits).toEqual([{ kind: 'interrupted' }])
+    expect(stopping.calls).toEqual(['stop', 'abort'])
+  })
+
+  it('quits at once when nothing runs', async () => {
+    const { press, showing, exits } = openApp()
+    await showing('Phada v1.2.3')
+    await press(KEYS.ctrlC)
+    await waitFor(() => exits.length > 0)
+    expect(exits).toEqual([{ kind: 'interrupted' }])
+  })
+
+  it.each([
+    ['pt', 'Enter sair', 'Esc ficar'],
+    ['es', 'Enter salir', 'Esc quedarse'],
+  ])('is translated (%s)', async (language, quit, stay) => {
+    const guarded = guardedScreen()
+    const { footer, press, showing } = renderApp({
+      deps: { language },
+      screens: [guarded.screen],
+    })
+    await showing('working')
+    await press('q')
+    await showing('stop it and quit?')
+    expect(footer()).toContain(quit)
+    expect(footer()).toContain(stay)
   })
 })
 

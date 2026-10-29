@@ -11,7 +11,14 @@ import type { CheckAnnotation, CheckRun } from '../github/check-runs.js'
 import type { CommitStatus } from '../github/commit-statuses.js'
 import { JobLogUnavailableError } from '../github/job-log.js'
 import type { JobLog } from '../github/job-log.js'
-import type { PublicationResult, RenderedReview, ReviewRun } from '../app/review-and-publish.js'
+import type {
+  PublicationResult,
+  RenderedReview,
+  ReviewAndPublishEvents,
+  ReviewRun,
+} from '../app/review-and-publish.js'
+import { reportProgress } from '../app/review-progress.js'
+import type { ReviewProgressSink } from '../app/review-progress.js'
 import { repositoryCache } from '../config/cache-paths.js'
 import {
   GitHubPermissionError,
@@ -27,7 +34,6 @@ import type { HistoryStore } from '../store/history-store.js'
 import type { PullRequestRef } from '../github/pull-request-ref.js'
 import type { PullRequest } from '../github/pull-request.js'
 import { RepositoryAccessError } from '../github/repository.js'
-import type { ReviewPass } from '../investigation/tools/tool-log.js'
 import type { LocalFileSystem } from '../config/local-files.js'
 import type { RepositoryInfo } from '../github/repository.js'
 import type { RepositoryFilesOptions } from '../github/repository-files.js'
@@ -37,7 +43,6 @@ import type { GitMirror, GitMirrorOptions } from '../repository/git-mirror.js'
 import type { IndexStore } from '../store/index-store.js'
 import type { ObservedStore } from '../store/observed-store.js'
 import type { ContextReaders } from './context-sources.js'
-import type { TextOutput } from './progress.js'
 import type { ProviderOptions } from './provider-choice.js'
 import type { SkipReason } from '../publish/types.js'
 import type { CiSummary } from '../context/types.js'
@@ -50,27 +55,20 @@ import {
   formatIgnoredOnlyReview,
   formatResolvedReply,
 } from './format-github.js'
-import { formatContextLine } from './format-context.js'
-import { formatImpactLine } from './format-impact.js'
 import { formatAlreadyReviewedJson, formatReviewJson } from './format-json.js'
 import type { Publication } from './format-json.js'
-import { formatPassesLine } from './format-passes.js'
-import { formatRelatedLine } from './format-related.js'
 import { messagesFor } from './i18n/messages.js'
-import { indexProgress, withProgress } from './progress.js'
 import { providerRunsSkills } from './provider-choice.js'
 import { readDirResolver } from './read-dirs.js'
 import { diskSkillCatalog } from './skill-catalog.js'
 import { repositoryReader } from '../github/read-repository.js'
 import type { RepositoryReaderOptions } from '../github/read-repository.js'
 import type { ReadGitHub } from '../gh-facade/types.js'
-import { toTerminalText } from '../app/terminal-text.js'
 
 export interface ReviewWiringDeps extends ContextReaders, CiReaderDeps {
   env: NodeJS.ProcessEnv
   version: string
   files: LocalFileSystem
-  stderr: TextOutput
   fetchRepository: (options: RepositoryFilesOptions) => Promise<RepositoryInfo>
   openMirror: (options: GitMirrorOptions) => Promise<GitMirror>
   openIndexStore: (path: string, version: string) => Promise<IndexStore>
@@ -108,12 +106,6 @@ export function ciReaders(deps: CiReaderDeps, { owner, repo, token }: PublishTar
   }
 }
 export type Choice = { provider: string; model?: string; mcpNames?: CheckedNames }
-
-const PROGRESS_LABELS: Readonly<Record<ReviewPass, string>> = {
-  review: 'Reviewing',
-  verify: 'Verifying findings',
-  recheck: 'Rechecking open comments',
-}
 
 export interface FeedbackWiringDeps {
   fetchReviewState: (options: FetchReviewStateOptions) => Promise<PullRequestReviewState>
@@ -161,11 +153,13 @@ export function pullRequestReviewDeps(
   repository: PublishTarget,
   choice: Choice & { detached?: boolean },
   pullRequest: PullRequest,
+  progress: ReviewProgressSink,
 ): PullRequestReviewDeps {
   const { owner, repo, token } = repository
   const cache = repositoryCache(deps.env, deps.home, owner, repo)
-  const progress = indexProgress(deps.stderr)
-  const warn = (message: string) => deps.stderr.write(`Warning: ${toTerminalText(message)}\n`)
+  const warning = (message: string) => progress({ kind: 'warning', message })
+  const indexing = (total: number) => progress({ kind: 'indexing', total })
+  const indexed = (done: number, total: number) => progress({ kind: 'indexed', done, total })
   return {
     contextSources: contextSourcesAt(deps, repository, pullRequest.baseSha),
     openMirror: () => deps.openMirror({ dir: cache.mirror, owner, repo, token, env: deps.env }),
@@ -185,7 +179,7 @@ export function pullRequestReviewDeps(
         clientVersion: deps.version,
         ...(choice.detached === true ? { detached: true, trackChild: trackDetachedChild } : {}),
       }),
-    watchProvider: (provider, pass) => withProgress(provider, deps.stderr, PROGRESS_LABELS[pass]),
+    watchProvider: (provider, pass) => reportProgress(provider, pass, progress),
     skills: diskSkillCatalog(deps.files, deps.env, deps.home),
     runsSkills: (deps.runsSkills ?? providerRunsSkills)(choice.provider),
     readGitHub: (deps.repositoryReader ?? repositoryReader)({ repo: `${owner}/${repo}`, token }),
@@ -208,30 +202,34 @@ export function pullRequestReviewDeps(
       },
       extractor: deps.createExtractor(),
       now: () => performance.now(),
-      events: { warning: warn, indexing: progress.extracting, indexed: progress.extracted },
+      events: { warning, indexing, indexed },
     },
     events: {
-      contextLoaded: (report) => {
-        for (const warning of report.warnings) warn(warning)
-        deps.stderr.write(`${formatContextLine(report)}\n`)
-      },
-      warning: warn,
-      indexing: progress.extracting,
-      indexed: progress.extracted,
-      impactReady: (report) => {
-        const line = formatImpactLine(report)
-        if (line !== undefined) deps.stderr.write(`${line}\n`)
-      },
-      relatedReady: (report) => {
-        const line = formatRelatedLine(report)
-        if (line !== undefined) deps.stderr.write(`${line}\n`)
-      },
-      passesPlanned: (plan) => deps.stderr.write(`${formatPassesLine(plan)}\n`),
-      passStarted: (skill, index, total) => {
-        if (total > 1)
-          deps.stderr.write(`${toTerminalText(`Skill ${index + 1}/${total}: ${skill}`)}\n`)
-      },
+      contextLoaded: (report, baseSha) => progress({ kind: 'contextLoaded', report, baseSha }),
+      warning,
+      indexing,
+      indexed,
+      impactReady: (report) => progress({ kind: 'impactReady', report }),
+      relatedReady: (report) => progress({ kind: 'relatedReady', report }),
+      passesPlanned: (plan) => progress({ kind: 'passesPlanned', plan }),
+      passStarted: (skill, index, total) => progress({ kind: 'passStarted', skill, index, total }),
     },
+  }
+}
+
+export function reviewAndPublishEvents(
+  progress: ReviewProgressSink,
+  reviewed: ReviewAndPublishEvents['reviewed'],
+): ReviewAndPublishEvents {
+  return {
+    fetched: (pullRequest) => progress({ kind: 'fetched', pullRequest }),
+    reviewed,
+    publishing: () => progress({ kind: 'publishing' }),
+    warning: (message) => progress({ kind: 'warning', message }),
+    conversationRead: (conversation) => progress({ kind: 'conversationRead', conversation }),
+    ciRead: (ci) => progress({ kind: 'ciRead', ci }),
+    ciWaiting: (wait) => progress({ kind: 'ciWaiting', wait }),
+    ciWaited: (wait) => progress({ kind: 'ciWaited', wait }),
   }
 }
 
@@ -244,6 +242,7 @@ export function reviewRunJson(
   const { reviewed } = run
   const context = reviewed.context.report
   const blocks = {
+    ...(reviewed.language === undefined ? {} : { language: reviewed.language }),
     ...(reviewed.conversation === undefined ? {} : { conversation: reviewed.conversation }),
     ...(reviewed.ci === undefined ? {} : { ci: reviewed.ci }),
   }
@@ -267,7 +266,7 @@ export function reviewRunJson(
     )
   }
   const { plan, rendered } = run
-  const { investigation, impact, related } = reviewed
+  const { investigation, impact, related, impactText } = reviewed
   return formatReviewJson(
     pullRequest,
     reviewed.outcome,
@@ -287,7 +286,7 @@ export function reviewRunJson(
     related,
     reviewed.recheck ?? null,
     fixFor,
-    blocks,
+    { ...blocks, ...(impactText === undefined ? {} : { impactText }) },
   )
 }
 
@@ -310,6 +309,7 @@ function toPublication(
         url: publication.url,
         ...counts,
         resolved: publication.resolved,
+        review: rendered,
       }
     case 'dry-run':
       return {
@@ -321,7 +321,7 @@ function toPublication(
         wouldResolve: publication.wouldResolve,
       }
     case 'failed':
-      return { status: 'failed', error: errorSummary(publication.error) }
+      return { status: 'failed', error: errorSummary(publication.error), review: rendered }
     default:
       return publication
   }

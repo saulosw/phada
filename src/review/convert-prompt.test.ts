@@ -43,6 +43,15 @@ describe('buildConvertPrompt', () => {
     )
   })
 
+  it('takes the verdict of each claim of the description from the output alone', () => {
+    expect(prompt.instructions).toContain('"claims": [{"claim": "...", "verdict": "unverified"')
+    expect(prompt.instructions).toContain(
+      '- claims: each concrete, checkable thing the title or description of the pull',
+    )
+    expect(prompt.instructions).toContain('The verdict comes from the output alone')
+    expect(prompt.instructions).toContain('"not checked by the guide"')
+  })
+
   it('asks for the review language', () => {
     const translated = buildConvertPrompt(
       { pullRequest: pullRequestFixture(), language: 'pt-BR' },
@@ -55,7 +64,7 @@ describe('buildConvertPrompt', () => {
 
   it('keeps its fixed text', () => {
     expect(createHash('sha256').update(prompt.instructions).digest('hex')).toBe(
-      '88a45a387b3dd52a3e7d1160332427280e3c0a72f2eef1dad7a0799da888e91b',
+      'aabc4f4c89f0a6794681d830f75f24cb299c8248d8d700e32c52a3d1062e9c71',
     )
   })
 })

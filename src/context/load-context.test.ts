@@ -268,6 +268,15 @@ describe('loadContext', () => {
     })
   })
 
+  it('takes what to do with the repository debt from the config', async () => {
+    const sources = fakeSources({ '.phada/config.yml': 'review:\n  debt: comments' })
+
+    const loaded = await loadContext({ diff: DIFF, baseSha: SHA, userLayers: [], sources })
+
+    expect(loaded.options.debt).toBe('comments')
+    expect(loaded.options.review).toBeUndefined()
+  })
+
   it('passes the related repositories and privateOnPublic on', async () => {
     const sources = fakeSources({ '.phada/config.yml': 'context:\n  repos: [acme/web]' })
     const userLayers = [userLayer({ context: { repos: ['acme/sdk'], privateOnPublic: true } })]
@@ -626,6 +635,141 @@ describe('loadContext', () => {
         reason: 'out-of-scope',
       })
     })
+  })
+})
+
+describe('loadContext with .claude/rules', () => {
+  const big = (letter: string) => `${letter.repeat(19_000)}\n`
+  const sql =
+    '---\npaths:\n  - "src/api/**"\n  - "db/**/*.sql"\n---\n\nUse parameterized queries.\n'
+  const branches = '---\npaths: docs/**\n---\nName branches feat/…\n'
+
+  it('sends the .claude/rules whose paths match a changed file as rules, whatever the docs fill', async () => {
+    const sources = fakeSources({
+      'AGENTS.md': big('a'),
+      'CLAUDE.md': big('c'),
+      'CONTRIBUTING.md': big('g'),
+      'docs/guide.md': big('d'),
+      '.claude/rules/a-branch-naming.md': branches,
+      '.claude/rules/z-sql.md': sql,
+    })
+
+    const loaded = await loadContext({ diff: DIFF, baseSha: SHA, userLayers: [], sources })
+
+    expect(loaded.context.rules).toEqual([
+      {
+        key: '.claude/rules/z-sql.md',
+        text: 'Use parameterized queries.',
+        scope: ['src/api/**', 'db/**/*.sql'],
+        origin: '.claude/rules/z-sql.md',
+      },
+    ])
+    expect(loaded.report.rules).toEqual([
+      {
+        key: '.claude/rules/a-branch-naming.md',
+        origin: '.claude/rules/a-branch-naming.md',
+        scope: ['docs/**'],
+        status: 'out-of-scope',
+      },
+      {
+        key: '.claude/rules/z-sql.md',
+        origin: '.claude/rules/z-sql.md',
+        scope: ['src/api/**', 'db/**/*.sql'],
+        status: 'applied',
+      },
+    ])
+    expect(loaded.report.docs.map((doc) => doc.path)).not.toContain('.claude/rules/z-sql.md')
+    expect(loaded.report.docs.map((doc) => doc.path)).not.toContain(
+      '.claude/rules/a-branch-naming.md',
+    )
+    expect(loaded.report.docs.map(({ path, status }) => [path, status])).toEqual([
+      ['AGENTS.md', 'included'],
+      ['CLAUDE.md', 'included'],
+      ['CONTRIBUTING.md', 'included'],
+      ['docs/guide.md', 'omitted'],
+    ])
+  })
+
+  it('applies a rule without paths to every file and reads paths as one glob or a list', async () => {
+    const sources = fakeSources({
+      '.claude/rules/always.md': '# Commits\n\nWrite commits in English.\n',
+      '.claude/rules/api.md': '---\npaths: "src/{api,web}/**/*.ts"\n---\nReturn typed errors.\n',
+      '.claude/rules/nested/web.md': '---\npaths: [src/web/**]\n---\nUse hooks.\n',
+      '.claude/rules/empty.md': '---\npaths: src/**\n---\n<!-- nothing yet -->\n',
+    })
+
+    const loaded = await loadContext({ diff: DIFF, baseSha: SHA, userLayers: [], sources })
+
+    expect(loaded.report.rules.map(({ key, scope, status }) => [key, scope, status])).toEqual([
+      ['.claude/rules/always.md', ['**'], 'applied'],
+      ['.claude/rules/api.md', ['src/{api,web}/**/*.ts'], 'applied'],
+      ['.claude/rules/nested/web.md', ['src/web/**'], 'out-of-scope'],
+    ])
+    expect(loaded.context.rules[0]?.text).toBe('# Commits\n\nWrite commits in English.')
+  })
+
+  it('reads paths that start at the root with / or ./ as relative to the repository', async () => {
+    const sources = fakeSources({
+      '.claude/rules/rooted.md': '---\npaths: /src/{api,web}/**/*.ts\n---\nReturn typed errors.\n',
+      '.claude/rules/dotted.md': '---\npaths: ./src/{api,web}/**/*.ts\n---\nLog with context.\n',
+    })
+
+    const loaded = await loadContext({ diff: DIFF, baseSha: SHA, userLayers: [], sources })
+
+    expect(loaded.report.rules.map(({ key, scope, status }) => [key, scope, status])).toEqual([
+      ['.claude/rules/dotted.md', ['src/{api,web}/**/*.ts'], 'applied'],
+      ['.claude/rules/rooted.md', ['src/{api,web}/**/*.ts'], 'applied'],
+    ])
+  })
+
+  it('applies a rule whose front matter cannot be read to every file, with a warning', async () => {
+    const sources = fakeSources({ '.claude/rules/broken.md': '---\npaths: lib/**\nNo end.\n' })
+
+    const loaded = await loadContext({ diff: DIFF, baseSha: SHA, userLayers: [], sources })
+
+    expect(loaded.report.rules).toEqual([
+      expect.objectContaining({ key: '.claude/rules/broken.md', scope: ['**'], status: 'applied' }),
+    ])
+    expect(loaded.report.warnings).toContain(
+      '.claude/rules/broken.md: could not read its front matter; applied to every file.',
+    )
+  })
+
+  it('matches paths against the changed files left after ignore', async () => {
+    const sources = fakeSources({ '.claude/rules/deps.md': '---\npaths: "**/*.json"\n---\nPin.\n' })
+
+    const loaded = await loadContext({ diff: DIFF, baseSha: SHA, userLayers: [], sources })
+
+    expect(loaded.report.rules[0]).toMatchObject({ status: 'out-of-scope' })
+  })
+
+  it('turns a .claude rule off by its path and reads none without the default context', async () => {
+    const files = { '.claude/rules/sql.md': '---\npaths: src/**\n---\nUse the ORM.\n' }
+    const disabled = await loadContext({
+      diff: DIFF,
+      baseSha: SHA,
+      userLayers: [userLayer({ disabledRules: ['.claude/rules/sql.md'] })],
+      sources: fakeSources(files),
+    })
+    const noDefaults = await loadContext({
+      diff: DIFF,
+      baseSha: SHA,
+      userLayers: [userLayer({ context: { defaults: false } })],
+      sources: fakeSources(files),
+    })
+
+    expect(disabled.report.rules[0]).toMatchObject({ status: 'disabled' })
+    expect(disabled.context.rules).toEqual([])
+    expect(noDefaults.report.rules).toEqual([])
+  })
+
+  it('cuts a rule over 20 KB and warns', async () => {
+    const sources = fakeSources({ '.claude/rules/long.md': `${'x\n'.repeat(15_000)}` })
+
+    const loaded = await loadContext({ diff: DIFF, baseSha: SHA, userLayers: [], sources })
+
+    expect(loaded.context.rules[0]?.text).toMatch(/\[truncated by Phada: \d+ of 29999 bytes\]$/)
+    expect(loaded.report.warnings).toContain('.claude/rules/long.md: over 20 KB; sent cut.')
   })
 })
 

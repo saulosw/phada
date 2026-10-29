@@ -478,6 +478,25 @@ describe('mergeConfig review', () => {
   })
 })
 
+describe('mergeConfig review.debt', () => {
+  it('leaves the debt setting unset when no layer sets it', () => {
+    expect(mergeConfig([user({})]).review.debt).toBeUndefined()
+  })
+
+  it('takes the most specific layer that sets it, with its origin', () => {
+    const merged = mergeConfig([
+      user({ review: { debt: 'off' } }),
+      root({ review: { debt: 'comments' } }),
+    ])
+
+    expect(merged.review.debt).toEqual({ mode: 'comments', origin: '.phada/config.yml' })
+    expect(
+      mergeConfig([user({ review: { debt: 'off' } }), userRepo({ review: { debt: 'summary' } })])
+        .review.debt,
+    ).toEqual({ mode: 'summary', origin: 'user:repos/acme/shop/config.yml' })
+  })
+})
+
 describe('mergeConfig review skills that are empty', () => {
   it('lets an empty list fall through to the next layer', () => {
     const merged = mergeConfig([

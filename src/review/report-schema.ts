@@ -28,18 +28,30 @@ const REFERENCE_SHAPE = {
   suggestion: SuggestionSchema.nullable(),
 }
 
+const FindingScopeSchema = z.enum(['change', 'repository'])
+
 const FILE_SHAPE = { path: z.string().min(1), change: z.string() }
+
+export const ClaimVerdictSchema = z.enum(['confirmed', 'contradicted', 'unverified'])
+
+export const ReportClaimSchema = z.object({
+  claim: z.string().trim().min(1),
+  verdict: ClaimVerdictSchema,
+  evidence: z.string().trim(),
+})
 
 export const ReportFindingSchema = z.object({
   ...FINDING_SHAPE,
   rule: z.unknown().optional(),
   sources: z.unknown().optional(),
   suggestion: z.unknown().optional(),
+  scope: z.unknown().optional(),
 })
 
 export const ReportFileSchema = z.object(FILE_SHAPE)
 
 export const ReportEnvelopeSchema = z.object({
+  claims: z.unknown().optional(),
   summary: z.string(),
   files: z.array(z.unknown()),
   findings: z.array(z.unknown()),
@@ -47,9 +59,14 @@ export const ReportEnvelopeSchema = z.object({
 
 export const REVIEW_REPORT_JSON_SCHEMA = providerSchema(
   z.strictObject({
+    claims: z.array(
+      z.strictObject({ claim: z.string(), verdict: ClaimVerdictSchema, evidence: z.string() }),
+    ),
     summary: z.string(),
     files: z.array(z.strictObject(FILE_SHAPE)),
-    findings: z.array(z.strictObject({ ...FINDING_SHAPE, ...REFERENCE_SHAPE })),
+    findings: z.array(
+      z.strictObject({ ...FINDING_SHAPE, ...REFERENCE_SHAPE, scope: FindingScopeSchema }),
+    ),
   }),
 )
 

@@ -6,6 +6,7 @@ import type { FileChange, Finding, Severity } from './types.js'
 export const CONFIDENCE_FLOOR = 50
 export const MAX_CONFIDENCE = 100
 export const VERIFY_CANDIDATE_FLOOR = 25
+export const CLOSE_TO_CUT_MARGIN = 10
 const MAX_WORTH_CHECKING = 5
 
 const SEVERITY_RANK: Readonly<Record<Severity, number>> = { P0: 0, P1: 1, P2: 2 }
@@ -52,7 +53,10 @@ export function splitAtCut(findings: readonly Finding[], minConfidence: number):
   const aboveFloor = findings.filter(isAboveFloor)
   const unsure = aboveFloor.filter((finding) => !clearsCut(finding, minConfidence)).sort(byPriority)
   return {
-    findings: aboveFloor.filter((finding) => clearsCut(finding, minConfidence)).sort(byPriority),
+    findings: aboveFloor
+      .filter((finding) => clearsCut(finding, minConfidence))
+      .map((finding) => withCutMark(finding, minConfidence))
+      .sort(byPriority),
     worthChecking: unsure.slice(0, MAX_WORTH_CHECKING),
     worthCheckingOmitted: Math.max(unsure.length - MAX_WORTH_CHECKING, 0),
     belowFloor: findings.length - aboveFloor.length,
@@ -115,6 +119,12 @@ function isAboveFloor(finding: Finding): boolean {
 
 function clearsCut(finding: Finding, minConfidence: number): boolean {
   return finding.confidence >= minConfidence
+}
+
+function withCutMark(finding: Finding, minConfidence: number): Finding {
+  return finding.confidence - minConfidence <= CLOSE_TO_CUT_MARGIN
+    ? { ...finding, closeToCut: true }
+    : finding
 }
 
 function byPriority(a: Finding, b: Finding): number {

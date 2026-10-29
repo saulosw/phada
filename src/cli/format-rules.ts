@@ -18,7 +18,7 @@ export function formatRulesText(
   const title =
     view.pullRequest === null
       ? `Context for ${owner}/${repo} at ${toTerminalText(ref)}`
-      : `Context for ${owner}/${repo}#${view.pullRequest.number} at ${shortSha(view.pullRequest.baseSha)}`
+      : `Context for ${owner}/${repo}#${view.pullRequest.number} at base ${shortSha(view.pullRequest.baseSha)}`
   const sections = [
     list('Config files', report.configFiles.map(configLine)),
     list('Rules', report.rules.map(ruleLine)),

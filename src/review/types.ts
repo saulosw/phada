@@ -146,6 +146,7 @@ export interface ReviewRequest {
   language?: string
   minConfidence?: number
   verify?: boolean
+  debt?: DebtMode
   context?: ReviewContext
   impact?: DiffImpact
   related?: RelatedSummary[]
@@ -163,6 +164,10 @@ export interface ReviewTarget {
 
 export type Severity = 'P0' | 'P1' | 'P2'
 
+export type FindingScope = 'change' | 'repository'
+
+export type DebtMode = 'summary' | 'comments' | 'off'
+
 export interface Finding {
   severity: Severity
   confidence: number
@@ -176,6 +181,8 @@ export interface Finding {
   reason?: string
   suggestion?: Suggestion
   skill?: string
+  scope?: FindingScope
+  closeToCut?: true
 }
 
 export interface Suggestion {
@@ -183,6 +190,14 @@ export interface Suggestion {
   endLine: number
   original: string
   replacement: string
+}
+
+export type ClaimVerdict = 'confirmed' | 'contradicted' | 'unverified'
+
+export interface Claim {
+  claim: string
+  verdict: ClaimVerdict
+  evidence: string
 }
 
 export interface SuggestionCounts {
@@ -223,6 +238,7 @@ export interface DroppedFindings {
   outsideDiff: number
   duplicate: number
   rejected: number
+  debt?: number
 }
 
 export interface PassReport {
@@ -268,6 +284,19 @@ export interface SkillBody {
   text: string
 }
 
+export interface InvestigationFloor {
+  expected: number
+  shortfalls: string[]
+}
+
+export type UsagePass = 'review' | 'verify' | 'recheck'
+
+export interface PassUsage {
+  pass: UsagePass
+  skill?: string
+  usage?: TokenUsage
+}
+
 export interface ReviewResult {
   target: ReviewTarget
   providerId: string
@@ -275,14 +304,18 @@ export interface ReviewResult {
   additionalModels?: string[]
   durationMs: number
   usage?: TokenUsage
+  passUsage: PassUsage[]
   summary: string
   files: FileChange[]
   findings: Finding[]
+  debt?: Finding[]
   worthChecking: Finding[]
   worthCheckingOmitted: number
   minConfidence: number
   score: Score
   dropped: DroppedFindings
+  claims: Claim[]
+  investigationFloor?: InvestigationFloor
   verification?: Verification
   suggestions?: SuggestionCounts
   ignored?: string[]

@@ -5,6 +5,15 @@ import type { AppliedUserConfig, UserConfigPlanResult } from '../app/edit-user-c
 import type { HistoryFilter, ListedRun, ReviewDetail } from '../app/read-history.js'
 import type { GitHubAccess } from '../app/read-home.js'
 import type { IndexingOptions, IndexingResult } from '../app/index-repository.js'
+import type {
+  CallerList,
+  DefinitionList,
+  DependencyList,
+  Explored,
+  ExploredSymbol,
+} from '../app/explore-graph.js'
+import type { Connections } from '../app/read-connections.js'
+import type { RepositoryIndexes } from '../app/read-index.js'
 import type { Learnings } from '../app/read-learnings.js'
 import type {
   ModelPullOptions,
@@ -19,6 +28,16 @@ import type { BranchRules, LocalRules, PullRequestRules } from '../app/read-rule
 import type { RepositoryDetail, RepositoryList } from '../app/read-repositories.js'
 import type { UserRepositories } from '../app/read-user-repositories.js'
 import type { RepositoryFolder, RepositoryInit } from '../app/repository-folder.js'
+import type {
+  EnqueuedReview,
+  PublishedReview,
+  OpenPullRequests,
+  PullRequestTarget,
+  RequestedReview,
+  ReviewMode,
+} from '../app/requested-review.js'
+import type { ReviewProgressSink } from '../app/review-progress.js'
+import type { WatchObserver, WatchStarted } from '../app/watch-event.js'
 import type { UserRepoFile } from '../config/user-config.js'
 import type { UserConfigChange, UserConfigPlan } from '../config/user-config-edit.js'
 import type { UiMessages } from './i18n/messages.js'
@@ -41,7 +60,9 @@ export type AppStart = 'home' | 'setup'
 
 export interface AppDeps {
   version: string
+  pid: number
   start: AppStart
+  debug: boolean
   cwd: string
   home: string
   env: ColorEnv
@@ -55,6 +76,11 @@ export interface AppDeps {
   readRepositories(): Promise<RepositoryList>
   readRepository(repo: string): Promise<RepositoryDetail>
   readAutomation(): Promise<AutomationView>
+  readIndexes(): Promise<RepositoryIndexes>
+  readConnections(): Promise<Connections>
+  searchSymbol(repo: string, name: string): Promise<Explored<DefinitionList>>
+  symbolCallers(repo: string, symbol: ExploredSymbol): Promise<Explored<CallerList>>
+  symbolDependencies(repo: string, symbol: ExploredSymbol): Promise<Explored<DependencyList>>
   readProviderSetup(): Promise<ProviderSetup>
   readProviders(): Promise<ProviderReport>
   readProviderChecks(): Promise<ProviderChecks>
@@ -72,6 +98,17 @@ export interface AppDeps {
   readRepositoryFolder(): Promise<RepositoryFolder>
   initRepository(): Promise<RepositoryInit>
   ensureRepositoryFile(repo: string, file: UserRepoFile): Promise<string>
+  parsePullRequest(text: string): PullRequestTarget | undefined
+  readOpenPullRequests(repo: string): Promise<OpenPullRequests>
+  reviewPullRequest(
+    target: PullRequestTarget,
+    mode: ReviewMode,
+    onProgress: ReviewProgressSink,
+    signal: AbortSignal,
+  ): Promise<RequestedReview>
+  enqueueReview(target: PullRequestTarget): Promise<EnqueuedReview>
+  publishReview(runId: number): Promise<PublishedReview>
+  startWatch(observer: WatchObserver): Promise<WatchStarted>
 }
 
 export interface KeyHint {
@@ -87,7 +124,16 @@ export interface ScreenControls {
   setBack(back: (() => void) | undefined): void
   isTyping(): boolean
   setTyping(typing: boolean): void
+  claimArrows(on: boolean): void
 }
+
+export interface QuitGuard {
+  question: string
+  stop(): Promise<void> | void
+  abort(): void
+}
+
+export type QuitGuardHold = (guard: { readonly current: QuitGuard | undefined }) => () => void
 
 export interface WorkingSignal {
   working: boolean
@@ -102,6 +148,8 @@ export const WorkingContext = createContext<WorkingSignal>({
   start: () => () => {},
 })
 export const ConfigWrittenContext = createContext<() => void>(() => {})
+export const ReviewStartContext = createContext<(repo?: string) => void>(() => {})
+export const QuitGuardContext = createContext<QuitGuardHold>(() => () => {})
 export const ScreenContext = createContext<ScreenControls>({
   inputActive: false,
   typing: false,
@@ -110,6 +158,7 @@ export const ScreenContext = createContext<ScreenControls>({
   setBack: () => {},
   isTyping: () => false,
   setTyping: () => {},
+  claimArrows: () => {},
 })
 
 export function useAppDeps(): AppDeps {
@@ -130,6 +179,18 @@ export function useMessages(): UiMessages {
 
 export function useConfigWritten(): () => void {
   return useContext(ConfigWrittenContext)
+}
+
+export function useStartReview(): (repo?: string) => void {
+  return useContext(ReviewStartContext)
+}
+
+export function useQuitGuard(guard: QuitGuard | undefined): void {
+  const hold = useContext(QuitGuardContext)
+  const latest = useRef(guard)
+  latest.current = guard
+  const held = guard !== undefined
+  useEffect(() => (held ? hold(latest) : undefined), [held, hold])
 }
 
 export function useIsWorking(): boolean {
@@ -170,6 +231,15 @@ export function useScreenInput(handler: (input: string, key: Key) => void): void
     },
     { isActive: inputActive },
   )
+}
+
+export function useArrowKeys(active: boolean): void {
+  const { claimArrows } = useContext(ScreenContext)
+  useEffect(() => {
+    if (!active) return undefined
+    claimArrows(true)
+    return () => claimArrows(false)
+  }, [active, claimArrows])
 }
 
 export function useScreenSize(): TerminalSize {

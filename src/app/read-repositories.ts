@@ -6,7 +6,7 @@ import type { ConfigLayer } from '../config/types.js'
 import { resolveWatchSettings } from '../config/watch-settings.js'
 import type { WatchedRepoSettings } from '../config/watch-settings.js'
 import { durationMs } from '../config/duration.js'
-import { DEFAULT_MIN_CONFIDENCE } from '../review/run-review.js'
+import { DEFAULT_DEBT_MODE, DEFAULT_MIN_CONFIDENCE } from '../review/run-review.js'
 import type { PublishTarget } from '../watch/types.js'
 import type { HistoryStore, ListedRun, RepoRecord, RunRecord } from '../store/history-store.js'
 import { errorMessage } from './error-message.js'
@@ -293,6 +293,7 @@ export function userSettings(layers: readonly ConfigLayer[]): ConfigSetting[] {
       flag,
       flag(false),
     ),
+    first('review.debt', (config) => config.review?.debt, text, text(DEFAULT_DEBT_MODE)),
     first(
       'review.prompt',
       (config) => config.review?.prompt,

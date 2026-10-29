@@ -1,4 +1,10 @@
 import type { BlockedCommand } from '../providers/types.js'
+import type {
+  CiBlock,
+  CiCheckLine,
+  ConversationBlock,
+  ConversationEntry,
+} from '../app/read-run-report.js'
 import type { RelatedReport } from '../app/related-report.js'
 import type { Ci, ContextReport } from '../context/types.js'
 import type { ImpactReport } from '../graph/report.js'
@@ -21,6 +27,8 @@ import type {
 } from '../review/types.js'
 
 import { reviewVerdict } from '../review/verdict.js'
+import { usageReport } from '../review/token-usage.js'
+import type { UsageReport } from '../review/token-usage.js'
 import type { GitHubReview } from './format-github.js'
 
 const SCHEMA_VERSION = 1
@@ -28,6 +36,8 @@ const SCHEMA_VERSION = 1
 export interface ReviewJsonBlocks {
   conversation?: Conversation
   ci?: Ci
+  impactText?: string
+  language?: string
 }
 
 export interface ResolvedCounts {
@@ -44,8 +54,9 @@ export type Publication =
       stillOpen: number
       dismissed?: number
       resolved?: ResolvedCounts
+      review?: GitHubReview
     }
-  | { status: 'failed'; error: string }
+  | { status: 'failed'; error: string; review?: GitHubReview }
   | {
       status: 'dry-run'
       review: GitHubReview
@@ -77,6 +88,7 @@ export function formatReviewJson(
   const ci = blocks.ci === undefined ? null : ciJson(blocks.ci)
   const publicationBlock = publication === null ? null : publicationJson(publication)
   const contextBlock = context === null ? null : contextJson(context)
+  const impactBlock = impact === null ? null : { ...impact, text: blocks.impactText ?? null }
   const body =
     outcome.status === 'skipped'
       ? {
@@ -90,24 +102,26 @@ export function formatReviewJson(
           conversation,
           ci,
           investigation,
-          impact,
+          impact: impactBlock,
           related: relatedJson(related),
           recheck: recheckJson(recheck),
+          usage: usageReportJson(usageReport(undefined, recheck ?? undefined)),
         }
       : {
           schemaVersion: SCHEMA_VERSION,
           status: outcome.status,
           verdict: reviewVerdict(outcome.result),
           pullRequest,
-          review: reviewJson(outcome.result, fixFor),
+          review: reviewJson(outcome.result, fixFor, blocks.language),
           publication: publicationBlock,
           context: contextBlock,
           conversation,
           ci,
           investigation,
-          impact,
+          impact: impactBlock,
           related: relatedJson(related),
           recheck: recheckJson(recheck),
+          usage: usageReportJson(usageReport(outcome.result.passUsage, recheck ?? undefined)),
         }
   return `${JSON.stringify(body, null, 2)}\n`
 }
@@ -127,11 +141,21 @@ export function formatAlreadyReviewedJson(pr: PullRequest, reason: SkipReason): 
     impact: null,
     related: null,
     recheck: null,
+    usage: usageReportJson({ passes: [] }),
   }
   return `${JSON.stringify(body, null, 2)}\n`
 }
 
-function conversationJson({ items, report }: Conversation) {
+export function publishedRunJson(
+  stored: Readonly<Record<string, unknown>>,
+  publication: Publication,
+  publishedFrom: number,
+): string {
+  const body = { ...stored, publication: publicationJson(publication), publishedFrom }
+  return `${JSON.stringify(body, null, 2)}\n`
+}
+
+export function conversationJson({ items, report }: Conversation): ConversationBlock {
   return {
     count: report.items,
     omitted: report.omitted,
@@ -143,17 +167,17 @@ function conversationJson({ items, report }: Conversation) {
   }
 }
 
-function conversationItemJson(item: ConversationItem) {
-  const { kind, at, author, role } = item
+function conversationItemJson(item: ConversationItem): ConversationEntry {
+  const { at, author, role } = item
   const bytes = conversationItemBytes(item)
   switch (item.kind) {
     case 'comment':
-      return { kind, at, author, role, bytes }
+      return { kind: item.kind, at, author, role, bytes }
     case 'review':
-      return { kind, at, author, role, state: item.state, bytes }
+      return { kind: item.kind, at, author, role, state: item.state, bytes }
     case 'thread':
       return {
-        kind,
+        kind: item.kind,
         at,
         author,
         role,
@@ -168,7 +192,7 @@ function conversationItemJson(item: ConversationItem) {
   }
 }
 
-function ciJson({ checks, summary, report, warnings }: Ci) {
+export function ciJson({ checks, summary, report, warnings }: Ci): CiBlock {
   return {
     state: summary.state,
     total: summary.total,
@@ -187,7 +211,7 @@ function ciJson({ checks, summary, report, warnings }: Ci) {
   }
 }
 
-function checkJson({ name, state, conclusion, annotations, log }: CiCheck) {
+function checkJson({ name, state, conclusion, annotations, log }: CiCheck): CiCheckLine {
   return {
     name,
     state,
@@ -239,20 +263,20 @@ function publicationJson(publication: Publication) {
         stillOpen,
         dismissed: publication.dismissed ?? 0,
         resolved: publication.resolved ?? { resolved: 0, failed: 0, total: 0 },
+        ...postedJson(publication.review),
       }
     }
     case 'failed':
-      return { status: publication.status, error: publication.error }
+      return {
+        status: publication.status,
+        error: publication.error,
+        ...postedJson(publication.review),
+      }
     case 'dry-run':
       return {
         status: publication.status,
         body: publication.review.body,
-        comments: publication.review.comments.map(({ path, startLine, line, body }) => ({
-          path,
-          ...(startLine === undefined ? {} : { startLine }),
-          line,
-          body,
-        })),
+        comments: commentsJson(publication.review),
         stillOpen: publication.stillOpen,
         dismissed: publication.dismissed ?? 0,
         wouldSkip: publication.wouldSkip === undefined ? null : skipJson(publication.wouldSkip),
@@ -268,6 +292,19 @@ function publicationJson(publication: Publication) {
   }
 }
 
+function postedJson(review: GitHubReview | undefined) {
+  return review === undefined ? {} : { body: review.body, lineComments: commentsJson(review) }
+}
+
+function commentsJson({ comments }: GitHubReview) {
+  return comments.map(({ path, startLine, line, body }) => ({
+    path,
+    ...(startLine === undefined ? {} : { startLine }),
+    line,
+    body,
+  }))
+}
+
 function skipJson(reason: SkipReason) {
   return {
     reason: reason.kind,
@@ -276,13 +313,19 @@ function skipJson(reason: SkipReason) {
   }
 }
 
-function reviewJson(result: ReviewResult, fixFor?: (blocked: BlockedCommand) => string) {
+function reviewJson(
+  result: ReviewResult,
+  fixFor?: (blocked: BlockedCommand) => string,
+  language?: string,
+) {
   const { score, dropped } = result
   return {
     score: { value: score.value, reason: score.reason },
     summary: result.summary,
+    claims: result.claims.map(({ claim, verdict, evidence }) => ({ claim, verdict, evidence })),
     files: result.files.map(({ path, change, findings }) => ({ path, change, findings })),
     findings: result.findings.map(findingJson),
+    debt: (result.debt ?? []).map(findingJson),
     worthChecking: result.worthChecking.map(findingJson),
     worthCheckingOmitted: result.worthCheckingOmitted,
     minConfidence: result.minConfidence,
@@ -292,6 +335,7 @@ function reviewJson(result: ReviewResult, fixFor?: (blocked: BlockedCommand) => 
       outsideDiff: dropped.outsideDiff,
       duplicate: dropped.duplicate,
       rejected: dropped.rejected,
+      debt: dropped.debt ?? 0,
     },
     verification: result.verification === undefined ? null : verificationJson(result.verification),
     suggestions: result.suggestions ?? null,
@@ -321,6 +365,9 @@ function reviewJson(result: ReviewResult, fixFor?: (blocked: BlockedCommand) => 
         })),
       })) ?? null,
     skillBodies: result.skillBodies ?? null,
+    language: language ?? null,
+    diffFingerprint: result.target.diffFingerprint ?? null,
+    ignored: result.ignored ?? [],
   }
 }
 
@@ -355,7 +402,22 @@ function verificationJson(verification: Verification) {
 function usageJson(usage: TokenUsage | undefined) {
   return usage === undefined
     ? null
-    : { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens }
+    : {
+        inputTokens: usage.inputTokens,
+        cachedInputTokens: usage.cachedInputTokens ?? null,
+        outputTokens: usage.outputTokens,
+      }
+}
+
+function usageReportJson({ passes, total }: UsageReport) {
+  return {
+    passes: passes.map(({ pass, skill, usage }) => ({
+      pass,
+      skill: skill ?? null,
+      usage: usageJson(usage),
+    })),
+    total: usageJson(total),
+  }
 }
 
 function findingJson(finding: Finding) {
@@ -372,6 +434,8 @@ function findingJson(finding: Finding) {
     reason,
     suggestion,
     skill,
+    scope,
+    closeToCut,
   } = finding
   return {
     severity,
@@ -386,6 +450,8 @@ function findingJson(finding: Finding) {
     reason: reason ?? null,
     suggestion: suggestion ?? null,
     skill: skill ?? 'phada',
+    scope: scope ?? 'change',
+    closeToCut: closeToCut === true,
   }
 }
 

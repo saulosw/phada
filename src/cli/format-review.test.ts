@@ -11,6 +11,7 @@ const RESULT: ReviewResult = {
   model: 'claude-sonnet-5',
   durationMs: 131_400,
   usage: { inputTokens: 41_234, outputTokens: 13_012 },
+  passUsage: [{ pass: 'review', usage: { inputTokens: 41_234, outputTokens: 13_012 } }],
   summary: 'Adds a spend endpoint and a cooldown hook.',
   files: [
     { path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 2 },
@@ -50,6 +51,7 @@ const RESULT: ReviewResult = {
   minConfidence: 75,
   score: { value: 1, reason: '1 P0 finding (shop.ts:3)' },
   dropped: { invalid: 1, belowFloor: 1, outsideDiff: 2, duplicate: 1, rejected: 0 },
+  claims: [],
 }
 
 const TO_CHECK = [
@@ -178,6 +180,69 @@ describe('formatReview', () => {
         '3 findings · 2 worth checking · 5 dropped (2 outside the diff, 1 duplicate, 1 below confidence 50, 1 invalid)',
       ].join('\n'),
     )
+  })
+
+  it('lists the repository debt after the findings worth checking, out of the counts', () => {
+    const debt = findingFixture({
+      severity: 'P2',
+      line: 12,
+      title: 'balance has no caller',
+      why: 'Nothing calls it.\nIt stays exported.',
+      scope: 'repository',
+    })
+    const output = formatReview(pullRequestFixture(), {
+      ...RESULT,
+      worthChecking: TO_CHECK,
+      debt: [debt],
+    })
+
+    expect(output).toContain(
+      [
+        '- **P2** · src/cooldown.ts:2: Magic number (confidence 55)',
+        '',
+        '## Repository debt',
+        '',
+        'Problems already in the repository that this change does not cause; they do not count toward the score.',
+        '',
+        '- **P2** · src/shop.ts:12: balance has no caller — Nothing calls it. It stays exported.',
+        '',
+        '---',
+        '3 findings · 2 worth checking ·',
+      ].join('\n'),
+    )
+  })
+
+  it('marks the findings close to the cut and counts them', () => {
+    const [first, second, third] = RESULT.findings
+    if (first === undefined || second === undefined || third === undefined) throw new Error()
+    const findings = [first, { ...second, closeToCut: true as const }, third]
+
+    const output = formatReview(pullRequestFixture(), { ...RESULT, findings })
+
+    expect(output).toContain(
+      '2. **src/shop.ts:7**: Concurrent spends are charged once (confidence 95 · close to the cut)',
+    )
+    expect(output).toContain('3. **src/cooldown.ts:18**: Timer leaks (confidence 85)\n')
+    expect(output).toContain('---\n3 findings · 1 close to the cut · ')
+  })
+
+  it('marks a finding close to the cut in Portuguese and Spanish', () => {
+    const findings = [findingFixture({ closeToCut: true })]
+    const pt = formatReview(pullRequestFixture(), { ...RESULT, findings }, messagesFor('pt-BR'))
+    const es = formatReview(pullRequestFixture(), { ...RESULT, findings }, messagesFor('es'))
+
+    expect(pt).toContain('(confiança 90 · rente ao corte)')
+    expect(pt).toContain('1 problema · 1 rente ao corte · ')
+    expect(es).toContain('(confianza 90 · al borde del corte)')
+    expect(es).toContain('1 hallazgo · 1 al borde del corte · ')
+  })
+
+  it("shows the skill of a finding in the terminal, the author's own view", () => {
+    const finding = findingFixture({ sources: ['docs/conventions.md'], skill: 'code-review' })
+
+    const output = formatReview(pullRequestFixture(), { ...RESULT, findings: [finding] })
+
+    expect(output).toContain('Based on: `docs/conventions.md` · skill `code-review`')
   })
 
   it('says how many more findings are worth checking than the ones listed', () => {

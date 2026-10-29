@@ -1,4 +1,5 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { repositoryCache } from '../config/cache-paths.js'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
@@ -11,7 +12,8 @@ import { HistoryOutdatedError, openHistoryStore } from '../store/history-store.j
 import type { HistoryStore, RunRecord } from '../store/history-store.js'
 import type { AppDeps, AppHost, AppResult } from '../tui/open-app.js'
 import { runApp } from './app-command.js'
-import type { AppCommandDeps, StopSignal } from './app-command.js'
+import type { AppCommandDeps } from './app-command.js'
+import type { StopSignal } from '../tui/open-app.js'
 import { UsageError } from './errors.js'
 import { RULES_TEMPLATE, USER_CONFIG_TEMPLATE } from './init-templates.js'
 import { pullRequestFixture } from '../../test/support/pull-request.js'
@@ -22,6 +24,8 @@ import { CheckoutUnavailableError } from '../repository/git-checkout.js'
 import { openIndexStore } from '../store/index-store.js'
 import type { IndexingProgress } from '../app/index-repository.js'
 import { reviewState } from '../../test/support/review-state.js'
+import type { OpenPull } from '../github/list-pull-requests.js'
+import type { WatchEnd, WatchEvent } from '../app/watch-event.js'
 
 function terminal(isTTY: boolean) {
   return {
@@ -48,12 +52,21 @@ function deps(
     ghToken?: string
     dataHome?: string
     openMirror?: AppCommandDeps['openMirror']
+    openIndexReader?: AppCommandDeps['openIndexReader']
+    openExistingMirror?: AppCommandDeps['openExistingMirror']
+    openGraph?: AppCommandDeps['openGraph']
+    openPulls?: OpenPull[]
+    startWatch?: AppCommandDeps['startWatch']
+    fetchPullRequest?: AppCommandDeps['fetchPullRequest']
   } = {},
 ) {
+  const aborts: number[] = []
+  const errors: string[] = []
   const ghCalls: string[][] = []
   const userTokens: string[] = []
   const opened: { deps: AppDeps; host: AppHost }[] = []
   const historyPaths: string[] = []
+  const openPullReads: string[] = []
   const signalHandlers: ((signal?: StopSignal) => void)[] = []
   const files = memoryFiles({
     ...(options.config === undefined ? {} : { '/cfg/config.yml': options.config }),
@@ -64,9 +77,19 @@ function deps(
     home: '/home/ana',
     cwd: '/home/ana/shop',
     version: '1.2.3',
+    pid: 1000,
     files,
     stdin: terminal(options.stdin ?? true).stdin,
     stdout: terminal(options.stdout ?? true).stdout,
+    stderr: {
+      write: (text: string) => {
+        errors.push(text)
+        return true
+      },
+    },
+    abort: (code) => {
+      aborts.push(code)
+    },
     onSignal: (handler) => {
       signalHandlers.push(handler)
     },
@@ -103,6 +126,11 @@ function deps(
       ollama: async () => ({ provider: 'ollama', baseUrl: null, server: { state: 'stopped' } }),
     },
     ...(options.observed === undefined ? {} : { observed: options.observed }),
+    ...(options.openIndexReader === undefined ? {} : { openIndexReader: options.openIndexReader }),
+    ...(options.openGraph === undefined ? {} : { openGraph: options.openGraph }),
+    ...(options.openExistingMirror === undefined
+      ? {}
+      : { openExistingMirror: options.openExistingMirror }),
     runGh: async (_command, args) => {
       ghCalls.push([...args])
       return options.ghToken === undefined
@@ -120,12 +148,46 @@ function deps(
       options.openMirror ?? (async () => memoryMirror({ 'src/a.ts': 'export const a = 1\n' })),
     openIndexStore: async () => openIndexStore(join(indexDir, `i${(stores += 1)}.sqlite`)),
     createExtractor,
+    openObservedStore: () => Promise.reject(new Error('no observed relations in this test')),
+    createProvider: () => {
+      throw new Error('no AI in this test')
+    },
+    createReview: () => Promise.reject(new Error('nothing is posted in this test')),
+    fetchComparison: async () => [],
+    replyAndResolve: async () => undefined,
+    openHistoryStore: () => Promise.reject(new Error('no history writes in this test')),
+    sleep: async () => undefined,
+    listOpenPullRequests: async ({ owner, repo, token }) => {
+      openPullReads.push(`${owner}/${repo} ${token}`)
+      return { status: 'ok', pulls: options.openPulls ?? [] }
+    },
+    listIssueComments: () => Promise.reject(new Error('no watch in this test')),
+    addCommentReaction: () => Promise.reject(new Error('no watch in this test')),
+    fetchPullRequestHead: () => Promise.reject(new Error('no watch in this test')),
+    fetchBranchHead: () => Promise.reject(new Error('no watch in this test')),
+    withLock: (_path, work) => work(),
+    killDetachedChildren: () => undefined,
+    ...(options.startWatch === undefined ? {} : { startWatch: options.startWatch }),
+    ...(options.fetchPullRequest === undefined
+      ? {}
+      : { fetchPullRequest: options.fetchPullRequest }),
   }
   app.env.PHADA_DATA_HOME = options.dataHome ?? '/data'
   const send = (signal: StopSignal) => {
     for (const handler of signalHandlers) handler(signal)
   }
-  return { app, opened, files, historyPaths, ghCalls, userTokens, send }
+  return {
+    app,
+    opened,
+    files,
+    historyPaths,
+    ghCalls,
+    userTokens,
+    send,
+    openPullReads,
+    aborts,
+    errors,
+  }
 }
 
 const indexDir = mkdtempSync(join(tmpdir(), 'phada-app-index-'))
@@ -169,6 +231,15 @@ describe('runApp', () => {
     const { app, opened } = deps({ config: '' })
     await runApp(app)
     expect(opened[0]?.deps.start).toBe('home')
+  })
+
+  it('tells the app whether it was opened with --debug', async () => {
+    const plain = deps({ config: '' })
+    await runApp(plain.app)
+    const debugging = deps({ config: '' })
+    await runApp(debugging.app, { debug: true })
+    expect(plain.opened[0]?.deps.debug).toBe(false)
+    expect(debugging.opened[0]?.deps.debug).toBe(true)
   })
 
   it('opens on the setup when asked, with a user config', async () => {
@@ -731,6 +802,304 @@ describe('the user repositories reader', () => {
   })
 })
 
+describe('the review readers', () => {
+  it('reads the open pull requests with the token gh gives and parses a typed pull request', async () => {
+    const seen: unknown[] = []
+    const { app, openPullReads } = deps({
+      ghToken: 'gho_from_gh',
+      openPulls: [
+        {
+          number: 4,
+          headSha: 'b'.repeat(40),
+          title: 'Add the cart',
+          draft: false,
+          author: 'ana',
+          authorIsBot: false,
+          association: 'MEMBER',
+          labels: [],
+          baseRef: 'main',
+          private: false,
+        },
+      ],
+      during: async (appDeps) => {
+        seen.push(await appDeps.readOpenPullRequests('acme/shop'))
+        seen.push(appDeps.parsePullRequest('https://github.com/acme/shop/pull/4'))
+        seen.push(appDeps.parsePullRequest('acme/shop'))
+      },
+    })
+
+    await runApp(app)
+
+    expect(openPullReads).toEqual(['acme/shop gho_from_gh'])
+    expect(seen).toEqual([
+      {
+        status: 'read',
+        repo: 'acme/shop',
+        pulls: [{ number: 4, title: 'Add the cart', author: 'ana', draft: false }],
+      },
+      { owner: 'acme', repo: 'shop', number: 4 },
+      undefined,
+    ])
+  })
+
+  it('reviews nothing without a token', async () => {
+    const seen: unknown[] = []
+    const { app } = deps({
+      during: async (appDeps) => {
+        seen.push(
+          await appDeps.reviewPullRequest(
+            { owner: 'acme', repo: 'shop', number: 4 },
+            'look',
+            () => undefined,
+            new AbortController().signal,
+          ),
+        )
+      },
+    })
+
+    await runApp(app)
+
+    expect(seen).toEqual([{ status: 'no-token' }])
+  })
+
+  it('asks the user config for the watch before putting a review in the queue', async () => {
+    const seen: unknown[] = []
+    const { app } = deps({
+      during: async (appDeps) => {
+        seen.push(
+          await appDeps.enqueueReview({ owner: 'acme', repo: 'shop', number: 4 }).catch(String),
+        )
+      },
+    })
+
+    await runApp(app)
+
+    expect(seen).toEqual([expect.stringContaining('Nothing to watch')])
+  })
+})
+
+describe('the watch of the app', () => {
+  function watching(options: Parameters<typeof deps>[0] = {}) {
+    const calls: string[] = []
+    const startWatch: AppCommandDeps['startWatch'] = async (start, _deps, listeners) => {
+      calls.push(`start once=${start.once} backfill=${start.backfill}`)
+      listeners.warning('could not save the run in the history (disk full).')
+      let end: (value: WatchEnd) => void = () => undefined
+      const done = new Promise<WatchEnd>((resolve) => {
+        end = resolve
+      })
+      return {
+        done,
+        stop: () => calls.push('stop'),
+        abort: () => {
+          calls.push('abort')
+          end({ reason: 'aborted' })
+        },
+        stopRequested: () => false,
+        running: () => undefined,
+      }
+    }
+    return { calls, startWatch, ...options }
+  }
+
+  it("starts phada watch's watch, gives the app its own PID and aborts it when the app ends", async () => {
+    const events: WatchEvent[] = []
+    const started: string[] = []
+    const { calls, ...options } = watching({
+      result: { kind: 'terminated' },
+      during: async (appDeps) => {
+        started.push(
+          (
+            await appDeps.startWatch({
+              event: (event) => events.push(event),
+              progress: () => undefined,
+            })
+          ).status,
+        )
+      },
+    })
+    const { app, opened } = deps(options)
+
+    expect(await runApp(app)).toBe(143)
+    expect(opened[0]?.deps.pid).toBe(1000)
+    expect(started).toEqual(['started'])
+    expect(events).toEqual([
+      { kind: 'warning', message: 'could not save the run in the history (disk full).' },
+    ])
+    expect(calls).toEqual(['start once=false backfill=false', 'abort'])
+  })
+
+  it('leaves the watch of another terminal alone', async () => {
+    const seen: unknown[] = []
+    const { calls, ...options } = watching({
+      holder: 4242,
+      during: async (appDeps) => {
+        seen.push(await appDeps.startWatch({ event: () => undefined, progress: () => undefined }))
+      },
+    })
+    const { app } = deps(options)
+
+    await runApp(app)
+
+    expect(seen).toEqual([{ status: 'elsewhere', pid: 4242 }])
+    expect(calls).toEqual([])
+  })
+
+  it('aborts the watch when the app fails', async () => {
+    const { calls, ...options } = watching({
+      result: { kind: 'failed', error: new Error('render failed') },
+      during: async (appDeps) => {
+        await appDeps.startWatch({ event: () => undefined, progress: () => undefined })
+      },
+    })
+    const { app } = deps(options)
+
+    expect(await runApp(app)).toBe(1)
+    expect(calls).toEqual(['start once=false backfill=false', 'abort'])
+  })
+})
+
+describe('the end of the app with work in flight', () => {
+  function watchUntil(end: 'abort' | 'stop' | 'never') {
+    const startWatch: AppCommandDeps['startWatch'] = async () => {
+      let finish: (value: WatchEnd) => void = () => undefined
+      const done = new Promise<WatchEnd>((resolve) => {
+        finish = resolve
+      })
+      return {
+        done,
+        stop: () => {
+          if (end === 'stop') finish({ reason: 'stopped' })
+        },
+        abort: () => finish({ reason: 'aborted' }),
+        stopRequested: () => false,
+        running: () => undefined,
+      }
+    }
+    return startWatch
+  }
+
+  it.each([
+    [{ kind: 'interrupted' }, 130],
+    [{ kind: 'terminated' }, 143],
+  ] as const)(
+    'ends the process like phada watch when the app ends %j with its watch running',
+    async (result, code) => {
+      const { app, aborts } = deps({
+        result,
+        startWatch: watchUntil('never'),
+        during: async (appDeps) => {
+          await appDeps.startWatch({ event: () => undefined, progress: () => undefined })
+        },
+      })
+
+      expect(await runApp(app)).toBe(code)
+      expect(aborts).toEqual([code])
+    },
+  )
+
+  it('ends the process when the app aborted its watch on the way out', async () => {
+    const { app, aborts } = deps({
+      result: { kind: 'interrupted' },
+      startWatch: watchUntil('never'),
+      during: async (appDeps) => {
+        const started = await appDeps.startWatch({
+          event: () => undefined,
+          progress: () => undefined,
+        })
+        if (started.status === 'started') {
+          started.control.abort()
+          await started.control.done
+        }
+      },
+    })
+
+    expect(await runApp(app)).toBe(130)
+    expect(aborts).toEqual([130])
+  })
+
+  it('returns normally once the watch stopped after its review', async () => {
+    const { app, aborts } = deps({
+      startWatch: watchUntil('stop'),
+      during: async (appDeps) => {
+        const started = await appDeps.startWatch({
+          event: () => undefined,
+          progress: () => undefined,
+        })
+        if (started.status === 'started') {
+          started.control.stop()
+          await started.control.done
+        }
+      },
+    })
+
+    expect(await runApp(app)).toBe(0)
+    expect(aborts).toEqual([])
+  })
+
+  it('ends the process when the app quits while one of its reviews still runs', async () => {
+    let fetching = false
+    const { app, aborts } = deps({
+      ghToken: 'gho_from_gh',
+      fetchPullRequest: () => {
+        fetching = true
+        return new Promise(() => undefined)
+      },
+      during: async (appDeps) => {
+        void appDeps.reviewPullRequest(
+          { owner: 'acme', repo: 'shop', number: 4 },
+          'look',
+          () => undefined,
+          new AbortController().signal,
+        )
+        await vi.waitFor(() => {
+          expect(fetching).toBe(true)
+        })
+      },
+    })
+
+    expect(await runApp(app)).toBe(0)
+    expect(aborts).toEqual([0])
+  })
+
+  it('returns normally once its reviews ended', async () => {
+    const { app, aborts } = deps({
+      during: async (appDeps) => {
+        await appDeps.reviewPullRequest(
+          { owner: 'acme', repo: 'shop', number: 4 },
+          'look',
+          () => undefined,
+          new AbortController().signal,
+        )
+      },
+    })
+
+    expect(await runApp(app)).toBe(0)
+    expect(aborts).toEqual([])
+  })
+
+  it('prints the failure of the app before ending the process with work in flight', async () => {
+    const { app, aborts, errors } = deps({
+      result: { kind: 'failed', error: new Error('render failed') },
+      startWatch: watchUntil('never'),
+      during: async (appDeps) => {
+        await appDeps.startWatch({ event: () => undefined, progress: () => undefined })
+      },
+    })
+
+    expect(await runApp(app)).toBe(1)
+    expect(errors.join('')).toContain('render failed')
+    expect(aborts).toEqual([1])
+  })
+
+  it('never ends the process on a clean quit', async () => {
+    const { app, aborts } = deps()
+
+    expect(await runApp(app)).toBe(0)
+    expect(aborts).toEqual([])
+  })
+})
+
 describe('the indexer', () => {
   function indexing(
     during: (appDeps: AppDeps) => Promise<void>,
@@ -968,6 +1337,181 @@ describe('the provider and learnings readers', () => {
     expect(seen).toEqual(['pulling manifest', 'success', { kind: 'pulled' }])
   })
 
+  it('reads the index of each repository of the screens from its cache path, read-only', async () => {
+    const opened: string[] = []
+    const { app } = deps({
+      config: 'watch:\n  repos:\n    - acme/shop\n    - acme/web\n',
+      openIndexReader: async (path) => {
+        opened.push(path)
+        return { status: 'missing', path }
+      },
+      during: async (appDeps) => {
+        const indexes = await appDeps.readIndexes()
+        expect(indexes.repositories.map(({ repo, index }) => [repo, index.state])).toEqual([
+          ['acme/shop', 'missing'],
+          ['acme/web', 'missing'],
+        ])
+      },
+    })
+    app.env.PHADA_CACHE_HOME = '/cache'
+    await runApp(app)
+    expect(opened.sort()).toEqual(['/cache/index/acme/shop.sqlite', '/cache/index/acme/web.sqlite'])
+  })
+
+  it('opens a missing index without creating it', async () => {
+    const { app } = deps({
+      config: 'watch:\n  repos:\n    - acme/shop\n',
+      during: async (appDeps) => {
+        const [shop] = (await appDeps.readIndexes()).repositories
+        expect(shop?.index.state).toBe('missing')
+      },
+    })
+    app.env.PHADA_CACHE_HOME = indexDir
+    await runApp(app)
+    expect(existsSync(join(indexDir, 'index', 'acme'))).toBe(false)
+  })
+
+  it('keeps the graph of one repository open while the app runs and closes it after', async () => {
+    const opened: string[] = []
+    const closed: string[] = []
+    const { app } = deps({
+      openIndexReader: async (path) => ({ status: 'missing', path }),
+      openGraph: async (repo) => {
+        opened.push(repo)
+        return {
+          state: 'open',
+          explorer: {
+            repo,
+            commit: 'a'.repeat(40),
+            linked: [],
+            search: () => ({ definitions: [], more: 0 }),
+            callers: () => ({ sites: [], more: 0, capped: false }),
+            dependencies: () => ({ dependencies: [], more: 0 }),
+            close: () => closed.push(repo),
+          },
+        }
+      },
+      during: async (appDeps) => {
+        await appDeps.searchSymbol('acme/shop', 'total')
+        await appDeps.searchSymbol('acme/ui', 'Button')
+        expect(closed).toEqual(['acme/shop'])
+      },
+    })
+    await runApp(app)
+    expect(opened).toEqual(['acme/shop', 'acme/ui'])
+    expect(closed).toEqual(['acme/shop', 'acme/ui'])
+  })
+
+  it('explores a repository without a local copy as not indexed, creating nothing', async () => {
+    const { app } = deps({
+      during: async (appDeps) => {
+        expect(await appDeps.searchSymbol('acme/shop', 'total')).toEqual({
+          state: 'not-indexed',
+          why: { reason: 'no-index' },
+        })
+      },
+    })
+    app.env.PHADA_CACHE_HOME = indexDir
+    await runApp(app)
+    expect(existsSync(join(indexDir, 'index', 'acme'))).toBe(false)
+    expect(existsSync(join(indexDir, 'repos'))).toBe(false)
+  })
+
+  it('opens the local copy of each repository of the connections through the reader it is given', async () => {
+    const mirrors: string[] = []
+    const { app } = deps({
+      config: 'watch:\n  repos:\n    - acme/shop\n',
+      openIndexReader: async (path) => ({
+        status: 'open',
+        index: {
+          path,
+          snapshot: {
+            sha: 'a'.repeat(40),
+            ref: 'HEAD',
+            defaultBranch: true,
+            indexedAt: '2026-10-25T11:00:00.000Z',
+            durationMs: 10,
+          },
+          summary: () => {
+            throw new Error('not used')
+          },
+          leftOut: () => [],
+          reader: () => {
+            throw new Error('not used')
+          },
+          close: () => {},
+        },
+      }),
+      openExistingMirror: async ({ dir }) => {
+        mirrors.push(dir)
+        return { status: 'missing', dir }
+      },
+      during: async (appDeps) => {
+        const [shop] = (await appDeps.readConnections()).repositories
+        expect(shop?.source).toEqual({ state: 'not-indexed', why: { reason: 'no-mirror' } })
+      },
+    })
+    app.env.PHADA_CACHE_HOME = '/cache'
+    await runApp(app)
+    expect(mirrors).toEqual([
+      repositoryCache({ PHADA_CACHE_HOME: '/cache' }, '/home', 'acme', 'shop').mirror,
+    ])
+  })
+
+  it('reads the connections from the index and mirror of the cache, never creating a mirror', async () => {
+    const indexes: string[] = []
+    const { app } = deps({
+      config: 'watch:\n  repos:\n    - acme/shop\n',
+      files: { '/cfg/repos/acme/shop/config.yml': 'context:\n  repos:\n    - acme/ui\n' },
+      openIndexReader: async (path) => {
+        indexes.push(path)
+        return {
+          status: 'open',
+          index: {
+            path,
+            snapshot: {
+              sha: 'a'.repeat(40),
+              ref: 'HEAD',
+              defaultBranch: true,
+              indexedAt: '2026-10-25T11:00:00.000Z',
+              durationMs: 10,
+            },
+            summary: () => {
+              throw new Error('not used')
+            },
+            leftOut: () => [],
+            reader: () => {
+              throw new Error('not used')
+            },
+            close: () => {},
+          },
+        }
+      },
+      during: async (appDeps) => {
+        const [shop] = (await appDeps.readConnections()).repositories
+        expect(shop).toEqual({
+          repo: 'acme/shop',
+          source: { state: 'not-indexed', why: { reason: 'no-mirror' } },
+          declared: {
+            status: 'read',
+            configError: null,
+            warnings: [],
+            related: [
+              { repo: 'acme/ui', link: { state: 'not-indexed', why: { reason: 'no-mirror' } } },
+            ],
+          },
+        })
+      },
+    })
+    app.env.PHADA_CACHE_HOME = indexDir
+    await runApp(app)
+    expect(indexes.sort()).toEqual([
+      join(indexDir, 'index', 'acme', 'shop.sqlite'),
+      join(indexDir, 'index', 'acme', 'ui.sqlite'),
+    ])
+    expect(existsSync(join(indexDir, 'repos'))).toBe(false)
+  })
+
   it('read the observed files of the cache folder, each by its own path', async () => {
     const lists: string[] = []
     const reads: string[] = []
@@ -1056,6 +1600,7 @@ function fakeGitHub(options: { files?: Record<string, string>; failTree?: boolea
       calls.push(`pull ${number} ${token}`)
       return { ...pull, number }
     },
+    fetchPullRequestMetadata: async ({ number }: { number: number }) => ({ ...pull, number }),
     fetchRepositoryTree: async ({ sha }: { sha: string }) => {
       calls.push(`tree ${sha}`)
       if (options.failTree === true) throw new Error('Resource not accessible by integration')

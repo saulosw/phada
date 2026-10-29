@@ -4,7 +4,7 @@ import { findingFixture } from '../../test/support/finding.js'
 import { pullRequestFixture } from '../../test/support/pull-request.js'
 import type { Conversation } from '../publish/types.js'
 import type { Ci } from '../context/types.js'
-import type { ReviewResult } from '../review/types.js'
+import type { RecheckReport, ReviewResult } from '../review/types.js'
 import { formatAlreadyReviewedJson, formatReviewJson } from './format-json.js'
 
 const PULL_REQUEST = {
@@ -24,6 +24,10 @@ const RESULT: ReviewResult = {
   additionalModels: ['gpt-6-mini'],
   durationMs: 16_400,
   usage: { inputTokens: 9700, outputTokens: 417 },
+  passUsage: [
+    { pass: 'review', usage: { inputTokens: 9000, outputTokens: 400 } },
+    { pass: 'verify', usage: { inputTokens: 700, outputTokens: 17 } },
+  ],
   summary: 'Adds a spend endpoint.',
   files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 1 }],
   findings: [findingFixture({ severity: 'P0', confidence: 95, line: 3 })],
@@ -32,6 +36,7 @@ const RESULT: ReviewResult = {
   minConfidence: 75,
   score: { value: 1, reason: '1 P0 finding (shop.ts:3)' },
   dropped: { invalid: 0, belowFloor: 1, outsideDiff: 2, duplicate: 0, rejected: 0 },
+  claims: [],
 }
 
 function parse(output: string): unknown {
@@ -70,6 +75,7 @@ describe('formatReviewJson', () => {
       review: {
         score: { value: 1, reason: '1 P0 finding (shop.ts:3)' },
         summary: 'Adds a spend endpoint.',
+        claims: [],
         files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 1 }],
         findings: [
           {
@@ -79,8 +85,11 @@ describe('formatReviewJson', () => {
             reason: null,
             suggestion: null,
             skill: 'phada',
+            scope: 'change',
+            closeToCut: false,
           },
         ],
+        debt: [],
         worthChecking: [
           {
             ...findingFixture({ severity: 'P2', confidence: 60, line: 5, fix: null }),
@@ -89,18 +98,23 @@ describe('formatReviewJson', () => {
             reason: null,
             suggestion: null,
             skill: 'phada',
+            scope: 'change',
+            closeToCut: false,
           },
         ],
         worthCheckingOmitted: 2,
         minConfidence: 75,
-        dropped: { invalid: 0, belowFloor: 1, outsideDiff: 2, duplicate: 0, rejected: 0 },
+        dropped: { invalid: 0, belowFloor: 1, outsideDiff: 2, duplicate: 0, rejected: 0, debt: 0 },
         suggestions: null,
         verification: null,
         provider: { id: 'codex-cli', model: 'gpt-6-astra', additionalModels: ['gpt-6-mini'] },
         durationMs: 16_400,
-        usage: { inputTokens: 9700, outputTokens: 417 },
+        usage: { inputTokens: 9700, cachedInputTokens: null, outputTokens: 417 },
         passes: null,
         skillBodies: null,
+        language: null,
+        diffFingerprint: null,
+        ignored: [],
       },
       publication: null,
       context: null,
@@ -110,7 +124,103 @@ describe('formatReviewJson', () => {
       impact: null,
       related: null,
       recheck: null,
+      usage: {
+        passes: [
+          {
+            pass: 'review',
+            skill: null,
+            usage: { inputTokens: 9000, cachedInputTokens: null, outputTokens: 400 },
+          },
+          {
+            pass: 'verify',
+            skill: null,
+            usage: { inputTokens: 700, cachedInputTokens: null, outputTokens: 17 },
+          },
+        ],
+        total: { inputTokens: 9700, cachedInputTokens: null, outputTokens: 417 },
+      },
     })
+  })
+
+  it('keeps what publishing the review later needs: its language, diff fingerprint and files left out', () => {
+    const output = formatReviewJson(
+      pullRequestFixture(),
+      {
+        status: 'reviewed',
+        result: {
+          ...RESULT,
+          target: { ...RESULT.target, diffFingerprint: '0123456789abcdef' },
+          ignored: ['package-lock.json'],
+        },
+      },
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      undefined,
+      { language: 'pt-BR' },
+    )
+
+    expect(parse(output)).toMatchObject({
+      review: {
+        language: 'pt-BR',
+        diffFingerprint: '0123456789abcdef',
+        ignored: ['package-lock.json'],
+      },
+    })
+  })
+
+  it('prints the scope of each finding, the repository debt and the debt dropped', () => {
+    const debt = findingFixture({ line: 12, title: 'balance has no caller', scope: 'repository' })
+    const output = formatReviewJson(pullRequestFixture(), {
+      status: 'reviewed',
+      result: {
+        ...RESULT,
+        findings: [findingFixture({ line: 3, scope: 'repository' })],
+        debt: [debt],
+        dropped: { ...RESULT.dropped, debt: 2 },
+      },
+    })
+
+    expect(parse(output)).toMatchObject({
+      review: {
+        findings: [{ line: 3, scope: 'repository' }],
+        debt: [{ line: 12, title: 'balance has no caller', scope: 'repository', skill: 'phada' }],
+        dropped: { debt: 2 },
+      },
+    })
+  })
+
+  it('says which findings are close to the confidence cut', () => {
+    const output = formatReviewJson(pullRequestFixture(), {
+      status: 'reviewed',
+      result: {
+        ...RESULT,
+        findings: [findingFixture({ line: 3, confidence: 80, closeToCut: true })],
+      },
+    })
+
+    expect(parse(output)).toMatchObject({
+      review: {
+        findings: [{ line: 3, closeToCut: true }],
+        worthChecking: [{ line: 5, closeToCut: false }],
+      },
+    })
+  })
+
+  it('prints the claims of the description with their verdict and evidence', () => {
+    const claims = [
+      { claim: 'Prevents two runs on staging', verdict: 'contradicted', evidence: 'ci.yml:4' },
+      { claim: 'Covers the empty cart', verdict: 'unverified', evidence: '' },
+    ] as const
+    const output = formatReviewJson(pullRequestFixture(), {
+      status: 'reviewed',
+      result: { ...RESULT, claims: [...claims] },
+    })
+
+    expect(parse(output)).toMatchObject({ review: { claims } })
   })
 
   it('prints the skill of each finding and every pass', () => {
@@ -317,6 +427,69 @@ describe('formatReviewJson', () => {
     })
   })
 
+  it('lists the tokens of each AI pass with the recheck, and null for what was not reported', () => {
+    const recheck: RecheckReport = {
+      threads: 1,
+      fixed: 1,
+      stillValid: 0,
+      unsure: 0,
+      verdicts: [
+        {
+          threadId: 't',
+          file: 'a.ts',
+          line: 1,
+          title: 'x',
+          verdict: 'fixed',
+          reason: '',
+          by: 'ai',
+        },
+      ],
+      durationMs: 10,
+    }
+    const result: ReviewResult = {
+      ...RESULT,
+      usage: { inputTokens: 900, cachedInputTokens: 600, outputTokens: 40 },
+      passUsage: [
+        {
+          pass: 'review',
+          skill: 'code-review',
+          usage: { inputTokens: 900, cachedInputTokens: 600, outputTokens: 40 },
+        },
+        { pass: 'review', skill: 'phada' },
+      ],
+    }
+
+    const output = parse(
+      formatReviewJson(
+        pullRequestFixture(),
+        { status: 'reviewed', result },
+        null,
+        null,
+        null,
+        null,
+        null,
+        recheck,
+      ),
+    )
+
+    expect(output).toMatchObject({
+      review: { usage: { inputTokens: 900, cachedInputTokens: 600, outputTokens: 40 } },
+      recheck: { usage: null },
+      usage: {
+        passes: [
+          {
+            pass: 'review',
+            skill: 'code-review',
+            usage: { inputTokens: 900, cachedInputTokens: 600, outputTokens: 40 },
+          },
+          { pass: 'review', skill: 'phada', usage: null },
+          { pass: 'recheck', skill: null, usage: null },
+        ],
+        total: { inputTokens: 900, cachedInputTokens: 600, outputTokens: 40 },
+      },
+    })
+  })
+
   it('prints a skipped review with the pull request', () => {
     const output = formatReviewJson(pullRequestFixture({ diff: '' }), {
       status: 'skipped',
@@ -337,6 +510,7 @@ describe('formatReviewJson', () => {
       impact: null,
       related: null,
       recheck: null,
+      usage: { passes: [], total: null },
     })
   })
 
@@ -396,6 +570,32 @@ describe('publication', () => {
       resolved: { resolved: 0, failed: 0, total: 0 },
     })
     expect(parse(output)).toMatchObject({ status: 'reviewed', review: { summary: RESULT.summary } })
+  })
+
+  it('keeps the body and line comments it posted, or tried to post', () => {
+    const review = {
+      body: 'Body',
+      comments: [{ path: 'src/shop.ts', startLine: 2, line: 3, body: 'Comment' }],
+    }
+    const published = formatReviewJson(pullRequestFixture(), reviewed, {
+      status: 'published',
+      url: 'https://github.com/acme/shop/pull/12#pullrequestreview-1',
+      comments: 1,
+      stillOpen: 0,
+      review,
+    })
+    const failed = formatReviewJson(pullRequestFixture(), reviewed, {
+      status: 'failed',
+      error: 'GitHub denied publishing the review.',
+      review,
+    })
+
+    expect(publicationOf(published)).toMatchObject({
+      comments: 1,
+      body: 'Body',
+      lineComments: review.comments,
+    })
+    expect(publicationOf(failed)).toMatchObject({ body: 'Body', lineComments: review.comments })
   })
 
   it('prints a failed publication with the error', () => {
@@ -462,6 +662,7 @@ describe('publication', () => {
       impact: null,
       related: null,
       recheck: null,
+      usage: { passes: [], total: null },
     })
     expect(
       parse(
@@ -583,8 +784,29 @@ describe('publication', () => {
       ),
     )
 
-    expect(output).toMatchObject({ impact })
-    expect(Object.keys(output as object).slice(-3)).toEqual(['impact', 'related', 'recheck'])
+    expect(output).toMatchObject({ impact: { ...impact, text: null } })
+    expect(
+      parse(
+        formatReviewJson(
+          pullRequestFixture(),
+          { status: 'reviewed', result: RESULT },
+          null,
+          null,
+          null,
+          impact,
+          null,
+          null,
+          undefined,
+          { impactText: 'getUser (src/users.ts:1-3): 2 callers' },
+        ),
+      ),
+    ).toMatchObject({ impact: { text: 'getUser (src/users.ts:1-3): 2 callers' } })
+    expect(Object.keys(output as object).slice(-4)).toEqual([
+      'impact',
+      'related',
+      'recheck',
+      'usage',
+    ])
   })
 
   it('adds the conversation and the CI sent to the AI, without the texts', () => {

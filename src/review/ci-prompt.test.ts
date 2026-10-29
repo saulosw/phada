@@ -47,15 +47,15 @@ function blockOf(data: string, name: string): string {
 }
 
 describe('prompts of a pull request without checks', () => {
-  it('keep the review prompt of 0.8.0 byte for byte', () => {
+  it('keep the review prompt byte for byte', () => {
     expect(digest(buildReviewPrompt({ ...BARE, ci: [] }, NONCE))).toBe(
-      'd39cf046d8e7c3c722a272fb4bd5a2e840062da31c61b962dfce2cf89c7ff31c',
+      '1a602254327e23fbd73b759aa99065d12efda9e97e43def72aea0e4cf20b9c9a',
     )
   })
 
-  it('keep the verify prompt of 0.8.0 byte for byte', () => {
+  it('keep the verify prompt byte for byte', () => {
     expect(digest(buildVerifyPrompt({ ...BARE, ci: [] }, CANDIDATES, NONCE))).toBe(
-      'ad64d9fad33e7bef72885b75100a1b2e84a7cddb2adb5c1d2cafd5be43b1425f',
+      '5c5fffd6e9b588a8bee6559e4539246de1607b013e78f69d4ce76a95ee078551',
     )
   })
 })

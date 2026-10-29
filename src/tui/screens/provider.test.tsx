@@ -520,6 +520,7 @@ describe('the Provider screen', () => {
               ],
             }
           },
+          readProviderChecks: async () => ({ providers: [claude(), codex(), ollama()] }),
           readLanguage: async () => current.language,
           ...(options.language === undefined ? {} : { language: options.language }),
           planConfig: async (changes) => ({ ok: true, plan: planOf(changes, current) }),
@@ -549,7 +550,7 @@ describe('the Provider screen', () => {
       await press(KEYS.down, KEYS.enter)
       await showing('Model for Codex')
       await press(KEYS.enter)
-      await showing('Save ~/.config/phada/config.yml?')
+      await showing('Save to ~/.config/phada/config.yml?')
       expect(frame()).toMatch(/provider +claude → codex/)
       expect(frame()).toMatch(/model +opus → \(not set\)/)
       expectFits(frame(), { columns: 80, rows: 24 })
@@ -589,7 +590,7 @@ describe('the Provider screen', () => {
       await press('L')
       await showing('❯ English', 'Português')
       await press(KEYS.down, KEYS.enter)
-      await showing('Save ~/.config/phada/config.yml?')
+      await showing('Save to ~/.config/phada/config.yml?')
       expect(frame()).toMatch(/language +\(not set\) → pt/)
       await press(KEYS.enter)
       await showing('Idioma: Português', 'Revisa com Claude Code')

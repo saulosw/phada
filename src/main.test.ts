@@ -227,6 +227,7 @@ function harness(
       return overrides.ghToken?.()
     },
     version: '1.2.3',
+    pid: 4321,
     cwd: '/w/shop',
     home: '/home/u',
     files,
@@ -596,13 +597,15 @@ describe('run', () => {
       [
         'Fetching acme/shop#12…',
         'acme/shop#12 · a1b2c3d · 2 files · +15 −1 · 523 B diff',
-        'Context: no rules or docs',
+        'Context at base 0000000: no rules or docs',
         'Indexing 1 file…',
         'Impact: no indexed symbols changed',
         'Reviewing with fake-cli… (this can take a few minutes)',
         'Investigated: no tool calls',
         'Publishing the review…',
         `Published the review: ${REVIEW_URL}`,
+        'Tokens: review 3.5k in · 420 out',
+        'Saved as run 1: phada history show 1',
         '',
       ].join('\n'),
     )
@@ -639,7 +642,7 @@ describe('run', () => {
 
     expect(h.providers).toEqual([{ name: 'claude', options: { model: 'opus' } }])
     expect(h.prompts[0]?.instructions).toContain(
-      'Write summary, change, title, why and fix in pt-BR;',
+      'Write summary, change, title, why, fix, claim and evidence in pt-BR;',
     )
     expect(h.posts[0]?.body).toContain('## 🦋 5/5 (pronto para merge)')
     expect(h.posts[0]?.body).toContain('### Resumo')
@@ -1234,9 +1237,11 @@ describe('run publishing', () => {
     expect(h.prompts).toHaveLength(0)
     expect(h.posts).toHaveLength(0)
     expect(h.stdout()).toBe('')
-    expect(h.stderr().split('\n').at(-2)).toBe(
+    expect(h.stderr().split('\n').slice(-3)).toEqual([
       'a1b2c3d already reviewed by Phada; 1 thread still open. Use --force to review again.',
-    )
+      'Saved as run 1: phada history show 1',
+      '',
+    ])
   })
 
   it('skips the same commit when its review found nothing', async () => {
@@ -1301,6 +1306,189 @@ describe('run publishing', () => {
     expect(h.stderr()).toContain(
       'Dry run: nothing was posted.\nWithout --dry-run: a1b2c3d already reviewed by Phada; 1 thread still open. Use --force to review again.\n',
     )
+  })
+
+  it('shows the claims of the description in the dry run and its JSON, never on GitHub', async () => {
+    const claims = [
+      { claim: 'Prevents two runs on staging', verdict: 'contradicted', evidence: 'ci.yml:4' },
+    ]
+    const answer = { ...OUTPUT, text: reviewReportJson({ findings: [], claims }) }
+    const markdown = harness({ review: () => Promise.resolve(answer) })
+    const json = harness({ review: () => Promise.resolve(answer) })
+    const published = harness({ review: () => Promise.resolve(answer) })
+
+    await run([...REVIEW, '--dry-run'], markdown.deps)
+    await run([...REVIEW, '--dry-run', '--format', 'json'], json.deps)
+    await run(REVIEW, published.deps)
+
+    expect(markdown.stdout()).toContain(
+      '\n## Claims of the description\n\n- contradicted: Prevents two runs on staging (ci.yml:4)\n\n## Context',
+    )
+    expect(JSON.parse(json.stdout())).toMatchObject({ review: { claims } })
+    expect(JSON.stringify(published.posts)).not.toContain('Prevents two runs')
+  })
+
+  it('shows the findings close to the cut in the dry run and the terminal, never on GitHub', async () => {
+    const answer = {
+      ...OUTPUT,
+      text: reviewReportJson({ findings: [findingFixture({ line: 3, confidence: 65 })] }),
+    }
+    const dryRun = harness({ review: () => Promise.resolve(answer) })
+    const published = harness({ review: () => Promise.resolve(answer) })
+
+    await run([...REVIEW, '--dry-run'], dryRun.deps)
+    await run(REVIEW, published.deps)
+
+    expect(dryRun.stdout()).toContain(
+      '\n## Close to the cut\n\n1 close to the cut: at most 10 points above the cut of 60, another run may leave them out.\n\n- P1 · src/shop.ts:3: spend has no auth (confidence 65)\n\n## Claims of the description',
+    )
+    expect(published.stdout()).toContain('(confidence 65 · close to the cut)')
+    expect(JSON.stringify(published.posts)).not.toMatch(/close to the cut/i)
+  })
+
+  it('lists the tokens of each pass at the end of the dry run and of the review', async () => {
+    const h = harness({ review: () => Promise.resolve(WITH_FINDING) })
+
+    await run([...REVIEW, '--dry-run'], h.deps)
+
+    expect(h.stdout()).toMatch(
+      /\n## Tokens\n\n- review: 3\.5k in · 420 out\n- total: 3\.5k in · 420 out\n$/,
+    )
+    expect(h.stderr()).toMatch(
+      /Dry run: nothing was posted\.\nTokens: review 3\.5k in · 420 out\nSaved as run 1: phada history show 1\n$/,
+    )
+  })
+
+  it('shows a saved dry run again with phada history show, section by section', async () => {
+    const h = harness({ review: () => Promise.resolve(WITH_FINDING) })
+    await run([...REVIEW, '--dry-run'], h.deps)
+    const dryRun = h.stdout()
+    const file = h.historyFiles[0]?.split(' → ')[1] ?? ''
+    const shown: string[] = []
+    const deps: MainDeps = {
+      ...h.deps,
+      files: { ...h.deps.files, exists: async (path) => path === '/data/history.sqlite' },
+      env: { ...h.deps.env, PHADA_DATA_HOME: '/data' },
+      openHistoryReader: (path) => {
+        shown.push(path)
+        return openHistoryStore(file, { readOnly: true })
+      },
+      stdout: { write: (text: string) => shown.push(text) },
+    }
+
+    expect(await run(['history', 'show', '1'], deps)).toBe(0)
+
+    expect(shown[0]).toBe('/data/history.sqlite')
+    const [header, title, blank, ...rest] = (shown[1] ?? '').split('\n')
+    expect(header).toMatch(
+      /^Run 1 · acme\/shop#12 at a1b2c3d · .+ · manual · claude\/claude-fake-1 · dry run$/,
+    )
+    expect([title, blank]).toEqual(['Let users spend crystals', ''])
+    expect(rest.join('\n')).toBe(dryRun)
+  })
+
+  it('publishes a saved dry run with phada publish, exactly as it was found and without the AI', async () => {
+    const h = harness({ review: () => Promise.resolve(WITH_FINDING) })
+    await run([...REVIEW, '--dry-run'], h.deps)
+    const dryRun = h.stdout()
+    const asked = { prompts: h.prompts.length, providers: h.providers.length }
+    const deps: MainDeps = {
+      ...h.deps,
+      files: { ...h.deps.files, exists: async () => true },
+    }
+
+    expect(await run(['publish', '1'], deps)).toBe(0)
+
+    expect(h.posts).toHaveLength(1)
+    const [post] = h.posts
+    expect(post?.commitSha).toBe(HEAD_SHA)
+    expect(dryRun).toContain(post?.body ?? 'no body')
+    expect(post?.comments).toEqual([expect.objectContaining({ path: 'src/shop.ts', line: 3 })])
+    expect({ prompts: h.prompts.length, providers: h.providers.length }).toEqual(asked)
+    expect(h.stderr()).toMatch(
+      /Saved as run 1: phada history show 1\nPublished the review with 1 inline comment: https:\/\/github\.com\/acme\/shop\/pull\/12#pullrequestreview-\d+\nSaved as run 2: phada history show 2\n$/,
+    )
+  })
+
+  it('prints the published run as JSON, linked to the dry run it came from', async () => {
+    const h = harness({ review: () => Promise.resolve(WITH_FINDING) })
+    await run([...REVIEW, '--dry-run'], h.deps)
+    const out: string[] = []
+    const deps: MainDeps = {
+      ...h.deps,
+      files: { ...h.deps.files, exists: async () => true },
+      stdout: { write: (text: string) => out.push(text) },
+    }
+
+    expect(await run(['publish', '1', '--format', 'json'], deps)).toBe(0)
+
+    expect(JSON.parse(out.join(''))).toMatchObject({
+      schemaVersion: 1,
+      review: { findings: [{ line: 3 }], language: null },
+      publication: { status: 'published', comments: 1, lineComments: [{ line: 3 }] },
+      publishedFrom: 1,
+    })
+  })
+
+  it('refuses to publish a dry run once the pull request moved, unless --force', async () => {
+    const newer = 'f'.repeat(40)
+    const h = harness({
+      review: () => Promise.resolve(WITH_FINDING),
+      pullHead: () => Promise.resolve({ state: 'open', draft: false, headSha: newer }),
+    })
+    await run([...REVIEW, '--dry-run'], h.deps)
+    const errors: string[] = []
+    const deps: MainDeps = {
+      ...h.deps,
+      files: { ...h.deps.files, exists: async () => true },
+      stderr: { write: (text: string) => errors.push(text) },
+    }
+
+    expect(await run(['publish', '1'], deps)).toBe(1)
+    expect(errors.join('')).toBe(
+      'phada: The pull request moved from a1b2c3d to fffffff since run 1: review it again, or use --force to publish run 1 on a1b2c3d.\n',
+    )
+    expect(h.posts).toEqual([])
+
+    errors.length = 0
+    expect(await run(['publish', '1', '--force'], deps)).toBe(0)
+    expect(h.posts.map(({ commitSha }) => commitSha)).toEqual([HEAD_SHA])
+    expect(errors[0]).toBe(
+      'Warning: the pull request moved from a1b2c3d to fffffff since run 1; the review is on a1b2c3d, the commit the dry run reviewed.\n',
+    )
+  })
+
+  it('refuses to publish a run that was already published', async () => {
+    const h = harness({ review: () => Promise.resolve(WITH_FINDING) })
+    await run(REVIEW, h.deps)
+    const errors: string[] = []
+    const deps: MainDeps = {
+      ...h.deps,
+      files: { ...h.deps.files, exists: async () => true },
+      stderr: { write: (text: string) => errors.push(text) },
+    }
+
+    expect(await run(['publish', '1'], deps)).toBe(1)
+    expect(errors.join('')).toMatch(
+      /^phada: Run 1 is already published \(https:\/\/github\.com\/acme\/shop\/pull\/12#pullrequestreview-\d+\): phada publish takes the run of a phada review --dry-run\.\n$/,
+    )
+    expect(h.posts).toHaveLength(1)
+  })
+
+  it('says which run a missing id is not', async () => {
+    const h = harness({ review: () => Promise.resolve(WITH_FINDING) })
+    await run([...REVIEW, '--dry-run'], h.deps)
+    const file = h.historyFiles[0]?.split(' → ')[1] ?? ''
+    const errors: string[] = []
+    const deps: MainDeps = {
+      ...h.deps,
+      files: { ...h.deps.files, exists: async () => true },
+      openHistoryReader: () => openHistoryStore(file, { readOnly: true }),
+      stderr: { write: (text: string) => errors.push(text) },
+    }
+
+    expect(await run(['history', 'show', '4'], deps)).toBe(1)
+    expect(errors.join('')).toBe('phada: No run 4 in the history.\n')
   })
 
   it('prints the dry run as JSON with the review and the publication preview', async () => {
@@ -1450,7 +1638,25 @@ describe('run with config and repository context', () => {
     expect(h.prompts[0]?.instructions).toContain('[orm-only] (files: **)\nUse the ORM.')
     expect(h.prompts[0]?.instructions).toContain('in pt-BR')
     expect(h.prompts[0]?.data).toContain('=== AGENTS.md ===\nKeep handlers thin.')
-    expect(h.stderr()).toContain('Context: 1 rule · 1 doc (19 B)\n')
+    expect(h.stderr()).toContain('Context at base 0000000: 1 rule · 1 doc (19 B)\n')
+  })
+
+  it('sends the .claude/rules whose paths match the changed files as rules, naming the base', async () => {
+    const h = harness({
+      repoFiles: {
+        '.claude/rules/greeting.md': '---\npaths:\n  - "src/**/*.ts"\n---\nGreet in English.\n',
+        '.claude/rules/web.md': '---\npaths: web/**\n---\nUse hooks.\n',
+      },
+    })
+
+    expect(await run(['review', 'acme/shop#12', '--dry-run'], h.deps)).toBe(0)
+
+    expect(h.prompts[0]?.instructions).toContain(
+      '[.claude/rules/greeting.md] (files: src/**/*.ts)\nGreet in English.',
+    )
+    expect(h.prompts[0]?.instructions).not.toContain('Use hooks.')
+    expect(h.prompts[0]?.data).not.toContain('=== .claude/rules/')
+    expect(h.stderr()).toContain('Context at base 0000000: 1 rule · 0 docs\n')
   })
 
   it('strips control characters from warnings about the repository config', async () => {
@@ -1971,6 +2177,8 @@ describe('run rules', () => {
   const RULE_FILES = {
     '.github/instructions/shop.instructions.md': '---\napplyTo: "src/**"\n---\nUse cents.\n',
     '.github/instructions/web.instructions.md': '---\napplyTo: "web/**"\n---\nUse hooks.\n',
+    '.claude/rules/sql.md': '---\npaths: "src/**"\n---\nUse parameterized queries.\n',
+    '.claude/rules/web.md': '---\npaths: [web/**]\n---\nUse hooks.\n',
   }
 
   it('asks for a token that can read the repository', async () => {
@@ -1987,13 +2195,17 @@ describe('run rules', () => {
     expect(await run(['rules', 'acme/shop#12'], h.deps)).toBe(0)
 
     expect(h.treeFetches).toEqual([{ sha: '0000000000000000000000000000000000000000' }])
-    expect(h.stdout()).toContain('Context for acme/shop#12 at 0000000\n')
+    expect(h.stdout()).toContain('Context for acme/shop#12 at base 0000000\n')
     expect(h.stdout()).toContain(
       '- .github/instructions/shop.instructions.md (37 B, applies to src/**)\n',
     )
     expect(h.stdout()).toContain(
       '- .github/instructions/web.instructions.md (37 B, out of scope: web/**)\n',
     )
+    expect(h.stdout()).toContain(
+      'Rules:\n- .claude/rules/sql.md (.claude/rules/sql.md, src/**)\n- .claude/rules/web.md (.claude/rules/web.md, web/**, out of scope)\n',
+    )
+    expect(h.stdout()).not.toMatch(/- \.claude\/rules\/sql\.md \(\d+ B/)
     expect(h.providers).toEqual([])
     expect(h.mirrors).toEqual([])
     expect(h.stateFetches).toEqual([])
@@ -2019,6 +2231,20 @@ describe('run rules', () => {
       pullRequest: null,
       repository: { owner: 'acme', repo: 'shop', ref: 'trunk' },
     })
+    expect(output.context.rules).toEqual([
+      {
+        key: '.claude/rules/sql.md',
+        origin: '.claude/rules/sql.md',
+        scope: ['src/**'],
+        status: 'listed',
+      },
+      {
+        key: '.claude/rules/web.md',
+        origin: '.claude/rules/web.md',
+        scope: ['web/**'],
+        status: 'listed',
+      },
+    ])
     expect(output.context.docs).toEqual([
       expect.objectContaining({
         path: '.github/instructions/shop.instructions.md',
@@ -2499,6 +2725,33 @@ describe('phada watch', () => {
     expect(h.providers[0]?.options).toMatchObject({
       mcpNames: { provider: 'claude', names: [{ name: 'linear' }] },
     })
+  })
+
+  it('cleans the warning of a run it could not save before printing it', async () => {
+    const h = harness({
+      files: withConfig(),
+      listPulls: listed,
+      review: () => Promise.resolve(WITH_FINDING),
+      openHistoryStore: async (path) => {
+        const store = await openHistoryStore(join(storeDir, `unsaved-${storeCount}.sqlite`))
+        expect(path).toContain('history.sqlite')
+        return new Proxy(store, {
+          get: (target, key) => {
+            if (key === 'addRun') {
+              return () => {
+                throw new Error('disk \u001B[2Jfull')
+              }
+            }
+            const value: unknown = Reflect.get(target, key)
+            return typeof value === 'function' ? value.bind(target) : value
+          },
+        })
+      },
+    })
+
+    expect(await run(['watch', '--once', '--backfill'], h.deps)).toBe(0)
+    expect(h.stderr()).toContain('Warning: could not save the run in the history (disk [2Jfull).\n')
+    expect(h.stderr()).not.toContain('\u001B')
   })
 
   it('saves the findings a watch review published', async () => {

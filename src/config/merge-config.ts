@@ -1,6 +1,6 @@
 import { posix } from 'node:path'
 import { durationMs } from './duration.js'
-import type { ConfigFile } from './schema.js'
+import type { ConfigFile, DEBT_MODES } from './schema.js'
 import type { ConfigLayer, LayerKind } from './types.js'
 
 export interface ResolvedRule {
@@ -50,7 +50,10 @@ export interface ReviewSkillsRef {
   source: ConfigSource
 }
 
+export type DebtSetting = (typeof DEBT_MODES)[number]
+
 export interface ReviewSettings {
+  debt?: { mode: DebtSetting; origin: string }
   prompt?: ReviewPromptRef
   skills?: ReviewSkillsRef
   commands?: { policy: CommandPolicySetting; origin: string }
@@ -168,6 +171,7 @@ export function mergeConfig(layers: readonly ConfigLayer[]): EffectiveConfig {
     repos: relatedRepositories(bySpecificity),
     privateOnPublic: firstSet((config) => config.context?.privateOnPublic) ?? false,
     review: {
+      ...debtSetting(firstLayer((config) => config.review?.debt)),
       ...reviewSettings(
         firstLayer((config) => config.review?.prompt),
         firstLayer((config) =>
@@ -212,6 +216,13 @@ export function resolveProvider(
     (source === undefined ? configs.find((config) => config.model)?.model : source.model)
   const provider = source?.provider ?? DEFAULT_PROVIDER
   return model === undefined ? { provider } : { provider, model }
+}
+
+function debtSetting(layer: ConfigLayer | undefined): ReviewSettings {
+  const mode = layer?.config.review?.debt
+  return layer === undefined || mode === undefined
+    ? {}
+    : { debt: { mode, origin: layer.configLabel } }
 }
 
 function reviewUserSettings(

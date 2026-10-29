@@ -18,15 +18,29 @@ export function formatImpactSection(report: ImpactReport, text: string | undefin
   if (report.status === 'unavailable') {
     return `${heading}Not available${report.reason === undefined ? '' : `: ${toTerminalText(report.reason)}`}.\n`
   }
-  if (report.changed.length === 0 || text === undefined)
-    return `${heading}No indexed symbols changed.\n`
-  const body = text
-    .split('\n')
-    .map((line) => toTerminalText(line))
-    .join('\n')
+  if (report.changed.length === 0) return `${heading}No indexed symbols changed.\n`
+  const body =
+    text === undefined
+      ? report.changed.map(changedLine).join('\n')
+      : text
+          .split('\n')
+          .map((line) => toTerminalText(line))
+          .join('\n')
   const learned = report.learned.map(
     ({ from, to, pullRequest }) =>
       `Learned: ${toTerminalText(from)} → ${toTerminalText(to)} (from #${pullRequest})`,
   )
   return `${heading}${body}\n${learned.length === 0 ? '' : `\n${learned.join('\n')}\n`}`
+}
+
+function changedLine({
+  kind,
+  name,
+  path,
+  lines,
+  callers,
+  files,
+}: ImpactReport['changed'][number]): string {
+  const where = `${toTerminalText(path)}:${lines[0]}-${lines[1]}`
+  return `- ${toTerminalText(kind)} ${toTerminalText(name)} (${where}): ${formatCount(callers, 'caller')} in ${formatCount(files, 'file')}`
 }

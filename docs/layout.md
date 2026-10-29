@@ -9,9 +9,11 @@ src/
                          #   SQLite ExperimentalWarning (suppressSqliteWarning), calls run() with
                          #   the gh token reader (ghTokenReader) and the signals (SIGINT, SIGTERM)
                          #   named to the handler
-  main.ts                # run(argv, deps): CLI flow — flags, token, user config, provider choice,
-                         #   then reviewAndPublish(), printing and saving the run in the history;
-                         #   no command → runApp(); createProvider()
+  main.ts                # run(argv, deps): CLI flow — flags, token, then prepareReview() and
+                         #   runManualReview() of manual-review.ts, printing the run (the dry
+                         #   run through formatRunSections()), a history save that failed and
+                         #   the id of the saved run; publish → runPublish(); no command →
+                         #   runApp(); createProvider()
   architecture.test.ts   # allowed imports of src/review/, src/publish/, src/watch/, src/context/,
                          #   src/investigation/, src/repository/, src/repo-map/, src/store/,
                          #   src/graph/, src/app/, src/skills/, src/gh-facade/, src/slack/ and
@@ -22,7 +24,11 @@ src/
                          #   (60 s budget) → related repositories → graph and impact of the diff
                          #   across them → investigation → recheck of earlier comments → review →
                          #   observed relations → reports; progress through typed events;
+                         #   an aborted signal stops it between those stages (the fetch and the
+                         #   index of the head take it; a cut index saves no commit);
                          #   loadPullRequestContext()
+    review-cancelled.ts  #   ReviewCancelledError; stopIfCancelled(): throws it once the signal
+                         #   is aborted, wrapping what a stage threw after the abort
     review-and-publish.ts # reviewAndPublish(): fetch → decideRun → context → decideRun with the
                          #   diff fingerprint → [--wait-ci: waitForCi()] → threads to recheck
                          #   (compare) → the conversation
@@ -30,7 +36,23 @@ src/
                          #   (readCi, unless ci.read is off) → reviewPullRequest → plan → render
                          #   (injected, with the CI summary) → [checkHead] → reply and resolve
                          #   the fixed threads → createReview; never prints (the conversation
-                         #   and the CI it read go out as events)
+                         #   and the CI it read go out as events); an aborted signal stops it
+                         #   between stages and right before publishing, never once publishing
+                         #   started (ReviewCancelledError, also for what a stage threw after
+                         #   the abort), and passes it into reviewPullRequest; once aborted,
+                         #   no AI run of the review starts (a call to the provider throws it)
+    review-progress.ts   #   ReviewProgress: each step of a review as data (fetched, conversation
+                         #   and CI read, CI wait, context, indexing, related, impact, passes, the
+                         #   AI running a review, verify, recheck or skill run, publishing,
+                         #   warning), ReviewProgressSink; reportProgress(): ReviewProvider
+                         #   decorator that reports when the AI starts and finishes a run,
+                         #   whether it answered and the tokens it reported
+    wrap-provider-runs.ts #  wrapProviderRuns(): a ReviewProvider whose review and skill runs go
+                         #   through a wrapper (the progress report, the refusal once cancelled)
+    requested-review.ts  #   a review the person asks for in the app: ReviewMode (look, publish),
+                         #   PullRequestTarget, OpenPullRequests, HistorySave, RequestedReview
+                         #   (the review detail and how the history kept it, cancelled, a watch
+                         #   holding the lock when it would publish, or no token), EnqueuedReview (what submitRequest() answered, or no token)
     watch-repositories.ts # watchRepositories(): the watch loop — discovery with ETags, planCycle
                          #   (asking the when command before queueing), /phada review comments,
                          #   the next job through the CI gate (readCi: waiting jobs read again
@@ -41,11 +63,29 @@ src/
                          #   superseded job or a ci-failing one), job events (notify; the CI
                          #   the gate read on started), the idle index and feedback
                          #   refresh (30 min per pull request, 10 per cycle); events
+    watch-event.ts       #   WatchEvent: each event of the watch as data (baseline, queued,
+                         #   started, waiting for CI, finished, retry, paused, failed, index,
+                         #   feedback, warning, limited, refused), WatchEventSink;
+                         #   watchEventsTo(): the WatchEvents of the loop → the sink; WatchEnd,
+                         #   and for the app: WatchObserver (the events and each job's review
+                         #   progress), WatchControl (done, stop(), abort()), WatchStarted
+                         #   (started, or held by another PID)
     submit-request.ts    #   submitRequest(): a review request of any source → the policy (and the
                          #   when command) → a new job, a joined job (a ci-failing one queued
                          #   again) or a refusal; whenInput()
     feedback.ts          #   recordReviewFeedback(): the threads a run read and the comments it
-                         #   published → the history; refreshFeedback(): read due pull requests
+                         #   published → the history (recordFeedback(), also for a publication
+                         #   of a saved run); refreshFeedback(): read due pull requests
+    publish-saved-review.ts # publishSavedReview(): a dry run of the history (readRun injected) →
+                         #   refused (not found, not a dry run, nothing to publish, saved
+                         #   without what publishing needs, the head moved unless force),
+                         #   skipped (decideRun: a commit already reviewed or the same diff,
+                         #   unless force) or published on the commit it reviewed: planned
+                         #   against the threads now, rendered (injected), the fixed threads
+                         #   still open resolved, no AI; PublishRefusal, SavedPublication
+    stored-review.ts     #   storedReview(): the stored JSON of a dry run → the ReviewResult the
+                         #   renderer needs, its language, CI summary and the threads it would
+                         #   resolve, read strictly (zod): a missing field is undefined
     index-repository.ts  #   indexRepository(): mirror → files left out and why → indexCommit();
                          #   with a signal, a cancel stops the fetch or stops between files
                          #   (IndexCancelled), the blobs extracted kept for the next run;
@@ -89,8 +129,21 @@ src/
     read-history.ts      #   readReviews(), readFindings() (destination and marks of each),
                          #   readFeedbackStats() (feedbackStats() per repository, ruleStats() per
                          #   rule), readReviewDetail(): one run with what its stored JSON keeps
-                         #   (score, summary, findings, publication, CI) and the feedback of each
-                         #   published finding; no history file reads as empty
+                         #   (score, summary, claims, findings with their scope and whether
+                         #   they were close to the cut, repository debt, the tokens of each
+                         #   AI pass and their total, publication with what a dry run
+                         #   would resolve and why a publication was skipped, CI) and the
+                         #   feedback of each published finding; reviewDetailOf(): the same from a run
+                         #   record (a run the app just made); no history file reads as empty;
+                         #   storedFindings(), storedClaims(), storedCi()
+    read-run-report.ts   #   readRunReport(): one run of the history with every block its stored
+                         #   JSON keeps, read leniently (zod): what was posted, close to the cut,
+                         #   claims, context, conversation and CI (ConversationBlock, CiBlock,
+                         #   the shapes of the JSON), impact with its text, related, skills with
+                         #   the fix of each blocked command, investigation and tokens; a block
+                         #   the run did not keep is left out, one it kept as null is off
+    stored-json.ts       #   parseJson(), objectOf(), stringOf(), numberOf(), stringsOf(): the
+                         #   lenient reads of a stored JSON
     read-repositories.ts #   readRepositories(): watch.repos ∪ the user's repos/<owner>/<repo>/
                          #   folders ∪ the history, each with its origins, index file and last
                          #   review, watched first, then own config, then history, each by
@@ -136,6 +189,32 @@ src/
     edit-user-config.ts  #   planUserConfig(): the user's own config.yml read (injected) →
                          #   planUserConfigEdit(); applyUserConfigPlan(): written atomically only
                          #   if the file did not change since the plan; failures as data
+    read-connections.ts  #   readConnections(): each repository of the screens with its
+                         #   declared related repositories (the user config and the root
+                         #   .phada/config.yml of its indexed commit, merged as a review does),
+                         #   each linked by package both ways, without a link, not indexed (no
+                         #   index, empty, other version, unreadable, no mirror or an unreadable
+                         #   one) or not read while the repository itself is not; manifests read
+                         #   from the existing mirror at the index's snapshot, no fetch; readers
+                         #   injected
+    local-repository.ts  #   openLocalRepository(): the read-only index at its snapshot and the
+                         #   existing mirror's files of that commit → packages, the root
+                         #   .phada/config.yml and readText, the index kept open (or why it is
+                         #   not indexed); indexedSnapshot(); declaredRelated(): the related
+                         #   repositories as a review merges them; readers injected
+    explore-graph.ts     #   openGraphExplorer(): the RepositoryGraph of a repository (with its
+                         #   observed relations) linked with linkGraphs() to the declared related
+                         #   repositories that are indexed and linked by package (each of those
+                         #   linked back to it); search() → definitions, callers() and
+                         #   dependencies() of one definition, routed to the graph of its
+                         #   repository, LEVEL_MAX (20) per level with the count left out and
+                         #   capped; close() closes every index; indexedCommit(); Explored<T>
+    read-index.ts        #   readIndexes(): each repository of the screens with its index read
+                         #   only (missing, other version with both, unreadable with the reason,
+                         #   empty, or indexed: the latest snapshot of the default branch, its
+                         #   summary, the files left out per reason with their extensions, the
+                         #   size), each index closed; extensionCounts() (also phada index's);
+                         #   readers injected
     read-learnings.ts    #   readLearnings(): per repository, the observed relations (newest
                          #   first; none, read or unreadable) and the feedback of Phada's comments
                          #   per repository and per rule; readers injected
@@ -158,11 +237,11 @@ src/
                          #   text|json), `rules` (--format text|json), `prompt` (--default,
                          #   --skill, --format text|json), `watch` (--once,
                          #   --backfill, --status) and `history` (--since, --limit, --stats,
-                         #   --refresh, prune --older-than), `enqueue` (--publish, --format) and
+                         #   --refresh, prune --older-than, show <id> --format), `publish` (<id>, --force, --format text|json), `enqueue` (--publish, --format) and
                          #   `mcp` commands, --help, --version, no command (the app, --debug);
                          #   USAGE, SETUP_USAGE, REVIEW_USAGE, INIT_USAGE,
                          #   INDEX_USAGE, RULES_USAGE, PROMPT_USAGE, WATCH_USAGE, ENQUEUE_USAGE,
-                         #   MCP_USAGE, HISTORY_USAGE
+                         #   MCP_USAGE, HISTORY_USAGE, PUBLISH_USAGE
     app-command.ts       #   runApp(): the app when stdin and stdout are TTYs (assertAppTerminal():
                          #   else the missing command error, or --debug alone refused as an
                          #   unknown option; phada setup without them a usage error), started
@@ -171,7 +250,10 @@ src/
                          #   language of the user config at open and readLanguage (read on each
                          #   poll), src/tui/ loaded by import() only here
                          #   (loadApp), setInterval as the scheduler; quit 0, interrupted 130,
-                         #   terminated 143, a failure thrown for formatError(); the readers of
+                         #   terminated 143, a failure thrown for formatError(); with its watch
+                         #   aborted or one of its reviews still running at the end, the
+                         #   process ends through abort() (as phada watch's abort), a failure
+                         #   printed first; the readers of
                          #   the screens (readQueue with the lock holder and the watch settings
                          #   read on each poll, the last good ones kept, readReviews,
                          #   readReviewDetail) over appHistory() with the history opened
@@ -181,14 +263,47 @@ src/
                          #   missing), readProviderSetup (the user config read each time),
                          #   readProviders (the status checkers of src/providers/, injectable),
                          #   readLearnings (the observed files of the cache, read only),
-                         #   readGitHub (readGitHubAccess()) and rulesReaders() of app-rules.ts
+                         #   readIndexes (the repositories of readRepositories, each index of the
+                         #   cache opened with openExistingIndexStore(), openIndexReader
+                         #   injectable), readConnections (each local copy opened with
+                         #   openExistingGitMirror(), openExistingMirror injectable), readGitHub (readGitHubAccess()) and rulesReaders() of app-rules.ts
                          #   with one token reader that asks gh again on each load (runGh and
                          #   fetchUser injectable); handOff and the signals through
                          #   terminalHandOff(); planConfig and applyConfig (planUserConfig() with
                          #   USER_CONFIG_TEMPLATE, applyUserConfigPlan() on the local files);
                          #   pullModel (pullOllamaModel() at OLLAMA_HOST, ollamaFetch injectable);
-                         #   indexRepository (indexForApp()); readRepositoryFolder and
-                         #   initRepository (the app's folder, initRepository() of init.ts)
+                         #   indexRepository (indexForApp()); parsePullRequest,
+                         #   readOpenPullRequests and reviewPullRequest (appReview());
+                         #   pid (the app's own) and startWatch (appWatch(), the watch aborted
+                         #   and awaited on exit, also when the app failed);
+                         #   readRepositoryFolder and
+                         #   initRepository (the app's folder, initRepository() of init.ts);
+                         #   searchSymbol, symbolCallers and symbolDependencies (appGraph() over
+                         #   openGraphExplorer(), openGraph injectable), closed on exit
+    app-review.ts        #   appReview(): parsePullRequest (owner/repo#N or a URL, else
+                         #   undefined), readOpenPullRequests (number, title, author, draft;
+                         #   no token as data) and reviewPullRequest (target, look or publish,
+                         #   progress sink, signal): the same prepareReview() and
+                         #   runManualReview() as phada review, the AI detached, never a write
+                         #   to the terminal → the review detail (reviewDetailOf() of the run's
+                         #   JSON) and how the history kept it, run in its own childScope() (injectable);
+                         #   publishing refused as watch-running while the lock holder says a
+                         #   watch runs (read just before); reviewsRunning();
+                         #   an abort kills the detached children of that scope only and ends as cancelled,
+                         #   with no history row; enqueueReview: the watch settings
+                         #   (requireWatchSettings()), the token and submitRequest() (source
+                         #   enqueue, publish pr) over the history, as phada enqueue;
+                         #   publishReview (a run id): publishSavedRun() without force, as
+                         #   phada publish → PublishedReview (no token, refused, skipped or
+                         #   published with its counts, warnings and history)
+    app-watch.ts         #   appWatch(): start (the lock held by another PID as data, else
+                         #   startWatch() of watch-session.ts as phada watch runs it, never once
+                         #   and without backfill, inside its own childScope(), whose kill() is
+                         #   the session's killDetachedChildren; warnings as warning events,
+                         #   both progress sinks of a job to the observer) → WatchControl;
+                         #   close(): a start under way awaited, a running watch aborted and
+                         #   its end awaited → idle, or aborted when a watch ended aborted;
+                         #   startWatch and childScope injectable
     app-index.ts         #   indexForApp(): token, user layers, mirror and index of the cache as
                          #   phada index uses them → indexRepository() with the signal and the
                          #   progress (fetching, extracting); no token and failures as data
@@ -205,6 +320,10 @@ src/
                          #   and pullRequestPrompt(), the pull request and the repository files
                          #   read once) with the token of the reader it is given, no-token
                          #   without one
+    app-graph.ts         #   appGraph(): searchSymbol, symbolCallers and symbolDependencies over
+                         #   one open GraphExplorer at a time (another repository closes it, a
+                         #   search reopens it when the index has a new commit), closed with
+                         #   the app
     app-history.ts       #   appHistory(): the history for the app, opened once when its file
                          #   exists (looked for again while missing, never created), a newer,
                          #   older or unreadable file thrown on each read and looked at again
@@ -230,8 +349,12 @@ src/
                          #   command or read
     read-dirs.ts         #   readDirResolver(): review.readDirs → existing folders (~ expanded)
     format-passes.ts     #   the "Skills:" line and the skills section of --dry-run
-    watch-command.ts     #   runWatch(): settings, providers checked on start, history, lock, the
-                         #   watch deps, one job's review; each job event sent to the sinks
+    watch-command.ts     #   runWatch(): --status, or the watch through startWatch() with its
+                         #   events as lines, Ctrl-C once (stop) or twice (abort, exit 130)
+    watch-session.ts     #   startWatch(): settings, providers checked on start, lock, history,
+                         #   hooks and Slack, the watch deps, one job's review → a WatchHandle
+                         #   (done, stop(), abort(), the running job); the watch events, warnings
+                         #   and each job's review progress as data, never printing
     ci-gate-reader.ts    #   ciGateReader(): the ci settings of a job (user config and the root
                          #   .phada/config.yml at the base merged with mergeLayers(), read once
                          #   per job) and the checks
@@ -261,13 +384,26 @@ src/
                          #   replies in the thread
     format-slack.ts      #   slackReplies(): the event as Slack text (link, summary, full, the
                          #   failing checks of a ci-failing skip), split
-    watch-stop.ts        #   createStopControl(): Ctrl-C once (finish the review) or twice (abort);
-                         #   trackRunningJob(): which job a second Ctrl-C puts back
-    watch-events.ts      #   printWatchEvents(): the watch events as terminal lines
+    watch-stop.ts        #   createStopControl(): stop (finish the review) or abort (kill the
+                         #   children, put the running job back, close); trackRunningJob(): the
+                         #   job an abort puts back
     watch-status.ts      #   watchStatusText(): readQueue() as --status in text or JSON
     history-command.ts   #   runHistory() (list, stats, --refresh) over the history use cases,
-                         #   runHistoryPrune(); the history opened only when its file exists
-    format-history.ts    #   formatHistoryText/Json(), formatStatsText/Json() (schemaVersion 1)
+                         #   runHistoryPrune(), runHistoryShow() (the history opened read-only,
+                         #   RunNotFoundError for an unknown id); the history opened only when
+                         #   its file exists
+    format-history.ts    #   formatHistoryText/Json() (each run with its id), runJson(),
+                         #   formatStatsText/Json() (schemaVersion 1)
+    format-run-report.ts #   formatRunReportText(): a run's header line (id, pull request, commit,
+                         #   when, who asked, provider, how it ended), the CI of a ci-failing
+                         #   skip (and the dry run a publication came from), then the posted
+                         #   review and formatRunSections(), through
+                         #   toTerminalText(); formatRunReportJson(): run and result
+                         #   (schemaVersion 1)
+    format-run-sections.ts # formatRunSections(): the sections of --dry-run (close to the cut,
+                         #   claims, context, conversation, CI, impact, related, skills,
+                         #   investigation, tokens) from RunSections, the data the dry run and
+                         #   phada history show both have
     format-watch.ts      #   formatWatchEvent(), formatWatchStatus(), formatWatchStatusJson(); a
                          #   job waiting for CI with its deadline and pending checks, skipped
                          #   for failing CI or back in the queue
@@ -277,49 +413,95 @@ src/
                          #   read with `codex mcp get --json` before the review
     classify-failure.ts  #   classifyFailure(): an error → transient, usage-limit, rate-limit,
                          #   definitive or fatal
-    review-wiring.ts     #   pullRequestReviewDeps(), ciReaders(), renderReview, reviewRunJson():
+    review-wiring.ts     #   pullRequestReviewDeps() (its progress to a ReviewProgressSink),
+                         #   reviewAndPublishEvents(), ciReaders(), renderReview, reviewRunJson():
                          #   shared by review, watch and prompt
+    manual-review.ts     #   prepareReview(): user layers, provider and model (flags › config),
+                         #   MCP servers resolved and their names checked; runManualReview():
+                         #   reviewAndPublish() (mode manual, the signal also cutting the CI
+                         #   wait) with its deps and progress, then
+                         #   the run saved in the history when it is on, with its feedback
+                         #   (HistorySave); shared by phada review and the app
+    publish-saved.ts     #   publishSavedRun(): the history opened (missing → not found), then
+                         #   publishSavedReview() with the GitHub readers and writers of the
+                         #   token and renderReview, the publication saved as a new manual run
+                         #   (publishedRunJson(), publishedFrom) with its feedback when the
+                         #   history is on; shared by phada publish and the app
+    publish-command.ts   #   runPublish(): token, publishSavedRun(), each refusal as
+                         #   PublishRefusedError (RunNotFoundError for an unknown id), a skip
+                         #   with --force to override, the head moved under --force as a
+                         #   warning, "Published …", the resolved comments and "Saved as run N";
+                         #   --format json prints the published run's JSON
+    print-history-save.ts #  printHistorySave(), savedAsLine(): a history save that failed and
+                         #   the "Saved as run N" line, for review and publish
     history-run.ts       #   historyRun(), watchRun(): a run, a failure or a ci-failing skip →
                          #   the history record
     stored-ci.ts         #   ciSkipJson(), storedCi(): the CI of a run in its stored JSON, written
                          #   for a ci-failing skip and read back (validated) for the events
-    format-rules.ts      #   formatRulesText(), formatRulesJson() (schemaVersion 1)
+    format-rules.ts      #   formatRulesText() (a pull request's title "at base <sha>"),
+                         #   formatRulesJson() (schemaVersion 1)
     context-sources.ts   #   contextSourcesAt(): the repository at a commit and the local files
     format-index.ts      #   formatIndexText(), formatIndexJson() (schemaVersion 1)
     suppress-sqlite-warning.ts # drops Node's ExperimentalWarning for the built-in SQLite
-    errors.ts            #   UsageError, MissingGitHubTokenError, WatchRunningError
+    errors.ts            #   UsageError, MissingGitHubTokenError, WatchRunningError,
+                         #   RunNotFoundError, PublishRefusedError
     github-token.ts      #   readGitHubToken(), requireGitHubToken(): GITHUB_TOKEN › GH_TOKEN › the
                          #   gh login; findGitHubToken(): the token and where it came from;
                          #   ghTokenReader(): gh auth token, or gh auth status
                          #   --show-token on an old gh, asked once, no token on any failure
     github-access.ts     #   readGitHubAccess(): where the token comes from and its owner's login,
                          #   a refused token (401) or the error of the read; never the token
-    format-review.ts     #   pull request summary (stderr) and the Markdown review (stdout)
+    format-review.ts     #   pull request summary (stderr) and the Markdown review (stdout),
+                         #   with the repository debt after worth checking
+    debt-text.ts         #   debtItem(): one line of the repository debt (severity, place,
+                         #   title, why cut at 200 characters)
     format-github.ts     #   the review as GitHub Markdown: body (the CI line under the score),
-                         #   line comments, suggestion blocks, markers, truncation; formatResolvedReply(); formatGitHubPreview() for
+                         #   line comments, suggestion blocks, markers (the skill of a finding in
+                         #   its hidden marker), the "Repository debt" section (20 lines at most),
+                         #   truncation; formatResolvedReply(); formatGitHubPreview() for
                          #   --dry-run
     format-publication.ts #  skip, "Published", recheck and "Resolved" messages
-    format-context.ts    #   the "Context:" line and the context section of --dry-run
+    format-context.ts    #   the "Context at base <sha>:" line and the context section of
+                         #   --dry-run
     format-investigation.ts # the "Investigated:" line and the investigation section of --dry-run
     format-related.ts    #   the "Related:" line and the related repositories section of --dry-run
-    format-impact.ts     #   the "Impact:" line and the impact section of --dry-run
+    format-impact.ts     #   the "Impact:" line and the impact section of --dry-run (the text
+                         #   the AI got, or each changed symbol when the run did not keep it)
     format-conversation.ts # the "Conversation:" line and the conversation section of --dry-run
-                         #   (each item, what was left out over 16 KB and the bodies cut)
+                         #   (each item, what was left out over 16 KB and the bodies cut), the
+                         #   section from the conversation block of the JSON
     format-ci.ts         #   the "CI:" line and the CI section of --dry-run (each check, the
-                         #   annotations and logs left out, the cuts and the warnings)
-    finding-references.ts #  the "Based on" line: sources (a CI check named as such), rule and skill
-                         #   of a finding
-    format-json.ts       #   formatReviewJson(): schemaVersion 1, with the publication, context,
-                         #   conversation (each item without its texts, with its bytes), ci,
-                         #   investigation, impact and recheck blocks
+                         #   annotations and logs left out, the cuts and the warnings), the
+                         #   section from the CI block of the JSON
+    format-claims.ts     #   the claims section of --dry-run: each claim of the description with
+                         #   its verdict and evidence
+    format-close-to-cut.ts # the "Close to the cut" section of --dry-run: their count, the
+                         #   margin and each finding with its confidence
+    format-usage.ts      #   formatUsageLine(): the "Tokens:" line that ends phada review;
+                         #   formatUsageSection(): the tokens section of --dry-run
+    finding-references.ts #  the "Based on" line: sources (a CI check named as such), rule and,
+                         #   for the author only (terminal), skill of a finding; on GitHub
+                         #   neither local files nor the skill
+    format-json.ts       #   formatReviewJson(): schemaVersion 1, with the claims, the scope of
+                         #   each finding (and closeToCut), the repository debt and the debt
+                         #   dropped, publication, context, conversation (each item without its
+                         #   texts, with its bytes), ci, investigation, impact (with the text
+                         #   the AI got) and recheck blocks, and usage (the tokens of each AI
+                         #   pass and their total); what a publication posted (body and line
+                         #   comments); the review's language, diff fingerprint and files left
+                         #   out (what phada publish needs); conversationJson(), ciJson() for
+                         #   the dry run; publishedRunJson(): a saved run's JSON with its new
+                         #   publication and publishedFrom
     markdown-text.ts     #   escapes AI text: block markers; for GitHub also HTML and mentions;
                          #   codeFence()
     review-text.ts       #   model label and short SHA
     i18n/                #   fixed review text per language: messages.ts (Messages, messagesFor()),
                          #   en.ts, pt.ts, es.ts; unknown languages fall back to English
     format-error.ts      #   error → one line + exit code (2 usage, 1 failure); --debug details
-    progress.ts          #   withProgress(): ReviewProvider decorator with a live timer on a TTY;
-                         #   indexProgress(): the "Indexing N files…" lines
+    progress.ts          #   liveProgress(): a line with a live timer on a TTY, one line
+                         #   otherwise; indexProgress(): the "Indexing N files…" lines
+    print-review-progress.ts # printReviewProgress(): the review progress as the stderr lines of
+                         #   review and watch
     ci-wait-progress.ts  #   ciWaitProgress(): "Waiting for CI… 3m12s, 2 pending: …" live on a
                          #   TTY, one line at the start and one at the end otherwise
     units.ts             #   duration, tokens, bytes, counts
@@ -327,43 +509,76 @@ src/
   tui/                   # the app `phada` opens in a terminal (Ink + React), data in, frames out
     open-app.tsx         #   openApp(deps, host): renders <App> on the alternate screen (render
                          #   injected), Ctrl-C handled by the app, SIGINT/SIGTERM through
-                         #   host.onSignal → unmount → AppResult (quit, interrupted, terminated,
-                         #   failed with the error)
+                         #   host.onSignal → the quit guards aborted → unmount → AppResult (quit,
+                         #   interrupted, terminated, failed with the error)
     app.tsx              #   App: theme, catalog of the language read every 2 s and at once after
                          #   a config write (the last good one kept), working signal, load cache
                          #   and error boundary around the shell — tabs, the active screen, or
                          #   the setup in their place (AppDeps.start, /setup from its first step) or the
-                         #   LanguagePicker (/language, back to the screen it came from), footer,
+                         #   LanguagePicker (/language, back to the screen it came from), the
+                         #   ReviewFlow (/review, n in Reviews, v in Repositories through
+                         #   useStartReview(), back to the screen it came from), /index
+                         #   to the Graph tab, /watch to the Queue (starting or asking to stop
+                         #   the watch), the watch session of the app (useWatchSession(), above
+                         #   the screens), footer,
                          #   ? help, / palette, Esc (a screen's back first), q, 1–9, ←/→, Tab
-                         #   (not in the setup), Ctrl-C; the size warning below 80×24
-    app-context.ts       #   AppDeps (version, start, cwd, home, env, scheduler, language, now,
+                         #   (not in the setup), Ctrl-C; the quit guard: with a guard held, q,
+                         #   Esc at the top and Ctrl-C ask its question (Enter stops each guard
+                         #   and quits once they stopped, Esc stays, a second Ctrl-C aborts and
+                         #   exits interrupted), a signal aborts them; the size warning below
+                         #   80×24
+    app-context.ts       #   AppDeps (version, start, debug, cwd, home, env, scheduler, language, now,
                          #   readLanguage, readQueue, readReviews, readReviewDetail, readRepositories,
-                         #   readRepository, readAutomation, readProviderSetup, readProviders,
-                         #   readLearnings, readGitHub, readLocalRules, readRepositoryRules,
+                         #   readRepository, readAutomation, readIndexes, readConnections,
+                         #   searchSymbol, symbolCallers, symbolDependencies, readProviderSetup,
+                         #   readProviders, readLearnings, readGitHub, readLocalRules, readRepositoryRules,
                          #   readPullRequestRules, handOff, planConfig, applyConfig,
-                         #   ensureRepositoryFile), AppStart,
+                         #   ensureRepositoryFile, parsePullRequest, readOpenPullRequests,
+                         #   reviewPullRequest, enqueueReview, pid, startWatch), AppStart,
                          #   HandOffTarget, HandOffResult, Scheduler, KeyHint;
                          #   useAppDeps(), useTheme(), useMessages(), useConfigWritten() (the
-                         #   language read again at once), useWorking(),
+                         #   language read again at once), useStartReview() (the review flow
+                         #   in place of the tabs, on a repository's open pull requests when
+                         #   given one), useQuitGuard() (QuitGuard: the question, stop() and
+                         #   abort() of something running, held while given), useWorking(),
                          #   useIsWorking(), useScreenKeys(), useBack(), useScreenInput() (quiet
-                         #   while a text field is focused), useScreenSize()
+                         #   while a text field is focused), useArrowKeys() (← and → to the
+                         #   screen, Tab still moves between screens), useScreenSize()
     screens.ts           #   ScreenDefinition (id, title from the catalog, Screen) and SCREENS,
                          #   in tab order
     screens/             #   one file per screen: home.tsx (the box with the mascot, version and
                          #   folder under ~ cut to the width; GitHub, AI, watch, queue and graph
                          #   in one line each, the recommendation with its command and the last
                          #   reviews that fit; local facts every 2 s, GitHub and the AI checks on
-                         #   open and on r), queue.tsx (the watch from the lock
-                         #   and the history, its jobs by kind → a job with its requests;
+                         #   open and on r), queue.tsx (the watch from the lock — in this app
+                         #   (the lock holder is AppDeps.pid), in another terminal with its PID,
+                         #   or not running, w starts it — and the history, its jobs by kind
+                         #   (the running one with the step of its review in this app) → a job
+                         #   with its requests; w starts the watch here (no hint while another
+                         #   terminal holds the lock; why it did not start wrapped), or asks
+                         #   before stopping it after the current review; the newest lines of
+                         #   its log under the jobs, l → the whole log wrapped, from its end;
                          #   queueRows()), reviews.tsx (the history with a text filter → one
-                         #   review with findings, publication, CI and feedback),
+                         #   review drawn by reviewDetailLines(); n reviews a pull request),
                          #   repositories.tsx (each repository with its origins, index and last
                          #   review → its watch filters, index, user config with origins, rules,
                          #   related repositories and last reviews; on the selected one w
                          #   watches or unwatches, p turns publish on or off, e and R open its
                          #   own config.yml and rules.md in the editor (ensureRepositoryFile),
                          #   a → the RepositoryPicker in a SubView; w, p and a hidden while the
-                         #   user config is invalid), automation.tsx (one page:
+                         #   user config is invalid; i indexes the selected or open one; v
+                         #   reviews one of its open pull requests),
+                         #   graph.tsx (each repository's index state, commit, files, symbols
+                         #   and size from readIndexes (loaded, r, read again after indexing) →
+                         #   its index section: when, commit and branch, duration, files per
+                         #   language, symbols by kind, links, files left out, file; missing,
+                         #   other version, unreadable or empty as a line; the linked count of
+                         #   each one and its connections section from readConnections (loaded,
+                         #   r, read again after indexing): each declared related repository with
+                         #   its packages each way, no link or why it is not indexed, or how to
+                         #   declare them; i indexes or indexes again, I indexes the related
+                         #   repositories not indexed, Esc stops; s in the detail → a symbol
+                         #   name → the SymbolExplorer in a SubView), automation.tsx (one page:
                          #   watch, CI wait, request sources, hooks, when), provider.tsx (the
                          #   choice and its origin, the language, each AI checked on open and on
                          #   r with its next step, l to log in to the chosen CLI (again, when
@@ -432,16 +647,27 @@ src/
                          #   it cannot read → its error, no choice; languageName()
     sub-view.tsx         #   SubView: a picker shown in place of a screen's view, its keys and back
                          #   gathered, Esc (when the picker does not hold it) → onLeave()
+    symbol-explorer.tsx  #   SymbolExplorer: searchSymbol (loaded, r) → several definitions to
+                         #   pick, or the tree of one: Callers and Dependencies, Enter/→ opens a
+                         #   node one level (a caller into its callers, a dependency into its
+                         #   dependencies) with loading on it, ← closes it, +N and the cut;
+                         #   not found or not indexed as a line with i to index
+    not-indexed-text.ts  #   notIndexedText(): why a repository is not indexed, in one line
     index-series.ts      #   useIndexSeries(): AppDeps.indexRepository one repository after the
                          #   other with an AbortController (stop() cancels the current one and
                          #   starts no other; aborted on unmount), each one waiting, running with
-                         #   its progress or done
+                         #   its progress or done; a new series once the last one ended
+    repository-indexing.tsx # useRepositoryIndexing(onEnded): repositories indexed through
+                         #   useIndexSeries (start, stop, busy, the Esc key while busy, their lines);
+                         #   indexEntryLine(): a repository of a series in one line (also the
+                         #   setup's graph step)
     model-pull.tsx       #   useModelPull(onPulled): AppDeps.pullModel with an AbortController
                          #   (cancel(), aborted on unmount); modelPullLines(): the status, a bar
                          #   with bytes and percent, and how it ended
-    units.ts             #   durationText(), bytesText(), modelSizeText() (decimal, as Ollama)
-    run-text.ts          #   runKey(), verdictLabel(), verdictColor(): a run of the history as the
-                         #   screens list it
+    units.ts             #   durationText(), tokensText(), bytesText(), modelSizeText()
+                         #   (decimal, as Ollama)
+    run-text.ts          #   runKey(), verdictLabel(), verdictColor(), sourceOf(): a run of the
+                         #   history as the screens list it
     data-hooks.ts        #   usePolled() (local data, at once, every 2 s on the scheduler and when
                          #   its key changes), useLoaded(key) (slow data through the load cache:
                          #   the last value at once, loaded again on open after 30 s and on r;
@@ -453,11 +679,14 @@ src/
                          #   app leaves the alternate screen and raw mode, redraws on return);
                          #   one at a time, a throw as a failed outcome
     data-view.tsx        #   DataView: loading, the error wrapped, or the value; failedText():
-                         #   any error as one line without control characters; failedLines():
-                         #   that line wrapped over ERROR_LINES at most
+                         #   any error as one line without control characters (in "Could not
+                         #   load" or the catalog sentence it is given); failedLines():
+                         #   that line (or the catalog sentence it is given) wrapped over
+                         #   ERROR_LINES at most
     scroll-list.tsx      #   useSelection() (↑/↓, PgUp/PgDn, Home/End, Enter; follows the selected
-                         #   key when the list changes), ScrollList (the rows that fit and
-                         #   "n–m of N"), ScrollText (lines that scroll); listWindow()
+                         #   key when the list changes; initialKey, select(key)), ScrollList (the rows that fit and
+                         #   "n–m of N"), ScrollText (lines that scroll, from the start or
+                         #   following the end); listWindow()
     text-field.tsx       #   useTextField() (every key while focused, Enter applies, Esc leaves;
                          #   a write of several keys taken in order; switched after the key that
                          #   asked; emptyOnFocus opens it empty), TextFieldLine
@@ -467,15 +696,70 @@ src/
                          #   (an error over ERROR_LINES), shortenHome() (a path under ~)
     frame-lines.tsx      #   DrawContext (catalog, theme, width); textLines() (a text wrapped, one
                          #   node per line), failedNodes() (failedLines() in the error color),
-                         #   spaced() (a blank line before lines), Lines (each cut at the width)
+                         #   spaced() (a blank line before lines), Lines (each cut at the width),
+                         #   errorDetailNodes() (an error's stack and causes, for --debug, cut
+                         #   to the rows)
     labeled-lines.tsx    #   labeledLines(): label and value rows of a detail, values wrapped
-    relative-time.ts     #   relativeTime() ("2m ago", "in ~4m" for an estimate), absoluteTime();
+    relative-time.ts     #   relativeTime() ("2m ago", "in ~4m" for an estimate), absoluteTime(),
+                         #   clockTime() (HH:MM:SS);
                          #   TimeMessages
     tab-bar.tsx          #   TabBar: the active tab inverse, or in brackets without colors (+
                          #   tab-layout.ts: layoutTabs(): full › short › a window with ‹ ›; tabText())
     footer.tsx           #   Footer (+ key-hints.ts: fitHints(): the keys that fit, then "? more")
     help.tsx             #   Help: the screen's keys and the global ones
-    palette.tsx          #   Palette: screens, the setup and the language filtered by name (the catalog's and
+    review-flow/         #   ReviewFlow (review-flow.tsx): a stack of steps, one file each — a
+                         #   typed pull request (refused when it is not one) or a repository
+                         #   (pick-step.tsx) → its open pull requests (pulls-step.tsx, loaded,
+                         #   r) → only look or review and publish (mode-step.tsx; put in the
+                         #   queue while a watch holds the lock, from readQueue) → for
+                         #   publishing, the pull request and the token owner to confirm (and
+                         #   the watch's PID) (confirm-step.tsx) → the steps live with the
+                         #   mascot and the AI's time on the app clock, a closed or draft
+                         #   pull request said under it (reviewed anyway), warnings → the result
+                         #   (time, history, warnings, reviewDetailLines()), cancelled or the
+                         #   error (run-step.tsx; a watch found holding the lock when it would
+                         #   publish goes back to the confirmation, as putting it in the queue);
+                         #   or the queued or joined job or the refusal, Enter to the Queue
+                         #   (enqueue-step.tsx); Esc goes one step back, asks to cancel while
+                         #   it runs (not once publishing), out once it ended; a quit guard
+                         #   while it runs; p on the result of only look kept in the history →
+                         #   publish-step.tsx in its place: the pull request, the token owner
+                         #   and the counts to confirm, then publishReview() and the link or
+                         #   the refusal, Esc back to the result (the result's keys in a
+                         #   StepKeys of run-step.tsx, unmounted meanwhile), a quit guard that
+                         #   waits for the write while it publishes; history-line.ts:
+                         #   how the history kept a run; flow-text.ts: the pull request line
+    review-steps.ts      #   stepsAfter(): the review progress events → one step per stage
+                         #   (fetch, with a closed or draft notice, context, conversation,
+                         #   CI, CI wait, indexing, related, impact, skill pass, each AI run
+                         #   with its start, end and tokens, publishing) and the warnings;
+                         #   stepRunning(), stepFailed() (an AI
+                         #   run with no answer); stepText(): a step as the review flow and
+                         #   the Queue show it
+    refs.ts              #   pullRef() (owner/repo#N), shortSha(): through oneLine()
+    refusal-text.ts      #   refusalText(): why a review request was refused, from the catalogs
+    queue-text.ts        #   checkNames() (the first 3 checks and "+N"), pendingText(),
+                         #   pauseReasonText(): the Queue screen and the watch log
+    app-watch.tsx        #   useWatchSession() (held by the shell above the screens, so tabs
+                         #   and the review flow keep it): the phase (idle, starting, running,
+                         #   stopping), a notice (held by another PID, or why it did not
+                         #   start), the log, the running job with its review steps, the stop
+                         #   question; toggle(holder), confirmStop(), keepRunning(); a quit
+                         #   guard while it runs (stop: after the current review, awaited;
+                         #   abort: the watch's abort()); AppWatchContext, useAppWatch()
+    watch-log.ts         #   WatchLogEntry (the app clock and an event, or the watch started,
+                         #   stopping or ended), appendLog() (the last MAX_LOG_LINES, 200),
+                         #   watchLogText() (the time and the line from the catalogs, external
+                         #   text through oneLine()), watchLogTone()
+    review-detail.tsx    #   reviewDetailLines(): a review as lines — pull request and link,
+                         #   score, verdict, status, when, CI, publication (nothing posted,
+                         #   would resolve, would skip and why), summary, claims of the
+                         #   description with verdict and evidence, findings with their
+                         #   body (a finding of the repository marked as debt, one close to the
+                         #   cut marked), repository debt, worth checking, the tokens of each
+                         #   AI pass and their total, feedback (Reviews and the review flow)
+    palette.tsx          #   Palette: screens, the setup, the language, review, index and watch
+                         #   (/watch: the Queue, and the watch started or the stop question) filtered by name (the catalog's and
                          #   English, without accents), ↑/↓, Enter, Esc; matchEntries()
     mascot.tsx           #   Mascot: the two frames, flapping on the scheduler while working
     terminal-size.ts     #   SizeSource, outputSize() (columns, rows, 'resize'), useTerminalSize(),
@@ -488,12 +772,13 @@ src/
                          #   uiMessagesFor()), en.ts, pt.ts, es.ts; unknown languages fall back to
                          #   English
   config/                # the config files: .phada/ in the repository and the user's own
-    schema.ts            #   Zod schema of config.yml (ci: read, wait, onFailure, checks);
-                         #   LANGUAGE_TAG
+    schema.ts            #   Zod schema of config.yml (ci: read, wait, onFailure, checks;
+                         #   review.debt: summary, comments or off); LANGUAGE_TAG, DEBT_MODES
     parse-config.ts      #   parseConfigText(): YAML → config or an error naming the key
     merge-config.ts      #   mergeConfig(): layers → options, rules, files, ignore with origins (pure),
                          #   the ci settings with DEFAULT_CI (read, 15 min wait, onFailure: review)
-                         #   for what no layer sets; resolveProvider(): provider and model as a pair
+                         #   for what no layer sets, review.debt with its origin;
+                         #   resolveProvider(): provider and model as a pair
     mcp-servers.ts       #   userMcp(), resolveMcp(): MCP server names and declared servers, with
                          #   ${VAR} expanded from the environment
     user-config.ts       #   the user's folder (PHADA_CONFIG_HOME › XDG › ~/.config/phada),
@@ -536,12 +821,15 @@ src/
     select-docs.ts       #   docs by priority (including other tools' instruction files), the
                          #   60 KB budget, cutting a doc at 20 KB
     frontmatter.ts       #   readFrontmatter(): the front matter of an instruction file, line by line
+    claude-rules.ts      #   claudeRule(): a .claude/rules file → a rule named by its path, its
+                         #   paths: as the scope (every file without it or with an unreadable
+                         #   front matter), the body cut at 20 KB; CLAUDE_RULES_GLOB
     doc-scope.ts         #   docScope(): always, globs, manual or excluded, from applyTo, globs,
                          #   alwaysApply, description and excludeAgent
-    load-context.ts      #   loadContext(): config files, rules in scope, ignore, docs in scope →
-                         #   ReviewContext + report
-    list-context.ts      #   listContext(): every .phada/ folder, rule and candidate doc of a branch,
-                         #   and its review settings
+    load-context.ts      #   loadContext(): config files, rules (with the .claude/rules) in scope,
+                         #   ignore, docs in scope → ReviewContext + report; readClaudeRules()
+    list-context.ts      #   listContext(): every .phada/ folder, rule (.claude/rules included)
+                         #   and candidate doc of a branch, and its review settings
     ci-state.ts          #   ciEntries(): check runs (the latest run of each name) and commit
                          #   statuses → the checks that count,
                          #   passing, failing or pending; ciSummary(): the CI state (none, pending,
@@ -647,7 +935,8 @@ src/
                          #     servers as <server>__<tool>
       budget.ts          #     calls and bytes per review pass, answer size
       tool-log.ts        #     ToolLog: one record per tool call
-      report.ts          #     buildInvestigationReport(): what the AI read, for the CLI and the JSON
+      report.ts          #     buildInvestigationReport(): what the AI read, for the CLI and the
+                         #     JSON, with the minimum of calls and the passes that fell short
     mcp/                 #   how the AI CLIs reach the tools, and how Phada reaches MCP servers
       mcp-client.ts      #     connectMcp(): an MCP client over stdio or streamable HTTP
       mcp-server.ts      #     the tools as a local MCP server (JSON-RPC over a socket)
@@ -656,6 +945,10 @@ src/
     errors.ts            #   CommandError: not found, timeout, aborted, output too large
     run-command.ts       #   runCommand(), runCommandBytes(): return the exit code, never interpret it;
                          #   detached children in their own process group, killDetachedChildren();
+                         #   childScope(): run() records the detached children started (or
+                         #   tracked) inside it through AsyncLocalStorage, kill() stops only
+                         #   those, so one run's cancel leaves another run's children, and a
+                         #   child started in a killed scope is stopped at once;
                          #   an AbortSignal stops the child (its group) like the timeout
     run-interactive.ts   #   runInteractive(): a command with stdio inherited (the terminal is
                          #   its own), its exit code (128 + n for a signal), not found, ended by
@@ -663,7 +956,8 @@ src/
     work-dirs.ts         #   openWorkDir(), closeWorkDir(), removeOpenWorkDirs() (Ctrl-C),
                          #   sweepOrphanWorkDirs(): the phada-native-* folders
   providers/             # ReviewProvider and its implementations
-    types.ts             #   ReviewProvider, ReviewPrompt, ReviewOutput, ProviderError; ProviderStatus
+    types.ts             #   ReviewProvider, ReviewPrompt, ReviewOutput, TokenUsage (input, the
+                         #   part of it read from cache, output), ProviderError; ProviderStatus
                          #   (CliStatus, OllamaStatus)
     cli-run.ts           #   shared by AI CLIs: temp dir, env without GitHub tokens, typed errors
     redact-secrets.ts    #   redacts token patterns from CLI output in error messages
@@ -686,8 +980,9 @@ src/
                          #   progress (status, completed, total) and pulled, cancelled (the
                          #   signal), stopped or failed (Ollama's error line, HTTP status)
   publish/               # pure: what to publish, data in, decision out
-    markers.ts           #   the review (with the diff fingerprint), finding and resolved markers,
-                         #   read only at the end of a body; findingTitle()
+    markers.ts           #   the review (with the diff fingerprint), finding (findingMarker():
+                         #   with the skill, older ones without it still read) and resolved
+                         #   markers, read only at the end of a body; findingTitle()
     phada-state.ts       #   Phada's own reviews and open threads (author = token owner + marker);
                          #   resolvedByPhada(), reviewedShaOf()
     feedback.ts          #   threadFeedback(): each Phada thread → outcome (fixed, dismissed,
@@ -712,7 +1007,9 @@ src/
                          #   without tokens
     git-mirror.ts        #   openGitMirror(): bare repository in the cache, fetch --depth 1 into
                          #   refs/phada/* (stopped by the caller's signal), deepen to 200 commits for history, ls-tree -r,
-                         #   cat-file --batch
+                         #   cat-file --batch; openExistingGitMirror(): only the local reads
+                         #   (ls-tree, cat-file) of a mirror that already exists, missing as a
+                         #   state, never creating or fetching one
     mirror-lock.ts       #   withMirrorLock(): one fetch at a time per mirror, stale locks taken over
     repo-path.ts         #   toRepoPath(): paths inside the repository only
     work-tree.ts         #   materializeWorkTree(): a checkout of the head with origin/<base> at
@@ -728,7 +1025,11 @@ src/
     types.ts             #   FileMap, ExtractedSymbol, SymbolKind, …
   store/                 # the map in SQLite (node:sqlite), one file per repository
     schema.ts            #   tables and SCHEMA_VERSION (another version is rebuilt)
-    index-store.ts       #   openIndexStore(): blobs, commits, summary, prune, reader()
+    index-store.ts       #   openIndexStore(): blobs, commits, summary, prune, reader();
+                         #   openExistingIndexStore(): read-only — missing, other version (found
+                         #   and expected), unreadable or open (the latest snapshot of the
+                         #   default branch, else the latest; summary, files left out, reader),
+                         #   never creating, migrating or removing the file; RELATED_REF
     index-reader.ts      #   IndexReader: the files, symbols, calls and uses of one commit
     observed-store.ts    #   openObservedStore(): relations learned from reviews (own schema);
                          #   readObservedEdges(): read only, missing or unreadable as data,
@@ -773,7 +1074,10 @@ src/
                          #   PublishTarget, PullRecord, PauseState, JobStatus (waiting for CI),
                          #   FailureKind
   review/                # the engine: data in, result out
-    types.ts             #   ReviewRequest, Finding, ReviewResult, ReviewOutcome, …
+    types.ts             #   ReviewRequest, Finding (closeToCut), ReviewResult (passUsage),
+                         #   PassUsage, ReviewOutcome, …
+    token-usage.ts       #   sumUsage(), totalUsage(); usageReport(): the tokens of each AI pass
+                         #   of a review and of the recheck, with their total
     prompt-parts.ts      #   text shared by the review and verification prompts: rules section,
                          #   docs block, conversation block and its rules, CI block and its rules
                          #   (a check cited as ci:<name>), related repositories
@@ -781,16 +1085,25 @@ src/
     impact-text.ts       #   renderImpact(): the impact of the diff within its 4 KB budget
     prompt.ts            #   buildReviewPrompt(): instructions + nonce-delimited data + output schema;
                          #   reviewInstructionParts(): the reviewer lens (built-in, append, replace,
-                         #   skill) and the fixed contract, with origins; reviewDataBlocks()
+                         #   skill) and the fixed contract (the claims of the description to
+                         #   check: DESCRIPTION_CLAIMS), with origins; reviewDataBlocks();
+                         #   reportLanguageLine()
     nonce.ts             #   newNonce(): the random id of the data blocks
-    verify-prompt.ts     #   buildVerifyPrompt(): the second, skeptical pass (--verify)
-    report-schema.ts     #   Zod schemas of the AI report + the JSON schema sent to providers
+    verify-prompt.ts     #   buildVerifyPrompt(): the second, skeptical pass (--verify); a finding
+                         #   whose condition the repository does not meet is rejected
+    investigation-floor.ts # investigationFloor(): the minimum tool calls of a review pass (1 per
+                         #   10 KB of diff, 3–15); investigationFloorText(): that minimum and the
+                         #   changed CI, container, infrastructure and manifest files for the
+                         #   prompt; investigationShortfall(), countingToolbox()
+    report-schema.ts     #   Zod schemas of the AI report (claims, summary, files, findings with
+                         #   their scope: change or repository) + the JSON schema sent to providers
     verification-schema.ts # Zod schema of the verification verdicts
     diff-lines.ts        #   unified diff parsing and line numbering; the text and @@ section of
                          #   each new-side line
     diff-fingerprint.ts  #   diffFingerprint(): paths and +/- lines of the filtered diff, hashed
     suggestions.ts       #   checkSuggestion(), checkSuggestions(): a code suggestion against the diff
-    convert-prompt.ts    #   buildConvertPrompt(): a native skill's output → Phada's report
+    convert-prompt.ts    #   buildConvertPrompt(): a native skill's output → Phada's report (the
+                         #   verdict of each claim of the description from that output alone)
     native-context.ts    #   nativeSkillContext(): what a native skill is told about the checkout
                          #   and the files next to the diff; nativeSkillTexts(): the conversation
                          #   (conversation.jsonl), CI (ci.md) and impact with the related
@@ -800,24 +1113,38 @@ src/
     recheck-schema.ts    #   Zod schema of the recheck verdicts (fixed, still-valid, unsure)
     recheck-threads.ts   #   recheckThreads(): one call for the changed threads, verdicts per thread
     json-objects.ts      #   top-level JSON objects found in a text
-    parse-report.ts      #   parseReviewReport()
+    parse-report.ts      #   parseReviewReport(): a missing claims list as undefined, claims of
+                         #   the wrong shape left out and counted
+    claims.ts            #   mergeClaims(): the claims of every pass, one per text, the strongest
+                         #   verdict kept; claimWarnings()
     parse-verification.ts #  parseVerification()
     verify-findings.ts   #   verifyCandidates(), applyVerdicts()
     context-findings.ts  #   known rule and sources on each finding (ci:<name> of a failing check);
                          #   the severity a rule sets
-    select-findings.ts   #   candidate filtering, confidence cut, worth checking, ordering
+    select-findings.ts   #   candidate filtering, confidence cut, worth checking, ordering; the
+                         #   kept findings at most CLOSE_TO_CUT_MARGIN (10) above the cut marked
+                         #   closeToCut
     score.ts             #   scoreFindings(): the 0–5 score, computed by Phada
+    debt.ts              #   withoutDroppedDebt() (review.debt: off), separateDebt() (summary):
+                         #   the findings of the repository the change did not cause
     verdict.ts           #   reviewVerdict(): clean, comments or blocking, from the findings
     errors.ts            #   InvalidReviewReportError
     run-review.ts        #   runReview(): one pass per skill (prompt → provider → parse, or a
                          #   native run → conversion), merged → suggestions → [verify] → select →
-                         #   score; skill bodies for native passes without findings in the diff
+                         #   score; skill bodies for native passes without findings in the diff;
+                         #   the claims of the description merged; the calls of each pass with
+                         #   tools against its minimum (investigationFloor, a warning below it);
+                         #   the repository debt split by review.debt (DEFAULT_DEBT_MODE: summary),
+                         #   out of the score; the tokens of each pass (a native skill with its
+                         #   conversion, an answer that did not parse included) and the verify
 scripts/smoke.ts         # packs the package, installs the tarball, runs the installed `phada`
 scripts/copy-grammars.ts # build step: the tree-sitter grammars into dist/grammars/
 test/fixtures/bin/       # fake AI CLIs used by the provider and status tests
 test/fixtures/github/    # trimmed GitHub API responses (REST and GraphQL) and a synthetic diff
 test/support/            # shared test helpers (fake fetch, fixtures for pull requests, findings, …;
-                         #   tui.tsx: the app rendered with fake deps, size, scheduler and keys)
+                         #   tui.tsx: the app rendered with fake deps, size, scheduler and keys;
+                         #   showing() and until() fail with what they awaited and the last
+                         #   frame when it does not come)
 ```
 
 Tests live next to the code they test (`*.test.ts`, `*.test.tsx` for the app's frames with

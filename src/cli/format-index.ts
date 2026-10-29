@@ -1,4 +1,5 @@
 import type { IndexReport, LeftOutFile } from '../app/index-repository.js'
+import { extensionCounts } from '../app/read-index.js'
 import { LANGUAGE_LABELS } from '../repo-map/languages.js'
 import type { Language } from '../repo-map/languages.js'
 import type { SymbolKind } from '../repo-map/types.js'
@@ -114,18 +115,11 @@ function leftOutText(leftOut: readonly LeftOutFile[]): string {
 }
 
 function byExtension(files: readonly LeftOutFile[]): string {
-  const counts = new Map<string, number>()
-  for (const { path } of files) {
-    const name = path.slice(path.lastIndexOf('/') + 1)
-    const dot = name.lastIndexOf('.')
-    const extension = dot <= 0 ? '(none)' : name.slice(dot).toLowerCase()
-    counts.set(extension, (counts.get(extension) ?? 0) + 1)
-  }
-  const sorted = [...counts].sort(([a, x], [b, y]) => y - x || (a < b ? -1 : 1))
+  const sorted = extensionCounts(files.map(({ path }) => path))
   const shown = sorted
     .slice(0, EXTENSIONS_SHOWN)
-    .map(([extension, count]) => `${extension} ${count}`)
-  const other = sorted.slice(EXTENSIONS_SHOWN).reduce((sum, [, count]) => sum + count, 0)
+    .map(({ extension, files: count }) => `${extension === '' ? '(none)' : extension} ${count}`)
+  const other = sorted.slice(EXTENSIONS_SHOWN).reduce((sum, { files: count }) => sum + count, 0)
   return [...shown, ...(other === 0 ? [] : [`other ${other}`])].join(', ')
 }
 

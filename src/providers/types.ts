@@ -7,6 +7,7 @@ export interface ReviewPrompt {
   data: string
   outputSchema: JsonSchema
   tools?: Toolbox
+  signal?: AbortSignal
 }
 
 export type NativeSkillRef =
@@ -21,6 +22,7 @@ export interface ExternalToolCall {
 
 export interface TokenUsage {
   inputTokens: number
+  cachedInputTokens?: number
   outputTokens: number
 }
 
@@ -32,6 +34,7 @@ export interface ReviewOutput {
   usage?: TokenUsage
   externalCalls?: ExternalToolCall[]
   warnings?: string[]
+  withoutTools?: true
 }
 
 export type CommandPolicy = 'read-only' | 'all' | readonly string[]

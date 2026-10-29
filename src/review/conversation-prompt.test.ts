@@ -61,24 +61,24 @@ function digest({ instructions, data, outputSchema }: ReviewPrompt): string {
 
 describe('prompts of a pull request without conversation', () => {
   it.each([
-    ['bare', BARE, 'd39cf046d8e7c3c722a272fb4bd5a2e840062da31c61b962dfce2cf89c7ff31c'],
+    ['bare', BARE, '1a602254327e23fbd73b759aa99065d12efda9e97e43def72aea0e4cf20b9c9a'],
     [
       'with context, impact and related repositories',
       RICH,
-      '2cbb0a33e7c684905113b3f1ea60d0e5e459cc1c03fb802a83b6324e19177604',
+      '1f35fc787cc2809d096dd93c6071dc1198d7280c247a1bbaa02d76ea393c2953',
     ],
-  ])('keeps the review prompt of 0.8.0 byte for byte (%s)', (_case, request, expected) => {
+  ])('keeps the review prompt byte for byte (%s)', (_case, request, expected) => {
     expect(digest(buildReviewPrompt(request, NONCE))).toBe(expected)
   })
 
   it.each([
-    ['bare', BARE, 'ad64d9fad33e7bef72885b75100a1b2e84a7cddb2adb5c1d2cafd5be43b1425f'],
+    ['bare', BARE, '5c5fffd6e9b588a8bee6559e4539246de1607b013e78f69d4ce76a95ee078551'],
     [
       'with context, impact and related repositories',
       RICH,
-      '9145318ab6b5050b663757a0bc34b0850039397adaaeff86df59865ed24fbb92',
+      'df40955749c2962c1ac64c0fc7d28081bec1d3d78d3613a60bc91c88f1427d85',
     ],
-  ])('keeps the verify prompt of 0.8.0 byte for byte (%s)', (_case, request, expected) => {
+  ])('keeps the verify prompt byte for byte (%s)', (_case, request, expected) => {
     expect(digest(buildVerifyPrompt(request, CANDIDATES, NONCE))).toBe(expected)
   })
 })

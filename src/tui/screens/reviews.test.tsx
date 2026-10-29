@@ -89,6 +89,7 @@ function detail(): ReviewDetail {
     verdict: 'blocking',
     score: { value: 2, reason: 'A P0 bug in the cart total.' },
     summary: 'The cart total drops the discount when a coupon and a gift card are used together.',
+    claims: [],
     findings: [
       {
         severity: 'P0',
@@ -101,6 +102,8 @@ function detail(): ReviewDetail {
         rule: null,
         skill: null,
         sources: [],
+        scope: 'change',
+        closeToCut: false,
       },
       {
         severity: 'P1',
@@ -113,8 +116,11 @@ function detail(): ReviewDetail {
         rule: null,
         skill: null,
         sources: [],
+        scope: 'change',
+        closeToCut: false,
       },
     ],
+    debt: [],
     worthChecking: [
       {
         severity: 'P2',
@@ -127,14 +133,19 @@ function detail(): ReviewDetail {
         rule: null,
         skill: null,
         sources: [],
+        scope: 'change',
+        closeToCut: false,
       },
     ],
     publication: {
       status: 'published',
       url: 'https://github.com/acme/shop/pull/1#pullrequestreview-77',
       comments: 2,
+      wouldResolve: null,
+      reason: null,
     },
     ci: { state: 'failing', failing: ['lint'], pending: ['e2e'], checks: [] },
+    usage: null,
     published: [
       published({ destination: 'fixed', marks: ['fixed'] }),
       published({
@@ -298,6 +309,205 @@ describe('the Reviews screen', () => {
     await showing('3 reviews')
     expect(frame()).toContain('3 reviews')
     expect(exits).toEqual([])
+  })
+
+  it('says what a dry run would post, resolve and skip, and the body of each finding', async () => {
+    const base = detail()
+    const { frame, press, showing } = openReviews({
+      size: { columns: 80, rows: 40 },
+      detail: () => ({
+        ...base,
+        run: { ...base.run, status: 'dry-run', url: undefined },
+        findings: base.findings.map((finding, index) =>
+          index === 0
+            ? { ...finding, why: 'The discount is applied after the\u0007 total.' }
+            : finding,
+        ),
+        publication: {
+          status: 'dry-run',
+          url: null,
+          comments: 2,
+          wouldResolve: 1,
+          reason: 'open-threads',
+        },
+        published: [],
+      }),
+    })
+    await showing('Enter open')
+    await press(KEYS.enter)
+    await showing('Score', 'Esc back')
+    const text = frame()
+    expect(text).toMatch(
+      /Published\s+nothing was posted · 2 comments · would resolve 1 · would skip:\s+already\s+reviewed, threads still open/,
+    )
+    expect(text).toMatch(
+      /P0\s+src\/cart.ts:12\s+Total ignores the discount\n\s+The discount is applied after the total\./,
+    )
+    expect(text).not.toContain('\u0007')
+    expectFits(text, { columns: 80, rows: 40 })
+  })
+
+  it('shows the claims of the description with their verdict and evidence in 80×24', async () => {
+    const { frame, press, showing } = openReviews({
+      detail: () => ({
+        ...detail(),
+        claims: [
+          {
+            claim: 'Keeps the discount with a gift card\u0007',
+            verdict: 'contradicted',
+            evidence: 'src/cart.ts:12 applies the gift card first',
+          },
+          { claim: 'Covers every coupon', verdict: 'unverified', evidence: null },
+        ],
+      }),
+    })
+    await showing('Enter open')
+    await press(KEYS.enter)
+    await showing('Claims of the description (2)')
+    const text = frame()
+    expectFits(text, { columns: 80, rows: 24 })
+    expect(text).toMatch(/contradicted\s+Keeps the discount with a gift card\n/)
+    expect(text).toMatch(/\s+src\/cart.ts:12 applies the gift card first/)
+    expect(text).toMatch(/unverified\s+Covers every coupon/)
+    expect(text).not.toContain('\u0007')
+  })
+
+  it('marks the findings of the repository and lists the repository debt in 80×24', async () => {
+    const base = detail()
+    const [first] = base.findings
+    if (first === undefined) throw new Error('fixture without findings')
+    const { frame, press, showing } = openReviews({
+      detail: () => ({
+        ...base,
+        findings: [{ ...first, scope: 'repository' }],
+        debt: [
+          {
+            ...first,
+            file: 'src/legacy.ts',
+            line: 4,
+            title: 'Old total helper nobody calls\u0007',
+            scope: 'repository',
+          },
+        ],
+      }),
+    })
+    await showing('Enter open')
+    await press(KEYS.enter)
+    await showing('Repository debt (1)')
+    const text = frame()
+    expectFits(text, { columns: 80, rows: 24 })
+    expect(text).toMatch(/P0\s+src\/cart.ts:12\s+Total ignores the discount · debt\n/)
+    expect(text).toMatch(/P0\s+src\/legacy.ts:4\s+Old total helper nobody calls\n/)
+    expect(text).not.toContain('\u0007')
+  })
+
+  it('marks the findings close to the cut in 80×24', async () => {
+    const base = detail()
+    const [first, second] = base.findings
+    if (first === undefined || second === undefined) throw new Error('fixture without findings')
+    const { frame, press, showing } = openReviews({
+      detail: () => ({ ...base, findings: [{ ...first, closeToCut: true }, second] }),
+    })
+    await showing('Enter open')
+    await press(KEYS.enter)
+    await showing('Findings (2)')
+    const text = frame()
+    expectFits(text, { columns: 80, rows: 24 })
+    expect(text).toMatch(/P0\s+src\/cart.ts:12\s+Total ignores the discount · close to the cut\n/)
+    expect(text).toMatch(/P1\s+src\/coupon.ts\s+Coupon code is not trimmed\n/)
+  })
+
+  it('lists the tokens of each AI pass and their total in 80×24', async () => {
+    const { frame, press, showing } = openReviews({
+      detail: () => ({
+        ...detail(),
+        findings: [],
+        worthChecking: [],
+        published: [],
+        usage: {
+          passes: [
+            {
+              pass: 'review',
+              skill: 'code-review\u0007',
+              tokens: { input: 812_000, cached: 640_000, output: 9_000 },
+            },
+            {
+              pass: 'verify',
+              skill: null,
+              tokens: { input: 120_000, cached: null, output: 2_000 },
+            },
+            { pass: 'recheck', skill: null, tokens: null },
+          ],
+          total: { input: 932_000, cached: 640_000, output: 11_000 },
+        },
+      }),
+    })
+    await showing('Enter open')
+    await press(KEYS.enter)
+    await showing('Tokens')
+    const text = frame()
+    expectFits(text, { columns: 80, rows: 24 })
+    expect(text).toMatch(/code-review\s+812\.0k in \(640\.0k cached\) · 9\.0k out\n/)
+    expect(text).toMatch(/verify\s+120\.0k in · 2\.0k out\n/)
+    expect(text).toMatch(/recheck\s+not reported\n/)
+    expect(text).toMatch(/total\s+932\.0k in \(640\.0k cached\) · 11\.0k out\n/)
+    expect(text).not.toContain('\u0007')
+  })
+
+  it('names the tokens in the language of the app', async () => {
+    const { press, showing } = openReviews({
+      language: 'pt-BR',
+      detail: () => ({
+        ...detail(),
+        findings: [],
+        worthChecking: [],
+        published: [],
+        usage: { passes: [], total: { input: 3512, cached: null, output: 420 } },
+      }),
+    })
+    await showing('Enter')
+    await press(KEYS.enter)
+    await showing('3.5k de entrada · 420 de saída')
+  })
+
+  it('names the findings close to the cut in the language of the app', async () => {
+    const base = detail()
+    const [first] = base.findings
+    if (first === undefined) throw new Error('fixture without findings')
+    const { press, showing } = openReviews({
+      language: 'pt-BR',
+      detail: () => ({ ...base, findings: [{ ...first, closeToCut: true }] }),
+    })
+    await showing('Enter')
+    await press(KEYS.enter)
+    await showing('Total ignores the discount · rente ao corte')
+  })
+
+  it('names the repository debt in the language of the app', async () => {
+    const base = detail()
+    const [first] = base.findings
+    if (first === undefined) throw new Error('fixture without findings')
+    const { press, showing } = openReviews({
+      language: 'pt-BR',
+      detail: () => ({ ...base, debt: [{ ...first, scope: 'repository' }] }),
+    })
+    await showing('Enter')
+    await press(KEYS.enter)
+    await showing('Débito do repositório (1)')
+  })
+
+  it('names the claims in the language of the app', async () => {
+    const { frame, press, showing } = openReviews({
+      language: 'pt-BR',
+      detail: () => ({
+        ...detail(),
+        claims: [{ claim: 'Covers every coupon', verdict: 'unverified', evidence: null }],
+      }),
+    })
+    await showing('Enter')
+    await press(KEYS.enter)
+    await showing('Afirmações da descrição (1)')
+    expect(frame()).toMatch(/não conferida\s+Covers every coupon/)
   })
 
   it('scrolls the detail in 80×24', async () => {

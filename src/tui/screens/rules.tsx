@@ -26,9 +26,9 @@ import { textWidth } from '../tab-layout.js'
 import { TextFieldLine, useTextField } from '../text-field.js'
 import { fit, oneLine, shortenHome, wrapText } from '../text-fit.js'
 import { bytesText } from '../units.js'
+import { pullRef, shortSha } from '../refs.js'
 
 const GAP = '  '
-const SHORT_SHA = 7
 const NAME_SHARE = 0.4
 const EVERYWHERE = '**'
 const PULL_NUMBER = /^[1-9]\d*$/
@@ -229,7 +229,7 @@ function PullView({
   const { messages } = draw
   const { colors } = draw.theme
   const m = messages.rules
-  const title = <Text bold>{`${oneLine(repo)}#${pull}`}</Text>
+  const title = <Text bold>{pullRef(repo, pull)}</Text>
   if (state.status !== 'ready') {
     return (
       <Box flexDirection="column">
@@ -258,7 +258,7 @@ function PullView({
       ) : (
         <Text color={colors.soft}>
           {' · '}
-          {m.commits(head.headSha.slice(0, SHORT_SHA), head.baseSha.slice(0, SHORT_SHA))}
+          {m.commits(shortSha(head.headSha), shortSha(head.baseSha))}
         </Text>
       )}
     </Text>,

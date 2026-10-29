@@ -2,12 +2,13 @@ import type { z } from 'zod'
 import { InvalidReviewReportError } from './errors.js'
 import { jsonObjects, preview } from './json-objects.js'
 import {
+  ReportClaimSchema,
   ReportEnvelopeSchema,
   ReportFileSchema,
   ReportFindingSchema,
   SuggestionSchema,
 } from './report-schema.js'
-import type { Finding } from './types.js'
+import type { Claim, Finding } from './types.js'
 
 export type ReportFile = z.infer<typeof ReportFileSchema>
 
@@ -16,6 +17,8 @@ export interface ParsedReport {
   files: ReportFile[]
   findings: Finding[]
   invalid: number
+  claims: Claim[] | undefined
+  invalidClaims: number
 }
 
 export function parseReviewReport(text: string): ParsedReport {
@@ -32,7 +35,7 @@ export function parseReviewReport(text: string): ParsedReport {
   const findings = envelope.data.findings.flatMap((item): Finding[] => {
     const parsed = ReportFindingSchema.safeParse(item)
     if (!parsed.success) return []
-    const { rule, sources, suggestion, ...finding } = parsed.data
+    const { rule, sources, suggestion, scope, ...finding } = parsed.data
     const fix = SuggestionSchema.safeParse(suggestion)
     const ruleKey = typeof rule === 'string' ? rule.trim() : ''
     const texts = (Array.isArray(sources) ? sources : [])
@@ -45,6 +48,7 @@ export function parseReviewReport(text: string): ParsedReport {
         ...(ruleKey === '' ? {} : { rule: ruleKey }),
         ...(texts.length === 0 ? {} : { sources: texts }),
         ...(fix.success ? { suggestion: fix.data } : {}),
+        ...(scope === 'repository' ? { scope } : {}),
       },
     ]
   })
@@ -52,10 +56,19 @@ export function parseReviewReport(text: string): ParsedReport {
     const parsed = ReportFileSchema.safeParse(item)
     return parsed.success ? [parsed.data] : []
   })
+  const listed = envelope.data.claims
+  const claims = Array.isArray(listed)
+    ? listed.flatMap((item): Claim[] => {
+        const parsed = ReportClaimSchema.safeParse(item)
+        return parsed.success ? [parsed.data] : []
+      })
+    : undefined
   return {
     summary: envelope.data.summary,
     files,
     findings,
     invalid: envelope.data.findings.length - findings.length,
+    claims,
+    invalidClaims: Array.isArray(listed) ? listed.length - (claims?.length ?? 0) : 0,
   }
 }

@@ -1,4 +1,5 @@
 import { destinationOf } from '../publish/feedback.js'
+import { numberOf, objectOf, parseJson, stringOf, stringsOf } from './stored-json.js'
 import type { Destination, SignalKind } from '../publish/feedback.js'
 import type {
   FindingFilter,
@@ -48,12 +49,22 @@ export interface StoredFinding {
   rule: string | null
   skill: string | null
   sources: string[]
+  scope: 'change' | 'repository'
+  closeToCut: boolean
+}
+
+export interface StoredClaim {
+  claim: string
+  verdict: string
+  evidence: string | null
 }
 
 export interface StoredPublication {
   status: string
   url: string | null
   comments: number | null
+  wouldResolve: number | null
+  reason: string | null
 }
 
 export interface StoredCi {
@@ -63,16 +74,36 @@ export interface StoredCi {
   checks: { name: string; state: string }[]
 }
 
+export interface StoredTokens {
+  input: number
+  cached: number | null
+  output: number
+}
+
+export interface StoredPassUsage {
+  pass: string
+  skill: string | null
+  tokens: StoredTokens | null
+}
+
+export interface StoredUsage {
+  passes: StoredPassUsage[]
+  total: StoredTokens | null
+}
+
 export interface ReviewDetail {
   run: RunRecord
   pullRequest: { url: string; title: string | null }
   verdict: NonNullable<RunRecord['verdict']> | null
   score: { value: number; reason: string | null } | null
   summary: string | null
+  claims: StoredClaim[]
   findings: StoredFinding[]
+  debt: StoredFinding[]
   worthChecking: StoredFinding[]
   publication: StoredPublication | null
   ci: StoredCi | null
+  usage: StoredUsage | null
   published: FeedbackFinding[]
 }
 
@@ -117,6 +148,16 @@ export function readReviewDetail(
 ): ReviewDetail | undefined {
   const stored = history?.run(id)
   if (history === undefined || stored === undefined) return undefined
+  return reviewDetailOf(
+    stored,
+    history
+      .findings({ repo: stored.repo, number: stored.number })
+      .filter((finding) => finding.runId === id)
+      .map(withFeedback),
+  )
+}
+
+export function reviewDetailOf(stored: RunRecord, published: FeedbackFinding[]): ReviewDetail {
   const { resultJson, ...run } = stored
   const result = objectOf(parseJson(resultJson))
   const pullRequest = objectOf(result?.pullRequest)
@@ -134,14 +175,14 @@ export function readReviewDetail(
     score:
       scoreValue === null ? null : { value: scoreValue, reason: stringOf(score?.reason) ?? null },
     summary: stringOf(review?.summary) ?? null,
+    claims: storedClaims(review?.claims),
     findings: storedFindings(review?.findings),
+    debt: storedFindings(review?.debt),
     worthChecking: storedFindings(review?.worthChecking),
     publication: storedPublication(result?.publication),
     ci: storedCi(result?.ci),
-    published: history
-      .findings({ repo: run.repo, number: run.number })
-      .filter((finding) => finding.runId === id)
-      .map(withFeedback),
+    usage: storedUsage(result?.usage, review?.usage),
+    published,
   }
 }
 
@@ -183,7 +224,7 @@ function emptyCounts(): FeedbackCounts {
   }
 }
 
-function storedFindings(value: unknown): StoredFinding[] {
+export function storedFindings(value: unknown): StoredFinding[] {
   if (!Array.isArray(value)) return []
   return value.flatMap((item): StoredFinding[] => {
     const finding = objectOf(item)
@@ -202,8 +243,21 @@ function storedFindings(value: unknown): StoredFinding[] {
         rule: stringOf(finding.rule) ?? null,
         skill: stringOf(finding.skill) ?? null,
         sources: stringsOf(finding.sources),
+        scope: finding.scope === 'repository' ? 'repository' : 'change',
+        closeToCut: finding.closeToCut === true,
       },
     ]
+  })
+}
+
+export function storedClaims(value: unknown): StoredClaim[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item): StoredClaim[] => {
+    const claim = objectOf(item)
+    const text = stringOf(claim?.claim)
+    const verdict = stringOf(claim?.verdict)
+    if (text === undefined || verdict === undefined) return []
+    return [{ claim: text, verdict, evidence: stringOf(claim?.evidence) ?? null }]
   })
 }
 
@@ -217,10 +271,13 @@ function storedPublication(value: unknown): StoredPublication | null {
     comments: Array.isArray(publication.comments)
       ? publication.comments.length
       : (numberOf(publication.comments) ?? null),
+    wouldResolve: Array.isArray(publication.wouldResolve) ? publication.wouldResolve.length : null,
+    reason:
+      stringOf(publication.reason) ?? stringOf(objectOf(publication.wouldSkip)?.reason) ?? null,
   }
 }
 
-function storedCi(value: unknown): StoredCi | null {
+export function storedCi(value: unknown): StoredCi | null {
   const ci = objectOf(value)
   const state = stringOf(ci?.state)
   if (ci === undefined || state === undefined) return null
@@ -238,29 +295,28 @@ function storedCi(value: unknown): StoredCi | null {
   }
 }
 
-function parseJson(text: string | undefined): unknown {
-  if (text === undefined) return undefined
-  try {
-    return JSON.parse(text)
-  } catch {
-    return undefined
+function storedUsage(value: unknown, reviewTotal: unknown): StoredUsage | null {
+  const usage = objectOf(value)
+  if (usage === undefined) {
+    const total = storedTokens(reviewTotal)
+    return total === null ? null : { passes: [], total }
+  }
+  const passes = Array.isArray(usage.passes) ? usage.passes : []
+  return {
+    passes: passes.flatMap((item): StoredPassUsage[] => {
+      const entry = objectOf(item)
+      const pass = stringOf(entry?.pass)
+      if (entry === undefined || pass === undefined) return []
+      return [{ pass, skill: stringOf(entry.skill) ?? null, tokens: storedTokens(entry.usage) }]
+    }),
+    total: storedTokens(usage.total),
   }
 }
 
-function objectOf(value: unknown): Record<string, unknown> | undefined {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : undefined
-}
-
-function stringOf(value: unknown): string | undefined {
-  return typeof value === 'string' ? value : undefined
-}
-
-function numberOf(value: unknown): number | undefined {
-  return typeof value === 'number' ? value : undefined
-}
-
-function stringsOf(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item) => typeof item === 'string') : []
+function storedTokens(value: unknown): StoredTokens | null {
+  const usage = objectOf(value)
+  const input = numberOf(usage?.inputTokens)
+  const output = numberOf(usage?.outputTokens)
+  if (input === undefined || output === undefined) return null
+  return { input, cached: numberOf(usage?.cachedInputTokens) ?? null, output }
 }

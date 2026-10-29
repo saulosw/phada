@@ -37,6 +37,9 @@ export const spanish: Messages = {
   worthChecking: (minConfidence) =>
     `Vale la pena revisar (confianza por debajo de ${minConfidence})`,
   moreItems: (value) => `… (+${value} más)`,
+  debt: 'Deuda del repositorio',
+  debtNote:
+    'Problemas que ya están en el repositorio y que este cambio no causa; no cuentan en la puntuación.',
   dropped: (dropped) => {
     const reasons: ReadonlyArray<readonly [number, string]> = [
       [
@@ -47,6 +50,7 @@ export const spanish: Messages = {
       [dropped.duplicate, count(dropped.duplicate, 'duplicado', 'duplicados')],
       [dropped.belowFloor, `${dropped.belowFloor} por debajo de la confianza ${CONFIDENCE_FLOOR}`],
       [dropped.invalid, count(dropped.invalid, 'inválido', 'inválidos')],
+      [dropped.debt ?? 0, `${dropped.debt ?? 0} deuda del repositorio`],
     ]
     const shown = reasons.filter(([value]) => value > 0)
     const total = shown.reduce((sum, [value]) => sum + value, 0)
@@ -76,6 +80,8 @@ export const spanish: Messages = {
     },
     findingCount: (value) => count(value, 'hallazgo', 'hallazgos'),
     worthCheckingCount: (value) => `${value} para revisar`,
+    closeToCut: 'al borde del corte',
+    closeToCutCount: (value) => `${value} al borde del corte`,
     tokens: (input, output) => `${input} de entrada / ${output} de salida`,
   },
   github: {

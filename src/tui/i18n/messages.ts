@@ -1,7 +1,17 @@
 import type { FeedbackFinding, ListedRun, ReviewDetail } from '../../app/read-history.js'
+import type { PackageRef } from '../../app/read-connections.js'
 import type { GitHubTokenSource } from '../../app/read-home.js'
 import type { McpServerKind, NextStep } from '../../app/read-provider.js'
+import type {
+  IndexLanguage,
+  IndexSymbolKind,
+  IndexVersion,
+  LeftOutGroup,
+  RepositoryIndexState,
+} from '../../app/read-index.js'
 import type { QueueJob } from '../../app/read-queue.js'
+import type { ReviewMode } from '../../app/requested-review.js'
+import type { AiRun } from '../../app/review-progress.js'
 import type { RepositoryOrigin, SettingOrigin } from '../../app/read-repositories.js'
 import type { TimeMessages } from '../relative-time.js'
 import { english } from './en.js'
@@ -9,7 +19,15 @@ import { spanish } from './es.js'
 import { portuguese } from './pt.js'
 
 export type ScreenId =
-  'home' | 'repositories' | 'rules' | 'reviews' | 'queue' | 'automation' | 'provider' | 'learnings'
+  | 'home'
+  | 'repositories'
+  | 'rules'
+  | 'reviews'
+  | 'queue'
+  | 'automation'
+  | 'provider'
+  | 'graph'
+  | 'learnings'
 
 export type SetupStepId =
   'github' | 'ai' | 'language' | 'repositories' | 'graph' | 'repository' | 'summary'
@@ -36,16 +54,25 @@ export interface UiMessages {
     refresh: string
   }
   help: { title: string; global: string }
-  palette: { title: string; empty: string; setup: string }
+  palette: {
+    title: string
+    empty: string
+    setup: string
+    index: string
+    review: string
+    watch: string
+  }
   tooSmall(columns: number, rows: number): string
   tooSmallHint: string
   home: HomeMessages
   loading: string
   failed(message: string): string
+  causedBy(error: string): string
   time: TimeMessages
   list: { range(first: number, last: number, total: number): string; scroll: string }
   field: { apply: string; cancel: string }
   handOff: { notFound(command: string): string; failed(message: string): string }
+  quitGuard: { quit: string; stay: string; stopping: string; quitNow: string }
   requests: {
     sources: Readonly<Record<RequestSource, string>>
     publish: Readonly<Record<QueueJob['requests'][number]['publish'], string>>
@@ -58,11 +85,122 @@ export interface UiMessages {
   repositories: RepositoriesMessages
   automation: AutomationMessages
   provider: ProviderMessages
+  graph: GraphMessages
+  indexing: IndexingMessages
   learnings: LearningsMessages
   rules: RulesMessages
   setup: SetupMessages
   language: { title: string; intro: string; current: string; choose: string }
   config: ConfigMessages
+  reviewFlow: ReviewFlowMessages
+}
+
+export interface ReviewFlowMessages {
+  title: string
+  start: string
+  pullRequest: string
+  typeHint: string
+  notAPullRequest(text: string): string
+  repositories: string
+  noRepositories: string
+  type: string
+  openPulls(repo: string): string
+  noOpenPulls: string
+  noToken: string
+  draft: string
+  chooseMode: string
+  modes: Readonly<Record<ReviewMode, { label: string; hint: string }>>
+  queueMode: { label: string; hint(pid: number): string }
+  confirm: {
+    question: string
+    pullRequest: string
+    as: string
+    publish: string
+    queueQuestion: string
+    queue: string
+    watch: string
+    watchRunning(pid: number): string
+  }
+  enqueue: {
+    submitting: string
+    queued(job: number, sha: string): string
+    joined(job: number, sha: string): string
+    refused(reason: string): string
+    refusals: {
+      notWatched: string
+      closed: string
+      external: string
+      whenCommand(message: string): string
+      noReason: string
+      alreadyReviewed: string
+      alreadyReviewedJob(job: number): string
+      hourlyLimit: string
+      hourlyLimitUntil(until: string): string
+    }
+    failed: string
+    openQueue: string
+  }
+  running: Readonly<Record<ReviewMode, string>>
+  notices: { closed: string; draft: string }
+  steps: {
+    fetching(ref: string): string
+    fetched(title: string): string
+    context(rules: number, docs: number): string
+    conversation(items: number): string
+    ci(state: string): string
+    ciWaiting(pending: number): string
+    ciWaited: string
+    indexing(done: number, total: number): string
+    related(count: number): string
+    impact(symbols: number): string
+    pass(skill: string, index: number, total: number): string
+    ai(provider: string, run: string, elapsed: string): string
+    noAnswer: string
+    publishing: string
+  }
+  runs: Readonly<Record<AiRun, string>>
+  warnings(count: number): string
+  moreWarnings(count: number): string
+  done(elapsed: string): string
+  failed: string
+  cancel: {
+    key: string
+    question: string
+    confirm: string
+    keep: string
+    cancelling: string
+    cancelled: string
+  }
+  quitWhileRunning: string
+  history: {
+    saved: string
+    off: string
+    notSaved(error: string): string
+    feedbackNotSaved(error: string): string
+  }
+  publish: {
+    key: string
+    historyOff: string
+    question: string
+    posts: string
+    counts(comments: number, debt: number): string
+    publish: string
+    publishing: string
+    quitWhilePublishing: string
+    published(url: string): string
+    stillOpen(count: number): string
+    resolved(count: number): string
+    skipped(reason: string): string
+    failed: string
+    refusals: {
+      notFound: string
+      published: string
+      notADryRun: string
+      nothing: string
+      outdated: string
+      headMoved(from: string, to: string): string
+    }
+  }
 }
 
 export interface HomeMessages {
@@ -140,14 +278,6 @@ export interface SetupMessages {
     none: string
     index: string
     stop: string
-    waiting: string
-    fetching: string
-    stopping: string
-    progress(done: number, total: number): string
-    indexed(files: number): string
-    cancelled(done: number, total: number): string
-    notStarted: string
-    noToken: string
     later: string
   }
   repository: {
@@ -196,15 +326,130 @@ export interface ConfigMessages {
   changed: string
 }
 
+export interface IndexingMessages {
+  waiting: string
+  fetching: string
+  stopping: string
+  progress(done: number, total: number): string
+  indexed(files: number): string
+  cancelled(done: number, total: number): string
+  notStarted: string
+  noToken: string
+  index: string
+  again: string
+  stop: string
+}
+
+export interface GraphMessages {
+  amount(value: number): string
+  count(total: number): string
+  indexed(count: number): string
+  columns: {
+    repo: string
+    state: string
+    commit: string
+    files: string
+    symbols: string
+    size: string
+    linked: string
+  }
+  states: Readonly<Record<RepositoryIndexState['state'], string>>
+  none: string
+  noneHint: string
+  detail: {
+    index: string
+    state: string
+    commit: string
+    took: string
+    files: string
+    languages: string
+    symbols: string
+    links: string
+    leftOut: string
+    file: string
+    indexedAt(relative: string, absolute: string): string
+    defaultBranch: string
+    filesValue(indexed: number, leftOut: number): string
+    linksValue(counts: {
+      imports: number
+      exports: number
+      calls: number
+      references: number
+      parseErrors: number
+    }): string
+    nothing: string
+    other(files: number): string
+    noExtension: string
+    missing: string
+    empty: string
+    otherVersion(found: IndexVersion, expected: IndexVersion): string
+    unreadable: string
+  }
+  languages: Readonly<Record<IndexLanguage, string>>
+  symbols: Readonly<Record<IndexSymbolKind, (count: number) => string>>
+  leftOut: Readonly<Record<LeftOutGroup['reason'], (count: number) => string>>
+  connections: ConnectionMessages
+  explore: ExploreMessages
+}
+
+export interface ExploreMessages {
+  field: string
+  search: string
+  run: string
+  cancel: string
+  searching(name: string): string
+  cannotExplore(repo: string, why: string): string
+  notFound(name: string, repo: string, commit: string): string
+  notFoundHint: string
+  definitions(count: number, name: string): string
+  more(count: number): string
+  crosses(names: string): string
+  callers: string
+  dependencies: string
+  loading: string
+  none: string
+  capped: string
+  inferred: string
+  observed(pullRequest: number | undefined): string
+  kinds: Readonly<Record<IndexSymbolKind, string>>
+  keys: { explore: string; expand: string; collapse: string }
+}
+
+export interface ConnectionMessages {
+  title: string
+  none: string
+  declareHint: string
+  sourceNotIndexed(why: string): string
+  configError(message: string): string
+  linked: string
+  noLink: string
+  notIndexed(why: string): string
+  unknown: string
+  publishes(owner: string, names: string, ecosystem: string, user: string, count: number): string
+  why: {
+    'no-index': string
+    empty: string
+    'other-version'(phadaVersion: string | null): string
+    unreadable(error: string): string
+    'no-mirror': string
+    'mirror-unreadable'(error: string): string
+  }
+  ecosystems: Readonly<Record<PackageRef['ecosystem'], string>>
+  indexRelated: string
+}
+
 type RequestSource = QueueJob['requests'][number]['source']
 export type QueueRowKind = 'running' | 'waiting' | 'queued' | 'skipped' | 'failed'
 
 export interface QueueMessages {
-  running(pid: number): string
+  runningHere: string
+  runningElsewhere(pid: number): string
+  starting: string
+  stopping: string
   stopped: string
   lastCycle(when: string): string
   next(when: string): string
-  startWith: string
+  startHere: string
   notConfigured: string
   setUp(file: string): string
   paused(until: string, relative: string, reason: string): string
@@ -239,6 +484,52 @@ export interface QueueMessages {
     requests(count: number): string
     gone: string
   }
+  watch: {
+    start: string
+    stop: string
+    log: string
+    stopQuestion: string
+    stopConfirm: string
+    keepRunning: string
+    elsewhere(pid: number): string
+    startFailed(reason: string): string
+    quitQuestion: string
+  }
+  log: WatchLogMessages
+}
+
+export interface WatchLogMessages {
+  title: string
+  empty: string
+  watchStarted: string
+  watchStopping: string
+  watchStopped: string
+  watchAborted: string
+  watchFailed(reason: string): string
+  baseline(repo: string, count: number): string
+  queued(ref: string, sha: string, after: string): string
+  superseded(ref: string, sha: string): string
+  started(ref: string, sha: string): string
+  waiting(ref: string, sha: string, until: string, pending: string): string
+  ciFailing(ref: string, sha: string, names: string): string
+  ciCleared(ref: string, sha: string): string
+  published(ref: string, url: string): string
+  notPublished(ref: string): string
+  moved(ref: string, sha: string): string
+  closed(ref: string): string
+  dryRun(ref: string): string
+  publishFailed(ref: string, reason: string): string
+  nothingToReview(ref: string): string
+  skipped(ref: string, reason: string): string
+  retry(ref: string, reason: string, at: string): string
+  paused(until: string, reason: string): string
+  failed(ref: string, reason: string): string
+  indexed(repo: string, sha: string): string
+  indexPartial(repo: string): string
+  feedback(ref: string, comments: number): string
+  warning(message: string): string
+  limited(count: number, until: string): string
+  refused(source: string, ref: string, reason: string): string
 }
 
 export type ReviewSource = ListedRun['source'] | NonNullable<ListedRun['requestSource']>
@@ -247,6 +538,7 @@ export interface ReviewsMessages {
   count(total: number): string
   latest(shown: number): string
   filter: string
+  newReview: string
   columns: {
     pr: string
     verdict: string
@@ -264,6 +556,7 @@ export interface ReviewsMessages {
   sources: Readonly<Record<ReviewSource, string>>
   ciStates: Readonly<Record<string, string>>
   outcomes: Readonly<Record<FeedbackFinding['destination'], string>>
+  claimVerdicts: Readonly<Record<string, string>>
   marks: Readonly<Record<FeedbackFinding['marks'][number], string>>
   detail: {
     score: string
@@ -277,9 +570,21 @@ export interface ReviewsMessages {
     comments(count: number): string
     error: string
     summary: string
+    claims(count: number): string
     findings(count: number): string
     worthChecking(count: number): string
+    debt(count: number): string
+    debtMark: string
+    closeToCutMark: string
+    tokens: string
+    tokenCounts(input: string, cached: string | undefined, output: string): string
+    notReported: string
+    total: string
     feedback(count: number): string
+    nothingPosted: string
+    wouldResolve(count: number): string
+    wouldSkip(reason: string): string
+    skipReasons: Readonly<Record<string, string>>
     gone: string
   }
 }
@@ -336,6 +641,7 @@ export interface RepositoriesMessages {
     publishOn: string
     publishOff: string
     add: string
+    review: string
     config: string
     rules: string
     addIntro: string

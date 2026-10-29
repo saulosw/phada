@@ -72,6 +72,7 @@ describe('runReview', () => {
         model: 'claude-fake-1',
         durationMs: 1234,
         usage: { inputTokens: 3512, outputTokens: 420 },
+        passUsage: [{ pass: 'review', usage: { inputTokens: 3512, outputTokens: 420 } }],
         summary: 'Adds a spend endpoint.',
         files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 1 }],
         findings: [findingFixture()],
@@ -80,7 +81,122 @@ describe('runReview', () => {
         minConfidence: 60,
         score: { value: 3, reason: '1 P1 finding (shop.ts:1)' },
         dropped: { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0, rejected: 0 },
+        claims: [],
       },
+    })
+  })
+
+  it('returns the claims of the description the AI checked', async () => {
+    const claims = [
+      { claim: 'Prevents two runs on staging', verdict: 'contradicted', evidence: 'ci.yml:4' },
+    ]
+    const provider = new FakeProvider(() =>
+      Promise.resolve({ ...OUTPUT, text: reviewReportJson({ claims }) }),
+    )
+
+    const outcome = await runReview({ pullRequest: pullRequestFixture() }, { provider })
+
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(outcome.result.claims).toEqual(claims)
+    expect(outcome.result).not.toHaveProperty('warnings')
+  })
+
+  it('reviews an answer without claims as no claims, with a warning', async () => {
+    const { claims: _claims, ...withoutClaims } = JSON.parse(reviewReportJson()) as Record<
+      string,
+      unknown
+    >
+    const provider = new FakeProvider(() =>
+      Promise.resolve({ ...OUTPUT, text: JSON.stringify(withoutClaims) }),
+    )
+
+    const outcome = await runReview({ pullRequest: pullRequestFixture() }, { provider })
+
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(outcome.result.claims).toEqual([])
+    expect(outcome.result.findings).toEqual([findingFixture()])
+    expect(outcome.result.warnings).toEqual([
+      'The AI answer had no claims list: the claims of the pull request description were not checked.',
+    ])
+  })
+
+  it('warns about the claims it left out for their shape', async () => {
+    const provider = new FakeProvider(() =>
+      Promise.resolve({
+        ...OUTPUT,
+        text: reviewReportJson({
+          claims: [{ claim: 'Fast', verdict: 'maybe', evidence: '' }, 'not a claim'],
+        }),
+      }),
+    )
+
+    const outcome = await runReview({ pullRequest: pullRequestFixture() }, { provider })
+
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(outcome.result.warnings).toEqual([
+      'Left out 2 claims of the AI answer with the wrong shape.',
+    ])
+  })
+
+  describe('with findings of the repository the change did not cause', () => {
+    const change = findingFixture({ severity: 'P2', line: 3, title: 'magic number' })
+    const debt = findingFixture({ severity: 'P0', line: 12, title: 'balance nobody calls' })
+    const unsureDebt = findingFixture({ line: 11, title: 'old helper', confidence: 55 })
+    const provider = () =>
+      new FakeProvider(() =>
+        Promise.resolve({
+          ...OUTPUT,
+          text: reviewReportJson({
+            findings: [
+              change,
+              { ...debt, scope: 'repository' },
+              { ...unsureDebt, scope: 'repository' },
+            ],
+          }),
+        }),
+      )
+
+    it('lists them as debt apart from the findings and leaves them out of the score by default', async () => {
+      const outcome = await runReview(
+        { pullRequest: pullRequestFixture() },
+        { provider: provider() },
+      )
+
+      if (outcome.status !== 'reviewed') throw new Error('expected a review')
+      expect(outcome.result.findings).toEqual([change])
+      expect(outcome.result.debt).toEqual([{ ...debt, scope: 'repository' }])
+      expect(outcome.result.worthChecking).toEqual([{ ...unsureDebt, scope: 'repository' }])
+      expect(outcome.result.score).toEqual({ value: 4, reason: '1 P2 finding (shop.ts:3)' })
+      expect(outcome.result.files).toEqual([
+        { path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 1 },
+      ])
+      expect(outcome.result.dropped).not.toHaveProperty('debt')
+    })
+
+    it('keeps them among the findings, scored, with debt: comments', async () => {
+      const outcome = await runReview(
+        { pullRequest: pullRequestFixture(), debt: 'comments' },
+        { provider: provider() },
+      )
+
+      if (outcome.status !== 'reviewed') throw new Error('expected a review')
+      expect(outcome.result.findings).toEqual([{ ...debt, scope: 'repository' }, change])
+      expect(outcome.result).not.toHaveProperty('debt')
+      expect(outcome.result.score.value).toBe(1)
+    })
+
+    it('drops and counts them with debt: off', async () => {
+      const outcome = await runReview(
+        { pullRequest: pullRequestFixture(), debt: 'off' },
+        { provider: provider() },
+      )
+
+      if (outcome.status !== 'reviewed') throw new Error('expected a review')
+      expect(outcome.result.findings).toEqual([change])
+      expect(outcome.result.worthChecking).toEqual([])
+      expect(outcome.result).not.toHaveProperty('debt')
+      expect(outcome.result.dropped.debt).toBe(2)
+      expect(outcome.result.score.value).toBe(4)
     })
   })
 
@@ -196,6 +312,7 @@ describe('runReview', () => {
       target: expect.any(Object),
       providerId: 'fake-cli',
       durationMs: 5,
+      passUsage: [{ pass: 'review' }],
       summary: 'Adds a spend endpoint.',
       files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 0 }],
       findings: [],
@@ -204,6 +321,7 @@ describe('runReview', () => {
       minConfidence: 60,
       score: { value: 5, reason: 'no problems found' },
       dropped: { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0, rejected: 0 },
+      claims: [],
     })
   })
 
@@ -229,6 +347,7 @@ describe('runReview', () => {
       model: 'claude-fake-1',
       durationMs: 1234,
       usage: { inputTokens: 3512, outputTokens: 420 },
+      passUsage: [{ pass: 'review', usage: { inputTokens: 3512, outputTokens: 420 } }],
       summary: 'Adds a spend endpoint.',
       files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 1 }],
       findings: [findingFixture()],
@@ -237,6 +356,7 @@ describe('runReview', () => {
       minConfidence: 60,
       score: { value: 3, reason: '1 P1 finding (shop.ts:1)' },
       dropped: { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0, rejected: 0 },
+      claims: [],
     })
   })
 
@@ -432,6 +552,43 @@ describe('runReview', () => {
       expect(outcome.status === 'reviewed' && outcome.result.usage).toEqual(usage)
     })
 
+    it('lists the tokens of the review and the verification apart', async () => {
+      const cached = {
+        ...report,
+        usage: { inputTokens: 3000, cachedInputTokens: 2500, outputTokens: 400 },
+      }
+      const provider = new FakeProvider(inTurn(cached, verification))
+
+      const outcome = await runReview(request, { provider })
+
+      if (outcome.status !== 'reviewed') throw new Error('expected a review')
+      expect(outcome.result.passUsage).toEqual([
+        {
+          pass: 'review',
+          usage: { inputTokens: 3000, cachedInputTokens: 2500, outputTokens: 400 },
+        },
+        { pass: 'verify', usage: { inputTokens: 3200, outputTokens: 150 } },
+      ])
+      expect(outcome.result.usage).toEqual({
+        inputTokens: 6200,
+        cachedInputTokens: 2500,
+        outputTokens: 550,
+      })
+    })
+
+    it('lists a pass without tokens when its provider reports none', async () => {
+      const { usage: _first, ...reportWithout } = report
+      const provider = new FakeProvider(inTurn(reportWithout, verification))
+
+      const outcome = await runReview(request, { provider })
+
+      if (outcome.status !== 'reviewed') throw new Error('expected a review')
+      expect(outcome.result.passUsage).toEqual([
+        { pass: 'review' },
+        { pass: 'verify', usage: { inputTokens: 3200, outputTokens: 150 } },
+      ])
+    })
+
     it('leaves usage out when neither call reports it', async () => {
       const { usage: _first, ...reportWithout } = report
       const { usage: _second, ...verificationWithout } = verification
@@ -578,7 +735,7 @@ describe('runReview with the repository tools', () => {
     )
 
     expect(passes).toEqual(['review', 'verify'])
-    expect(provider.prompts[0]?.tools).toBe(review)
+    expect(provider.prompts[0]?.tools?.definitions).toBe(review.definitions)
     expect(provider.prompts[1]?.tools).toBe(verify)
   })
 
@@ -722,6 +879,103 @@ describe('runReview with the repository tools', () => {
   })
 })
 
+describe('runReview with an investigation floor', () => {
+  const diff = [
+    'diff --git a/src/a.ts b/src/a.ts',
+    '--- a/src/a.ts',
+    '+++ b/src/a.ts',
+    '@@ -1,1 +1,2 @@',
+    ' keep',
+    `+${'x'.repeat(64 * 1024)}`,
+  ].join('\n')
+  const smallDiff = diff.replace(/x+$/, 'x'.repeat(2_000))
+  const toolbox: Toolbox = {
+    definitions: [{ name: 'read_file', description: 'r', inputSchema: { type: 'object' } }],
+    call: async () => ({ text: '', isError: false }),
+    touchedPaths: () => [],
+  }
+
+  function investigating(calls: number, output: Partial<ReviewOutput> = {}): ReviewProvider {
+    return {
+      id: 'fake-cli',
+      review: async (prompt) => {
+        for (let call = 0; call < calls; call++) await prompt.tools?.call('read_file', {})
+        return { ...OUTPUT, ...output }
+      },
+    }
+  }
+
+  async function reviewedWith(
+    provider: ReviewProvider,
+    {
+      tools = () => toolbox,
+      passes,
+      diff: reviewed = diff,
+    }: { tools?: (() => Toolbox) | null; passes?: SkillPass[]; diff?: string } = {},
+  ) {
+    const outcome = await runReview(
+      {
+        pullRequest: pullRequestFixture({ diff: reviewed }),
+        ...(passes === undefined ? {} : { passes }),
+      },
+      { provider, ...(tools === null ? {} : { tools }) },
+    )
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    return outcome.result
+  }
+
+  it('warns when the review pass investigated less than the diff asks for', async () => {
+    const result = await reviewedWith(investigating(4))
+
+    const warning = 'Investigated 4 times for a 64 KB diff (expected at least 6).'
+    expect(result.warnings).toEqual([warning])
+    expect(result.investigationFloor).toEqual({ expected: 6, shortfalls: [warning] })
+  })
+
+  it('does not warn when the pass reached the floor', async () => {
+    const result = await reviewedWith(investigating(6))
+
+    expect(result).not.toHaveProperty('warnings')
+    expect(result.investigationFloor).toEqual({ expected: 6, shortfalls: [] })
+  })
+
+  it('names the skill of each pass that investigated too little', async () => {
+    const result = await reviewedWith(investigating(1), {
+      passes: [
+        {
+          skill: 'code-review',
+          lens: { kind: 'skill', name: 'code-review', text: 'x', origin: 'y' },
+        },
+      ],
+    })
+
+    expect(result.warnings).toEqual([
+      'Skill code-review: investigated 1 time for a 64 KB diff (expected at least 6).',
+    ])
+  })
+
+  it('expects no minimum for a small diff without CI or infrastructure files', async () => {
+    const result = await reviewedWith(investigating(0), { diff: smallDiff })
+
+    expect(result).not.toHaveProperty('warnings')
+    expect(result).not.toHaveProperty('investigationFloor')
+  })
+
+  it('expects nothing without tools', async () => {
+    const result = await reviewedWith(investigating(0), { tools: null })
+
+    expect(result).not.toHaveProperty('warnings')
+    expect(result).not.toHaveProperty('investigationFloor')
+  })
+
+  it('expects nothing when the provider could not offer the tools to its model', async () => {
+    const result = await reviewedWith(investigating(0, { withoutTools: true }))
+
+    expect(result).not.toHaveProperty('warnings')
+    expect(result).not.toHaveProperty('investigationFloor')
+  })
+})
+
 describe('runReview with several skill passes', () => {
   it('does not show the verifier the guide of a pass that failed', async () => {
     const provider = new FakeProvider(
@@ -815,6 +1069,75 @@ describe('runReview with several skill passes', () => {
       [3, 'code-review'],
     ])
     expect(result.dropped.duplicate).toBe(1)
+  })
+
+  it('merges the claims of every pass, one per text, keeping the strongest verdict', async () => {
+    const claim = (text: string, verdict: string, evidence = '') => ({
+      claim: text,
+      verdict,
+      evidence,
+    })
+    const { result } = await reviewed(
+      [PHADA_PASS, SKILL_PASS],
+      [
+        {
+          ...OUTPUT,
+          text: reviewReportJson({
+            claims: [
+              claim('Prevents two runs on staging', 'confirmed', 'ci.yml:4'),
+              claim('Covers the empty cart', 'unverified'),
+            ],
+          }),
+        },
+        {
+          ...OUTPUT,
+          text: reviewReportJson({
+            claims: [
+              claim('prevents two  runs on staging', 'contradicted', 'ci.yml:9 groups by ref'),
+              claim('Covers the empty cart', 'confirmed', 'shop.test.ts:40'),
+              claim('Only runs on main', 'unverified'),
+            ],
+          }),
+        },
+      ],
+    )
+
+    expect(result.claims).toEqual([
+      claim('prevents two  runs on staging', 'contradicted', 'ci.yml:9 groups by ref'),
+      claim('Covers the empty cart', 'confirmed', 'shop.test.ts:40'),
+      claim('Only runs on main', 'unverified'),
+    ])
+  })
+
+  it('names the pass whose answer had no claims list', async () => {
+    const { claims: _claims, ...withoutClaims } = JSON.parse(reviewReportJson()) as Record<
+      string,
+      unknown
+    >
+    const { result } = await reviewed(
+      [PHADA_PASS, SKILL_PASS],
+      [answer([findingFixture()]), { ...OUTPUT, text: JSON.stringify(withoutClaims) }],
+    )
+
+    expect(result.warnings).toEqual([
+      'Skill code-review: the AI answer had no claims list: the claims of the pull request description were not checked.',
+    ])
+  })
+
+  it('lists the tokens of each skill pass, a failed answer included', async () => {
+    const { result } = await reviewed(
+      [PHADA_PASS, SKILL_PASS],
+      [
+        answer([findingFixture()]),
+        { ...OUTPUT, text: 'not a report', usage: { inputTokens: 10, outputTokens: 5 } },
+      ],
+    )
+
+    expect(result.passUsage).toEqual([
+      { pass: 'review', skill: 'phada', usage: { inputTokens: 3512, outputTokens: 420 } },
+      { pass: 'review', skill: 'code-review', usage: { inputTokens: 10, outputTokens: 5 } },
+    ])
+    expect(result.usage).toEqual({ inputTokens: 3522, outputTokens: 425 })
   })
 
   it('sums time and tokens and reports each pass', async () => {
@@ -1063,6 +1386,23 @@ describe('runReview with a native skill pass', () => {
       },
     ])
     expect(outcome.result.skillBodies).toBeUndefined()
+  })
+
+  it('sums the tokens of a native skill run and its conversion in its pass', async () => {
+    const { outcome } = await nativeReview(
+      [NATIVE],
+      [{ ...OUTPUT, usage: { inputTokens: 3512, cachedInputTokens: 12, outputTokens: 420 } }],
+      skillRun({ usage: { inputTokens: 100_000, cachedInputTokens: 80_000, outputTokens: 5_000 } }),
+    )
+
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(outcome.result.passUsage).toEqual([
+      {
+        pass: 'review',
+        skill: 'code-review:code-review',
+        usage: { inputTokens: 103_512, cachedInputTokens: 80_012, outputTokens: 5_420 },
+      },
+    ])
   })
 
   it('uses the skill output as the review body when the conversion is not readable', async () => {

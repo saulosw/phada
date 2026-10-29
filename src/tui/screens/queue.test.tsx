@@ -128,7 +128,7 @@ describe('the Queue screen', () => {
     await showing('No watch has run here yet.')
     expect(frame()).toContain('Watch not running')
     expect(frame()).toContain('No watch has run here yet.')
-    expect(frame()).toContain('phada watch')
+    expect(frame()).toContain('Watch not running · w starts it')
   })
 
   it('says the watch is not configured and how to set it up, never to start it', async () => {
@@ -138,7 +138,7 @@ describe('the Queue screen', () => {
     expectFits(text, { columns: 80, rows: 24 })
     expect(text).toContain('Watch not configured')
     expect(text).toContain('Add watch.repos to ~/.config/phada/config.yml, then run phada watch')
-    expect(text).not.toContain('start it with')
+    expect(text).not.toContain('w starts it')
   })
 
   it('shows the running watch, its cycles, pause, hourly count and every kind of job in 80×24', async () => {
@@ -146,7 +146,9 @@ describe('the Queue screen', () => {
     await showing('Watch running', 'acme/web#2', 'Enter open')
     const text = frame()
     expectFits(text, { columns: 80, rows: 24 })
-    expect(text).toContain('Watch running · PID 4242 · last cycle 2m ago · next in ~3m')
+    expect(text).toContain(
+      'Watch running in another terminal · PID 4242 · last cycle 2m ago · next in ~3m',
+    )
     expect(text).toMatch(/Paused until \S+ \S+ \(in 12m\): the AI provider's usage limit/)
     expect(text).toContain('Reviews in the last hour: 2 of 6')
     const rows = frameLines(text)
@@ -180,7 +182,7 @@ describe('the Queue screen', () => {
       pause: null,
     }))
     await showing('Watch not running', 'acme/shop#12')
-    expect(frame()).toContain('Watch not running · last cycle 2m ago · start it with phada watch')
+    expect(frame()).toContain('Watch not running · last cycle 2m ago · w starts it')
     expect(frame()).not.toContain('Paused')
     expect(frame()).toContain('acme/shop#12')
   })
@@ -189,7 +191,7 @@ describe('the Queue screen', () => {
     const { frame, showing } = openQueue(async () => ({
       ...emptyQueue(),
       recorded: true,
-      holder: { pid: 7 },
+      holder: { pid: 1000 },
       lastCycleAt: at(-1),
       nextCycle: { at: at(-1), estimated: true },
     }))
@@ -270,7 +272,7 @@ describe('the Queue screen', () => {
   it('is translated', async () => {
     const { frame, showing } = openQueue(async () => busyQueue(), { language: 'pt' })
     await showing('Watch rodando', 'Reviews na última hora')
-    expect(frame()).toContain('Watch rodando · PID 4242 · último ciclo há 2m · próximo em ~3m')
+    expect(frame()).toContain('Watch rodando em outro terminal · PID 4242 · último ciclo há 2m')
     expect(frame()).toContain('Reviews na última hora: 2 de 6')
   })
 

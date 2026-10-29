@@ -14,8 +14,11 @@ import type { Conversation, PublicationPlan, SkipReason } from '../publish/types
 import type { Ci, CiSummary } from '../context/types.js'
 import { diffFingerprint } from '../review/diff-fingerprint.js'
 import type { RecheckThread, RecheckVerdict, ReviewResult } from '../review/types.js'
+import type { ReviewProvider } from '../providers/types.js'
 import { errorMessage } from './error-message.js'
 import { readCi } from './read-ci.js'
+import { stopIfCancelled } from './review-cancelled.js'
+import { wrapProviderRuns } from './wrap-provider-runs.js'
 import { readConversation } from './read-conversation.js'
 import type { CiReaders } from './read-ci.js'
 import { waitForCi } from './wait-for-ci.js'
@@ -79,6 +82,7 @@ export interface ReviewAndPublishInput {
   options: ReviewOptions
   userLayers: readonly ConfigLayer[]
   mcp: ResolvedMcp
+  signal?: AbortSignal
 }
 
 export interface ReviewAndPublishEvents {
@@ -125,7 +129,40 @@ export async function reviewAndPublish(
   input: ReviewAndPublishInput,
   deps: ReviewAndPublishDeps,
 ): Promise<ReviewRun> {
+  try {
+    return await reviewThenPublish(input, deps, () => stopIfCancelled(input.signal))
+  } catch (error) {
+    stopIfCancelled(input.signal, error)
+    throw error
+  }
+}
+
+function refusingAfterCancel(
+  deps: PullRequestReviewDeps,
+  signal: AbortSignal | undefined,
+): PullRequestReviewDeps {
+  const watch = deps.watchProvider ?? ((provider: ReviewProvider) => provider)
+  return {
+    ...deps,
+    watchProvider: (provider, pass) => {
+      const refusing = wrapProviderRuns(watch(provider, pass), (_run, work) => {
+        stopIfCancelled(signal)
+        return work()
+      })
+      if (signal === undefined) return refusing
+      return { ...refusing, review: (prompt) => refusing.review({ ...prompt, signal }) }
+    },
+  }
+}
+
+async function reviewThenPublish(
+  input: ReviewAndPublishInput,
+  deps: ReviewAndPublishDeps,
+  stopIfCancelled: () => void,
+): Promise<ReviewRun> {
+  stopIfCancelled()
   const pullRequest = await deps.fetchPullRequest(input.ref)
+  stopIfCancelled()
   deps.events.fetched(pullRequest)
   if (
     input.mode === 'watch' &&
@@ -134,6 +171,7 @@ export async function reviewAndPublish(
     return { status: 'skipped', pullRequest, reason: { kind: 'closed-or-draft' } }
   }
   const state = await deps.fetchReviewState(input.ref)
+  stopIfCancelled()
   const runOptions = {
     headSha: pullRequest.headSha,
     force: input.force,
@@ -144,7 +182,7 @@ export async function reviewAndPublish(
   if (early.action === 'skip')
     return { status: 'skipped', pullRequest, reason: early.reason, reviewState: state }
 
-  const reviewDeps = deps.reviewDeps(pullRequest)
+  const reviewDeps = refusingAfterCancel(deps.reviewDeps(pullRequest), input.signal)
   const review = {
     pullRequest,
     userLayers: input.userLayers,
@@ -152,6 +190,7 @@ export async function reviewAndPublish(
     options: input.options,
   }
   const loaded = await loadPullRequestContext(review, reviewDeps)
+  stopIfCancelled()
   const fingerprint = diffFingerprint(loaded.diff)
   const decision = decideRun(state, { ...runOptions, diff: fingerprint })
   if (decision.action === 'skip') {
@@ -175,11 +214,13 @@ export async function reviewAndPublish(
         deps.clock,
         deps.events,
       )
+      stopIfCancelled()
     }
   }
 
   const resolve = input.options.resolveThreads ?? loaded.options.resolveThreads ?? true
   const recheck = resolve ? await threadsWithChanges(state, pullRequest, deps) : []
+  stopIfCancelled()
   const conversation =
     (input.options.conversation ?? loaded.options.conversation ?? true)
       ? await readConversation(
@@ -189,11 +230,13 @@ export async function reviewAndPublish(
           (message) => deps.events.warning(message),
         )
       : undefined
+  stopIfCancelled()
   const ci: Ci | undefined = readsCi
     ? await readCi(deps.ci, pullRequest.headSha, loaded.options.ci.checks, (message) =>
         deps.events.warning(message),
       )
     : undefined
+  stopIfCancelled()
   if (conversation !== undefined) deps.events.conversationRead?.(conversation)
   if (ci !== undefined) deps.events.ciRead?.(ci)
   const reviewed = await reviewPullRequest(
@@ -204,9 +247,11 @@ export async function reviewAndPublish(
       viewer: state.viewer,
       ...(conversation === undefined ? {} : { conversation }),
       ...(ci === undefined ? {} : { ci }),
+      ...(input.signal === undefined ? {} : { signal: input.signal }),
     },
     reviewDeps,
   )
+  stopIfCancelled()
   const fixed = (reviewed.recheck?.verdicts ?? []).filter(({ verdict }) => verdict === 'fixed')
   const { outcome } = reviewed
   if (outcome.status === 'skipped') {
@@ -226,7 +271,15 @@ export async function reviewAndPublish(
       pullRequest,
       reviewed,
       rendered,
-      publication: await publish(input, deps, pullRequest, rendered, fixed, reviewed.language),
+      publication: await publish(
+        input,
+        deps,
+        pullRequest,
+        rendered,
+        fixed,
+        reviewed.language,
+        stopIfCancelled,
+      ),
       reviewState: state,
     }
   }
@@ -241,7 +294,15 @@ export async function reviewAndPublish(
     reviewed,
     plan,
     rendered,
-    publication: await publish(input, deps, pullRequest, rendered, fixed, reviewed.language),
+    publication: await publish(
+      input,
+      deps,
+      pullRequest,
+      rendered,
+      fixed,
+      reviewed.language,
+      stopIfCancelled,
+    ),
     ...(decision.wouldSkip === undefined ? {} : { wouldSkip: decision.wouldSkip }),
     reviewState: state,
   }
@@ -254,13 +315,21 @@ async function publish(
   rendered: RenderedReview,
   fixed: readonly RecheckVerdict[],
   language: string | undefined,
+  stopIfCancelled: () => void,
 ): Promise<PublicationResult> {
   if (input.dryRun) return { status: 'dry-run', wouldResolve: [...fixed] }
   if (!input.publish) return { status: 'not-published' }
+  let head: HeadCheck
   try {
-    const head = (await deps.checkHead?.(pullRequest)) ?? 'current'
-    if (head === 'closed-or-draft') return { status: 'closed-or-draft' }
-    if (head !== 'current') return { status: 'superseded', headSha: head.superseded }
+    head = (await deps.checkHead?.(pullRequest)) ?? 'current'
+  } catch (error) {
+    stopIfCancelled()
+    return { status: 'failed', error }
+  }
+  stopIfCancelled()
+  if (head === 'closed-or-draft') return { status: 'closed-or-draft' }
+  if (head !== 'current') return { status: 'superseded', headSha: head.superseded }
+  try {
     deps.events.publishing()
     const resolved = await resolveFixed(deps, pullRequest.headSha, fixed, language)
     const created = await deps.createReview(pullRequest, rendered)
@@ -270,8 +339,13 @@ async function publish(
   }
 }
 
-async function resolveFixed(
-  deps: ReviewAndPublishDeps,
+export type ResolveDeps = Pick<ReviewAndPublishDeps, 'replyAndResolve'> & {
+  render: Pick<ReviewAndPublishDeps['render'], 'resolvedReply'>
+  events: Pick<ReviewAndPublishEvents, 'warning'>
+}
+
+export async function resolveFixed(
+  deps: ResolveDeps,
   headSha: string,
   fixed: readonly RecheckVerdict[],
   language: string | undefined,

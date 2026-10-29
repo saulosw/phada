@@ -38,6 +38,7 @@ const RESULT: ReviewResult = {
   providerId: 'fake-cli',
   model: 'claude-fake-1',
   durationMs: 1_000,
+  passUsage: [],
   summary: 'Adds a spend endpoint.',
   files: [{ path: 'src/shop.ts', change: 'Adds spend', findings: 2 }],
   findings: [P1, P2, OPEN],
@@ -46,6 +47,7 @@ const RESULT: ReviewResult = {
   minConfidence: 60,
   score: { value: 3, reason: 'One P1 finding.' },
   dropped: { invalid: 0, belowFloor: 0, outsideDiff: 1, duplicate: 0, rejected: 0 },
+  claims: [],
   verification: {
     candidates: 3,
     confirmed: 3,
@@ -84,6 +86,15 @@ function plan(
 }
 
 describe('formatGitHubReview body', () => {
+  it('publishes the same review whether findings are close to the cut or not', () => {
+    const close = (finding: Finding): Finding => ({ ...finding, closeToCut: true })
+    const marked = result({ findings: RESULT.findings.map(close) })
+
+    expect(formatGitHubReview(marked, plan([close(P1), close(P2)], [close(OPEN)]))).toEqual(
+      formatGitHubReview(RESULT, PLAN),
+    )
+  })
+
   it('writes the score, summary, files, counts, worth checking, drops and marker', () => {
     expect(formatGitHubReview(RESULT, PLAN).body).toBe(
       [
@@ -470,6 +481,121 @@ describe('formatGitHubReview body', () => {
   })
 })
 
+describe('formatGitHubReview repository debt', () => {
+  const DEBT = findingFixture({
+    severity: 'P2',
+    confidence: 80,
+    line: 12,
+    title: 'balance is exported but no use case calls it',
+    why: 'Nothing calls balance since the shop moved to spend.\nIt stays exported.',
+    fix: 'Remove it.',
+    scope: 'repository',
+  })
+  const withDebt = result({ debt: [DEBT] })
+
+  it('lists the debt in its own section of the body, one line each with its place and why', () => {
+    const review = formatGitHubReview(withDebt, PLAN)
+
+    expect(review.body).toContain(
+      [
+        '### Repository debt',
+        '',
+        'Problems already in the repository that this change does not cause; they do not count toward the score.',
+        '',
+        '- **P2** · src/shop.ts:12: balance is exported but no use case calls it — Nothing calls balance since the shop moved to spend. It stays exported.',
+      ].join('\n'),
+    )
+    expect(review.body.indexOf('### Repository debt')).toBeGreaterThan(
+      review.body.indexOf('### Worth checking'),
+    )
+  })
+
+  it('never posts the debt as a line comment nor counts it in the score or the marker', () => {
+    const review = formatGitHubReview(withDebt, PLAN)
+
+    expect(review.comments.map(({ line }) => line)).toEqual([3, 9])
+    expect(review.body.startsWith('## 🦋 3/5 (implementation issues)')).toBe(true)
+    expect(parseReviewMarker(review.body)?.findings).toBe(3)
+  })
+
+  it('cuts a long why of a debt line', () => {
+    const long = findingFixture({ ...DEBT, why: 'x'.repeat(400) })
+    const line = formatGitHubReview(result({ debt: [long] }), PLAN)
+      .body.split('\n')
+      .find((text) => text.startsWith('- **P2** · src/shop.ts:12'))
+
+    expect(line?.endsWith(`— ${'x'.repeat(199)}…`)).toBe(true)
+  })
+
+  it('lists the debt in the short note when every finding is still open', () => {
+    const body = formatGitHubReview(withDebt, plan([], [OPEN])).body
+
+    expect(body).toContain('### Repository debt')
+    expect(body.indexOf('### Repository debt')).toBeLessThan(body.indexOf('<!-- phada:review'))
+  })
+
+  it('counts the debt it dropped with debt: off', () => {
+    const body = formatGitHubReview(
+      result({
+        dropped: { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0, rejected: 0, debt: 2 },
+      }),
+      PLAN,
+    ).body
+
+    expect(body).toContain('2 dropped (2 repository debt)')
+    expect(body).not.toContain('### Repository debt')
+  })
+
+  it.each([
+    [
+      'pt-BR',
+      '### Débito do repositório',
+      'Problemas que já estão no repositório e que esta mudança não causa; não contam na nota.',
+      '1 descartado (1 débito do repositório)',
+    ],
+    [
+      'es',
+      '### Deuda del repositorio',
+      'Problemas que ya están en el repositorio y que este cambio no causa; no cuentan en la puntuación.',
+      '1 descartado (1 deuda del repositorio)',
+    ],
+  ])('writes the debt section in %s', (language, heading, note, dropped) => {
+    const body = formatGitHubReview(
+      result({
+        debt: [DEBT],
+        dropped: { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0, rejected: 0, debt: 1 },
+      }),
+      PLAN,
+      GITHUB_BODY_LIMIT,
+      messagesFor(language),
+    ).body
+
+    expect(body).toContain(`${heading}\n\n${note}\n\n- **P2** · src/shop.ts:12:`)
+    expect(body).toContain(dropped)
+  })
+
+  it('lists at most 20 debt lines and counts the rest', () => {
+    const many = Array.from({ length: 23 }, (_, index) =>
+      findingFixture({ ...DEBT, line: index + 1 }),
+    )
+    const body = formatGitHubReview(result({ debt: many }), PLAN).body
+
+    expect(body.match(/^- \*\*P2\*\* · src\/shop\.ts:\d+: balance/gm)).toHaveLength(20)
+    expect(body).toContain('- … (+3 more)')
+  })
+
+  it('omits debt lines to keep the marker inside the body limit', () => {
+    const many = Array.from({ length: 50 }, (_, index) =>
+      findingFixture({ ...DEBT, line: index + 1, why: 'y'.repeat(150) }),
+    )
+    const body = formatGitHubReview(result({ debt: many }), PLAN, 4_000).body
+
+    expect(body.length).toBeLessThanOrEqual(4_000)
+    expect(body).toMatch(/- … \(\+\d+ more\)/)
+    expect(parseReviewMarker(body)).toBeDefined()
+  })
+})
+
 describe('formatGitHubReview truncation of AI text', () => {
   it('never leaves a code span open with HTML after a cut', () => {
     const why = `${'x'.repeat(300)} \`<details>\` and more ${'y'.repeat(200)}`
@@ -608,6 +734,23 @@ describe('formatGitHubReview comments', () => {
     expect(comment?.body).toContain(
       '**Fix:** Use the authenticated user id.\n\n<sub>Based on: `docs/conventions.md` · `src/shop.ts:3` · rule `orm-only`</sub>\n\n<!-- phada:finding -->',
     )
+  })
+
+  it('keeps the skill out of the footer and in the hidden marker of the comment', () => {
+    const fromSkill = findingFixture({
+      rule: 'orm-only',
+      sources: ['docs/conventions.md', 'ci:test'],
+      skill: 'code-review:code-review',
+    })
+    const onlySkill = findingFixture({ skill: 'security' })
+    const [first, second] = formatGitHubReview(RESULT, plan([fromSkill, onlySkill])).comments
+
+    expect(first?.body).toContain(
+      '<sub>Based on: `docs/conventions.md` · CI check `test` · rule `orm-only`</sub>\n\n<!-- phada:finding skill=code-review:code-review -->',
+    )
+    expect(first?.body).not.toContain('skill `')
+    expect(second?.body).not.toContain('Based on')
+    expect(second?.body.endsWith('<!-- phada:finding skill=security -->')).toBe(true)
   })
 
   it('names a source in a related repository as owner/repo:path', () => {

@@ -1,5 +1,7 @@
 import { refreshFeedback } from '../app/feedback.js'
 import { readFeedbackStats, readFindings, readReviews } from '../app/read-history.js'
+import { readRunReport } from '../app/read-run-report.js'
+import { formatRunReportJson, formatRunReportText } from './format-run-report.js'
 import { dataFiles } from '../config/data-paths.js'
 import type { LocalFileSystem } from '../config/local-files.js'
 import { loadTopLevelUserLayers } from '../config/user-config.js'
@@ -8,10 +10,10 @@ import type {
   FetchReviewStateOptions,
   PullRequestReviewState,
 } from '../github/pull-request-reviews.js'
-import { openExistingHistoryStore } from '../store/history-store.js'
+import { openExistingHistoryStore, openHistoryStore } from '../store/history-store.js'
 import type { HistoryStore } from '../store/history-store.js'
 import type { IndexFormat, RulesTarget } from './args.js'
-import { UsageError } from './errors.js'
+import { RunNotFoundError, UsageError } from './errors.js'
 import { requireGitHubToken } from './github-token.js'
 import type { GitHubTokenDeps } from './github-token.js'
 import {
@@ -38,6 +40,11 @@ export interface HistoryPruneCommand {
   olderThanMs: number
 }
 
+export interface HistoryShowCommand {
+  id: number
+  format: IndexFormat
+}
+
 export interface HistoryCommandDeps extends GitHubTokenDeps {
   home: string
   files: LocalFileSystem
@@ -45,6 +52,7 @@ export interface HistoryCommandDeps extends GitHubTokenDeps {
   stderr: TextOutput
   clock: () => Date
   openHistoryStore: (path: string) => Promise<HistoryStore>
+  openHistoryReader?: (path: string) => Promise<HistoryStore>
   fetchReviewState: (options: FetchReviewStateOptions) => Promise<PullRequestReviewState>
 }
 
@@ -77,13 +85,38 @@ export async function runHistory(command: HistoryCommand, deps: HistoryCommandDe
   }
 }
 
+export async function runHistoryShow(
+  command: HistoryShowCommand,
+  deps: HistoryCommandDeps,
+): Promise<void> {
+  const history = await existingHistory(
+    dataFiles(deps.env, deps.home).history,
+    deps,
+    deps.openHistoryReader ?? ((path) => openHistoryStore(path, { readOnly: true })),
+  )
+  if (history === undefined) {
+    deps.stdout.write('No reviews in the history yet.\n')
+    return
+  }
+  try {
+    const report = readRunReport(history, command.id)
+    if (report === undefined) throw new RunNotFoundError(command.id)
+    deps.stdout.write(
+      command.format === 'json' ? formatRunReportJson(report) : formatRunReportText(report),
+    )
+  } finally {
+    history.close()
+  }
+}
+
 async function existingHistory(
   path: string,
   deps: HistoryCommandDeps,
+  open: (path: string) => Promise<HistoryStore> = deps.openHistoryStore,
 ): Promise<HistoryStore | undefined> {
   const opening = await openExistingHistoryStore(path, {
     exists: (file) => deps.files.exists(file),
-    open: deps.openHistoryStore,
+    open,
   })
   if (opening.status === 'missing') return undefined
   if (opening.status === 'open') return opening.history

@@ -18,6 +18,8 @@ import { VERIFICATION_JSON_SCHEMA } from '../review/verification-schema.js'
 import { verdictFixture, verificationJson } from '../../test/support/verification.js'
 import { diffFingerprint } from '../review/diff-fingerprint.js'
 import { reviewAndPublish } from './review-and-publish.js'
+import { ReviewCancelledError } from './review-cancelled.js'
+import { CheckoutUnavailableError } from '../repository/git-checkout.js'
 import type { ReviewAndPublishDeps, ReviewAndPublishInput } from './review-and-publish.js'
 import type { NativeRunnerInput } from './native-skill.js'
 import type { CiReaders } from './read-ci.js'
@@ -266,6 +268,53 @@ describe('reviewAndPublish', () => {
     })
     expect(calls.posts).toEqual(['body 1'])
     expect(calls.events).toEqual(['fetched', 'reviewed', 'publishing'])
+  })
+
+  describe('with a finding of the repository the change did not cause', () => {
+    const answer = () =>
+      reviewReportJson({
+        findings: [
+          findingFixture({ line: 3, confidence: 95 }),
+          { ...findingFixture({ line: 7, title: 'balance has no caller' }), scope: 'repository' },
+        ],
+      })
+    const withRepositoryConfig = (deps: ReviewAndPublishDeps, text: string | null) => {
+      const reviewDeps = deps.reviewDeps
+      deps.reviewDeps = (pullRequest) => ({
+        ...reviewDeps(pullRequest),
+        contextSources: {
+          ...SOURCES,
+          readTree: async () => ({
+            entries: text === null ? [] : [{ path: '.phada/config.yml', size: text.length }],
+            truncated: false,
+          }),
+          readRepoFile: async (path) => (path === '.phada/config.yml' ? text : null),
+        },
+      })
+    }
+
+    it('plans no line comment for it and keeps it as debt by default', async () => {
+      const { deps } = setup({}, PR, undefined, answer)
+      withRepositoryConfig(deps, null)
+
+      const run = await reviewAndPublish(INPUT, deps)
+
+      if (run.status !== 'reviewed') throw new Error('expected a review')
+      expect(run.plan.comments.map(({ line }) => line)).toEqual([3])
+      expect(run.rendered.comments.map(({ line }) => line)).toEqual([3])
+      const { outcome } = run.reviewed
+      expect(outcome.status === 'reviewed' && outcome.result.debt).toMatchObject([{ line: 7 }])
+    })
+
+    it('posts it as a line comment with review.debt: comments in the repository config', async () => {
+      const { deps } = setup({}, PR, undefined, answer)
+      withRepositoryConfig(deps, 'review:\n  debt: comments\n')
+
+      const run = await reviewAndPublish(INPUT, deps)
+
+      if (run.status !== 'reviewed') throw new Error('expected a review')
+      expect(run.plan.comments.map(({ line }) => line)).toEqual([3, 7])
+    })
   })
 
   it('skips a commit Phada reviewed with threads still open, without calling the AI', async () => {
@@ -574,6 +623,200 @@ describe('reviewAndPublish', () => {
       publication: { status: 'failed', error },
     })
     expect(calls.reviews).toBe(1)
+  })
+})
+
+describe('reviewAndPublish cancelled', () => {
+  const stages: [string, (cancel: () => void) => Partial<ReviewAndPublishDeps>][] = [
+    [
+      'fetching the pull request',
+      (cancel) => ({
+        fetchPullRequest: async () => {
+          cancel()
+          return PR
+        },
+      }),
+    ],
+    [
+      'reading the review state',
+      (cancel) => ({
+        fetchReviewState: async () => {
+          cancel()
+          return state()
+        },
+      }),
+    ],
+    [
+      'comparing the commits of earlier comments',
+      (cancel) => ({
+        fetchReviewState: earlierComments(),
+        compare: async () => {
+          cancel()
+          return []
+        },
+      }),
+    ],
+    [
+      'reading the conversation',
+      (cancel) => ({
+        fetchPullComments: async () => {
+          cancel()
+          return []
+        },
+      }),
+    ],
+    [
+      'reading the checks',
+      (cancel) => {
+        const { deps } = setup()
+        return {
+          ci: {
+            ...deps.ci,
+            checkRuns: async () => {
+              cancel()
+              return []
+            },
+          },
+        }
+      },
+    ],
+    [
+      'checking the head before publishing',
+      (cancel) => ({
+        checkHead: async () => {
+          cancel()
+          return 'current'
+        },
+      }),
+    ],
+  ]
+
+  it.each(stages)('stops after %s and posts nothing', async (_stage, during) => {
+    const controller = new AbortController()
+    const { deps, calls } = setup(during(() => controller.abort()))
+
+    await expect(
+      reviewAndPublish({ ...INPUT, signal: controller.signal }, deps),
+    ).rejects.toBeInstanceOf(ReviewCancelledError)
+    expect(calls.posts).toEqual([])
+    expect(calls.replies).toEqual([])
+    expect(calls.events).not.toContain('publishing')
+  })
+
+  it('passes the cancel into the review of the pull request, which stops between its own stages', async () => {
+    const controller = new AbortController()
+    const { deps, calls } = setup()
+    const reviewDeps = deps.reviewDeps
+    let created = 0
+    deps.reviewDeps = (pullRequest) => ({
+      ...reviewDeps(pullRequest),
+      openMirror: async () => {
+        controller.abort()
+        throw new CheckoutUnavailableError('fetch-failed', 'Could not fetch the head')
+      },
+      createProvider: () => {
+        created += 1
+        throw new Error('no provider once cancelled')
+      },
+    })
+
+    await expect(
+      reviewAndPublish(
+        { ...INPUT, options: { ...INPUT.options, investigate: true }, signal: controller.signal },
+        deps,
+      ),
+    ).rejects.toBeInstanceOf(ReviewCancelledError)
+    expect(calls.warnings).toEqual([])
+    expect(created).toBe(0)
+  })
+
+  it('stops after the AI answers, and turns the error of an AI stopped by the cancel into the cancellation', async () => {
+    const answered = new AbortController()
+    const answering = setup({}, PR, undefined, () => {
+      answered.abort()
+      return REPORT
+    })
+    const killed = new AbortController()
+    const dying = setup({}, PR, undefined, () => {
+      killed.abort()
+      throw new Error('Claude Code ended without an exit code (SIGTERM).')
+    })
+
+    await expect(
+      reviewAndPublish({ ...INPUT, signal: answered.signal }, answering.deps),
+    ).rejects.toBeInstanceOf(ReviewCancelledError)
+    await expect(
+      reviewAndPublish({ ...INPUT, signal: killed.signal }, dying.deps),
+    ).rejects.toBeInstanceOf(ReviewCancelledError)
+    expect([answering.calls.reviews, answering.calls.posts]).toEqual([1, []])
+    expect(dying.calls.posts).toEqual([])
+  })
+
+  it('hands the cancel to every AI run, so one can stop a request in flight', async () => {
+    const controller = new AbortController()
+    const { deps, calls } = setup({ fetchReviewState: earlierComments() })
+
+    await reviewAndPublish({ ...INPUT, signal: controller.signal }, deps)
+
+    expect(calls.log.slice(0, 3)).toEqual(['compare', 'recheck', 'review'])
+    expect(calls.prompts.map((prompt) => prompt.signal)).toEqual([
+      controller.signal,
+      controller.signal,
+    ])
+  })
+
+  it('starts no other AI run once cancelled while one runs', async () => {
+    const controller = new AbortController()
+    const { deps, calls } = setup({ fetchReviewState: earlierComments() }, PR, async () => {
+      controller.abort()
+      throw new Error('Claude Code ended without an exit code (SIGTERM).')
+    })
+
+    await expect(
+      reviewAndPublish({ ...INPUT, signal: controller.signal }, deps),
+    ).rejects.toBeInstanceOf(ReviewCancelledError)
+    expect(calls.log).toEqual(['compare', 'recheck'])
+  })
+
+  it('does not start when it was cancelled before', async () => {
+    const controller = new AbortController()
+    controller.abort()
+    const { deps, calls } = setup()
+
+    await expect(
+      reviewAndPublish({ ...INPUT, signal: controller.signal }, deps),
+    ).rejects.toBeInstanceOf(ReviewCancelledError)
+    expect(calls.events).toEqual([])
+  })
+
+  it('finishes publishing once it started, resolving and posting', async () => {
+    const controller = new AbortController()
+    const { deps, calls } = setup({
+      fetchReviewState: earlierComments(),
+      replyAndResolve: async (threadId, body) => {
+        controller.abort()
+        calls.replies.push(body)
+        calls.log.push(`resolve ${threadId}`)
+      },
+    })
+
+    const run = await reviewAndPublish({ ...INPUT, signal: controller.signal }, deps)
+
+    expect(run).toMatchObject({
+      status: 'reviewed',
+      publication: { status: 'published', url: URL },
+    })
+    expect(calls.log.slice(-2)).toEqual(['resolve T1', 'post'])
+  })
+
+  it('throws a failure that is not a cancellation as it is', async () => {
+    const controller = new AbortController()
+    const error = new Error('GitHub 502')
+    const { deps } = setup({ fetchReviewState: () => Promise.reject(error) })
+
+    await expect(reviewAndPublish({ ...INPUT, signal: controller.signal }, deps)).rejects.toBe(
+      error,
+    )
   })
 })
 

@@ -97,7 +97,7 @@ describe('CodexCliProvider', () => {
       text: 'LGTM from fake codex',
       model: 'gpt-test-model',
       durationMs: expect.any(Number),
-      usage: { inputTokens: 8739, outputTokens: 410 },
+      usage: { inputTokens: 8739, cachedInputTokens: 4000, outputTokens: 410 },
     })
     expect(output.durationMs).toBeGreaterThan(0)
   })
@@ -117,7 +117,7 @@ describe('CodexCliProvider', () => {
   it('takes the usage of the last completed turn and skips lines it does not know', async () => {
     const output = await provider('noisy_stdout').review(PROMPT)
 
-    expect(output.usage).toEqual({ inputTokens: 8739, outputTokens: 410 })
+    expect(output.usage).toEqual({ inputTokens: 8739, cachedInputTokens: 4000, outputTokens: 410 })
   })
 
   it('runs codex exec read-only, ephemeral, without user config, tools or web search', async () => {

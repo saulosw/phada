@@ -173,4 +173,14 @@ describe('buildInvestigationReport', () => {
   it('has no mcp block without MCP', () => {
     expect(buildInvestigationReport({ status: 'used', findings: [] })).not.toHaveProperty('mcp')
   })
+
+  it('keeps the calls the diff asked for and the passes that made fewer', () => {
+    const floor = {
+      expected: 12,
+      shortfalls: ['Investigated 4 times for a 124 KB diff (expected at least 12).'],
+    }
+
+    expect(buildInvestigationReport({ status: 'used', findings: [], floor }).floor).toEqual(floor)
+    expect(buildInvestigationReport({ status: 'used', findings: [] })).not.toHaveProperty('floor')
+  })
 })

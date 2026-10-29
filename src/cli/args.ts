@@ -48,6 +48,8 @@ export type CliCommand =
       debug: boolean
     }
   | { kind: 'history-prune'; olderThanMs: number; debug: boolean }
+  | { kind: 'history-show'; id: number; format: IndexFormat; debug: boolean }
+  | { kind: 'publish'; id: number; force: boolean; format: IndexFormat; debug: boolean }
   | { kind: 'mcp'; debug: boolean }
   | {
       kind: 'enqueue'
@@ -96,6 +98,7 @@ reviewed.
 Commands:
   setup                  Set up Phada step by step in the app
   review <pull request>  Review a pull request and publish the review on it
+  publish <id>           Publish a dry run kept in the history, without the AI
   init                   Create config files for Phada
   index <owner/repo>     Build a map of a repository's code on this machine
   rules <owner/repo[#N]> Show the rules and docs a review would read
@@ -335,7 +338,34 @@ Environment:
   PHADA_DATA_HOME    Folder of the history (default: ~/.local/share/phada)
   PHADA_CACHE_HOME   Folder of the mirrors and indexes (default: ~/.cache/phada)`
 
+export const PUBLISH_USAGE = `Usage: phada publish <id> [options]
+
+Publishes on the pull request the review a dry run kept in the history (its id
+is in "phada history" and at the end of "phada review --dry-run"), exactly as it
+was found: the AI does not run again. The review is planned against the
+comments on the pull request now: a finding whose thread is still open is not
+posted again, and the comments the dry run found fixed are resolved. Refused
+when the pull request moved to another commit since the dry run, or when Phada
+already reviewed that commit, unless --force. The publication is kept in the
+history as a new run.
+
+Options:
+  --force              Publish even if the pull request moved since the dry run
+                       (the comments go on the commit it reviewed) or Phada
+                       already reviewed that commit
+  --format <name>      Output: text or json (default: text)
+  --debug              Show error details
+  -h, --help           Show this help
+
+Environment:
+  GITHUB_TOKEN         GitHub token that can read the pull request and write
+                       reviews
+  GH_TOKEN             Used when GITHUB_TOKEN is not set; with neither, Phada
+                       uses the token of your gh login (gh auth login)
+  PHADA_DATA_HOME      Folder of the history (default: ~/.local/share/phada)`
+
 export const HISTORY_USAGE = `Usage: phada history [<owner/repo[#N]>] [options]
+       phada history show <id> [--format text|json]
        phada history prune --older-than <age>
 
 Shows the reviews kept in the local history and what happened to the
@@ -343,6 +373,10 @@ comments Phada published: fixed, dismissed (resolved without a change),
 ignored (left open until the pull request closed) or still open, and which
 ones got a negative reaction or a reply. Reads only this machine, unless
 --refresh.
+
+show <id> prints one review of the list as the dry run does: what was
+posted (or would have been), the context, conversation, CI, impact, related
+repositories, skills, investigation, claims and tokens it kept.
 
 Options:
   --since <age>        Only the last <age>, e.g. 30d, 12h
@@ -367,6 +401,7 @@ export function parseCliArgs(argv: readonly string[]): CliCommand {
   const [command, ...rest] = argv
   if (command === 'setup') return parseSetupArgs(rest)
   if (command === 'review') return parseReviewArgs(rest)
+  if (command === 'publish') return parsePublishArgs(rest)
   if (command === 'init') return parseInitArgs(rest)
   if (command === 'index') return parseIndexArgs(rest)
   if (command === 'rules') return parseRulesArgs(rest)
@@ -394,7 +429,7 @@ function unknownCommand(command: string): UsageError {
     return new UsageError(`Unknown command "${command}". Did you mean "phada review ${command}"?`)
   }
   return new UsageError(
-    `Unknown command "${command}". Available: setup, review, init, index, rules, prompt, watch, enqueue, mcp, history.`,
+    `Unknown command "${command}". Available: setup, review, publish, init, index, rules, prompt, watch, enqueue, mcp, history.`,
   )
 }
 
@@ -705,6 +740,7 @@ function parseHistoryArgs(argv: readonly string[]): CliCommand {
   if (olderThan !== undefined) {
     throw new UsageError('--older-than only works with phada history prune.')
   }
+  if (positionals[0] === 'show') return parseHistoryShow(positionals.slice(1), values)
   if (positionals.length > 1) {
     throw new UsageError('Give one repository or pull request at a time.')
   }
@@ -737,6 +773,57 @@ function parseHistoryArgs(argv: readonly string[]): CliCommand {
     format,
     debug: values.debug,
   }
+}
+
+function parseHistoryShow(
+  positionals: readonly string[],
+  values: {
+    since?: string
+    limit?: string
+    stats: boolean
+    refresh: boolean
+    format?: string
+    debug: boolean
+  },
+): CliCommand {
+  if (values.since !== undefined || values.limit !== undefined || values.stats || values.refresh) {
+    throw new UsageError('phada history show takes only --format.')
+  }
+  const id = parseRunId(positionals, 'phada history show')
+  const format = values.format ?? 'text'
+  if (format !== 'text' && format !== 'json') {
+    throw new UsageError(`Invalid --format "${format}". Use text or json.`)
+  }
+  return { kind: 'history-show', id, format, debug: values.debug }
+}
+
+function parsePublishArgs(argv: readonly string[]): CliCommand {
+  const { values, positionals } = parseOptions(argv, {
+    force: { type: 'boolean', default: false },
+    format: { type: 'string' },
+    debug: { type: 'boolean', default: false },
+    help: { type: 'boolean', short: 'h', default: false },
+  })
+  if (values.help) return { kind: 'help', text: PUBLISH_USAGE }
+  const id = parseRunId(positionals, 'phada publish')
+  const format = values.format ?? 'text'
+  if (format !== 'text' && format !== 'json') {
+    throw new UsageError(`Invalid --format "${format}". Use text or json.`)
+  }
+  return { kind: 'publish', id, force: values.force, format, debug: values.debug }
+}
+
+function parseRunId(positionals: readonly string[], command: string): number {
+  const [input] = positionals
+  if (input === undefined) {
+    throw new UsageError(`${command} needs a run id, e.g. ${command} 12.`)
+  }
+  if (positionals.length > 1) throw new UsageError(`${command} takes one run id.`)
+  const id = Number(input)
+  if (!/^\d+$/.test(input) || !Number.isSafeInteger(id) || id < 1) {
+    throw new UsageError(`Invalid run id "${input}". Use a whole number from 1.`)
+  }
+  return id
 }
 
 function ageMs(text: string): number | undefined {

@@ -1,19 +1,18 @@
 import type { WatchEvents } from '../app/watch-repositories.js'
 import type { JobRecord } from '../watch/types.js'
 
-export const ABORTED_EXIT_CODE = 130
-
 export interface StopControl {
   readonly signal: AbortSignal
-  readonly aborted: Promise<number>
+  readonly aborted: Promise<void>
+  stop(): void
+  abort(): void
   stopRequested(): boolean
-  abortedTwice(): boolean
+  abortRequested(): boolean
+  running(): JobRecord | undefined
   track(job: JobRecord | undefined): void
 }
 
 export interface StopDeps {
-  onSignal(handler: () => void): void
-  write(text: string): void
   killChildren(): void
   putBack(job: JobRecord): void
   close(): void
@@ -21,34 +20,28 @@ export interface StopDeps {
 
 export function createStopControl(deps: StopDeps): StopControl {
   const controller = new AbortController()
-  let signals = 0
+  let aborting = false
   let current: JobRecord | undefined
-  let finish: (code: number) => void = () => undefined
-  const aborted = new Promise<number>((resolve) => {
+  let finish: () => void = () => undefined
+  const aborted = new Promise<void>((resolve) => {
     finish = resolve
-  })
-  deps.onSignal(() => {
-    signals += 1
-    if (signals === 1) {
-      deps.write(
-        current === undefined
-          ? 'Stopping…\n'
-          : 'Stopping after the current review (Ctrl-C again to abort).\n',
-      )
-      controller.abort()
-      return
-    }
-    deps.killChildren()
-    if (current !== undefined) deps.putBack(current)
-    deps.write('Aborted.\n')
-    deps.close()
-    finish(ABORTED_EXIT_CODE)
   })
   return {
     signal: controller.signal,
     aborted,
-    stopRequested: () => signals > 0,
-    abortedTwice: () => signals > 1,
+    stop: () => controller.abort(),
+    abort: () => {
+      if (aborting) return
+      aborting = true
+      controller.abort()
+      deps.killChildren()
+      if (current !== undefined) deps.putBack(current)
+      deps.close()
+      finish()
+    },
+    stopRequested: () => controller.signal.aborted,
+    abortRequested: () => aborting,
+    running: () => current,
     track: (job) => {
       current = job
     },

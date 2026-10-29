@@ -9,6 +9,7 @@ import type { RepositoryGraph } from '../graph/types.js'
 import type { Extractor } from '../repo-map/extract.js'
 import type { Checkout } from '../repository/checkout.js'
 import type { GitMirror, TreeFile } from '../repository/git-mirror.js'
+import { RELATED_REF } from '../store/index-store.js'
 import type { IndexStore } from '../store/index-store.js'
 import { CheckoutUnavailableError } from '../repository/git-checkout.js'
 import { errorMessage } from './error-message.js'
@@ -17,7 +18,6 @@ import { selectCandidates } from './select-related.js'
 import type { RelatedCandidate, SkippedRepository } from './select-related.js'
 
 export const RELATED_INDEX_BUDGET_MS = 60_000
-export const RELATED_REF = 'refs/phada/default'
 
 export interface RelatedAccess {
   openMirror(): Promise<GitMirror>

@@ -1,15 +1,17 @@
 import type { ContextReport, DocReport, RuleReport } from '../context/types.js'
 import { toTerminalText } from '../app/terminal-text.js'
+import { shortSha } from './review-text.js'
 import { formatBytes, formatCount } from './units.js'
 
-export function formatContextLine(report: ContextReport): string {
+export function formatContextLine(report: ContextReport, baseSha: string): string {
+  const label = `Context at base ${shortSha(baseSha)}:`
   const rules = report.rules.filter((rule) => rule.status === 'applied').length
   const docs = report.docs.filter((doc) => doc.status !== 'omitted').length
   const notApplied = report.docs.filter((doc) => isNotApplied(doc.reason)).length
   const omitted = report.docs.length - docs - notApplied
   const ignored = report.ignored.length
   if (rules === 0 && docs === 0 && omitted === 0 && notApplied === 0 && ignored === 0) {
-    return 'Context: no rules or docs'
+    return `${label} no rules or docs`
   }
   const docDetails = [
     ...(docs > 0 ? [formatBytes(report.budget.used)] : []),
@@ -21,7 +23,7 @@ export function formatContextLine(report: ContextReport): string {
     `${formatCount(docs, 'doc')}${docDetails.length === 0 ? '' : ` (${docDetails.join(', ')})`}`,
     ...(ignored > 0 ? [`${formatCount(ignored, 'file')} ignored`] : []),
   ]
-  return `Context: ${parts.join(' · ')}`
+  return `${label} ${parts.join(' · ')}`
 }
 
 export function formatContextSection(report: ContextReport): string {

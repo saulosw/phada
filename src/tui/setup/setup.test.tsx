@@ -75,7 +75,7 @@ describe('the setup', () => {
     await press(KEYS.escape)
     await seeing('Leave the setup?')
     await press(key)
-    await seeing('Repositories', 'Last reviews')
+    await seeing('Repos', 'Last reviews')
     expect(frame()).not.toContain('Step 1 of 7')
     expect(exits).toEqual([])
   })

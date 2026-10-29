@@ -51,6 +51,9 @@ export function ExampleScreen() {
 - **`useScreenInput(handler)`**: the screen's own keys, in place of Ink's `useInput`. It is quiet
   while the help or the palette is open, while the terminal is too small and while a text field
   is focused. The shell keeps `q`, `?`, `/`, `1`–`9`, `←`/`→`, `Tab`, `Esc` and `Ctrl-C`.
+- **`useArrowKeys(active)`**: while active, `←` and `→` reach the screen (a tree that opens and
+  closes nodes) instead of moving between screens; `Tab` still moves, and the footer and the help
+  say so.
 - **`useBack(handler)`**: what `Esc` does in a nested view, as closing a detail; pass `undefined`
   at the screen's top, where `Esc` quits the app.
 - **`useTextField({ initial, emptyOnFocus, onSubmit })`** (`text-field.tsx`): `focus()` it from a
@@ -100,6 +103,78 @@ plan again when the file changed since the plan); the screen wires `Esc` with
 `useScreenKeys`. A refusal or a failed write is one line from the catalogs. After a write the
 language is read again at once and `onSaved(plan)` runs; a proposal that changes nothing calls
 `onSaved` without writing. `valueChangeLines()` draws a list of written values.
+
+## Indexing from a screen (`repository-indexing.tsx`)
+
+**`useRepositoryIndexing(onEnded)`** indexes repositories one after the other through
+`useIndexSeries()`: `start(repos)` (ignored while `busy`), `stop()`, `keys` (`Esc` while busy)
+and `lines(width)` (each repository with its progress, then how it ended). The screen wires `Esc` with
+`useBack(indexing.busy ? indexing.stop : …)`, draws the lines under its own and reads its data
+again in `onEnded` (`reload()` of `useLoaded`). Leaving the screen aborts the indexing.
+
+## Exploring a symbol (`symbol-explorer.tsx`)
+
+**`<SymbolExplorer repo name>`** searches a name in the graph of a repository
+(`AppDeps.searchSymbol`, loaded under its key, `r`), lists the definitions to pick when there are
+several and draws the tree of one: `Enter`/`→` opens a node one level through
+`AppDeps.symbolCallers`/`symbolDependencies`, with loading on that node, and `←` closes it. A name
+not found or a repository that is not indexed is one line with `i` to index it, searched again
+after. The Graph screen draws it in a `SubView` from `s`; the app keeps the graph of one repository
+open (`src/cli/app-graph.ts`).
+
+## An action flow in place of the tabs (`review-flow/`)
+
+An action that takes several steps and runs something long (a review) is a flow drawn by the shell
+in place of the tabs, as the setup and `/language` are, and back to the screen it came from. A
+screen opens it through a context of `app-context.ts` (`useStartReview()` for `ReviewFlow`, with
+the repository to start on), and the palette through an entry of the shell. While it is open,
+`/` and `1`–`9` do nothing, so the palette never leaves a running review behind: the flow is left
+with `Esc`, which asks while it runs. The setup and `/language` keep the palette.
+
+The flow keeps a stack of steps: each step is a component with its own `useScreenKeys`,
+`useScreenInput` and `useBack(back)`, where `back()` pops the stack or, at its first step, leaves
+the flow (a step may remember what was picked in it, as the mode, so going back shows it chosen).
+The step that runs calls the `AppDeps` function once on mount with a sink for its progress
+events (`ReviewProgress`), folds them into lines (`review-steps.ts`), redraws its elapsed times
+from `scheduler.every()` and `now()`, marks the app as working (`useWorking`, so the mascot flaps)
+and passes an `AbortSignal` it aborts on unmount. While it runs, `Esc` asks before cancelling
+(`useBack` never `undefined` there, which would quit the app): `Enter` aborts the signal, `Esc`
+keeps it running; once it publishes, `Esc` does nothing. It holds a quit guard while it runs. When
+it ends, `Esc` leaves the flow; the result is drawn with the module the screen that lists such
+results also uses (`reviewDetailLines()` of `review-detail.tsx`). With a watch holding the lock
+(`readQueue`), publishing becomes a request in the queue (`AppDeps.enqueueReview`), and `Enter`
+on its result opens the Queue; `reviewPullRequest` reads the lock again right before the review
+starts and answers `watch-running`, which takes the flow back to that confirmation. A view that
+opens in place of a step's result and must come back to it without running the step again
+(publishing what only look found, `p`) is drawn by that step in place of its lines, while the
+step's own keys live in a child component that is unmounted meanwhile, so the two never hold
+`useBack` or the footer at once; while it writes to GitHub it holds a quit guard whose `stop()`
+waits for the write. Each step is its own file in `review-flow/`, as the setup's are in `setup/`.
+
+## Quitting while something runs (`useQuitGuard`)
+
+A screen or flow that runs something the person may lose by quitting (a review, the watch) holds
+a **`QuitGuard`** while it runs: `useQuitGuard({ question, stop, abort })`, or `undefined` once it
+ended. While any guard is held, `q`, `Esc` at the top and `Ctrl-C` show its `question` (one line
+from the catalogs) in place of the screen: `Enter` calls `stop()` on each guard, shows
+"Stopping…" while a returned promise is pending and quits once they settled (`quit` for `q` and
+`Esc`, `interrupted` for `Ctrl-C`); `Esc` stays. A second `Ctrl-C`, asking or stopping, calls
+`abort()` on each and exits `interrupted` at once. `SIGINT` and `SIGTERM` call `abort()` without
+asking and exit `interrupted` or `terminated`. `stop()` is the gentle end (cancel before
+publishing, or finish the job under way) and `abort()` the immediate one; both keep the screen
+mounted until the app exits.
+
+## The watch of the app (`app-watch.tsx`)
+
+The shell holds the watch the app runs (`useWatchSession()`, above the screens, so switching tabs
+or opening a flow keeps it and its log) and gives it to the screens through **`useAppWatch()`**:
+its `phase` (`idle`, `starting`, `running`, `stopping`), a `notice` (held by another PID, or why it
+did not start), its `log` (`WatchLogEntry`, the last 200 on the app clock, drawn with
+`watchLogText()` of `watch-log.ts`), the `running` job with its review steps, and the stop
+question (`asking`, `toggle(holder)`, `confirmStop()`, `keepRunning()`). It starts through
+`AppDeps.startWatch(observer)`, which says when another PID holds the lock; `AppDeps.pid` tells
+the lock of this app from another one. While it runs it holds a quit guard: `stop()` waits for the
+current review, `abort()` stops at once.
 
 ## A picker inside a screen (`sub-view.tsx`)
 
@@ -161,7 +236,8 @@ than `columns`. Long content goes through `ScrollList`/`ScrollText` and `useSele
 - Every text from outside (names, paths, config values, what GitHub, git or an AI CLI answered)
   goes through `oneLine()`, or `wrapText()` (`textLines()` for drawn lines) when it spans lines;
   every error through `failedNodes(draw, error)` (wrapped over `ERROR_LINES`, so a config error
-  shows its key and reason), `failedText(messages, error)` where one line is all there is, or
+  shows its key and reason), `failedText(messages, error, say?)` where one line is all there is (`say` puts the
+  reason in a sentence of the catalogs, as the watch log does), or
   `<DataView>`. They strip control and bidi characters.
 - A frame drawn as lines takes a `DrawContext` (the catalog, the theme and the width) and draws
   them with the helpers of `frame-lines.tsx` (`textLines()`, `failedNodes()`, `spaced()`,
@@ -174,7 +250,8 @@ Each screen has a `screens/<name>.test.tsx` that renders the whole app with
 and reads its frames:
 
 - wait on a condition before asserting: `await showing('text', /pattern/)` or
-  `await until(() => condition)`; drive keys with `press(KEYS.down)` and `type('text')`, time
+  `await until(() => condition)`, which fail with what they awaited and the last frame when it
+  does not come within 3 s; drive keys with `press(KEYS.down)` and `type('text')`, time
   with `clock.advance(ms)`, the size with `resize()`. A fixed pause (`setTimeout`, `settle()`) is
   refused by `src/architecture.test.ts`;
 - check the frame fits: at 80×24, every line of `frameLines(frame())` at most 80 columns wide

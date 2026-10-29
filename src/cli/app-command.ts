@@ -1,7 +1,13 @@
 import type { ProviderCheckers } from '../app/check-providers.js'
 import type { IndexingOptions } from '../app/index-repository.js'
 import { applyUserConfigPlan, planUserConfig } from '../app/edit-user-config.js'
+import { indexedCommit, openGraphExplorer } from '../app/explore-graph.js'
+import type { ExplorerReaders } from '../app/explore-graph.js'
 import { readReviewDetail, readReviews } from '../app/read-history.js'
+import { readConnections } from '../app/read-connections.js'
+import type { ConnectionReaders } from '../app/read-connections.js'
+import { readIndexes } from '../app/read-index.js'
+import type { IndexReaders } from '../app/read-index.js'
 import { readLearnings } from '../app/read-learnings.js'
 import type { ObservedRead } from '../app/read-learnings.js'
 import { providerSetup, readProviderChecks, readProviders } from '../app/read-provider.js'
@@ -27,31 +33,48 @@ import type { UserConfigChange, UserConfigPlan } from '../config/user-config-edi
 import { resolveWatchSettings } from '../config/watch-settings.js'
 import type { WatchSettings } from '../config/watch-settings.js'
 import { checkClaudeStatus } from '../providers/claude-status.js'
+import { openExistingGitMirror } from '../repository/git-mirror.js'
 import { checkCodexStatus } from '../providers/codex-status.js'
 import { pullOllamaModel } from '../providers/ollama-pull.js'
 import { checkOllamaStatus } from '../providers/ollama-status.js'
 import type { runInteractive } from '../process/run-interactive.js'
 import { openExistingHistoryStore, openHistoryStore } from '../store/history-store.js'
 import type { HistoryStore } from '../store/history-store.js'
+import { openExistingIndexStore } from '../store/index-store.js'
+import type { IndexOpening } from '../store/index-store.js'
 import { readObservedEdges } from '../store/observed-store.js'
 import { splitRepoName } from '../github/pull-request-ref.js'
 import { fetchAuthenticatedUser } from '../github/user.js'
 import { listUserRepositories } from '../github/user-repositories.js'
 import type { UserRepository } from '../github/user-repositories.js'
 import type { FetchUserOptions, GitHubUser } from '../github/user.js'
-import type { AppDeps, AppResult, AppStart, openApp, Scheduler } from '../tui/open-app.js'
+import type {
+  AppDeps,
+  AppResult,
+  AppStart,
+  openApp,
+  Scheduler,
+  StopSignal,
+} from '../tui/open-app.js'
 import type { ColorEnv } from '../tui/theme.js'
+import { appGraph } from './app-graph.js'
+import type { AppGraph } from './app-graph.js'
 import { appHistory } from './app-history.js'
 import { rulesReaders } from './app-rules.js'
 import type { RulesReaderDeps } from './app-rules.js'
 import type { AppHistory } from './app-history.js'
 import { UsageError } from './errors.js'
+import { formatError } from './format-error.js'
 import { readGitHubAccess } from './github-access.js'
 import { USER_CONFIG_TEMPLATE } from './init-templates.js'
 import { ghTokenReader, readGitHubToken } from './github-token.js'
 import type { GhTokenReader, RunGh } from './github-token.js'
 import type { TextOutput } from './progress.js'
 import { indexForApp } from './app-index.js'
+import { appReview } from './app-review.js'
+import type { AppReview, AppReviewDeps } from './app-review.js'
+import { appWatch } from './app-watch.js'
+import type { AppWatch, AppWatchDeps, AppWatchEnd } from './app-watch.js'
 import { initRepository } from './init.js'
 import type { AppIndexDeps } from './app-index.js'
 import { SLACK_APP_TOKEN, SLACK_BOT_TOKEN } from './review-event-sinks.js'
@@ -59,10 +82,13 @@ import { terminalHandOff } from './terminal-hand-off.js'
 import { ensureUserRepoFile } from './user-repo-file.js'
 import type { TerminalHandOff } from './terminal-hand-off.js'
 
-export type StopSignal = 'SIGINT' | 'SIGTERM'
-
 export interface AppCommandDeps
-  extends Omit<RulesReaderDeps, 'ghToken'>, Omit<AppIndexDeps, 'ghToken'> {
+  extends
+    Omit<RulesReaderDeps, 'ghToken'>,
+    Omit<AppIndexDeps, 'ghToken'>,
+    Omit<AppReviewDeps, 'ghToken'>,
+    Omit<AppWatchDeps, 'ghToken'> {
+  pid: number
   env: NodeJS.ProcessEnv
   home: string
   cwd: string
@@ -70,11 +96,16 @@ export interface AppCommandDeps
   files: LocalFileSystem
   stdin: NodeJS.ReadableStream
   stdout: TextOutput
+  stderr: TextOutput
   onSignal: (handler: (signal?: StopSignal) => void) => void
+  abort: (code: number) => void
   loadApp?: () => Promise<{ openApp: typeof openApp }>
   clock: () => Date
   lockHolder: (path: string) => Promise<number | undefined>
   openHistoryReader?: (path: string) => Promise<HistoryStore>
+  openIndexReader?: (path: string) => Promise<IndexOpening>
+  openExistingMirror?: typeof openExistingGitMirror
+  openGraph?: typeof openGraphExplorer
   pathSize: (path: string) => Promise<number>
   providerCheckers?: ProviderCheckers
   observed?: {
@@ -117,7 +148,7 @@ export function assertAppTerminal(
 
 export async function runApp(
   deps: AppCommandDeps,
-  options: { setup: boolean } = { setup: false },
+  options: { setup?: boolean; debug?: boolean } = {},
 ): Promise<number> {
   const { stdin, stdout } = deps
   if (!isTerminalInput(stdin) || !isTerminalOutput(stdout)) {
@@ -135,26 +166,53 @@ export async function runApp(
       open: deps.openHistoryReader ?? ((path) => openHistoryStore(path, { readOnly: true })),
     }),
   )
+  const graph = graphOf(deps, history)
   const terminal = terminalHandOff(deps)
+  const ghToken: GhTokenReader = () => ghTokenReader(deps.env, deps.runGh)()
+  const watch = appWatch({ ...deps, ghToken })
+  const review = appReview({ ...deps, ghToken })
+  let result: AppResult
+  let watchEnd: AppWatchEnd
   try {
-    const result = await openApp(await appDeps(deps, history, files.lock, terminal, start), {
+    const wiring = { history, graph, lock: files.lock, terminal, watch, review, ghToken }
+    result = await openApp(await appDeps(deps, wiring, start, options.debug === true), {
       stdin,
       stdout,
       onSignal: terminal.onSignal,
     })
-    if (result.kind === 'failed') throw result.error
-    return EXIT_CODES[result.kind]
   } finally {
+    watchEnd = await watch.close()
     history.close()
+    graph.close()
   }
+  const workLeft = watchEnd === 'aborted' || review.reviewsRunning()
+  if (result.kind !== 'failed') {
+    const code = EXIT_CODES[result.kind]
+    if (workLeft) deps.abort(code)
+    return code
+  }
+  if (!workLeft) throw result.error
+  const { message, exitCode } = formatError(result.error, { debug: options.debug === true })
+  deps.stderr.write(`${message}\n`)
+  deps.abort(exitCode)
+  return exitCode
+}
+
+interface AppWiring {
+  history: AppHistory
+  graph: AppGraph
+  lock: string
+  terminal: TerminalHandOff
+  watch: AppWatch
+  review: AppReview
+  ghToken: GhTokenReader
 }
 
 async function appDeps(
   deps: AppCommandDeps,
-  history: AppHistory,
-  lock: string,
-  terminal: TerminalHandOff,
+  { history, graph, lock, terminal, watch, review, ghToken }: AppWiring,
   start: AppStart,
+  debug: boolean,
 ): Promise<AppDeps> {
   let settings: WatchSettings | undefined
   const watchSettings = () =>
@@ -163,10 +221,11 @@ async function appDeps(
       () => settings,
     )
   const readLanguage = async () => (await loadTopLevelUserLayers(deps))[0]?.config.language
-  const ghToken: GhTokenReader = () => ghTokenReader(deps.env, deps.runGh)()
   const base = {
     version: deps.version,
+    pid: deps.pid,
     start,
+    debug,
     cwd: deps.cwd,
     home: deps.home,
     env: colorEnv(deps.env),
@@ -187,6 +246,11 @@ async function appDeps(
     readRepositories: () => readRepositories(repositoryReaders(deps, history)),
     readRepository: (repo: string) => readRepository(repositoryReaders(deps, history), repo),
     readAutomation: () => readAutomation(automationReaders(deps)),
+    readIndexes: () => readIndexes(indexReaders(deps, history)),
+    readConnections: () => readConnections(connectionReaders(deps, history)),
+    searchSymbol: graph.searchSymbol,
+    symbolCallers: graph.symbolCallers,
+    symbolDependencies: graph.symbolDependencies,
     readProviderSetup: async () => providerSetup(await providerConfig(deps)),
     readProviders: async () =>
       readProviders({
@@ -231,6 +295,12 @@ async function appDeps(
     applyConfig: (plan: UserConfigPlan) => applyUserConfigPlan(plan, deps.files),
     indexRepository: (repo: string, options: IndexingOptions) =>
       indexForApp(repo, options, { ...deps, ghToken }),
+    parsePullRequest: review.parsePullRequest,
+    readOpenPullRequests: review.readOpenPullRequests,
+    reviewPullRequest: review.reviewPullRequest,
+    enqueueReview: review.enqueueReview,
+    publishReview: review.publishReview,
+    startWatch: watch.start,
     readRepositoryFolder: () => readRepositoryFolder(deps.cwd, (path) => deps.files.exists(path)),
     initRepository: () => initRepository(deps),
     ensureRepositoryFile: (repo: string, file: UserRepoFile) =>
@@ -260,6 +330,59 @@ function repositoryReaders(deps: AppCommandDeps, history: AppHistory): Repositor
       return (await files.exists(path)) ? { path, bytes: await deps.pathSize(path) } : null
     },
   }
+}
+
+function indexReaders(deps: AppCommandDeps, history: AppHistory): IndexReaders {
+  const { env, home } = deps
+  return {
+    repositories: async () =>
+      (await readRepositories(repositoryReaders(deps, history))).repositories.map(
+        ({ repo }) => repo,
+      ),
+    indexPath: (repo) => {
+      const { owner, repo: name } = splitRepoName(repo)
+      return repositoryCache(env, home, owner, name).index
+    },
+    openIndex:
+      deps.openIndexReader ??
+      ((path) =>
+        openExistingIndexStore(path, {
+          version: deps.version,
+          exists: (file) => deps.files.exists(file),
+        })),
+    fileSize: deps.pathSize,
+  }
+}
+
+function connectionReaders(deps: AppCommandDeps, history: AppHistory): ConnectionReaders {
+  const { env, home, files } = deps
+  const indexes = indexReaders(deps, history)
+  return {
+    repositories: indexes.repositories,
+    userLayers: (repo) => loadUserLayers({ env, home, files, ...splitRepoName(repo) }),
+    openIndex: (repo) => indexes.openIndex(indexes.indexPath(repo)),
+    openMirror: (repo) => {
+      const { owner, repo: name } = splitRepoName(repo)
+      return (deps.openExistingMirror ?? openExistingGitMirror)({
+        dir: repositoryCache(env, home, owner, name).mirror,
+        env,
+      })
+    },
+  }
+}
+
+function graphOf(deps: AppCommandDeps, history: AppHistory): AppGraph {
+  const readers: ExplorerReaders = {
+    ...connectionReaders(deps, history),
+    readObserved: async (repo) => {
+      const read = await observedOf(deps, repo)
+      return read.state === 'read' ? read.edges : []
+    },
+  }
+  return appGraph({
+    open: (repo) => (deps.openGraph ?? openGraphExplorer)(repo, readers),
+    commitOf: (repo) => indexedCommit(repo, readers),
+  })
 }
 
 function automationReaders(deps: AppCommandDeps): AutomationReaders {

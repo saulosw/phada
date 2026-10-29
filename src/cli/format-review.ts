@@ -2,6 +2,7 @@ import type { PullRequest } from '../github/pull-request.js'
 import { scoreFocus } from '../review/score.js'
 import type { FileChange, Finding, ReviewResult, Severity, Suggestion } from '../review/types.js'
 import { english } from './i18n/en.js'
+import { debtItem } from './debt-text.js'
 import { findingReferences, leftOutLine } from './finding-references.js'
 import type { Messages } from './i18n/messages.js'
 import { blockText, cell, codeFence, singleLine } from './markdown-text.js'
@@ -40,6 +41,7 @@ export function formatReview(
     filesSection(result.files, messages),
     findingsSection(result.findings, messages),
     worthCheckingSection(result, messages),
+    debtSection(result.debt ?? [], messages),
     ['---', countsLine(result, messages), leftOut(result, messages), footer(result, messages)]
       .filter((line) => line !== '')
       .join('\n'),
@@ -92,7 +94,7 @@ function findingsSection(findings: readonly Finding[], messages: Messages): stri
 
 function findingItem(number: number, finding: Finding, messages: Messages): string {
   const lines = [
-    `${number}. **${singleLine(finding.file)}:${finding.line}**: ${singleLine(finding.title)} (${messages.confidence} ${finding.confidence})`,
+    `${number}. **${singleLine(finding.file)}:${finding.line}**: ${singleLine(finding.title)} (${confidenceText(finding, messages)})`,
     indent(blockText(finding.why)),
   ]
   if (finding.fix !== null && finding.fix.trim() !== '') {
@@ -102,6 +104,11 @@ function findingItem(number: number, finding: Finding, messages: Messages): stri
   const references = findingReferences(finding, messages)
   if (references !== '') lines.push(indent(singleLine(references)))
   return lines.join('\n')
+}
+
+function confidenceText({ confidence, closeToCut }: Finding, messages: Messages): string {
+  const text = `${messages.confidence} ${confidence}`
+  return closeToCut === true ? `${text} · ${messages.terminal.closeToCut}` : text
 }
 
 function suggestionDiff({ original, replacement }: Suggestion): string {
@@ -129,11 +136,19 @@ function worthCheckingSection(
   return [`## ${messages.worthChecking(minConfidence)}`, '', ...items].join('\n')
 }
 
+function debtSection(debt: readonly Finding[], messages: Messages): string {
+  if (debt.length === 0) return ''
+  const items = debt.map((finding) => debtItem(finding, singleLine))
+  return [`## ${messages.debt}`, '', messages.debtNote, '', ...items].join('\n')
+}
+
 function countsLine(
   { findings, worthChecking, worthCheckingOmitted, dropped }: ReviewResult,
   messages: Messages,
 ): string {
   const parts = [messages.terminal.findingCount(findings.length)]
+  const close = findings.filter(({ closeToCut }) => closeToCut === true).length
+  if (close > 0) parts.push(messages.terminal.closeToCutCount(close))
   const toCheck = worthChecking.length + worthCheckingOmitted
   if (toCheck > 0) parts.push(messages.terminal.worthCheckingCount(toCheck))
   const droppedPart = messages.dropped(dropped)

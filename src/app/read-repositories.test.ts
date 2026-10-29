@@ -188,6 +188,8 @@ describe('readRepository', () => {
     'provider: codex',
     'model: gpt-x',
     'minConfidence: 70',
+    'review:',
+    '  debt: comments',
     'ci:',
     '  wait: 5m',
     'ignore: ["dist/**"]',
@@ -247,6 +249,7 @@ describe('readRepository', () => {
     expect(byKey.get('ci.wait@global')).toEqual({ kind: 'duration', ms: 300_000 })
     expect(byKey.get('ci.onFailure@repository')).toEqual({ kind: 'text', text: 'skip' })
     expect(byKey.get('ci.checks@repository')).toEqual({ kind: 'list', items: ['build'] })
+    expect(byKey.get('review.debt@global')).toEqual({ kind: 'text', text: 'comments' })
     expect(byKey.get('ignore@global')).toEqual({ kind: 'list', items: ['dist/**'] })
     expect(byKey.get('ignore@repository')).toEqual({ kind: 'list', items: ['fixtures/**'] })
     expect(detail.config.rules).toEqual([

@@ -28,7 +28,6 @@ export const DOC_LIMIT_BYTES = 20_000
 
 const MODULE_NAMES = ['README.md', 'AGENTS.md', 'CLAUDE.md', 'GEMINI.md']
 const AGENT_PATHS = ['AGENTS.md', 'CLAUDE.md', '.claude/CLAUDE.md']
-const AGENT_GLOB = '.claude/rules/**/*.md'
 const INSTRUCTIONS_PATH = '.github/copilot-instructions.md'
 const INSTRUCTIONS_GLOB = '.github/instructions/**/*.instructions.md'
 const MDC_GLOB = '.cursor/rules/**/*.mdc'
@@ -122,7 +121,6 @@ export function repositoryDocCandidates(input: {
     addMatching(`${escapeGlob(dir)}/${MDC_GLOB}`, 'module', { format: 'mdc', dir })
   }
   for (const path of AGENT_PATHS) addKnown(path, 'agents')
-  for (const path of paths.filter(matcher([AGENT_GLOB]))) add(path, 'agents', 'default')
   addKnown(INSTRUCTIONS_PATH, 'agents')
   addMatching(INSTRUCTIONS_GLOB, 'agents', { format: 'instructions', dir: '' })
   addMatching(MDC_GLOB, 'agents', { format: 'mdc', dir: '' })

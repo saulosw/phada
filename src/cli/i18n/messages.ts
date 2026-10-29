@@ -25,6 +25,8 @@ export interface Messages {
   fileColumns: readonly [string, string, string]
   moreFiles(count: number): string
   worthChecking(minConfidence: number): string
+  debt: string
+  debtNote: string
   moreItems(count: number): string
   dropped(dropped: DroppedFindings): string
   verification(verification: Verification): string
@@ -37,6 +39,8 @@ export interface Messages {
     severity: Readonly<Record<Severity, string>>
     findingCount(count: number): string
     worthCheckingCount(count: number): string
+    closeToCut: string
+    closeToCutCount(count: number): string
     tokens(input: string, output: string): string
   }
   github: {

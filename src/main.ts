@@ -1,12 +1,3 @@
-import { reviewAndPublish } from './app/review-and-publish.js'
-import type { ReviewAndPublishDeps, ReviewRun } from './app/review-and-publish.js'
-import { errorMessage } from './app/error-message.js'
-import { recordReviewFeedback } from './app/feedback.js'
-import { historyRun } from './cli/history-run.js'
-import type { RunMeta } from './cli/history-run.js'
-import { dataFiles } from './config/data-paths.js'
-import type { ConfigLayer } from './config/types.js'
-import { historyEnabled } from './config/watch-settings.js'
 import type { PullRequestReview } from './app/review-pull-request.js'
 import { assertAppTerminal, runApp } from './cli/app-command.js'
 import type { AppCommandDeps } from './cli/app-command.js'
@@ -15,16 +6,17 @@ import type { CliCommand } from './cli/args.js'
 import { requireGitHubToken } from './cli/github-token.js'
 import { formatError } from './cli/format-error.js'
 import { formatGitHubPreview } from './cli/format-github.js'
-import { formatCiLine, formatCiSection } from './cli/format-ci.js'
-import { formatContextSection } from './cli/format-context.js'
-import { formatConversationLine, formatConversationSection } from './cli/format-conversation.js'
-import { formatImpactSection } from './cli/format-impact.js'
-import { formatInvestigationLine, formatInvestigationSection } from './cli/format-investigation.js'
-import { formatRelatedSection } from './cli/format-related.js'
-import { formatPassesSection, formatSkillRunLines } from './cli/format-passes.js'
+import { formatUsageLine } from './cli/format-usage.js'
+import { ciJson, conversationJson } from './cli/format-json.js'
+import { formatRunSections } from './cli/format-run-sections.js'
+import type { RunSections } from './cli/format-run-sections.js'
+import { usageReport } from './review/token-usage.js'
+import type { UsageReport } from './review/token-usage.js'
+import { formatInvestigationLine } from './cli/format-investigation.js'
+import { formatSkillRunLines } from './cli/format-passes.js'
 import type { BlockedFix } from './cli/format-passes.js'
 import { blockedFixer } from './cli/blocked-fix.js'
-import { ciWaitProgress } from './cli/ci-wait-progress.js'
+import { printReviewProgress } from './cli/print-review-progress.js'
 import type { ReviewOutcome } from './review/types.js'
 import {
   formatPublishedMessage,
@@ -33,29 +25,23 @@ import {
   formatSkipMessage,
   formatWouldResolveMessage,
 } from './cli/format-publication.js'
-import { formatPullRequestSummary, formatReview } from './cli/format-review.js'
+import { formatReview } from './cli/format-review.js'
 import { messagesFor } from './cli/i18n/messages.js'
 import { runIndex } from './cli/index-command.js'
 import { runInit } from './cli/init.js'
 import { runPrompt } from './cli/prompt-command.js'
 import { runRules } from './cli/rules-command.js'
-import { runHistory, runHistoryPrune } from './cli/history-command.js'
-import {
-  ciReaders,
-  mcpNameChecker,
-  pullRequestReviewDeps,
-  renderReview,
-  reviewRunJson,
-} from './cli/review-wiring.js'
+import { runHistory, runHistoryPrune, runHistoryShow } from './cli/history-command.js'
+import { reviewRunJson } from './cli/review-wiring.js'
+import { prepareReview, runManualReview } from './cli/manual-review.js'
+import type { ReviewRun } from './app/review-and-publish.js'
+import { printHistorySave, savedAsLine } from './cli/print-history-save.js'
+import { runPublish } from './cli/publish-command.js'
 import { assertProviderChoice } from './cli/provider-choice.js'
 import type { ProviderOptions } from './cli/provider-choice.js'
 export { assertProviderChoice } from './cli/provider-choice.js'
 export type { ProviderOptions } from './cli/provider-choice.js'
-import type { Choice } from './cli/review-wiring.js'
 import { toTerminalText } from './app/terminal-text.js'
-import { resolveProvider } from './config/merge-config.js'
-import { resolveMcp, userMcp } from './config/mcp-servers.js'
-import { loadUserLayers } from './config/user-config.js'
 import { formatPullRequestRef } from './github/pull-request-ref.js'
 import type { PullRequest } from './github/pull-request.js'
 import { runEnqueue } from './cli/enqueue-command.js'
@@ -71,6 +57,7 @@ import type { ReviewProvider } from './providers/types.js'
 export interface MainDeps extends WatchCommandDeps, McpCommandDeps, AppCommandDeps {
   cwd: string
   pathSize: (path: string) => Promise<number>
+  killDetachedChildren: () => void
 }
 
 export function createProvider(name: string, options: ProviderOptions): ReviewProvider {
@@ -111,11 +98,11 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
     if (command.kind === 'app') {
       assertAppTerminal(command, deps)
       debug = command.debug
-      return await runApp(deps)
+      return await runApp(deps, { debug })
     }
     if (command.kind === 'setup') {
       debug = command.debug
-      return await runApp(deps, { setup: true })
+      return await runApp(deps, { setup: true, debug })
     }
     debug = command.debug
     if (command.kind === 'index') {
@@ -137,40 +124,38 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
       await runHistory(command, deps)
       return 0
     }
+    if (command.kind === 'history-show') {
+      await runHistoryShow(command, deps)
+      return 0
+    }
+    if (command.kind === 'publish') {
+      await runPublish(command, deps)
+      return 0
+    }
     if (command.kind === 'history-prune') {
       await runHistoryPrune(command, deps)
       return 0
     }
 
     const token = await requireGitHubToken(deps)
-    const { owner, repo } = command.ref
-    const userLayers = await loadUserLayers({
-      env: deps.env,
-      home: deps.home,
-      owner,
-      repo,
-      files: deps.files,
-    })
-    const choice = resolveProvider({ provider: command.provider, model: command.model }, userLayers)
-    const mcp = resolveMcp(userMcp(userLayers), deps.env)
-    assertProviderChoice(choice.provider, {
-      ...(choice.model === undefined ? {} : { model: choice.model }),
-      mcp,
-    })
-    const mcpNames = await mcpNameChecker(deps)(choice.provider, mcp.names)
-    const checked = mcpNames === undefined ? choice : { ...choice, mcpNames }
+    const prepared = await prepareReview(
+      command.ref,
+      token,
+      {
+        ...(command.provider === undefined ? {} : { provider: command.provider }),
+        ...(command.model === undefined ? {} : { model: command.model }),
+      },
+      deps,
+    )
 
     deps.onSignal(() => deps.abort(130))
     deps.stderr.write(`Fetching ${formatPullRequestRef(command.ref)}…\n`)
-    const startedAt = deps.clock().toISOString()
-    const reviewRun = await reviewAndPublish(
+    const { run: reviewRun, history } = await runManualReview(
+      prepared,
       {
-        ref: command.ref,
-        mode: 'manual',
         force: command.force,
         dryRun: command.dryRun,
-        publish: true,
-        ...(command.waitCi === true ? { waitCi: { since: startedAt } } : {}),
+        waitCi: command.waitCi === true,
         options: {
           language: command.language,
           minConfidence: command.minConfidence,
@@ -183,19 +168,22 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
           ...(command.ci === undefined ? {} : { ci: command.ci }),
           ...(command.skills === undefined ? {} : { skills: command.skills }),
         },
-        userLayers,
-        mcp,
       },
-      reviewAndPublishDeps(deps, token, checked, command),
+      deps,
+      {
+        progress: printReviewProgress(deps.stderr, deps.clock),
+        reviewed: (reviewed, pullRequest) => printReviewed(deps, command, reviewed, pullRequest),
+      },
     )
-    await saveRun(deps, userLayers, reviewRun, {
-      source: 'manual',
-      startedAt,
-      finishedAt: deps.clock().toISOString(),
-      provider: choice.provider,
-      ...(choice.model === undefined ? {} : { model: choice.model }),
-    })
-    printRun(deps, command, reviewRun)
+    printHistorySave(deps.stderr, history)
+    try {
+      printRun(deps, command, reviewRun)
+      const usageLine = formatUsageLine(runUsage(reviewRun))
+      if (usageLine !== undefined) deps.stderr.write(`${usageLine}\n`)
+    } finally {
+      const saved = savedAsLine(history)
+      if (saved !== undefined) deps.stderr.write(`${saved}\n`)
+    }
     return 0
   } catch (error) {
     const { message, exitCode } = formatError(error, { debug })
@@ -205,59 +193,6 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
 }
 
 type ReviewCommand = Extract<CliCommand, { kind: 'review' }>
-
-function reviewAndPublishDeps(
-  deps: MainDeps,
-  token: string,
-  choice: Choice,
-  command: ReviewCommand,
-): ReviewAndPublishDeps {
-  const target = { ...command.ref, token }
-  const ciWait = ciWaitProgress(deps.stderr, deps.clock)
-  const forever = new AbortController().signal
-  return {
-    fetchPullRequest: (ref) => deps.fetchPullRequest({ ...ref, token }),
-    fetchReviewState: (ref) => deps.fetchReviewState({ ...ref, token }),
-    fetchPullComments: (ref) => deps.fetchPullComments({ ...ref, token }),
-    ci: ciReaders(deps, target),
-    reviewDeps: (pullRequest) => pullRequestReviewDeps(deps, target, choice, pullRequest),
-    render: renderReview,
-    createReview: (pullRequest, rendered) =>
-      deps.createReview({
-        ...target,
-        commitSha: pullRequest.headSha,
-        body: rendered.body,
-        comments: rendered.comments,
-      }),
-    compare: (pullRequest, base) =>
-      deps.fetchComparison({
-        owner: command.ref.owner,
-        repo: command.ref.repo,
-        token,
-        base,
-        head: pullRequest.headSha,
-      }),
-    replyAndResolve: (threadId, body) => deps.replyAndResolve({ token, threadId, body }),
-    clock: {
-      now: () => deps.clock().toISOString(),
-      sleep: (ms) => deps.sleep(ms, forever),
-    },
-    events: {
-      fetched: (pullRequest) => deps.stderr.write(`${formatPullRequestSummary(pullRequest)}\n`),
-      reviewed: (reviewed, pullRequest) => printReviewed(deps, command, reviewed, pullRequest),
-      publishing: () => deps.stderr.write('Publishing the review…\n'),
-      warning: (message) => deps.stderr.write(`Warning: ${toTerminalText(message)}\n`),
-      conversationRead: (conversation) => writeLine(deps, formatConversationLine(conversation)),
-      ciRead: (ci) => writeLine(deps, formatCiLine(ci)),
-      ciWaiting: (wait) => ciWait.waiting(wait),
-      ciWaited: (wait) => ciWait.waited(wait),
-    },
-  }
-}
-
-function writeLine(deps: Pick<MainDeps, 'stderr'>, line: string | undefined): void {
-  if (line !== undefined) deps.stderr.write(`${line}\n`)
-}
 
 function printReviewed(
   deps: MainDeps,
@@ -326,7 +261,10 @@ function printRun(deps: MainDeps, command: ReviewCommand, run: ReviewRun): void 
         deps.stdout.write(
           run.status === 'nothing'
             ? formatGitHubPreview(rendered, messages)
-            : `${formatGitHubPreview(rendered, messages)}\n${formatContextSection(reviewed.context.report)}\n${formatConversationSection(reviewed.conversation)}\n${formatCiSection(reviewed.ci)}\n${formatImpactSection(reviewed.impact, reviewed.impactText)}\n${reviewed.related.status === 'none' ? '' : `${formatRelatedSection(reviewed.related)}\n`}${passesSection(run, fixFor)}${formatInvestigationSection(reviewed.investigation)}`,
+            : [
+                formatGitHubPreview(rendered, messages),
+                ...formatRunSections(dryRunSections(run, fixFor)),
+              ].join('\n'),
         )
       }
       deps.stderr.write('Dry run: nothing was posted.\n')
@@ -362,44 +300,38 @@ function skipLine(outcome: Extract<ReviewOutcome, { status: 'skipped' }>): strin
   return `Nothing to review: no skill applies to the changed files (${skipped.join('; ')}).`
 }
 
-function passesSection(run: ReviewRun, fixFor: BlockedFix): string {
-  if (run.status !== 'reviewed') return ''
-  const outcome = run.reviewed.outcome
-  const passes = outcome.status === 'reviewed' ? outcome.result.passes : undefined
-  return passes === undefined ? '' : `${formatPassesSection(passes, fixFor)}\n`
+function runUsage(run: ReviewRun): UsageReport {
+  if (run.status === 'skipped') return { passes: [] }
+  const { outcome, recheck } = run.reviewed
+  return usageReport(outcome.status === 'reviewed' ? outcome.result.passUsage : undefined, recheck)
 }
 
-async function saveRun(
-  deps: MainDeps,
-  userLayers: readonly ConfigLayer[],
-  run: ReviewRun,
-  meta: RunMeta,
-): Promise<void> {
-  if (!historyEnabled(userLayers)) return
-  try {
-    const history = await deps.openHistoryStore(dataFiles(deps.env, deps.home).history)
-    try {
-      const runId = history.addRun(historyRun(run, reviewRunJson(run), meta))
-      saveFeedback(deps, () =>
-        recordReviewFeedback(history, run, { runId, source: 'manual', now: meta.finishedAt }),
-      )
-    } finally {
-      history.close()
-    }
-  } catch (error) {
-    deps.stderr.write(
-      `Warning: ${toTerminalText(errorMessage(error))}. This review is not saved in the history.\n`,
-    )
-  }
-}
-
-function saveFeedback(deps: Pick<MainDeps, 'stderr'>, save: () => void): void {
-  try {
-    save()
-  } catch (error) {
-    deps.stderr.write(
-      `Warning: could not save the comments' feedback in the history (${toTerminalText(errorMessage(error))}).\n`,
-    )
+function dryRunSections(
+  run: Extract<ReviewRun, { status: 'reviewed' }>,
+  fixFor: BlockedFix,
+): RunSections {
+  const { reviewed } = run
+  const { outcome } = reviewed
+  const result = outcome.status === 'reviewed' ? outcome.result : undefined
+  return {
+    ...(result === undefined
+      ? {}
+      : {
+          closeToCut: { findings: result.findings, minConfidence: result.minConfidence },
+          claims: result.claims,
+        }),
+    context: reviewed.context.report,
+    conversation:
+      reviewed.conversation === undefined ? null : conversationJson(reviewed.conversation),
+    ci: reviewed.ci === undefined ? null : ciJson(reviewed.ci),
+    impact: {
+      report: reviewed.impact,
+      ...(reviewed.impactText === undefined ? {} : { text: reviewed.impactText }),
+    },
+    related: reviewed.related,
+    ...(result?.passes === undefined ? {} : { passes: { reports: result.passes, fixFor } }),
+    investigation: reviewed.investigation,
+    usage: runUsage(run),
   }
 }
 

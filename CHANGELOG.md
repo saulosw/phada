@@ -7,6 +7,134 @@ output can change between minor versions.
 
 ## Unreleased
 
+## 0.11.0 - 2026-10-29
+
+### Added
+
+- A Graph screen in the app (between Provider and Learnings, so Learnings is now `9`): the map of
+  each repository of the Repositories screen, whether it is indexed, missing, made by another
+  version of Phada or unreadable, with its commit, files, symbols and size → its branch, when it
+  was indexed, its files per language, its symbols by kind, its imports, exports, calls and uses,
+  and the files left out and why. `i` indexes the selected repository (or indexes it again) with
+  its progress, there and on the Repositories screen; `Esc` stops it. `/index` in the palette
+  opens the Graph. The app reads each map without creating, migrating or removing it.
+- The connections of each repository on the Graph screen: how many of the related repositories
+  it declares (`context.repos`) are linked → each one with the packages one publishes and the
+  other uses (npm, Go, Python), without a link, or not indexed and why. They are read from the
+  index and the local copy on your machine, never fetched; `I` indexes the related repositories
+  that are not indexed.
+- Exploring a symbol on the Graph screen: `s` on an open repository searches a name in the graph
+  the review uses, linked to the indexed related repositories → its definitions to pick one → a
+  tree of its callers and dependencies that opens one level at a time with `Enter`/`→` and closes
+  with `←`, crossing into the linked repositories, 20 items per level with how many more and when
+  the graph cut the list short. A name not found or a repository not indexed offers `i`.
+- Reviewing a pull request from the app: `/review` in the palette, `n` on the Reviews screen or
+  `v` on a repository open it in place of the tabs. Type `owner/repo#N` or a URL, or pick one of
+  the open pull requests of a repository; choose **Only look** (as `phada review --dry-run`) or
+  **Review and publish**, which first shows the pull request and the GitHub login that will
+  publish it; follow each step live (the fetch, with a note when the pull request is closed or a
+  draft, which it still reviews, context, conversation, CI, indexing, related repositories,
+  impact, each run of the AI with its time, publishing, warnings); and read the
+  result in the same detail as the Reviews screen (or its error, with the causes and the stack
+  under `phada --debug`). It is the same review as `phada review`, saved
+  in the history unless `history: false`, with the AI CLI in its own process group. `Esc` while
+  it runs asks before cancelling: the fetch and the indexing of the head or the AI CLI (or the
+  request to Ollama) are stopped, nothing is posted and nothing is saved;
+  once it publishes, it no longer cancels. `q` and `Ctrl-C` ask before quitting while a review
+  runs (a second `Ctrl-C` cancels and quits at once; a `SIGTERM` cancels it without asking). While
+  a `phada watch` runs, **Review and publish** becomes **Put in the queue**, as `phada enqueue
+--publish pr`, showing the job or why the queue refused it, with `Enter` to the Queue.
+- Running the watch from the app: `w` on the Queue screen or `/watch` in the palette starts the
+  same watch as `phada watch` (lock, history, hooks, Slack) and asks before stopping it after the
+  current review. The Queue says whether the watch runs in this app or in another terminal (with
+  its PID), shows the step of the review under way and a log of the watch's events in the app's
+  language (`l` for the last 200 lines). Quitting while it runs asks first; a second `Ctrl-C` or a
+  `SIGTERM` stops it at once and puts the running pull request back in the queue. Cancelling a
+  review started from the app stops only its own AI CLI, never the watch's.
+- The review detail of the Reviews screen shows the text of each finding, and for a dry run that
+  nothing was posted, how many threads it would resolve and why it would skip.
+- `phada publish <id>` posts on the pull request the review a `--dry-run` kept in the history,
+  exactly as it was found, without running the AI again. It refuses when the pull request moved
+  to another commit since the dry run (`--force` publishes on the commit it reviewed), plans the
+  comments against the threads on the pull request now, resolves the comments the dry run found
+  fixed, skips a commit Phada already reviewed unless `--force`, writes in the dry run's language
+  and saves the publication as a new run that names the dry run it came from. In the app, `p` on
+  the result of "Only look" publishes it after asking (once: then `p` is no longer offered), and
+  quitting while it publishes asks first and waits for the publication. The review JSON keeps the
+  `language`, the `diffFingerprint` and the `ignored` files of the review for this.
+- The review checks what the pull request title and description claim the change does
+  ("prevents", "covers", "only runs on …"): each claim gets a verdict (`confirmed`,
+  `contradicted` or `unverified`) with its evidence, a contradicted one that matters is also a
+  finding, and the summary no longer repeats an unchecked claim as fact. The claims show in the
+  "Claims of the description" section of `--dry-run`, in `review.claims` of the JSON and the
+  history, and in the review's detail in the app; they are not posted on the pull request.
+- On a diff of 30 KB or more, or one that changes CI workflows, container files, infrastructure
+  code or package manifests, the review pass is asked for a minimum number of investigation calls
+  that grows with the diff (one per 10 KB, from 3 to 15), and for a look at what those CI and
+  infrastructure files affect; smaller diffs get no minimum. A pass that falls short gets a warning
+  (`Investigated 4 times for a 124 KB diff (expected at least 12).`), shown with the minimum in the
+  investigation section of `--dry-run` and in `investigation.floor` of the JSON.
+
+- Each finding has a scope: `change`, or `repository` when the problem is real but the pull
+  request neither introduces nor worsens it. With `review.debt: summary` (the default) the
+  findings of the repository are listed under "Repository debt" in the review body instead of
+  being posted as line comments, and they count neither in the score nor in the verdict;
+  `comments` posts them as before and `off` drops them. The JSON and the history carry the
+  `scope` of each finding, the `debt` list and the `debt` dropped; the app marks them in the
+  review's detail.
+
+- A finding at most 10 points above the confidence cut is marked "close to the cut", since
+  another run of the same commit may leave it out: in the terminal review (with their count), in a
+  "Close to the cut" section of `--dry-run`, as `closeToCut` in the JSON and the history, and in
+  the app's review detail. The comments posted on the pull request do not change.
+- `phada review` ends with the tokens of each AI pass (review passes, verification, recheck, a
+  native skill with its conversion) and their total, with the input tokens read from the
+  provider's cache, on stderr; the same counts are in a "Tokens" section of `--dry-run`, in `usage`
+  of the JSON and the history, in the app's review detail and next to each AI step of a review
+  the app runs. Claude Code and Codex report the cached input tokens, also added to the existing
+  `usage` blocks of the JSON as `cachedInputTokens`.
+- `phada history show <id>` prints a saved run with the sections of `--dry-run` (what was posted
+  or would have been, the context, conversation, CI, impact, related repositories, skills,
+  investigation, claims, findings close to the cut and tokens), after a line naming the run and how
+  it ended; `--format json` prints its history fields and its saved JSON. `phada review` ends with
+  the id of the run it saved (`Saved as run 42: phada history show 42`), and the list of
+  `phada history` starts each run with its id.
+- The JSON of a published review (and of a publication that failed) keeps the body and the line
+  comments it posted under `publication.body` and `publication.lineComments`, and the `impact`
+  block keeps the text the AI got as `impact.text`.
+
+### Changed
+
+- The "Based on" line of a published comment names only the evidence and the rule; the skill that
+  found the finding is kept in the hidden marker of the comment, the JSON and the history.
+- The verifier confirms a finding only when it can happen in the repository under review: it looks
+  for the condition the claimed effect depends on (a setting, the callers, the log level, a flag)
+  and rejects the finding, naming the missing condition, when the repository does not meet it.
+- The `.claude/rules/**/*.md` files of a repository are rules of the review, no longer docs: one
+  is sent when a changed file matches its `paths:` front matter (one glob or a list), or always
+  without `paths:`, named by its path, so it counts on the `Context` line, shows in `phada rules`
+  and the app's Rules screen (with its scope on the default branch, or out of scope for a pull
+  request it does not apply to) and a finding can name it as the rule it breaks. They no longer
+  take the docs' 60 KB budget, so they are not cut by the order of their names.
+- The `Context` line of a review and the title of `phada rules owner/repo#N` name the base commit
+  the rules and docs were read from (`Context at base a1b2c3d: …`).
+
+### Fixed
+
+- Quitting the app while its watch or one of its reviews is still under way now ends the process
+  as `phada watch` does when aborted: the work no longer goes on without the app, and a job the
+  watch put back in the queue is not reviewed twice.
+- A review cancelled in the app no longer starts another run of the AI after the one it stopped.
+- **Review and publish** from the app checks again for a running watch right before it starts and
+  turns into putting the review in the queue when one holds the lock, even when the Queue could
+  not be read.
+- A run of the AI that gave no answer (cancelled or failed) shows `✕` and "no answer" in the
+  steps of a review instead of `✓`.
+- The Queue no longer offers `w` to start the watch while another terminal runs it.
+- `s` on the Graph screen opens the search empty instead of after the last name searched.
+- The warnings of `phada watch` are cleaned of control characters before they are printed, and
+  why the watch did not start in the app is shown in full, as the lines of its log are on `l`.
+
 ## 0.10.0 - 2026-10-27
 
 ### Added

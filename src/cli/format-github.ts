@@ -1,11 +1,12 @@
 import type { ReviewComment } from '../github/create-review.js'
 import { redactSecrets } from '../providers/redact-secrets.js'
-import { FINDING_MARKER, reviewMarker } from '../publish/markers.js'
+import { findingMarker, reviewMarker } from '../publish/markers.js'
 import type { PublicationPlan } from '../publish/types.js'
 import type { CiSummary } from '../context/types.js'
 import { scoreFocus } from '../review/score.js'
 import { normalize } from '../review/suggestions.js'
 import type { FileChange, Finding, ReviewResult, Severity } from '../review/types.js'
+import { debtItem } from './debt-text.js'
 import { findingReferences, leftOutLine } from './finding-references.js'
 import { english } from './i18n/en.js'
 import type { Messages } from './i18n/messages.js'
@@ -18,6 +19,7 @@ export const GITHUB_BODY_LIMIT = 65_536
 const MAX_FILE_ROWS = 300
 const SEVERITIES: readonly Severity[] = ['P0', 'P1', 'P2']
 const BUTTERFLY = '🦋'
+const MAX_DEBT_LINES = 20
 
 export interface GitHubReview {
   body: string
@@ -33,6 +35,8 @@ interface BodyParts {
   stillOpenOmitted: number
   worthChecking: Finding[]
   worthCheckingOmitted: number
+  debt: Finding[]
+  debtOmitted: number
 }
 
 export function formatGitHubReview(
@@ -108,6 +112,7 @@ function onlyStillOpenBody(
     ci,
     messages.github.onlyStillOpen(plan.openThreads, sha),
     fixedLine(result, plan, messages),
+    debtList(...listedDebt(result), messages),
     markerOf(result),
   ]
     .filter((section) => section !== '')
@@ -135,12 +140,14 @@ function reviewBody(
     stillOpenOmitted: 0,
     worthChecking: [...result.worthChecking],
     worthCheckingOmitted: result.worthCheckingOmitted,
+    ...debtParts(result),
   }
   const render = () => renderBody(result, plan, parts, messages, ci)
   if (render().length > limit && parts.files !== '') {
     parts.files = messages.github.filesTruncated(result.files.length)
   }
   fit(parts, ['skillBodies', 'summary', 'reason'], render, limit, messages)
+  omitToFit(parts, 'debt', 'debtOmitted', render, limit)
   omitToFit(parts, 'worthChecking', 'worthCheckingOmitted', render, limit)
   omitToFit(parts, 'stillOpen', 'stillOpenOmitted', render, limit)
   return render()
@@ -171,6 +178,7 @@ function renderBody(
       parts.worthCheckingOmitted,
       messages,
     ),
+    debtList(parts.debt, parts.debtOmitted, messages),
     messages.dropped(result.dropped),
     leftOutLine(result.ignored ?? [], messages),
     markerOf(result),
@@ -245,6 +253,22 @@ function findingList(
   return [`### ${heading}`, '', ...items].join('\n')
 }
 
+function debtList(debt: readonly Finding[], omitted: number, messages: Messages): string {
+  if (debt.length === 0 && omitted === 0) return ''
+  const items = debt.map((finding) => debtItem(finding, githubLine))
+  if (omitted > 0) items.push(`- ${messages.moreItems(omitted)}`)
+  return [`### ${messages.debt}`, '', messages.debtNote, '', ...items].join('\n')
+}
+
+function listedDebt({ debt = [] }: ReviewResult): [Finding[], number] {
+  return [debt.slice(0, MAX_DEBT_LINES), Math.max(debt.length - MAX_DEBT_LINES, 0)]
+}
+
+function debtParts(result: ReviewResult): Pick<BodyParts, 'debt' | 'debtOmitted'> {
+  const [debt, debtOmitted] = listedDebt(result)
+  return { debt, debtOmitted }
+}
+
 function findingComment(finding: Finding, limit: number, messages: Messages): ReviewComment {
   const { suggestion } = finding
   if (suggestion !== undefined) {
@@ -267,7 +291,7 @@ function findingComment(finding: Finding, limit: number, messages: Messages): Re
 
 function commentBody(finding: Finding, limit: number, messages: Messages, suggestion = ''): string {
   const parts = { title: finding.title, why: finding.why, fix: finding.fix ?? '' }
-  const references = findingReferences(finding, messages, { withLocalFiles: false })
+  const references = findingReferences(finding, messages, 'public')
   const render = () => {
     const fix = githubBlock(parts.fix)
     return [
@@ -276,7 +300,7 @@ function commentBody(finding: Finding, limit: number, messages: Messages, sugges
       ...(fix === '' ? [] : [`**${messages.fix}:** ${fix}`]),
       ...(suggestion === '' ? [] : [suggestion]),
       ...(references === '' ? [] : [`<sub>${references}</sub>`]),
-      FINDING_MARKER,
+      findingMarker(finding.skill),
     ].join('\n\n')
   }
   fit(parts, ['why', 'fix', 'title'], render, limit, messages)
@@ -310,8 +334,8 @@ function truncate(text: string, maxLength: number, messages: Messages): string {
 
 function omitToFit(
   parts: BodyParts,
-  key: 'stillOpen' | 'worthChecking',
-  omittedKey: 'stillOpenOmitted' | 'worthCheckingOmitted',
+  key: 'stillOpen' | 'worthChecking' | 'debt',
+  omittedKey: 'stillOpenOmitted' | 'worthCheckingOmitted' | 'debtOmitted',
   render: () => string,
   limit: number,
 ): void {

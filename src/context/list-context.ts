@@ -9,6 +9,7 @@ import {
   mapLimit,
   mergeLayers,
   READ_CONCURRENCY,
+  readClaudeRules,
   readDoc,
   readRepositoryLayers,
   readTree,
@@ -43,10 +44,14 @@ export async function listContext(input: {
   const merged = mergeLayers(userLayers, repository.layers)
   warnings.push(...merged.warnings)
   const docs = await listDocs(merged, tree, sources, ref, warnings)
+  const claudeRules =
+    tree === undefined || !merged.contextDefaults
+      ? []
+      : await readClaudeRules(tree, sources, ref, warnings)
   return {
     report: {
       configFiles: [...userConfigFiles(userLayers), ...repository.configFiles],
-      rules: merged.rules.map((rule): RuleReport => ({
+      rules: [...merged.rules, ...claudeRules].map((rule): RuleReport => ({
         key: rule.key,
         origin: rule.origin,
         scope: [...rule.scope],

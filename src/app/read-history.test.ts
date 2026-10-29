@@ -6,6 +6,7 @@ import {
   readFindings,
   readReviewDetail,
   readReviews,
+  reviewDetailOf,
   ruleStats,
 } from './read-history.js'
 import type { HistoryReader } from './read-history.js'
@@ -259,10 +260,17 @@ describe('readReviewDetail', () => {
           rule: 'cents',
           skill: 'phada',
           sources: ['rule:cents'],
+          scope: 'change',
         },
       ],
       worthChecking: [],
-      publication: { status: 'published', url: RUN.url, comments: 1 },
+      publication: {
+        status: 'published',
+        url: RUN.url,
+        comments: 1,
+        wouldResolve: null,
+        reason: null,
+      },
       ci: {
         state: 'passing',
         failing: [],
@@ -331,6 +339,163 @@ describe('readReviewDetail', () => {
     expect(
       readReviewDetail(fakeHistory([{ ...failed, resultJson: '{not json' }]), 7)?.findings,
     ).toEqual([])
+  })
+
+  it('reads what a dry run would post, resolve and skip, and why a publication was skipped', () => {
+    const dryRun = JSON.stringify({
+      publication: {
+        status: 'dry-run',
+        body: 'Phada review',
+        comments: [
+          { path: 'src/a.ts', line: 1, body: 'one' },
+          { path: 'src/a.ts', line: 2, body: 'two' },
+        ],
+        stillOpen: 0,
+        dismissed: 0,
+        wouldSkip: { reason: 'open-threads', openThreads: 2 },
+        wouldResolve: [{ id: 1, verdict: 'fixed', reason: 'gone' }],
+      },
+    })
+    const skipped = JSON.stringify({
+      publication: { status: 'skipped', reason: 'already-reviewed', openThreads: 0 },
+    })
+
+    expect(readReviewDetail(fakeHistory([{ ...RUN, resultJson: dryRun }]), 7)?.publication).toEqual(
+      { status: 'dry-run', url: null, comments: 2, wouldResolve: 1, reason: 'open-threads' },
+    )
+    expect(
+      readReviewDetail(fakeHistory([{ ...RUN, resultJson: skipped }]), 7)?.publication,
+    ).toEqual({
+      status: 'skipped',
+      url: null,
+      comments: null,
+      wouldResolve: null,
+      reason: 'already-reviewed',
+    })
+  })
+
+  it('builds the detail of a run that is not in the history from its record and stored JSON', () => {
+    const detail = reviewDetailOf({ ...RUN, resultJson: REVIEW_JSON }, [])
+
+    expect(detail).toMatchObject({
+      run: RUN,
+      pullRequest: { title: 'Add the cart' },
+      score: { value: 4, reason: 'One P1.' },
+      findings: [{ title: 'Finding 1', why: 'Because.' }],
+      published: [],
+    })
+    expect(detail.run).not.toHaveProperty('resultJson')
+  })
+
+  it('reads the claims of the description a stored review checked', () => {
+    const stored = JSON.parse(REVIEW_JSON) as { review: Record<string, unknown> }
+    const withClaims = JSON.stringify({
+      ...stored,
+      review: {
+        ...stored.review,
+        claims: [
+          { claim: 'Prevents two runs', verdict: 'contradicted', evidence: 'ci.yml:4' },
+          { claim: 'Covers the cart', verdict: 'unverified' },
+          { verdict: 'confirmed', evidence: 'x' },
+          'not a claim',
+        ],
+      },
+    })
+
+    expect(reviewDetailOf({ ...RUN, resultJson: withClaims }, []).claims).toEqual([
+      { claim: 'Prevents two runs', verdict: 'contradicted', evidence: 'ci.yml:4' },
+      { claim: 'Covers the cart', verdict: 'unverified', evidence: null },
+    ])
+    expect(reviewDetailOf({ ...RUN, resultJson: REVIEW_JSON }, []).claims).toEqual([])
+  })
+
+  it('reads the scope of each finding and the repository debt of a stored review', () => {
+    const stored = JSON.parse(REVIEW_JSON) as {
+      review: { findings: Record<string, unknown>[] } & Record<string, unknown>
+    }
+    const [finding] = stored.review.findings
+    const withDebt = JSON.stringify({
+      ...stored,
+      review: {
+        ...stored.review,
+        findings: [{ ...finding, scope: 'repository' }],
+        debt: [{ ...finding, line: 9, title: 'Old helper', scope: 'repository' }, 'not a finding'],
+      },
+    })
+
+    const detail = reviewDetailOf({ ...RUN, resultJson: withDebt }, [])
+
+    expect(detail.findings.map(({ scope }) => scope)).toEqual(['repository'])
+    expect(detail.debt).toMatchObject([{ line: 9, title: 'Old helper', scope: 'repository' }])
+    const older = reviewDetailOf({ ...RUN, resultJson: REVIEW_JSON }, [])
+    expect(older.findings.map(({ scope }) => scope)).toEqual(['change'])
+    expect(older.debt).toEqual([])
+  })
+
+  it('reads which findings of a stored review were close to the cut', () => {
+    const stored = JSON.parse(REVIEW_JSON) as {
+      review: { findings: Record<string, unknown>[] } & Record<string, unknown>
+    }
+    const [finding] = stored.review.findings
+    const marked = JSON.stringify({
+      ...stored,
+      review: {
+        ...stored.review,
+        findings: [
+          { ...finding, closeToCut: true },
+          { ...finding, line: 2, closeToCut: 'yes' },
+        ],
+      },
+    })
+
+    const detail = reviewDetailOf({ ...RUN, resultJson: marked }, [])
+
+    expect(detail.findings.map(({ closeToCut }) => closeToCut)).toEqual([true, false])
+    const older = reviewDetailOf({ ...RUN, resultJson: REVIEW_JSON }, [])
+    expect(older.findings.map(({ closeToCut }) => closeToCut)).toEqual([false])
+  })
+
+  it('reads the tokens of each AI pass of a stored review and their total', () => {
+    const stored = JSON.parse(REVIEW_JSON) as Record<string, unknown>
+    const withUsage = JSON.stringify({
+      ...stored,
+      usage: {
+        passes: [
+          {
+            pass: 'review',
+            skill: 'code-review',
+            usage: { inputTokens: 900, cachedInputTokens: 600, outputTokens: 40 },
+          },
+          { pass: 'verify', skill: null, usage: null },
+          { pass: 'recheck', skill: null, usage: { inputTokens: 'many' } },
+          'not a pass',
+        ],
+        total: { inputTokens: 900, cachedInputTokens: null, outputTokens: 40 },
+      },
+    })
+
+    expect(reviewDetailOf({ ...RUN, resultJson: withUsage }, []).usage).toEqual({
+      passes: [
+        { pass: 'review', skill: 'code-review', tokens: { input: 900, cached: 600, output: 40 } },
+        { pass: 'verify', skill: null, tokens: null },
+        { pass: 'recheck', skill: null, tokens: null },
+      ],
+      total: { input: 900, cached: null, output: 40 },
+    })
+  })
+
+  it('reads the total tokens of a review stored before the passes were kept', () => {
+    const stored = JSON.parse(REVIEW_JSON) as { review: Record<string, unknown> }
+    const older = JSON.stringify({
+      ...stored,
+      review: { ...stored.review, usage: { inputTokens: 3512, outputTokens: 420 } },
+    })
+
+    expect(reviewDetailOf({ ...RUN, resultJson: older }, []).usage).toEqual({
+      passes: [],
+      total: { input: 3512, cached: null, output: 420 },
+    })
+    expect(reviewDetailOf({ ...RUN, resultJson: REVIEW_JSON }, []).usage).toBeNull()
   })
 
   it('reads nothing for an unknown run or without a history', () => {

@@ -41,6 +41,7 @@ process.exitCode = await run(process.argv.slice(2), {
   env: process.env,
   ghToken: ghTokenReader(process.env),
   version,
+  pid: process.pid,
   cwd: process.cwd(),
   home: homedir(),
   files: nodeFileSystem,

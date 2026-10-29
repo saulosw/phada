@@ -15,10 +15,30 @@ export function textLines(text: string, width: number, color?: string): ReactNod
   return wrapText(text, width).map((line) => <Text color={color}>{line}</Text>)
 }
 
-export function failedNodes({ messages, theme, width }: DrawContext, error: unknown): ReactNode[] {
-  return failedLines(messages, error, width).map((line) => (
+export function failedNodes(
+  { messages, theme, width }: DrawContext,
+  error: unknown,
+  say?: (message: string) => string,
+): ReactNode[] {
+  return failedLines(messages, error, width, say).map((line) => (
     <Text color={theme.colors.error}>{line}</Text>
   ))
+}
+
+export function errorDetailNodes(
+  { messages, theme, width }: DrawContext,
+  error: unknown,
+  rows: number,
+): ReactNode[] {
+  const chain: string[] = []
+  const seen = new Set<unknown>()
+  for (let current = error; current !== undefined && !seen.has(current);) {
+    seen.add(current)
+    const text = current instanceof Error ? (current.stack ?? current.message) : String(current)
+    chain.push(chain.length === 0 ? text : messages.causedBy(text))
+    current = current instanceof Error ? current.cause : undefined
+  }
+  return textLines(chain.join('\n'), width, theme.colors.dim).slice(0, Math.max(rows, 0))
 }
 
 export function spaced(lines: readonly ReactNode[]): ReactNode[] {
