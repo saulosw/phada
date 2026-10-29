@@ -7,6 +7,7 @@ import type { ReviewProgressSink } from '../app/review-progress.js'
 import type {
   EnqueuedReview,
   OpenPullRequests,
+  PublishedReview,
   PullRequestTarget,
   RequestedReview,
   ReviewMode,
@@ -22,11 +23,14 @@ import type { GitHubTokenDeps } from './github-token.js'
 import { historyRun } from './history-run.js'
 import { prepareReview, runManualReview } from './manual-review.js'
 import type { ManualReviewDeps } from './manual-review.js'
+import { publishSavedRun } from './publish-saved.js'
+import type { PublishSavedDeps } from './publish-saved.js'
 import { requireWatchSettings, submitDeps } from './request-wiring.js'
 import type { RequestWiringDeps } from './request-wiring.js'
 import { reviewRunJson } from './review-wiring.js'
 
-export interface AppReviewDeps extends ManualReviewDeps, RequestWiringDeps, GitHubTokenDeps {
+export interface AppReviewDeps
+  extends ManualReviewDeps, RequestWiringDeps, GitHubTokenDeps, PublishSavedDeps {
   listOpenPullRequests: (
     options: RepositoryFilesOptions & { etag?: string },
   ) => Promise<PullListing>
@@ -44,6 +48,7 @@ export interface AppReview {
     signal?: AbortSignal,
   ): Promise<RequestedReview>
   enqueueReview(target: PullRequestTarget): Promise<EnqueuedReview>
+  publishReview(runId: number): Promise<PublishedReview>
   reviewsRunning(): boolean
 }
 
@@ -129,6 +134,34 @@ export function appReview(deps: AppReviewDeps): AppReview {
         return await reviewPullRequest(...request)
       } finally {
         running -= 1
+      }
+    },
+    publishReview: async (runId) => {
+      const token = await readGitHubToken(deps)
+      if (token === undefined) return { status: 'no-token' }
+      const warnings: string[] = []
+      const { publication, history } = await publishSavedRun(runId, false, token, deps, (message) =>
+        warnings.push(message),
+      )
+      switch (publication.status) {
+        case 'refused':
+          return { status: 'refused', refusal: publication.refusal }
+        case 'skipped':
+          return {
+            status: 'skipped',
+            reason: publication.reason,
+            headSha: publication.saved.stored.pullRequest.headSha,
+          }
+        case 'published':
+          return {
+            status: 'published',
+            url: publication.url,
+            comments: publication.rendered.comments.length,
+            stillOpen: publication.plan.stillOpen.length,
+            resolved: publication.resolved.resolved,
+            warnings,
+            ...(history === undefined ? {} : { history }),
+          }
       }
     },
     enqueueReview: async ({ owner, repo, number }) => {

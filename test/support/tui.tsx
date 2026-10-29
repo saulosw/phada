@@ -242,6 +242,7 @@ export function fakeAppDeps(scheduler: Scheduler, overrides: Partial<AppDeps> = 
     readOpenPullRequests: async () => ({ status: 'no-token' }),
     reviewPullRequest: async () => ({ status: 'no-token' }),
     enqueueReview: async () => ({ status: 'no-token' }),
+    publishReview: async () => ({ status: 'no-token' }),
     startWatch: async () => ({ status: 'elsewhere', pid: 4242 }),
     ...overrides,
   }

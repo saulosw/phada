@@ -80,6 +80,11 @@ function harness(changes: Partial<AppReviewDeps> = {}) {
     listOpenPullRequests: async () => ({ status: 'ok', pulls: [] }),
     fetchPullRequestMetadata: async () => pullRequestFixture(),
     lockHolder: async () => undefined,
+    fetchPullRequestHead: async () => ({
+      state: 'open',
+      draft: false,
+      headSha: pullRequestFixture().headSha,
+    }),
     ...changes,
   }
   return { deps, posts, providers, written, data }
@@ -337,6 +342,60 @@ describe('a review the app puts in the queue', () => {
       'Nothing to watch: list the repositories under watch: in your own config',
     )
     expect(existsSync(join(data, 'history.sqlite'))).toBe(false)
+  })
+})
+
+describe('publishing a review the app only looked at', () => {
+  it('posts the saved run without the AI, while a watch runs too, and keeps it in the history', async () => {
+    const { deps, posts, providers, data } = harness({ lockHolder: async () => 4242 })
+    deps.files = { ...memoryFiles(), exists: async () => true }
+    const review = appReview(deps)
+    const looked = await review.reviewPullRequest(TARGET, 'look', () => undefined)
+    if (looked.status !== 'reviewed' || looked.history.status !== 'saved') {
+      throw new Error('expected a saved look')
+    }
+
+    const published = await review.publishReview(looked.history.runId)
+
+    expect(published).toEqual({
+      status: 'published',
+      url: 'https://github.com/acme/shop/pull/12#pullrequestreview-9',
+      comments: 1,
+      stillOpen: 0,
+      resolved: 0,
+      warnings: [],
+      history: { status: 'saved', runId: 2 },
+    })
+    expect(posts).toEqual([
+      expect.objectContaining({ owner: 'acme', repo: 'shop', number: 12, token: TOKEN }),
+    ])
+    expect(providers).toHaveLength(1)
+    const history = await openHistoryStore(join(data, 'history.sqlite'))
+    expect(history.runs({ limit: 5 }).runs.map(({ status }) => status)).toEqual([
+      'published',
+      'dry-run',
+    ])
+    history.close()
+  })
+
+  it('gives the refusal of a run that cannot be published, and says when there is no token', async () => {
+    const { deps } = harness({
+      fetchPullRequestHead: async () => ({ state: 'open', draft: false, headSha: 'f'.repeat(40) }),
+    })
+    deps.files = { ...memoryFiles(), exists: async () => true }
+    const review = appReview(deps)
+    const looked = await review.reviewPullRequest(TARGET, 'look', () => undefined)
+    if (looked.status !== 'reviewed' || looked.history.status !== 'saved') {
+      throw new Error('expected a saved look')
+    }
+
+    expect(await review.publishReview(looked.history.runId)).toEqual({
+      status: 'refused',
+      refusal: { kind: 'head-moved', from: pullRequestFixture().headSha, to: 'f'.repeat(40) },
+    })
+    expect(await appReview({ ...deps, env: {} }).publishReview(1)).toEqual({
+      status: 'no-token',
+    })
   })
 })
 

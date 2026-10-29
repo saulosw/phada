@@ -1,3 +1,5 @@
+import type { SkipReason } from '../publish/types.js'
+import type { PublishRefusal } from './publish-saved-review.js'
 import type { ReviewDetail } from './read-history.js'
 import type { SubmitResult } from './submit-request.js'
 
@@ -31,3 +33,17 @@ export type RequestedReview =
   | { status: 'cancelled' }
   | { status: 'watch-running'; pid: number }
   | { status: 'reviewed'; detail: ReviewDetail; history: HistorySave }
+
+export type PublishedReview =
+  | { status: 'no-token' }
+  | { status: 'refused'; refusal: PublishRefusal }
+  | { status: 'skipped'; reason: SkipReason; headSha: string }
+  | {
+      status: 'published'
+      url: string
+      comments: number
+      stillOpen: number
+      resolved: number
+      warnings: string[]
+      history?: HistorySave
+    }

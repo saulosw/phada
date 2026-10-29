@@ -30,6 +30,7 @@ import type { UserRepositories } from '../app/read-user-repositories.js'
 import type { RepositoryFolder, RepositoryInit } from '../app/repository-folder.js'
 import type {
   EnqueuedReview,
+  PublishedReview,
   OpenPullRequests,
   PullRequestTarget,
   RequestedReview,
@@ -106,6 +107,7 @@ export interface AppDeps {
     signal: AbortSignal,
   ): Promise<RequestedReview>
   enqueueReview(target: PullRequestTarget): Promise<EnqueuedReview>
+  publishReview(runId: number): Promise<PublishedReview>
   startWatch(observer: WatchObserver): Promise<WatchStarted>
 }
 

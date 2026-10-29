@@ -24,7 +24,9 @@ export interface PublishSavedDeps {
   home: string
   files: LocalFileSystem
   clock: () => Date
-  fetchPullRequestHead: (options: FetchPullRequestOptions) => Promise<{ headSha: string }>
+  fetchPullRequestHead: (
+    options: FetchPullRequestOptions,
+  ) => Promise<{ state: 'open' | 'closed'; draft: boolean; headSha: string }>
   fetchReviewState: (options: FetchReviewStateOptions) => Promise<PullRequestReviewState>
   createReview: (options: CreateReviewOptions) => Promise<CreatedReview>
   replyAndResolve: (options: ReplyAndResolveOptions) => Promise<void>

@@ -299,6 +299,7 @@ async function appDeps(
     readOpenPullRequests: review.readOpenPullRequests,
     reviewPullRequest: review.reviewPullRequest,
     enqueueReview: review.enqueueReview,
+    publishReview: review.publishReview,
     startWatch: watch.start,
     readRepositoryFolder: () => readRepositoryFolder(deps.cwd, (path) => deps.files.exists(path)),
     initRepository: () => initRepository(deps),
