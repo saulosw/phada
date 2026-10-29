@@ -336,8 +336,13 @@ async function publish(
   }
 }
 
-async function resolveFixed(
-  deps: ReviewAndPublishDeps,
+export type ResolveDeps = Pick<ReviewAndPublishDeps, 'replyAndResolve'> & {
+  render: Pick<ReviewAndPublishDeps['render'], 'resolvedReply'>
+  events: Pick<ReviewAndPublishEvents, 'warning'>
+}
+
+export async function resolveFixed(
+  deps: ResolveDeps,
   headSha: string,
   fixed: readonly RecheckVerdict[],
   language: string | undefined,
