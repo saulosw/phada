@@ -123,6 +123,34 @@ describe('formatInvestigationSection', () => {
     )
   })
 
+  it('says how many calls the diff asked for and which passes made fewer', () => {
+    const section = formatInvestigationSection({
+      ...used,
+      floor: {
+        expected: 12,
+        shortfalls: ['Investigated 5 times for a 124 KB diff (expected at least 12).'],
+      },
+    })
+
+    expect(section).toContain(
+      [
+        '- read_file big.ts · error: budget',
+        '',
+        'Expected at least 12 calls per review pass.',
+        'Warning: Investigated 5 times for a 124 KB diff (expected at least 12).',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  it('says nothing more when every pass reached the floor', () => {
+    expect(
+      formatInvestigationSection({ ...used, floor: { expected: 3, shortfalls: [] } }),
+    ).toContain(
+      '- read_file big.ts · error: budget\n\nExpected at least 3 calls per review pass.\n',
+    )
+  })
+
   it('marks the calls of the recheck of earlier comments', () => {
     const recheck = {
       ...used,

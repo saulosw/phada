@@ -20,7 +20,13 @@ export interface InvestigationReport {
   calls: InvestigationCallReport[]
   external: ExternalToolCall[]
   mcp?: McpServerReport[]
+  floor?: InvestigationFloorReport
   totals: { calls: number; bytes: number }
+}
+
+export interface InvestigationFloorReport {
+  expected: number
+  shortfalls: string[]
 }
 
 export interface McpServerReport {
@@ -39,6 +45,7 @@ export interface InvestigationReportInput {
   findings: readonly Finding[]
   external?: readonly ExternalToolCall[]
   mcp?: readonly McpServerReport[]
+  floor?: InvestigationFloorReport
 }
 
 const LINE_SUFFIX = /:\d+(?:-\d+)?$/
@@ -65,6 +72,9 @@ export function buildInvestigationReport(input: InvestigationReportInput): Inves
     calls,
     external: [...(input.external ?? [])],
     ...(input.mcp === undefined ? {} : { mcp: [...input.mcp] }),
+    ...(input.floor === undefined
+      ? {}
+      : { floor: { expected: input.floor.expected, shortfalls: [...input.floor.shortfalls] } }),
     totals: {
       calls: calls.length,
       bytes: calls.reduce((sum, call) => sum + call.bytes, 0),

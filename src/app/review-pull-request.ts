@@ -389,6 +389,7 @@ export async function reviewPullRequest(
       findings: reviewed?.findings ?? [],
       external: reviewed?.externalCalls ?? [],
       ...mcpReports(investigation !== undefined, outside, input.mcp, mcpOpened),
+      ...(reviewed?.investigationFloor === undefined ? {} : { floor: reviewed.investigationFloor }),
     })
     return {
       outcome,
