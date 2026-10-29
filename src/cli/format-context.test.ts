@@ -29,7 +29,9 @@ describe('formatContextLine', () => {
       budget: { limit: 60_000, used: 0 },
     })
 
-    expect(formatContextLine(report, BASE)).toBe('Context at base abc1234: 2 rules · 0 docs · 2 files ignored')
+    expect(formatContextLine(report, BASE)).toBe(
+      'Context at base abc1234: 2 rules · 0 docs · 2 files ignored',
+    )
   })
 
   it('counts the docs that did not apply apart from the omitted ones', () => {

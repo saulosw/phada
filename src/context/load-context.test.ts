@@ -631,7 +631,8 @@ describe('loadContext', () => {
 
 describe('loadContext with .claude/rules', () => {
   const big = (letter: string) => `${letter.repeat(19_000)}\n`
-  const sql = '---\npaths:\n  - "src/api/**"\n  - "db/**/*.sql"\n---\n\nUse parameterized queries.\n'
+  const sql =
+    '---\npaths:\n  - "src/api/**"\n  - "db/**/*.sql"\n---\n\nUse parameterized queries.\n'
   const branches = '---\npaths: docs/**\n---\nName branches feat/…\n'
 
   it('sends the .claude/rules whose paths match a changed file as rules, whatever the docs fill', async () => {
