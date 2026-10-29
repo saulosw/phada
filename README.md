@@ -298,8 +298,9 @@ confidence, and asks a skeptical reviewer to confirm each one, with its own seve
 or reject it. A finding is confirmed only when it can happen in the repository under review: when
 the effect it claims depends on a condition (a setting, the callers, the log level, a flag, the
 inputs that reach the code), the verifier looks for that condition with the
-[investigation tools](#repository-investigation) and rejects the finding, naming what is missing,
-when the repository does not meet it; how a library behaves on its own is not enough. Rejected findings leave the review and are counted in the footer; `--format json`
+[investigation tools](#repository-investigation) (without them, in the diff) and rejects the
+finding, naming what is missing, when the repository does not meet it; how a library behaves on its
+own is not enough. Rejected findings leave the review and are counted in the footer; `--format json`
 lists them with the reason, and gives the verifier's reason for every confirmed finding too (`null`
 for a finding it did not check). Confirmed findings still below 50 are dropped like any other. A
 finding without an answer keeps its first rating and the footer says how many were left unchecked
