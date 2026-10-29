@@ -21,6 +21,8 @@ import type {
 } from '../review/types.js'
 
 import { reviewVerdict } from '../review/verdict.js'
+import { usageReport } from '../review/token-usage.js'
+import type { UsageReport } from '../review/token-usage.js'
 import type { GitHubReview } from './format-github.js'
 
 const SCHEMA_VERSION = 1
@@ -93,6 +95,7 @@ export function formatReviewJson(
           impact,
           related: relatedJson(related),
           recheck: recheckJson(recheck),
+          usage: usageReportJson(usageReport(undefined, recheck ?? undefined)),
         }
       : {
           schemaVersion: SCHEMA_VERSION,
@@ -108,6 +111,7 @@ export function formatReviewJson(
           impact,
           related: relatedJson(related),
           recheck: recheckJson(recheck),
+          usage: usageReportJson(usageReport(outcome.result.passUsage, recheck ?? undefined)),
         }
   return `${JSON.stringify(body, null, 2)}\n`
 }
@@ -127,6 +131,7 @@ export function formatAlreadyReviewedJson(pr: PullRequest, reason: SkipReason): 
     impact: null,
     related: null,
     recheck: null,
+    usage: usageReportJson({ passes: [] }),
   }
   return `${JSON.stringify(body, null, 2)}\n`
 }
@@ -358,7 +363,22 @@ function verificationJson(verification: Verification) {
 function usageJson(usage: TokenUsage | undefined) {
   return usage === undefined
     ? null
-    : { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens }
+    : {
+        inputTokens: usage.inputTokens,
+        cachedInputTokens: usage.cachedInputTokens ?? null,
+        outputTokens: usage.outputTokens,
+      }
+}
+
+function usageReportJson({ passes, total }: UsageReport) {
+  return {
+    passes: passes.map(({ pass, skill, usage }) => ({
+      pass,
+      skill: skill ?? null,
+      usage: usageJson(usage),
+    })),
+    total: usageJson(total),
+  }
 }
 
 function findingJson(finding: Finding) {

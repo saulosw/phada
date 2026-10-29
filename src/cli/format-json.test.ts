@@ -4,7 +4,7 @@ import { findingFixture } from '../../test/support/finding.js'
 import { pullRequestFixture } from '../../test/support/pull-request.js'
 import type { Conversation } from '../publish/types.js'
 import type { Ci } from '../context/types.js'
-import type { ReviewResult } from '../review/types.js'
+import type { RecheckReport, ReviewResult } from '../review/types.js'
 import { formatAlreadyReviewedJson, formatReviewJson } from './format-json.js'
 
 const PULL_REQUEST = {
@@ -109,7 +109,7 @@ describe('formatReviewJson', () => {
         verification: null,
         provider: { id: 'codex-cli', model: 'gpt-6-astra', additionalModels: ['gpt-6-mini'] },
         durationMs: 16_400,
-        usage: { inputTokens: 9700, outputTokens: 417 },
+        usage: { inputTokens: 9700, cachedInputTokens: null, outputTokens: 417 },
         passes: null,
         skillBodies: null,
       },
@@ -121,6 +121,21 @@ describe('formatReviewJson', () => {
       impact: null,
       related: null,
       recheck: null,
+      usage: {
+        passes: [
+          {
+            pass: 'review',
+            skill: null,
+            usage: { inputTokens: 9000, cachedInputTokens: null, outputTokens: 400 },
+          },
+          {
+            pass: 'verify',
+            skill: null,
+            usage: { inputTokens: 700, cachedInputTokens: null, outputTokens: 17 },
+          },
+        ],
+        total: { inputTokens: 9700, cachedInputTokens: null, outputTokens: 417 },
+      },
     })
   })
 
@@ -379,6 +394,69 @@ describe('formatReviewJson', () => {
     })
   })
 
+  it('lists the tokens of each AI pass with the recheck, and null for what was not reported', () => {
+    const recheck: RecheckReport = {
+      threads: 1,
+      fixed: 1,
+      stillValid: 0,
+      unsure: 0,
+      verdicts: [
+        {
+          threadId: 't',
+          file: 'a.ts',
+          line: 1,
+          title: 'x',
+          verdict: 'fixed',
+          reason: '',
+          by: 'ai',
+        },
+      ],
+      durationMs: 10,
+    }
+    const result: ReviewResult = {
+      ...RESULT,
+      usage: { inputTokens: 900, cachedInputTokens: 600, outputTokens: 40 },
+      passUsage: [
+        {
+          pass: 'review',
+          skill: 'code-review',
+          usage: { inputTokens: 900, cachedInputTokens: 600, outputTokens: 40 },
+        },
+        { pass: 'review', skill: 'phada' },
+      ],
+    }
+
+    const output = parse(
+      formatReviewJson(
+        pullRequestFixture(),
+        { status: 'reviewed', result },
+        null,
+        null,
+        null,
+        null,
+        null,
+        recheck,
+      ),
+    )
+
+    expect(output).toMatchObject({
+      review: { usage: { inputTokens: 900, cachedInputTokens: 600, outputTokens: 40 } },
+      recheck: { usage: null },
+      usage: {
+        passes: [
+          {
+            pass: 'review',
+            skill: 'code-review',
+            usage: { inputTokens: 900, cachedInputTokens: 600, outputTokens: 40 },
+          },
+          { pass: 'review', skill: 'phada', usage: null },
+          { pass: 'recheck', skill: null, usage: null },
+        ],
+        total: { inputTokens: 900, cachedInputTokens: 600, outputTokens: 40 },
+      },
+    })
+  })
+
   it('prints a skipped review with the pull request', () => {
     const output = formatReviewJson(pullRequestFixture({ diff: '' }), {
       status: 'skipped',
@@ -399,6 +477,7 @@ describe('formatReviewJson', () => {
       impact: null,
       related: null,
       recheck: null,
+      usage: { passes: [], total: null },
     })
   })
 
@@ -524,6 +603,7 @@ describe('publication', () => {
       impact: null,
       related: null,
       recheck: null,
+      usage: { passes: [], total: null },
     })
     expect(
       parse(
@@ -646,7 +726,12 @@ describe('publication', () => {
     )
 
     expect(output).toMatchObject({ impact })
-    expect(Object.keys(output as object).slice(-3)).toEqual(['impact', 'related', 'recheck'])
+    expect(Object.keys(output as object).slice(-4)).toEqual([
+      'impact',
+      'related',
+      'recheck',
+      'usage',
+    ])
   })
 
   it('adds the conversation and the CI sent to the AI, without the texts', () => {
