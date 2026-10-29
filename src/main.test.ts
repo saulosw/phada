@@ -1411,6 +1411,26 @@ describe('run publishing', () => {
     )
   })
 
+  it('prints the published run as JSON, linked to the dry run it came from', async () => {
+    const h = harness({ review: () => Promise.resolve(WITH_FINDING) })
+    await run([...REVIEW, '--dry-run'], h.deps)
+    const out: string[] = []
+    const deps: MainDeps = {
+      ...h.deps,
+      files: { ...h.deps.files, exists: async () => true },
+      stdout: { write: (text: string) => out.push(text) },
+    }
+
+    expect(await run(['publish', '1', '--format', 'json'], deps)).toBe(0)
+
+    expect(JSON.parse(out.join(''))).toMatchObject({
+      schemaVersion: 1,
+      review: { findings: [{ line: 3 }], language: null },
+      publication: { status: 'published', comments: 1, lineComments: [{ line: 3 }] },
+      publishedFrom: 1,
+    })
+  })
+
   it('refuses to publish a dry run once the pull request moved, unless --force', async () => {
     const newer = 'f'.repeat(40)
     const h = harness({
