@@ -287,7 +287,15 @@ describe('reviewing a pull request from the app', () => {
     expect(frame()).toContain('› claude-cli: review · 12s')
     expectFits(frame(), { columns: 80, rows: 24 })
 
-    progress({ kind: 'aiFinished', provider: 'claude-cli', run: 'review', answered: true })
+    progress({
+      kind: 'aiFinished',
+      provider: 'claude-cli',
+      run: 'review',
+      answered: true,
+      usage: { inputTokens: 3512, cachedInputTokens: 3000, outputTokens: 420 },
+    })
+    await showing('claude-cli: review · 12s · 3.5k in (3.0k cached) · 420 out')
+    expectFits(frame(), { columns: 80, rows: 24 })
     asked[0]?.resolve({
       status: 'reviewed',
       detail: detail(),

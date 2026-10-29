@@ -1,7 +1,7 @@
 import type { AiRun, ReviewProgress } from '../app/review-progress.js'
 import type { UiMessages } from './i18n/messages.js'
 import { oneLine } from './text-fit.js'
-import { durationText } from './units.js'
+import { durationText, tokensText } from './units.js'
 
 export type ReviewStep =
   | { kind: 'fetch'; title?: string; notice?: FetchNotice }
@@ -20,10 +20,13 @@ export type ReviewStep =
       startedAt: number
       endedAt?: number
       answered?: boolean
+      usage?: StepUsage
     }
   | { kind: 'publish' }
 
 export type FetchNotice = 'closed' | 'draft'
+
+type StepUsage = NonNullable<Extract<ReviewProgress, { kind: 'aiFinished' }>['usage']>
 
 export interface ReviewSteps {
   steps: ReviewStep[]
@@ -87,7 +90,12 @@ export function stepsAfter(state: ReviewSteps, event: ReviewProgress, now: numbe
         ...state,
         steps: state.steps.map((entry, at) =>
           at === runningAi(state.steps, event.run) && entry.kind === 'ai'
-            ? { ...entry, endedAt: now, answered: event.answered }
+            ? {
+                ...entry,
+                endedAt: now,
+                answered: event.answered,
+                ...(event.usage === undefined ? {} : { usage: event.usage }),
+              }
             : entry,
         ),
       }
@@ -105,6 +113,14 @@ function fetchNotice({ state, draft }: { state: string; draft: boolean }): {
 } {
   if (state === 'closed') return { notice: 'closed' }
   return draft ? { notice: 'draft' } : {}
+}
+
+function usageText(usage: StepUsage, messages: UiMessages): string {
+  return messages.reviews.detail.tokenCounts(
+    tokensText(usage.inputTokens),
+    usage.cachedInputTokens === undefined ? undefined : tokensText(usage.cachedInputTokens),
+    tokensText(usage.outputTokens),
+  )
 }
 
 function runningAi(steps: readonly ReviewStep[], run: AiRun): number {
@@ -166,7 +182,8 @@ export function stepText(
         messages.reviewFlow.runs[step.run],
         durationText((step.endedAt ?? time) - step.startedAt),
       )
-      return step.answered === false ? `${text} · ${s.noAnswer}` : text
+      if (step.answered === false) return `${text} · ${s.noAnswer}`
+      return step.usage === undefined ? text : `${text} · ${usageText(step.usage, messages)}`
     }
     case 'publish':
       return s.publishing

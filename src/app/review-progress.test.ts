@@ -34,6 +34,25 @@ describe('reportProgress', () => {
     ])
   })
 
+  it('reports the tokens of a pass when the provider reports them', async () => {
+    const usage = { inputTokens: 3512, cachedInputTokens: 3000, outputTokens: 420 }
+    const provider: ReviewProvider = {
+      id: 'fake-cli',
+      review: async () => ({ ...OUTPUT, usage }),
+    }
+    const { events, sink } = recorder()
+
+    await reportProgress(provider, 'review', sink).review(PROMPT)
+
+    expect(events.at(-1)).toEqual({
+      kind: 'aiFinished',
+      provider: 'fake-cli',
+      run: 'review',
+      answered: true,
+      usage,
+    })
+  })
+
   it('reports the end of a pass the provider failed', async () => {
     const failure = new Error('boom')
     const provider: ReviewProvider = { id: 'fake-cli', review: () => Promise.reject(failure) }

@@ -2,7 +2,7 @@ import type { Ci, ContextReport } from '../context/types.js'
 import type { PullRequest } from '../github/pull-request.js'
 import type { ImpactReport } from '../graph/report.js'
 import type { ReviewPass } from '../investigation/tools/tool-log.js'
-import type { ReviewProvider } from '../providers/types.js'
+import type { ReviewProvider, TokenUsage } from '../providers/types.js'
 import type { Conversation } from '../publish/types.js'
 import type { RelatedReport } from './related-report.js'
 import type { PassPlan } from './review-passes.js'
@@ -25,7 +25,7 @@ export type ReviewProgress =
   | { kind: 'passesPlanned'; plan: PassPlan[] }
   | { kind: 'passStarted'; skill: string; index: number; total: number }
   | { kind: 'aiStarted'; provider: string; run: AiRun }
-  | { kind: 'aiFinished'; provider: string; run: AiRun; answered: boolean }
+  | { kind: 'aiFinished'; provider: string; run: AiRun; answered: boolean; usage?: TokenUsage }
   | { kind: 'publishing' }
   | { kind: 'warning'; message: string }
 
@@ -36,15 +36,26 @@ export function reportProgress(
   pass: ReviewPass,
   progress: ReviewProgressSink,
 ): ReviewProvider {
-  const running = async <T>(run: AiRun, work: () => Promise<T>): Promise<T> => {
+  const running = async <T extends { usage?: TokenUsage }>(
+    run: AiRun,
+    work: () => Promise<T>,
+  ): Promise<T> => {
     progress({ kind: 'aiStarted', provider: provider.id, run })
+    let usage: TokenUsage | undefined
     let answered = false
     try {
       const output = await work()
       answered = true
+      usage = output.usage
       return output
     } finally {
-      progress({ kind: 'aiFinished', provider: provider.id, run, answered })
+      progress({
+        kind: 'aiFinished',
+        provider: provider.id,
+        run,
+        answered,
+        ...(usage === undefined ? {} : { usage }),
+      })
     }
   }
   return wrapProviderRuns(provider, (run, work) => running(run === 'review' ? pass : 'skill', work))
