@@ -216,6 +216,38 @@ describe('readIndexes', () => {
   })
 })
 
+describe('readIndexes', () => {
+  it('reads an index whose file size cannot be read as unreadable and still closes it', async () => {
+    const closed: string[] = []
+    const path = '/cache/acme/shop/index.sqlite'
+    const index = openIndex(
+      path,
+      {
+        sha: SHA,
+        ref: 'HEAD',
+        defaultBranch: true,
+        indexedAt: '2026-10-25T11:00:00.000Z',
+        durationMs: 1,
+      },
+      closed,
+    )
+
+    const indexes = await readIndexes({
+      ...readers({ 'acme/shop': { status: 'open', index } }),
+      fileSize: async () => {
+        throw new Error('ENOENT: no such file or directory')
+      },
+    })
+
+    expect(indexes.repositories[0]?.index).toEqual({
+      state: 'unreadable',
+      path,
+      error: 'ENOENT: no such file or directory',
+    })
+    expect(closed).toEqual([path])
+  })
+})
+
 describe('extensionCounts', () => {
   it('counts the extensions of paths, most first, then by name, with an empty one for none', () => {
     expect(extensionCounts(['a.md', 'b/.env', 'c.MD', 'd.ts', 'Makefile'])).toEqual([

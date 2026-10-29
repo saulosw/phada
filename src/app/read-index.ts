@@ -94,13 +94,17 @@ async function readIndex(path: string, readers: IndexReaders): Promise<Repositor
         expected: opening.expected,
       }
     case 'open':
-      return summed(opening.index, await readers.fileSize(path))
+      return summed(opening.index, readers)
   }
 }
 
-function summed(index: ReadOnlyIndex, bytes: number): RepositoryIndexState {
+async function summed(
+  index: ReadOnlyIndex,
+  readers: Pick<IndexReaders, 'fileSize'>,
+): Promise<RepositoryIndexState> {
   const { path, snapshot } = index
   try {
+    const bytes = await readers.fileSize(path)
     if (snapshot === null) return { state: 'empty', path, bytes }
     return {
       state: 'indexed',
