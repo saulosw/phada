@@ -1,7 +1,7 @@
 import { CONFIDENCE_FLOOR } from './select-findings.js'
 import type { DebtMode, Finding } from './types.js'
 
-export function isDebt(finding: Finding): boolean {
+function isDebt(finding: Finding): boolean {
   return finding.scope === 'repository'
 }
 
