@@ -852,7 +852,8 @@ src/
                          #     servers as <server>__<tool>
       budget.ts          #     calls and bytes per review pass, answer size
       tool-log.ts        #     ToolLog: one record per tool call
-      report.ts          #     buildInvestigationReport(): what the AI read, for the CLI and the JSON
+      report.ts          #     buildInvestigationReport(): what the AI read, for the CLI and the
+                         #     JSON, with the minimum of calls and the passes that fell short
     mcp/                 #   how the AI CLIs reach the tools, and how Phada reaches MCP servers
       mcp-client.ts      #     connectMcp(): an MCP client over stdio or streamable HTTP
       mcp-server.ts      #     the tools as a local MCP server (JSON-RPC over a socket)
@@ -1000,7 +1001,12 @@ src/
                          #   check: DESCRIPTION_CLAIMS), with origins; reviewDataBlocks();
                          #   reportLanguageLine()
     nonce.ts             #   newNonce(): the random id of the data blocks
-    verify-prompt.ts     #   buildVerifyPrompt(): the second, skeptical pass (--verify)
+    verify-prompt.ts     #   buildVerifyPrompt(): the second, skeptical pass (--verify); a finding
+                         #   whose condition the repository does not meet is rejected
+    investigation-floor.ts # investigationFloor(): the minimum tool calls of a review pass (1 per
+                         #   10 KB of diff, 3–15); investigationFloorText(): that minimum and the
+                         #   changed CI, container, infrastructure and manifest files for the
+                         #   prompt; investigationShortfall(), countingToolbox()
     report-schema.ts     #   Zod schemas of the AI report (claims, summary, files, findings) + the
                          #   JSON schema sent to providers
     verification-schema.ts # Zod schema of the verification verdicts
@@ -1034,7 +1040,8 @@ src/
     run-review.ts        #   runReview(): one pass per skill (prompt → provider → parse, or a
                          #   native run → conversion), merged → suggestions → [verify] → select →
                          #   score; skill bodies for native passes without findings in the diff;
-                         #   the claims of the description merged
+                         #   the claims of the description merged; the calls of each pass with
+                         #   tools against its minimum (investigationFloor, a warning below it)
 scripts/smoke.ts         # packs the package, installs the tarball, runs the installed `phada`
 scripts/copy-grammars.ts # build step: the tree-sitter grammars into dist/grammars/
 test/fixtures/bin/       # fake AI CLIs used by the provider and status tests

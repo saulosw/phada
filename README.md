@@ -295,7 +295,11 @@ By default (turn it off with `--no-verify` or `verify: false`), the first pass a
 candidate from confidence 25 instead of 50, and Phada makes a second call to the same AI before
 scoring. It sends the pull request, the diff and the candidates, without their severity and
 confidence, and asks a skeptical reviewer to confirm each one, with its own severity and confidence,
-or reject it. Rejected findings leave the review and are counted in the footer; `--format json`
+or reject it. A finding is confirmed only when it can happen in the repository under review: when
+the effect it claims depends on a condition (a setting, the callers, the log level, a flag, the
+inputs that reach the code), the verifier looks for that condition with the
+[investigation tools](#repository-investigation) and rejects the finding, naming what is missing,
+when the repository does not meet it; how a library behaves on its own is not enough. Rejected findings leave the review and are counted in the footer; `--format json`
 lists them with the reason, and gives the verifier's reason for every confirmed finding too (`null`
 for a finding it did not check). Confirmed findings still below 50 are dropped like any other. A
 finding without an answer keeps its first rating and the footer says how many were left unchecked
@@ -1008,7 +1012,10 @@ gives the AI tools of its own:
 
 The tools only read that commit: no path outside the repository, no symbolic link, no binary or file
 over 1 MB. Each review pass gets up to 40 calls and 512 KB of results; the verifier investigates
-too, with its own budget. What the tools return comes from the pull request head, written by its
+too, with its own budget. The review pass is also asked for a minimum number of calls that grows
+with the diff: one for every 10 KB of the diff after ignored files, at least 3 and at most 15. When
+the diff changes CI workflows, container files, infrastructure code (Terraform, deploy and
+Kubernetes configs) or package manifests, the AI is told to check what each of them affects. What the tools return comes from the pull request head, written by its
 author, so it is data for the AI, never instructions. Findings still point to a line of the diff,
 and the files the AI read to support them show up in their sources. The mirror stays for the
 next review of the repository, which then fetches only what changed.
@@ -1018,8 +1025,11 @@ their own tools stay off. Ollama models use tool calling; a model that does not 
 reviews without the investigation, with a warning.
 
 After the review Phada prints what the AI read, e.g. `Investigated: 6 reads, 3 searches (41.2 KB)`.
-With `--dry-run` the preview lists every call, and the JSON has an `investigation` block with
-each call, its size and whether a finding used it. `--no-investigate` (or `investigate: false`)
+A pass that made fewer calls than its minimum gets a warning, e.g. `Investigated 4 times for a
+124 KB diff (expected at least 12).`; the review is not run again.
+With `--dry-run` the preview lists every call, the minimum and the passes that fell short, and the
+JSON has an `investigation` block with each call, its size and whether a finding used it, and
+`floor` with the minimum (`expected`) and those warnings (`shortfalls`). `--no-investigate` (or `investigate: false`)
 reviews the diff and the context only. Without `git`, or when the head cannot be fetched, the
 review runs without the investigation and says why.
 
