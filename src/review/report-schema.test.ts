@@ -31,12 +31,21 @@ describe('REVIEW_REPORT_JSON_SCHEMA', () => {
       'rule',
       'sources',
       'suggestion',
+      'scope',
     ])
     expect(finding?.additionalProperties).toBe(false)
     expect(finding?.properties.fix?.type).toEqual(['string', 'null'])
     expect(finding?.properties.rule?.type).toEqual(['string', 'null'])
     expect(finding?.properties.sources?.type).toBe('array')
     expect(finding?.properties.why?.type).toBe('string')
+  })
+
+  it('limits the scope of a finding to the change or the repository', () => {
+    const scope = report.properties.findings?.items?.properties.scope as unknown as {
+      enum: string[]
+    }
+
+    expect(scope.enum).toEqual(['change', 'repository'])
   })
 
   it('describes the suggestion as a strict object or null', () => {

@@ -127,7 +127,7 @@ describe('review prompt with the repository tools', () => {
     const request = { pullRequest: pullRequestFixture() }
 
     expect(digest(buildReviewPrompt(request, NONCE).instructions)).toBe(
-      '41209a423afde790977b06b0d198ec26242430d284f6fdb63c5fa50313afb5d4',
+      '753869471fbc3c0bb678bbf64b278cf8946c5aedd80b2103bae47fdb871d5264',
     )
     expect(buildReviewPrompt(request, NONCE)).not.toHaveProperty('tools')
   })

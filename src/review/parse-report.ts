@@ -35,7 +35,7 @@ export function parseReviewReport(text: string): ParsedReport {
   const findings = envelope.data.findings.flatMap((item): Finding[] => {
     const parsed = ReportFindingSchema.safeParse(item)
     if (!parsed.success) return []
-    const { rule, sources, suggestion, ...finding } = parsed.data
+    const { rule, sources, suggestion, scope, ...finding } = parsed.data
     const fix = SuggestionSchema.safeParse(suggestion)
     const ruleKey = typeof rule === 'string' ? rule.trim() : ''
     const texts = (Array.isArray(sources) ? sources : [])
@@ -48,6 +48,7 @@ export function parseReviewReport(text: string): ParsedReport {
         ...(ruleKey === '' ? {} : { rule: ruleKey }),
         ...(texts.length === 0 ? {} : { sources: texts }),
         ...(fix.success ? { suggestion: fix.data } : {}),
+        ...(scope === 'repository' ? { scope } : {}),
       },
     ]
   })

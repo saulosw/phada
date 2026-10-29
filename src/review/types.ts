@@ -163,6 +163,10 @@ export interface ReviewTarget {
 
 export type Severity = 'P0' | 'P1' | 'P2'
 
+export type FindingScope = 'change' | 'repository'
+
+export type DebtMode = 'summary' | 'comments' | 'off'
+
 export interface Finding {
   severity: Severity
   confidence: number
@@ -176,6 +180,7 @@ export interface Finding {
   reason?: string
   suggestion?: Suggestion
   skill?: string
+  scope?: FindingScope
 }
 
 export interface Suggestion {

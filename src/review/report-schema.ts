@@ -28,6 +28,8 @@ const REFERENCE_SHAPE = {
   suggestion: SuggestionSchema.nullable(),
 }
 
+const FindingScopeSchema = z.enum(['change', 'repository'])
+
 const FILE_SHAPE = { path: z.string().min(1), change: z.string() }
 
 export const ClaimVerdictSchema = z.enum(['confirmed', 'contradicted', 'unverified'])
@@ -43,6 +45,7 @@ export const ReportFindingSchema = z.object({
   rule: z.unknown().optional(),
   sources: z.unknown().optional(),
   suggestion: z.unknown().optional(),
+  scope: z.unknown().optional(),
 })
 
 export const ReportFileSchema = z.object(FILE_SHAPE)
@@ -61,7 +64,9 @@ export const REVIEW_REPORT_JSON_SCHEMA = providerSchema(
     ),
     summary: z.string(),
     files: z.array(z.strictObject(FILE_SHAPE)),
-    findings: z.array(z.strictObject({ ...FINDING_SHAPE, ...REFERENCE_SHAPE })),
+    findings: z.array(
+      z.strictObject({ ...FINDING_SHAPE, ...REFERENCE_SHAPE, scope: FindingScopeSchema }),
+    ),
   }),
 )
 

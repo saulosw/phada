@@ -12,8 +12,8 @@ const NONCE = '0123456789ab'
 
 describe('buildReviewPrompt', () => {
   it.each([
-    [undefined, '41209a423afde790977b06b0d198ec26242430d284f6fdb63c5fa50313afb5d4'],
-    ['pt-BR', 'a820d8815535a1419f0d015f53cfdfd82fcd190322a670be427e5cd0e53de8c5'],
+    [undefined, '753869471fbc3c0bb678bbf64b278cf8946c5aedd80b2103bae47fdb871d5264'],
+    ['pt-BR', '4e4cab4dbd58d9d34a052def656cc1f7ae2bbf6af1c4cf67cc382b1afa93ad11'],
   ])('keeps the review instructions word for word (language %s)', (language, digest) => {
     const { instructions } = buildReviewPrompt(
       { pullRequest: pullRequestFixture(), language },
@@ -306,6 +306,18 @@ describe('buildReviewPrompt with repository context', () => {
     )
   })
 
+  it('asks whether this change causes each finding or it is debt of the repository', () => {
+    const { instructions } = buildReviewPrompt({ pullRequest: pullRequestFixture() }, NONCE)
+
+    expect(instructions).toContain('"suggestion": null, "scope": "change"}')
+    expect(instructions).toContain(
+      'scope is change when this pull request introduces or worsens the problem,',
+    )
+    expect(instructions).toContain(
+      'and repository when the problem is real but this change neither introduces',
+    )
+  })
+
   it('keeps the diff-only scope and no context sections without context', () => {
     const { instructions, data } = buildReviewPrompt(
       { pullRequest: pullRequestFixture(), context: reviewContextFixture({ rules: [], docs: [] }) },
@@ -415,7 +427,7 @@ describe('buildReviewPrompt with repository context', () => {
 
 describe('reviewer lens', () => {
   const pullRequest = pullRequestFixture()
-  const DEFAULT_DIGEST = '41209a423afde790977b06b0d198ec26242430d284f6fdb63c5fa50313afb5d4'
+  const DEFAULT_DIGEST = '753869471fbc3c0bb678bbf64b278cf8946c5aedd80b2103bae47fdb871d5264'
   const digest = (text: string) => createHash('sha256').update(text).digest('hex')
 
   it('keeps the instructions word for word with the built-in phada pass', () => {

@@ -26,6 +26,33 @@ describe('parseReviewReport', () => {
     })
   })
 
+  it('reads a finding without a scope as a finding of the change', () => {
+    const parsed = parseReviewReport(
+      reviewReportJson({
+        findings: [
+          { ...findingFixture({ title: 'no scope' }) },
+          { ...findingFixture({ title: 'change' }), scope: 'change' },
+          { ...findingFixture({ title: 'unknown' }), scope: 'everywhere' },
+        ],
+      }),
+    )
+
+    expect(parsed.findings.map((finding) => finding.scope)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ])
+    expect(parsed.invalid).toBe(0)
+  })
+
+  it('keeps the repository scope of a finding the change did not cause', () => {
+    const parsed = parseReviewReport(
+      reviewReportJson({ findings: [{ ...findingFixture(), scope: 'repository' }] }),
+    )
+
+    expect(parsed.findings).toEqual([findingFixture({ scope: 'repository' })])
+  })
+
   it('reads the claims of the description with their verdict and evidence', () => {
     const claims = [
       {

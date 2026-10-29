@@ -50,7 +50,7 @@ Use that number for line. Removed lines have no number: point
 to the nearest numbered line.`
 
 export const OUTPUT_FORMAT = `The review is a single JSON object shaped like this:
-{"claims": [{"claim": "...", "verdict": "unverified", "evidence": "..."}], "summary": "...", "files": [{"path": "src/app.ts", "change": "..."}], "findings": [{"severity": "P1", "confidence": 90, "file": "src/app.ts", "line": <number>, "title": "...", "why": "...", "fix": "...", "rule": null, "sources": [], "suggestion": null}]}
+{"claims": [{"claim": "...", "verdict": "unverified", "evidence": "..."}], "summary": "...", "files": [{"path": "src/app.ts", "change": "..."}], "findings": [{"severity": "P1", "confidence": 90, "file": "src/app.ts", "line": <number>, "title": "...", "why": "...", "fix": "...", "rule": null, "sources": [], "suggestion": null, "scope": "change"}]}
 - summary: two to four sentences on what the pull request changes, as the code
   shows it; never state an unverified or contradicted claim of the description as fact.
 - files: one entry per changed file worth mentioning, with a one-line description of its change.
@@ -65,6 +65,10 @@ export const OUTPUT_FORMAT = `The review is a single JSON object shaped like thi
   original copies those lines exactly as shown, without the numbers;
   replacement is the code that takes their place, with the same indentation.
   Use null when the fix is not a local edit of those lines.
+  scope is change when this pull request introduces or worsens the problem,
+  and repository when the problem is real but this change neither introduces
+  nor worsens it, such as code nothing calls that the change only moves or
+  touches: debt of the repository, listed apart from the comments on the change.
 Use an empty findings array when nothing reaches the bar. No markdown, no praise.`
 
 export const DESCRIPTION_CLAIMS = `The title and description in PHADA_PR are the author's account of the change,
