@@ -7,6 +7,18 @@ output can change between minor versions.
 
 ## Unreleased
 
+## 0.11.1 - 2026-11-03
+
+### Fixed
+
+- A skill that runs natively and reviewed nothing (for instance one that is out of its scope in the
+  repository) no longer adds the claims of the description as `unverified` with "not checked by
+  the guide": a native skill adds only the claims its output confirms or contradicts.
+- The claims of several skills are each listed once: claims that differ only in case, spacing or
+  punctuation, or where one only extends the other (three words or more), are merged with the
+  strongest verdict, and the `unverified` claims of a skill are left out once an earlier skill
+  listed the claims.
+
 ## 0.11.0 - 2026-10-29
 
 ### Added
