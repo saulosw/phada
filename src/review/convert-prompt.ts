@@ -24,10 +24,10 @@ review report.
 - title, why and fix: in the words of the output.
 - claims: each concrete, checkable thing the title or description of the pull
   request asserts the change does or guarantees, such as "X prevents Y" or
-  "covers Z". The verdict comes from the output alone: confirmed or contradicted
-  when the output says so, with its evidence (file:line); unverified when the
-  output does not settle it, with the evidence "not checked by the guide". Use an
-  empty claims array when the title and description assert nothing checkable.`
+  "covers Z", that the output confirms or contradicts: the verdict confirmed or
+  contradicted from the output alone, with its evidence (file:line). Leave out
+  every claim the output does not settle, and use an empty claims array when it
+  settles none, as when the guide reviewed nothing.`
 }
 
 const CONVERT_DATA = `The user message holds the pull request metadata, the diff and the output of the

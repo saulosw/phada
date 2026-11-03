@@ -1071,7 +1071,7 @@ describe('runReview with several skill passes', () => {
     expect(result.dropped.duplicate).toBe(1)
   })
 
-  it('merges the claims of every pass, one per text, keeping the strongest verdict', async () => {
+  it('merges the claims of every pass, one per claim, keeping the strongest verdict', async () => {
     const claim = (text: string, verdict: string, evidence = '') => ({
       claim: text,
       verdict,
@@ -1093,8 +1093,8 @@ describe('runReview with several skill passes', () => {
           ...OUTPUT,
           text: reviewReportJson({
             claims: [
-              claim('prevents two  runs on staging', 'contradicted', 'ci.yml:9 groups by ref'),
-              claim('Covers the empty cart', 'confirmed', 'shop.test.ts:40'),
+              claim('prevents two  runs on staging.', 'contradicted', 'ci.yml:9 groups by ref'),
+              claim('Covers the empty cart of a guest', 'confirmed', 'shop.test.ts:40'),
               claim('Only runs on main', 'unverified'),
             ],
           }),
@@ -1103,9 +1103,8 @@ describe('runReview with several skill passes', () => {
     )
 
     expect(result.claims).toEqual([
-      claim('prevents two  runs on staging', 'contradicted', 'ci.yml:9 groups by ref'),
-      claim('Covers the empty cart', 'confirmed', 'shop.test.ts:40'),
-      claim('Only runs on main', 'unverified'),
+      claim('prevents two  runs on staging.', 'contradicted', 'ci.yml:9 groups by ref'),
+      claim('Covers the empty cart of a guest', 'confirmed', 'shop.test.ts:40'),
     ])
   })
 
@@ -1386,6 +1385,92 @@ describe('runReview with a native skill pass', () => {
       },
     ])
     expect(outcome.result.skillBodies).toBeUndefined()
+  })
+
+  it('keeps only the claims the skill output settles', async () => {
+    const settled = {
+      claim: 'Prevents two runs on staging',
+      verdict: 'confirmed',
+      evidence: 'ci.yml:4',
+    }
+    const converted = reviewReportJson({
+      claims: [
+        settled,
+        {
+          claim: 'Covers the empty cart',
+          verdict: 'unverified',
+          evidence: 'not checked by the guide',
+        },
+      ],
+    })
+    const { outcome } = await nativeReview([NATIVE], [{ ...OUTPUT, text: converted }])
+
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(outcome.result.claims).toEqual([settled])
+    expect(outcome.result.warnings).toBeUndefined()
+  })
+
+  it('lists each claim once when a native skill out of its scope reviewed nothing', async () => {
+    const checked = [
+      'Adds the transfers domain to the end-to-end suite',
+      'Creates the test account before each scenario',
+      'Deletes the test data after each scenario',
+      'Checks the receipt of every transfer kind',
+      'Reuses the login steps of the payments domain',
+      'Retries a transfer without publishing to the topics of Pix, TED and P2P',
+      'Runs the new scenarios only on the staging environment',
+    ].map((text, index) => ({
+      claim: text,
+      verdict: 'confirmed',
+      evidence: `features/transfers/steps.ts:${String(10 + index)}`,
+    }))
+    const reworded = [
+      'adds the transfers domain to the end-to-end suite.',
+      'Creates the test account before each scenario of the suite',
+      'Deletes the test data after each scenario',
+      'Checks the receipt of every transfer kind.',
+      'Reuses the login steps of the payments domain',
+      'Retries a transfer without publishing to the topics.',
+      'Runs the new scenarios only on staging',
+    ].map((text) => ({ claim: text, verdict: 'unverified', evidence: 'not checked by the guide' }))
+    const outOfScope = skillRun({
+      text: 'This guide reviews serverless repositories; this repository is not one. Nothing to review.',
+    })
+
+    const { outcome } = await nativeReview(
+      [PHADA, NATIVE],
+      [
+        { ...OUTPUT, text: reviewReportJson({ claims: checked }) },
+        { ...OUTPUT, text: reviewReportJson({ findings: [], claims: reworded }) },
+      ],
+      outOfScope,
+    )
+
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(outcome.result.claims).toEqual(checked)
+  })
+
+  it('keeps the unverified claims of the Phada pass that runs after a native skill', async () => {
+    const settled = {
+      claim: 'Prevents two runs on staging',
+      verdict: 'confirmed',
+      evidence: 'ci.yml:4',
+    }
+    const open = {
+      claim: 'Only runs on main',
+      verdict: 'unverified',
+      evidence: 'no workflow filter',
+    }
+    const { outcome } = await nativeReview(
+      [NATIVE, PHADA],
+      [
+        { ...OUTPUT, text: reviewReportJson({ findings: [], claims: [settled] }) },
+        { ...OUTPUT, text: reviewReportJson({ claims: [settled, open] }) },
+      ],
+    )
+
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(outcome.result.claims).toEqual([settled, open])
   })
 
   it('sums the tokens of a native skill run and its conversion in its pass', async () => {

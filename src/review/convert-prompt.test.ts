@@ -43,13 +43,13 @@ describe('buildConvertPrompt', () => {
     )
   })
 
-  it('takes the verdict of each claim of the description from the output alone', () => {
-    expect(prompt.instructions).toContain('"claims": [{"claim": "...", "verdict": "unverified"')
+  it('asks only for the claims of the description the output settles', () => {
     expect(prompt.instructions).toContain(
       '- claims: each concrete, checkable thing the title or description of the pull',
     )
-    expect(prompt.instructions).toContain('The verdict comes from the output alone')
-    expect(prompt.instructions).toContain('"not checked by the guide"')
+    expect(prompt.instructions).toContain('that the output confirms or contradicts')
+    expect(prompt.instructions).toContain('every claim the output does not settle')
+    expect(prompt.instructions).not.toContain('not checked by the guide')
   })
 
   it('asks for the review language', () => {
@@ -64,7 +64,7 @@ describe('buildConvertPrompt', () => {
 
   it('keeps its fixed text', () => {
     expect(createHash('sha256').update(prompt.instructions).digest('hex')).toBe(
-      'aabc4f4c89f0a6794681d830f75f24cb299c8248d8d700e32c52a3d1062e9c71',
+      '7ff49ce116eb01f8d3e7789ff34009bb8bd524c9868368050a7e01958b314f25',
     )
   })
 })
