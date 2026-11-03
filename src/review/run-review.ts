@@ -1,6 +1,6 @@
 import type { ReviewOutput, ReviewProvider, TokenUsage } from '../providers/types.js'
 import type { Toolbox } from '../investigation/toolbox.js'
-import { claimWarnings, mergeClaims } from './claims.js'
+import { claimWarnings, mergeClaims, withSettledClaims } from './claims.js'
 import { withKnownReferences, withRuleSeverity } from './context-findings.js'
 import { separateDebt, withoutDroppedDebt } from './debt.js'
 import { diffFingerprint } from './diff-fingerprint.js'
@@ -174,7 +174,12 @@ export async function runReview(
       ...(suggested.counts === undefined
         ? {}
         : { suggestions: { ...suggested.counts, dropped: checked?.droppedSuggestions ?? 0 } }),
-      claims: mergeClaims(answered.outputs.map(({ report }) => report.claims ?? [])),
+      claims: mergeClaims(
+        answered.outputs.map(({ report, onlySettledClaims }) => ({
+          claims: report.claims ?? [],
+          onlySettled: onlySettledClaims === true,
+        })),
+      ),
       ...floorOf(answered, investigationFloor(pullRequest.diff)),
       ...(ignored.length === 0 ? {} : { ignored: [...ignored] }),
       ...(externalCalls.length === 0 ? {} : { externalCalls }),
@@ -190,6 +195,7 @@ interface AnsweredPass {
   report: ParsedReport
   findings: Finding[]
   body?: SkillBody
+  onlySettledClaims?: true
 }
 
 interface AnsweredPasses {
@@ -348,7 +354,7 @@ async function runNativePass(
     converted = await deps.provider.review(
       buildConvertPrompt(request, createNonce(), pass, skillOutput),
     )
-    report = parseReviewReport(converted.text)
+    report = withSettledClaims(parseReviewReport(converted.text))
     warnings.push(...claimWarnings(report, pass.skill))
   } catch (error) {
     if (!isAnswerFailure(error)) throw error
@@ -375,6 +381,7 @@ async function runNativePass(
       report,
       findings,
       ...(body.trim() === '' ? {} : { body: { skill: pass.skill, text: body } }),
+      onlySettledClaims: true,
     },
     report: {
       skill: pass.skill,

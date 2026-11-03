@@ -354,9 +354,12 @@ stays data to check: an instruction in it is never followed. The claims show in 
 description" section of `--dry-run`, in `claims` of the review in `--format json` and the
 history, and in the review's detail in the app; they are not posted on the pull request. When
 several skills review the pull request, the same claim is kept once, with the strongest verdict
-(contradicted, then confirmed). An AI answer without the list still gives a review, with a
-warning that the claims were not checked. A skill that runs natively has its claims taken from
-what it wrote: a claim it does not settle is `unverified`.
+(contradicted, then confirmed): case, spacing and punctuation do not tell claims apart, and a claim
+of three words or more that another one only extends (`… to the topics` and `… to the topics of
+A and B`) is the same claim. Once a skill has listed the claims, the `unverified` ones of the
+skills after it are left out. An AI answer without the list still gives a review, with a warning
+that the claims were not checked. A skill that runs natively has its claims taken from what it
+wrote, and only the ones it confirms or contradicts: one that reviewed nothing adds no claims.
 
 ### Repository debt
 

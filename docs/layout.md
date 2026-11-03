@@ -1115,8 +1115,10 @@ src/
     json-objects.ts      #   top-level JSON objects found in a text
     parse-report.ts      #   parseReviewReport(): a missing claims list as undefined, claims of
                          #   the wrong shape left out and counted
-    claims.ts            #   mergeClaims(): the claims of every pass, one per text, the strongest
-                         #   verdict kept; claimWarnings()
+    claims.ts            #   mergeClaims(): the claims of every pass, one per claim across passes
+                         #   (punctuation left out, or one extending the other), the strongest
+                         #   verdict kept, later unverified ones left out once a pass listed
+                         #   them; withSettledClaims() for a native skill; claimWarnings()
     parse-verification.ts #  parseVerification()
     verify-findings.ts   #   verifyCandidates(), applyVerdicts()
     context-findings.ts  #   known rule and sources on each finding (ci:<name> of a failing check);
