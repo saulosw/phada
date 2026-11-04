@@ -298,6 +298,17 @@ export const portuguese: UiMessages = {
     },
     detail: {
       score: 'Nota',
+      coverage: 'Cobertura',
+      coverageLevels: { partial: 'parcial', low: 'baixa' },
+      declared: 'declarada',
+      coverageFiles: (covered, total) =>
+        `${covered} de ${total} ${total === 1 ? 'arquivo' : 'arquivos'}`,
+      coverageGaps: {
+        missing: (count) => `${count} sem revisão declarada`,
+        notCompared: (count) =>
+          count === 1 ? '1 novo não comparado' : `${count} novos não comparados`,
+        skipped: (count) => (count === 1 ? '1 pulado' : `${count} pulados`),
+      },
       verdict: 'Veredito',
       status: 'Situação',
       reviewed: 'Revisado',
@@ -315,6 +326,7 @@ export const portuguese: UiMessages = {
       debtMark: 'débito',
       closeToCutMark: 'rente ao corte',
       tokens: 'Tokens',
+      continuationPass: 'continuação',
       tokenCounts: (input, cached, output) =>
         `${input} de entrada${cached === undefined ? '' : ` (${cached} em cache)`} · ${output} de saída`,
       notReported: 'não informado',

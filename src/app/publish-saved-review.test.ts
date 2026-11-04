@@ -159,6 +159,38 @@ describe('publishSavedReview', () => {
     expect(post?.rendered.comments[0]?.body).toContain('confiança 95')
   })
 
+  it('posts the coverage label of a saved review that left files out', async () => {
+    const coverage: ReviewResult['coverage'] = {
+      level: 'low',
+      covered: 2,
+      total: 9,
+      declaredOnly: 0,
+      skipped: 0,
+      gaps: [{ path: 'src/cart.ts', kind: 'missing', reason: 'not declared' }],
+      verified: true,
+      reason: '2 of 9 files reviewed.',
+    }
+    const json = formatReviewJson(
+      PR,
+      { status: 'reviewed', result: { ...RESULT, coverage } },
+      DRY_RUN,
+      null,
+      null,
+      null,
+      null,
+      null,
+      undefined,
+      { language: 'pt-BR' },
+    )
+    const { deps, posted } = fakes({ run: storedRun({}, json) })
+
+    await publishSavedReview({ id: 7, force: false }, deps)
+
+    expect(posted[0]?.rendered.body).toContain(
+      'cobertura baixa: 2 de 9 arquivos (1 arquivo sem revisão declarada)',
+    )
+  })
+
   it('refuses when the pull request moved since the run, posting nothing', async () => {
     const { deps, posted } = fakes({ head: NEWER })
 

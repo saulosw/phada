@@ -88,6 +88,7 @@ function detail(): ReviewDetail {
     pullRequest: { url: 'https://github.com/acme/shop/pull/1', title: 'Fix the cart total' },
     verdict: 'blocking',
     score: { value: 2, reason: 'A P0 bug in the cart total.' },
+    coverage: null,
     summary: 'The cart total drops the discount when a coupon and a gift card are used together.',
     claims: [],
     findings: [
@@ -452,6 +453,106 @@ describe('the Reviews screen', () => {
     expect(text).toMatch(/recheck\s+not reported\n/)
     expect(text).toMatch(/total\s+932\.0k in \(640\.0k cached\) · 11\.0k out\n/)
     expect(text).not.toContain('\u0007')
+  })
+
+  it('shows a partial or low coverage under the score, declared when not verified, in 80×24', async () => {
+    const coverage = (changes: Partial<NonNullable<ReviewDetail['coverage']>> = {}) => ({
+      ...detail(),
+      coverage: {
+        level: 'low' as const,
+        covered: 11,
+        total: 63,
+        verified: true,
+        gaps: { missing: 52, notCompared: 0, skipped: 0 },
+        ...changes,
+      },
+    })
+    const low = openReviews({ detail: () => coverage() })
+    await low.showing('Enter open')
+    await low.press(KEYS.enter)
+    await low.showing('Coverage')
+    expectFits(low.frame(), { columns: 80, rows: 24 })
+    expect(low.frame()).toMatch(
+      /Score\s+2\/5 — .*\n\s*Coverage\s+low · 11 of 63 files · 52 not accounted for\n/,
+    )
+
+    const partial = openReviews({
+      detail: () =>
+        coverage({
+          level: 'partial',
+          covered: 6,
+          total: 9,
+          verified: false,
+          gaps: { missing: 1, notCompared: 1, skipped: 1 },
+        }),
+    })
+    await partial.showing('Enter open')
+    await partial.press(KEYS.enter)
+    await partial.showing('Coverage')
+    expect(partial.frame()).toMatch(
+      /Coverage\s+partial \(declared\) · 6 of 9 files · 1 not accounted for · 1 new not\s+compared · 1 skipped\n/,
+    )
+  })
+
+  it('shows no coverage line when the review covered every file or has no coverage', async () => {
+    for (const coverage of [
+      {
+        level: 'full' as const,
+        covered: 9,
+        total: 9,
+        verified: true,
+        gaps: { missing: 0, notCompared: 0, skipped: 0 },
+      },
+      null,
+    ]) {
+      const { frame, press, showing } = openReviews({ detail: () => ({ ...detail(), coverage }) })
+      await showing('Enter open')
+      await press(KEYS.enter)
+      await showing('Score')
+      expect(frame()).not.toContain('Coverage')
+    }
+  })
+
+  it('names the coverage in the language of the app', async () => {
+    const { press, showing } = openReviews({
+      language: 'pt-BR',
+      detail: () => ({
+        ...detail(),
+        coverage: {
+          level: 'low',
+          covered: 11,
+          total: 63,
+          verified: false,
+          gaps: { missing: 52, notCompared: 0, skipped: 0 },
+        },
+      }),
+    })
+    await showing('Enter')
+    await press(KEYS.enter)
+    await showing('baixa (declarada) · 11 de 63 arquivos · 52 sem revisão declarada')
+  })
+
+  it('names the continuation pass in the tokens in the language of the app', async () => {
+    const { frame, press, showing } = openReviews({
+      language: 'pt-BR',
+      detail: () => ({
+        ...detail(),
+        findings: [],
+        worthChecking: [],
+        published: [],
+        usage: {
+          passes: [
+            { pass: 'review', skill: null, tokens: { input: 900, cached: null, output: 40 } },
+            { pass: 'continuation', skill: null, tokens: { input: 300, cached: null, output: 20 } },
+          ],
+          total: null,
+        },
+      }),
+    })
+    await showing('Enter')
+    await press(KEYS.enter)
+    await showing('Tokens')
+    expect(frame()).toMatch(/continuação\s+300 de entrada · 20 de saída\n/)
   })
 
   it('names the tokens in the language of the app', async () => {

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { CiSummary } from '../context/types.js'
-import type { Finding, RecheckVerdict, ReviewResult } from '../review/types.js'
+import type { Coverage, Finding, RecheckVerdict, ReviewResult } from '../review/types.js'
 
 const SuggestionSchema = z.object({
   startLine: z.number(),
@@ -26,6 +26,47 @@ const FindingSchema = z.object({
   closeToCut: z.boolean(),
 })
 
+const LevelSchema = z.enum(['full', 'partial', 'low'])
+
+const CoverageSchema = z.object({
+  level: LevelSchema,
+  covered: z.number(),
+  total: z.number(),
+  declaredOnly: z.number(),
+  skipped: z.number(),
+  gaps: z.array(
+    z.object({
+      path: z.string(),
+      kind: z.enum(['missing', 'skipped', 'not-compared', 'declared-only']),
+      reason: z.string().nullable(),
+    }),
+  ),
+  verified: z.boolean(),
+  reason: z.string(),
+  continuation: z
+    .object({
+      before: z.object({ level: LevelSchema, covered: z.number(), total: z.number() }),
+    })
+    .nullable(),
+})
+
+export function storedCoverage(value: unknown): Coverage | undefined {
+  const parsed = CoverageSchema.safeParse(value)
+  return parsed.success ? coverageOf(parsed.data) : undefined
+}
+
+function coverageOf({ gaps, continuation, ...stored }: z.infer<typeof CoverageSchema>): Coverage {
+  return {
+    ...stored,
+    gaps: gaps.map(({ path, kind, reason }) => ({
+      path,
+      kind,
+      ...(reason === null ? {} : { reason }),
+    })),
+    ...(continuation === null ? {} : { continuation }),
+  }
+}
+
 const ReviewSchema = z.object({
   score: z.object({
     value: z.union([
@@ -38,6 +79,7 @@ const ReviewSchema = z.object({
     ]),
     reason: z.string(),
   }),
+  coverage: z.unknown(),
   summary: z.string(),
   claims: z.array(
     z.object({
@@ -114,6 +156,7 @@ export function storedReview(json: unknown): StoredReview | undefined {
   if (!parsed.success) return undefined
   const { pullRequest, review, publication, ci } = parsed.data
   const { provider, dropped, language, diffFingerprint, skillBodies } = review
+  const coverage = storedCoverage(review.coverage)
   const result: ReviewResult = {
     target: {
       repo: pullRequest.repo,
@@ -142,6 +185,7 @@ export function storedReview(json: unknown): StoredReview | undefined {
       ...(dropped.debt === 0 ? {} : { debt: dropped.debt }),
     },
     claims: review.claims,
+    ...(coverage === undefined ? {} : { coverage }),
     ...(review.ignored.length === 0 ? {} : { ignored: review.ignored }),
     ...(skillBodies === null || skillBodies.length === 0 ? {} : { skillBodies }),
   }

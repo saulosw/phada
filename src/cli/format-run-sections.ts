@@ -4,7 +4,7 @@ import type { ContextReport } from '../context/types.js'
 import type { ImpactReport } from '../graph/report.js'
 import type { InvestigationReport } from '../investigation/tools/report.js'
 import type { UsageReport } from '../review/token-usage.js'
-import type { PassReport } from '../review/types.js'
+import type { Coverage, PassReport } from '../review/types.js'
 import { formatCiSection } from './format-ci.js'
 import { formatClaimsSection } from './format-claims.js'
 import type { ClaimLine } from './format-claims.js'
@@ -29,12 +29,13 @@ export interface RunSections {
   related?: RelatedReport
   passes?: { reports: readonly PassReport[]; fixFor?: BlockedFix }
   investigation?: InvestigationReport
+  coverage?: Coverage
   usage?: UsageReport
 }
 
 export function formatRunSections(sections: RunSections): string[] {
   const { closeToCut, claims, context, conversation, ci, impact, related, passes } = sections
-  const { investigation, usage } = sections
+  const { investigation, coverage, usage } = sections
   return [
     closeToCut && formatCloseToCutSection(closeToCut.findings, closeToCut.minConfidence),
     claims && formatClaimsSection(claims),
@@ -44,7 +45,7 @@ export function formatRunSections(sections: RunSections): string[] {
     impact && formatImpactSection(impact.report, impact.text),
     related !== undefined && related.status !== 'none' && formatRelatedSection(related),
     passes && formatPassesSection(passes.reports, passes.fixFor),
-    investigation && formatInvestigationSection(investigation),
+    investigation && formatInvestigationSection(investigation, coverage),
     usage && formatUsageSection(usage),
   ].filter((section): section is string => typeof section === 'string')
 }

@@ -1,5 +1,7 @@
 import { destinationOf } from '../publish/feedback.js'
 import { numberOf, objectOf, parseJson, stringOf, stringsOf } from './stored-json.js'
+import { storedCoverage } from './stored-review.js'
+import type { CoverageGapKind, CoverageLevel } from '../review/types.js'
 import type { Destination, SignalKind } from '../publish/feedback.js'
 import type {
   FindingFilter,
@@ -91,11 +93,20 @@ export interface StoredUsage {
   total: StoredTokens | null
 }
 
+export interface StoredCoverage {
+  level: CoverageLevel
+  covered: number
+  total: number
+  verified: boolean
+  gaps: { missing: number; notCompared: number; skipped: number }
+}
+
 export interface ReviewDetail {
   run: RunRecord
   pullRequest: { url: string; title: string | null }
   verdict: NonNullable<RunRecord['verdict']> | null
   score: { value: number; reason: string | null } | null
+  coverage: StoredCoverage | null
   summary: string | null
   claims: StoredClaim[]
   findings: StoredFinding[]
@@ -174,6 +185,7 @@ export function reviewDetailOf(stored: RunRecord, published: FeedbackFinding[]):
     verdict: run.verdict ?? null,
     score:
       scoreValue === null ? null : { value: scoreValue, reason: stringOf(score?.reason) ?? null },
+    coverage: coverageSummary(review?.coverage),
     summary: stringOf(review?.summary) ?? null,
     claims: storedClaims(review?.claims),
     findings: storedFindings(review?.findings),
@@ -259,6 +271,24 @@ export function storedClaims(value: unknown): StoredClaim[] {
     if (text === undefined || verdict === undefined) return []
     return [{ claim: text, verdict, evidence: stringOf(claim?.evidence) ?? null }]
   })
+}
+
+function coverageSummary(value: unknown): StoredCoverage | null {
+  const coverage = storedCoverage(value)
+  if (coverage === undefined) return null
+  const { level, covered, total, verified, gaps } = coverage
+  const count = (kind: CoverageGapKind) => gaps.filter((gap) => gap.kind === kind).length
+  return {
+    level,
+    covered,
+    total,
+    verified,
+    gaps: {
+      missing: count('missing'),
+      notCompared: count('not-compared'),
+      skipped: count('skipped'),
+    },
+  }
 }
 
 function storedPublication(value: unknown): StoredPublication | null {

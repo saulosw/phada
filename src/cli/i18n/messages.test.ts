@@ -1,5 +1,27 @@
 import { describe, expect, it } from 'vitest'
+import type { Coverage, CoverageGap } from '../../review/types.js'
 import { messagesFor } from './messages.js'
+
+function coverage(level: Coverage['level'], gaps: CoverageGap[], verified = true): Coverage {
+  const lowering = gaps.filter(({ kind }) => kind !== 'declared-only').length
+  return {
+    level,
+    covered: 9 - lowering,
+    total: 9,
+    declaredOnly: gaps.length - lowering,
+    skipped: gaps.filter(({ kind }) => kind === 'skipped').length,
+    gaps,
+    verified,
+    reason: 'from the engine',
+  }
+}
+
+const gap = (kind: CoverageGap['kind'], index = 0): CoverageGap => ({
+  path: `src/${kind}-${index}.ts`,
+  kind,
+})
+const ONE_OF_EACH = [gap('missing'), gap('not-compared'), gap('skipped'), gap('declared-only')]
+const TWO_OF_EACH = [...ONE_OF_EACH, ...ONE_OF_EACH.map(({ kind }) => gap(kind, 1))]
 
 describe('messagesFor', () => {
   it.each(['pt', 'pt-BR', 'PT-pt'])('uses Portuguese for %s', (language) => {
@@ -127,5 +149,35 @@ describe('Spanish texts', () => {
     expect(es.github.fixedThreads(2, 'a1b2c3d')).toBe(
       '2 comentarios de revisiones anteriores están corregidos en a1b2c3d.',
     )
+  })
+})
+
+describe.each([
+  [
+    'en',
+    'partial coverage: 6 of 9 files (1 file not accounted for, 1 new file not compared with existing code, 1 file skipped)',
+    'low coverage (declared): 3 of 9 files (2 files not accounted for, 2 new files not compared with existing code, 2 files skipped)',
+  ],
+  [
+    'pt',
+    'cobertura parcial: 6 de 9 arquivos (1 arquivo sem revisão declarada, 1 arquivo novo não comparado com o código existente, 1 arquivo pulado)',
+    'cobertura baixa (declarada): 3 de 9 arquivos (2 arquivos sem revisão declarada, 2 arquivos novos não comparados com o código existente, 2 arquivos pulados)',
+  ],
+  [
+    'es',
+    'cobertura parcial: 6 de 9 archivos (1 archivo sin revisión declarada, 1 archivo nuevo no comparado con el código existente, 1 archivo omitido)',
+    'cobertura baja (declarada): 3 de 9 archivos (2 archivos sin revisión declarada, 2 archivos nuevos no comparados con el código existente, 2 archivos omitidos)',
+  ],
+])('the %s coverage label', (language, partial, lowDeclared) => {
+  const messages = messagesFor(language)
+
+  it('names the level, the counts and the gaps that lower it, never the declared-only reads', () => {
+    expect(messages.coverage(coverage('partial', ONE_OF_EACH))).toBe(partial)
+    expect(messages.coverage(coverage('low', TWO_OF_EACH, false))).toBe(lowDeclared)
+  })
+
+  it('is empty at full coverage', () => {
+    expect(messages.coverage(coverage('full', []))).toBe('')
+    expect(messages.coverage(coverage('full', [gap('declared-only')]))).toBe('')
   })
 })

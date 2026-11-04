@@ -1,6 +1,12 @@
 import type { CiState } from '../../context/types.js'
 import type { ScoreFocus } from '../../review/score.js'
-import type { DroppedFindings, ScoreValue, Severity, Verification } from '../../review/types.js'
+import type {
+  Coverage,
+  DroppedFindings,
+  ScoreValue,
+  Severity,
+  Verification,
+} from '../../review/types.js'
 import { english } from './en.js'
 import { spanish } from './es.js'
 import { portuguese } from './pt.js'
@@ -13,6 +19,7 @@ export interface CiNames {
 export interface Messages {
   scoreLabels: Readonly<Record<ScoreValue, string>>
   scoreReason(focus: ScoreFocus | undefined): string
+  coverage(coverage: Coverage): string
   confidence: string
   fix: string
   basedOn: string

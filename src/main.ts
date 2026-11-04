@@ -176,6 +176,7 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
           language: command.language,
           minConfidence: command.minConfidence,
           verify: command.verify,
+          ...(command.continuation === undefined ? {} : { continuation: command.continuation }),
           investigate: command.investigate,
           ...(command.resolveThreads === undefined
             ? {}
@@ -347,6 +348,7 @@ function dryRunSections(
     related: reviewed.related,
     ...(result?.passes === undefined ? {} : { passes: { reports: result.passes, fixFor } }),
     investigation: reviewed.investigation,
+    ...(result?.coverage === undefined ? {} : { coverage: result.coverage }),
     usage: runUsage(run),
   }
 }

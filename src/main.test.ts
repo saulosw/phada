@@ -1705,6 +1705,46 @@ describe('run with config and repository context', () => {
     expect(flagged.prompts).toHaveLength(1)
   })
 
+  it('continues a low coverage by default and turns it off from the config or --no-continuation', async () => {
+    const lowCoverage = () =>
+      Promise.resolve({ text: reviewReportJson({ files: [], findings: [] }), durationMs: 10 })
+    const plain = harness({ review: lowCoverage })
+    const configured = harness({
+      files: memoryFiles({ '/cfg/config.yml': 'review:\n  continuation: false' }),
+      review: lowCoverage,
+    })
+    const flagged = harness({ review: lowCoverage })
+    const review = ['review', 'acme/shop#12', '--dry-run', '--no-verify']
+
+    await run(review, plain.deps)
+    await run(review, configured.deps)
+    await run([...review, '--no-continuation'], flagged.deps)
+
+    expect(plain.prompts).toHaveLength(2)
+    expect(plain.prompts[1]?.data).toContain('<<<PHADA_COVERAGE_')
+    expect(configured.prompts).toHaveLength(1)
+    expect(flagged.prompts).toHaveLength(1)
+  })
+
+  it('shows a low coverage next to the score, in the investigation and in the cost of each pass', async () => {
+    const lowCoverage = () =>
+      Promise.resolve({ text: reviewReportJson({ files: [], findings: [] }), durationMs: 10 })
+    const once = harness({ review: lowCoverage })
+    const continued = harness({ review: lowCoverage })
+    const review = ['review', 'acme/shop#12', '--dry-run', '--no-verify']
+
+    await run([...review, '--no-continuation'], once.deps)
+    await run(review, continued.deps)
+
+    expect(once.stdout()).toMatch(
+      /## 🦋 5\/5 \(ready to merge\) · low coverage: 0 of \d+ files? \(/,
+    )
+    expect(once.stdout()).toMatch(/\nCoverage: low, 0 of \d+ files? — /)
+    expect(once.stdout()).not.toContain('after a continuation pass')
+    expect(continued.stdout()).toContain('after a continuation pass (was low, 0 of')
+    expect(continued.stderr()).toMatch(/Tokens: review [^;]+; continuation /)
+  })
+
   it('turns verification on from the config and off with --no-verify', async () => {
     const files = () => memoryFiles({ '/cfg/config.yml': 'verify: true' })
     const on = harness({ files: files(), review: () => Promise.resolve(WITH_FINDING) })

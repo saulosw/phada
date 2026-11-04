@@ -297,6 +297,15 @@ export const english: UiMessages = {
     },
     detail: {
       score: 'Score',
+      coverage: 'Coverage',
+      coverageLevels: { partial: 'partial', low: 'low' },
+      declared: 'declared',
+      coverageFiles: (covered, total) => `${covered} of ${total} ${total === 1 ? 'file' : 'files'}`,
+      coverageGaps: {
+        missing: (count) => `${count} not accounted for`,
+        notCompared: (count) => `${count} new not compared`,
+        skipped: (count) => `${count} skipped`,
+      },
       verdict: 'Verdict',
       status: 'Status',
       reviewed: 'Reviewed',
@@ -314,6 +323,7 @@ export const english: UiMessages = {
       debtMark: 'debt',
       closeToCutMark: 'close to the cut',
       tokens: 'Tokens',
+      continuationPass: 'continuation',
       tokenCounts: (input, cached, output) =>
         `${input} in${cached === undefined ? '' : ` (${cached} cached)`} · ${output} out`,
       notReported: 'not reported',
