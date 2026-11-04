@@ -7,6 +7,32 @@ output can change between minor versions.
 
 ## Unreleased
 
+## 0.13.0 - 2026-11-04
+
+### Added
+
+- Coverage of each review: the AI accounts for every changed file (judged from the diff, read
+  whole, compared with existing code, or skipped with a reason) and Phada checks that account
+  against what the tools read. A file said to be read but never read counts only as seen in the
+  diff, and a new file of 50 or more added lines counts only when it was compared with existing
+  code read outside the diff, or with the file of the diff its code moved out of. Below full, the level shows next to the score, e.g.
+  `5/5 · low coverage: 11 of 63 files (52 files not accounted for)`, in the terminal, the body
+  posted on the pull request (in the review language), `--dry-run` (with each file left out),
+  `--format json` (`review.coverage`), `phada history` and the review's detail and run result in
+  the app. The score and the verdict do not change.
+- A review with low coverage (below 70% of the files) runs one continuation pass over the files
+  it left out, with the findings it already made; its findings join the first ones and its
+  tokens show as the `continuation` pass. `review.continuation: false` or `--no-continuation`
+  turns it off.
+
+### Changed
+
+- The investigation no longer asks the AI for a minimum number of tool calls nor warns below
+  it: the prompt asks for the account of every file and the comparison of new files instead, and
+  the `floor` block left the investigation report.
+- The table of changed files lists only the files with a description of their change or a
+  finding.
+
 ## 0.12.0 - 2026-11-04
 
 ### Added
