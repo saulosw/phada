@@ -419,6 +419,15 @@ describe('parseConfigText', () => {
     if (!parsed.ok) expect(parsed.message).toContain(message)
   })
 
+  it('reads the bots whose comments count as misses and refuses an empty login', () => {
+    expect(parseConfigText('misses:\n  bots: [review-bot]\n')).toEqual({
+      ok: true,
+      config: { misses: { bots: ['review-bot'] } },
+    })
+    expect(parseConfigText('misses:\n  bots: ["  "]\n').ok).toBe(false)
+    expect(parseConfigText('misses:\n  robots: [x]\n').ok).toBe(false)
+  })
+
   it('reads the watch block and history', () => {
     const text = [
       'history: false',

@@ -36,14 +36,20 @@ export function missLines(miss: MissRecord, status: string = miss.state): string
     String(miss.id).padStart(4),
     `${miss.repo}#${miss.number}`,
     missPlace(miss),
-    `${miss.author} (${miss.role})`,
+    miss.role === undefined ? miss.author : `${miss.author} (${miss.role})`,
+    `${miss.origin} · ${miss.seen}`,
     status,
   ].join('  ')
+  const url = threadUrlOf(miss)
   return [
     toTerminalText(header),
     `${INDENT}${firstLine(miss.body)}`,
-    ...(miss.threadUrl === '' ? [] : [`${INDENT}${toTerminalText(miss.threadUrl)}`]),
+    ...(url === null ? [] : [`${INDENT}${toTerminalText(url)}`]),
   ]
+}
+
+function threadUrlOf(miss: MissRecord): string | null {
+  return miss.threadUrl === undefined || miss.threadUrl === '' ? null : miss.threadUrl
 }
 
 function firstLine(body: string): string {
@@ -55,16 +61,18 @@ function firstLine(body: string): string {
 export function missJson(miss: MissRecord) {
   return {
     id: miss.id,
+    origin: miss.origin,
+    seen: miss.seen,
     repo: miss.repo,
     number: miss.number,
     file: miss.file,
     startLine: miss.startLine ?? null,
     line: miss.line,
     author: miss.author,
-    role: miss.role,
+    role: miss.role ?? null,
     body: miss.body,
-    threadUrl: miss.threadUrl === '' ? null : miss.threadUrl,
-    reviewedSha: miss.reviewedSha,
+    threadUrl: threadUrlOf(miss),
+    reviewedSha: miss.reviewedSha ?? null,
     commitSha: miss.commitSha,
     createdAt: miss.createdAt,
     harvestedAt: miss.harvestedAt,

@@ -319,6 +319,7 @@ export const ConfigFileSchema = z.strictObject({
     })
     .optional(),
   history: z.boolean().optional(),
+  misses: z.strictObject({ bots: z.array(z.string().trim().min(1)).optional() }).optional(),
   review: ReviewSchema.optional(),
   watch: WatchSchema.optional(),
   hooks: HooksSchema.optional(),

@@ -237,17 +237,19 @@ describe('openHistoryStore migrations', () => {
       .map((row) => row.name)
     const miss = db
       .prepare(
-        `insert into miss (repo, number, reviewed_sha, commit_sha, thread_id, thread_url, file,
-           start_line, line, author, role, body, created_at, harvested_at)
-         values ('acme/shop', 3, ?, ?, 'PRRT_1', 'https://github.com/acme/shop/pull/3#discussion_r9',
+        `insert into miss (key, origin, seen, repo, number, reviewed_sha, commit_sha, thread_id,
+           thread_url, file, start_line, line, author, role, body, created_at, harvested_at)
+         values ('PRRT_1', 'person', 'missed-live', 'acme/shop', 3, ?, ?, 'PRRT_1',
+           'https://github.com/acme/shop/pull/3#discussion_r9',
            'a.ts', 4, 6, 'ana', 'member', 'This leaks the token', ?, ?)`,
       )
       .run(RUN.headSha, RUN.headSha, RUN.startedAt, RUN.finishedAt).lastInsertRowid
     const sameThread = () =>
       db
         .prepare(
-          `insert into miss (repo, number, reviewed_sha, thread_id, file, author, role, body,
-             harvested_at) values ('acme/shop', 3, ?, 'PRRT_1', 'a.ts', 'ana', 'member', 'x', ?)`,
+          `insert into miss (key, origin, seen, repo, number, reviewed_sha, thread_id, file,
+             author, role, body, harvested_at) values ('PRRT_1', 'person', 'missed-live',
+             'acme/shop', 3, ?, 'PRRT_1', 'a.ts', 'ana', 'member', 'x', ?)`,
         )
         .run(RUN.headSha, RUN.finishedAt)
     const addReplay = (version: string, outcome: string) =>
@@ -270,6 +272,130 @@ describe('openHistoryStore migrations', () => {
     expect(indexes).toEqual(expect.arrayContaining(['run_by_source', 'run_by_job']))
     expect(replays).toEqual([{ version: '0.12.0', run_id: null, outcome: 'missed' }])
     expect(state).toBe('open')
+    expect(left).toBe(0)
+  })
+
+  it('migrates a version 5 file: its misses keep their ids and replays, as misses a person left after a review', async () => {
+    const path = fresh()
+    const v5 = await openHistoryStore(path, { migrations: HISTORY_MIGRATIONS.slice(0, 5) })
+    const replay = v5.addRun({ ...RUN, source: 'replay', status: 'dry-run' })
+    v5.close()
+    const raw = new DatabaseSync(path)
+    const addMiss = raw.prepare(
+      `insert into miss (id, repo, number, reviewed_sha, commit_sha, thread_id, thread_url, file,
+         start_line, line, author, role, body, created_at, harvested_at, state)
+       values (?, 'acme/shop', 3, ?, ?, ?, ?, 'a.ts', ?, 6, 'ana', 'member', 'Leaks the token', ?, ?, ?)`,
+    )
+    addMiss.run(
+      7,
+      RUN.headSha,
+      RUN.headSha,
+      'PRRT_1',
+      'https://x/1',
+      4,
+      RUN.startedAt,
+      RUN.finishedAt,
+      'open',
+    )
+    addMiss.run(9, RUN.headSha, null, 'PRRT_2', null, null, null, RUN.finishedAt, 'dismissed')
+    raw
+      .prepare(
+        `insert into miss_replay (miss_id, version, run_id, outcome, replayed_at)
+         values (7, '0.11.1', ?, 'caught', ?)`,
+      )
+      .run(replay, RUN.finishedAt)
+    raw.close()
+
+    const store = await openHistoryStore(path)
+    const { misses } = store.misses({})
+    const replays = store.missReplays([7, 9])
+    store.close()
+
+    expect(userVersion(path)).toBe(HISTORY_MIGRATIONS.length)
+    expect(misses).toEqual([
+      {
+        id: 7,
+        key: 'PRRT_1',
+        origin: 'person',
+        seen: 'missed-live',
+        repo: 'acme/shop',
+        number: 3,
+        reviewedSha: RUN.headSha,
+        commitSha: RUN.headSha,
+        threadId: 'PRRT_1',
+        threadUrl: 'https://x/1',
+        file: 'a.ts',
+        startLine: 4,
+        line: 6,
+        author: 'ana',
+        role: 'member',
+        body: 'Leaks the token',
+        createdAt: RUN.startedAt,
+        harvestedAt: RUN.finishedAt,
+        state: 'open',
+      },
+      {
+        id: 9,
+        key: 'PRRT_2',
+        origin: 'person',
+        seen: 'missed-live',
+        repo: 'acme/shop',
+        number: 3,
+        reviewedSha: RUN.headSha,
+        threadId: 'PRRT_2',
+        file: 'a.ts',
+        line: 6,
+        author: 'ana',
+        role: 'member',
+        body: 'Leaks the token',
+        harvestedAt: RUN.finishedAt,
+        state: 'dismissed',
+      },
+    ])
+    expect(replays).toEqual([
+      {
+        missId: 7,
+        version: '0.11.1',
+        runId: replay,
+        outcome: 'caught',
+        replayedAt: RUN.finishedAt,
+      },
+    ])
+
+    const db = new DatabaseSync(path)
+    db.exec('pragma foreign_keys = on')
+    const indexes = db
+      .prepare("select name from sqlite_master where type = 'index' and tbl_name = 'miss'")
+      .all()
+      .map((row) => row.name)
+    const badOrigin = () =>
+      db
+        .prepare(
+          `insert into miss (key, origin, seen, repo, number, file, author, body, harvested_at)
+           values ('k', 'robot', 'not-reviewed', 'acme/shop', 3, 'a.ts', 'x', 'y', ?)`,
+        )
+        .run(RUN.finishedAt)
+    const badSeen = () =>
+      db
+        .prepare(
+          `insert into miss (key, origin, seen, repo, number, file, author, body, harvested_at)
+           values ('k', 'phada', 'maybe', 'acme/shop', 3, 'a.ts', 'x', 'y', ?)`,
+        )
+        .run(RUN.finishedAt)
+    const badRole = () =>
+      db
+        .prepare(
+          `insert into miss (key, origin, seen, repo, number, file, author, role, body, harvested_at)
+           values ('k', 'bot', 'not-reviewed', 'acme/shop', 3, 'a.ts', 'x', 'boss', 'y', ?)`,
+        )
+        .run(RUN.finishedAt)
+    db.prepare('delete from miss where id = 7').run()
+    const left = db.prepare('select count(*) as left from miss_replay').get()?.left
+    db.close()
+    expect(indexes).toContain('miss_by_pull')
+    expect(badOrigin).toThrow()
+    expect(badSeen).toThrow()
+    expect(badRole).toThrow()
     expect(left).toBe(0)
   })
 

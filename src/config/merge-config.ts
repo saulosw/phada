@@ -114,6 +114,7 @@ const USER_ONLY = [
   'mcp',
   'watch',
   'history',
+  'misses',
   'hooks',
   'slack',
 ] as const

@@ -2,6 +2,7 @@ import { readMisses } from '../app/read-misses.js'
 import { dataFiles } from '../config/data-paths.js'
 import { loadTopLevelUserLayers } from '../config/user-config.js'
 import { historyEnabled } from '../config/watch-settings.js'
+import type { ListClosedPullRequestsOptions } from '../github/list-closed-pull-requests.js'
 import type { IndexFormat, RulesTarget } from './args.js'
 import { MissNotFoundError } from './errors.js'
 import { formatMissesJson, formatMissesText } from './format-misses.js'
@@ -13,14 +14,19 @@ export interface MissesCommand {
   target?: RulesTarget
   all: boolean
   refresh: boolean
+  since?: string
   format: IndexFormat
+}
+
+export interface MissesCommandDeps extends HistoryCommandDeps {
+  listClosedPullRequests: (options: ListClosedPullRequestsOptions) => Promise<number[]>
 }
 
 export interface MissesDismissCommand {
   id: number
 }
 
-export async function runMisses(command: MissesCommand, deps: HistoryCommandDeps): Promise<void> {
+export async function runMisses(command: MissesCommand, deps: MissesCommandDeps): Promise<void> {
   const token = command.refresh
     ? await refreshToken(deps, historyEnabled(await loadTopLevelUserLayers(deps)))
     : undefined
@@ -30,7 +36,15 @@ export async function runMisses(command: MissesCommand, deps: HistoryCommandDeps
     token === undefined ? await existingHistory(path, deps) : await deps.openHistoryStore(path)
   try {
     if (history !== undefined && token !== undefined) {
-      await refreshHistory(history, filter, token, deps)
+      const closed =
+        command.since !== undefined && command.target?.kind === 'repo'
+          ? await deps.listClosedPullRequests({
+              ...command.target.repo,
+              token,
+              since: command.since,
+            })
+          : []
+      await refreshHistory(history, filter, token, deps, closed)
     }
     const list = readMisses(history, filter, command.all)
     deps.stdout.write(

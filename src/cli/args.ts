@@ -54,6 +54,7 @@ export type CliCommand =
       target?: RulesTarget
       all: boolean
       refresh: boolean
+      since?: string
       format: IndexFormat
       debug: boolean
     }
@@ -416,6 +417,7 @@ Environment:
   PHADA_DATA_HOME      Folder of the history (default: ~/.local/share/phada)`
 
 export const MISSES_USAGE = `Usage: phada misses [<owner/repo[#N]>] [options]
+       phada misses --refresh <owner/repo> --since <YYYY-MM-DD>
        phada misses --replay [<owner/repo[#N]>] [--format <name>]
        phada misses dismiss <id>
 
@@ -438,6 +440,9 @@ them.
 Options:
   --refresh            Read the pull requests on GitHub first: the ones due,
                        or the pull request named with owner/repo#N
+  --since <date>       With --refresh owner/repo, also read the pull requests
+                       closed or merged since that day (YYYY-MM-DD, from
+                       00:00 UTC), the 50 most recently closed
   --replay             Review the open misses again and say which ones Phada
                        catches now
   --all                Also show the dismissed misses
@@ -864,13 +869,20 @@ function parseMissesArgs(argv: readonly string[]): CliCommand {
     all: { type: 'boolean', default: false },
     refresh: { type: 'boolean', default: false },
     replay: { type: 'boolean', default: false },
+    since: { type: 'string' },
     format: { type: 'string' },
     debug: { type: 'boolean', default: false },
     help: { type: 'boolean', short: 'h', default: false },
   })
   if (values.help) return { kind: 'help', text: MISSES_USAGE }
   if (positionals[0] === 'dismiss') {
-    if (values.all || values.refresh || values.replay || values.format !== undefined) {
+    if (
+      values.all ||
+      values.refresh ||
+      values.replay ||
+      values.since !== undefined ||
+      values.format !== undefined
+    ) {
       throw new UsageError('phada misses dismiss takes only a miss id.')
     }
     const id = parseRunId(positionals.slice(1), 'phada misses dismiss', 'miss id')
@@ -892,6 +904,9 @@ function parseMissesArgs(argv: readonly string[]): CliCommand {
         '--replay reviews the misses already kept; run phada misses --refresh first.',
       )
     }
+    if (values.since !== undefined) {
+      throw new UsageError('--replay reviews the misses already kept; remove --since.')
+    }
     return {
       kind: 'misses-replay',
       ...(target === undefined ? {} : { target }),
@@ -899,14 +914,44 @@ function parseMissesArgs(argv: readonly string[]): CliCommand {
       debug: values.debug,
     }
   }
+  const since =
+    values.since === undefined ? undefined : closedSince(values.since, values.refresh, target)
   return {
     kind: 'misses',
     ...(target === undefined ? {} : { target }),
     all: values.all,
     refresh: values.refresh,
+    ...(since === undefined ? {} : { since }),
     format,
     debug: values.debug,
   }
+}
+
+const CALENDAR_DATE = /^\d{4}-\d{2}-\d{2}$/
+
+function closedSince(input: string, refresh: boolean, target: RulesTarget | undefined): string {
+  if (!refresh) {
+    throw new UsageError('--since says which closed pull requests --refresh reads; add --refresh.')
+  }
+  if (target?.kind === 'pull') {
+    throw new UsageError(
+      '--since reads the pull requests closed in a repository; give owner/repo, not owner/repo#N.',
+    )
+  }
+  if (target === undefined) {
+    throw new UsageError(
+      '--since needs a repository, e.g. phada misses --refresh acme/shop --since 2026-10-01.',
+    )
+  }
+  const start = CALENDAR_DATE.test(input) ? new Date(`${input}T00:00:00.000Z`) : undefined
+  if (
+    start === undefined ||
+    Number.isNaN(start.getTime()) ||
+    start.toISOString().slice(0, 10) !== input
+  ) {
+    throw new UsageError(`Invalid --since "${input}". Use a date as YYYY-MM-DD, e.g. 2026-10-01.`)
+  }
+  return start.toISOString()
 }
 
 function targetOf(input: string): RulesTarget {

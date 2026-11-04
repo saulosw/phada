@@ -38,25 +38,23 @@ export interface MissFilter {
   limit?: number
 }
 
-const KEPT_ON_HARVEST = new Set(['threadId', 'state', 'harvestedAt'])
+const KEPT_ON_HARVEST = new Set(['key', 'state', 'harvestedAt'])
 
 export function recordMisses(
   db: DatabaseSync,
   misses: readonly Miss[],
   harvestedAt: string,
 ): number {
-  const known = db.prepare('select 1 from miss where thread_id = ?')
+  const known = db.prepare('select 1 from miss where key = ?')
   return transaction(db, () => {
     let added = 0
     for (const miss of misses) {
-      if (known.get(miss.threadId) === undefined) added++
+      if (known.get(miss.key) === undefined) added++
       const { sql, values } = insertStatement(MISS_TABLE, { ...miss, harvestedAt })
       const updates = Object.keys(MISS_TABLE.columns)
         .filter((key) => key !== 'id' && !KEPT_ON_HARVEST.has(key))
         .map((key) => `${columnOf(MISS_TABLE, key)} = excluded.${columnOf(MISS_TABLE, key)}`)
-      db.prepare(`${sql} on conflict (thread_id) do update set ${updates.join(', ')}`).run(
-        ...values,
-      )
+      db.prepare(`${sql} on conflict (key) do update set ${updates.join(', ')}`).run(...values)
     }
     return added
   })
@@ -115,11 +113,16 @@ export function missReplays(db: DatabaseSync, missIds: readonly number[]): MissR
     .map((row) => fromRow<MissReplayRecord>(row, MISS_REPLAY_TABLE))
 }
 
-export function aiRuns(db: DatabaseSync, pull: DuePull): RunRecord[] {
+export interface AiRunFilter {
+  replays?: boolean
+}
+
+export function aiRuns(db: DatabaseSync, pull: DuePull, filter: AiRunFilter = {}): RunRecord[] {
+  const sources = filter.replays === true ? "'watch', 'manual', 'replay'" : "'watch', 'manual'"
   return db
     .prepare(
       `select * from run where repo = ? and number = ? and ai_called = 1
-       and source in ('watch', 'manual') order by finished_at, id`,
+       and source in (${sources}) order by finished_at, id`,
     )
     .all(pull.repo.toLowerCase(), pull.number)
     .map((row) => fromRow<RunRecord>(row, RUN_TABLE))

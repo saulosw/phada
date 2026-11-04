@@ -40,7 +40,7 @@ import {
   recordMisses,
   recordMissReplays,
 } from './history-misses.js'
-import type { MissFilter, MissRecord, MissReplayRecord } from './history-misses.js'
+import type { AiRunFilter, MissFilter, MissRecord, MissReplayRecord } from './history-misses.js'
 import type { Miss } from '../publish/misses.js'
 import type {
   FailureKind,
@@ -162,7 +162,7 @@ export interface HistoryStore {
   observeFeedback(observation: FeedbackObservation): void
   findings(filter: FindingFilter): FindingRecord[]
   feedbackDue(filter: DueFilter, before: string, limit?: number): DuePull[]
-  aiRuns(pull: DuePull): RunRecord[]
+  aiRuns(pull: DuePull, filter?: AiRunFilter): RunRecord[]
   recordMisses(misses: readonly Miss[], harvestedAt: string): number
   misses(filter: MissFilter): { misses: MissRecord[]; total: number }
   dismissMiss(id: number): boolean
@@ -560,8 +560,8 @@ class SqliteHistoryStore implements HistoryStore {
     return feedbackDue(this.#db, filter, before, limit)
   }
 
-  aiRuns(pull: DuePull): RunRecord[] {
-    return aiRuns(this.#db, pull)
+  aiRuns(pull: DuePull, filter?: AiRunFilter): RunRecord[] {
+    return aiRuns(this.#db, pull, filter)
   }
 
   recordMisses(found: readonly Miss[], harvestedAt: string): number {

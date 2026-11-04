@@ -111,6 +111,11 @@ export function historyEnabled(layers: readonly ConfigLayer[]): boolean {
   return topLevel(layers)?.config.history !== false
 }
 
+export function missBots(layers: readonly ConfigLayer[]): string[] {
+  const userLayers = layers.filter((layer) => layer.kind === 'user' || layer.kind === 'user-repo')
+  return [...new Set(userLayers.flatMap((layer) => layer.config.misses?.bots ?? []))]
+}
+
 function topLevel(layers: readonly ConfigLayer[]): ConfigLayer | undefined {
   return layers.find((layer) => layer.kind === 'user')
 }

@@ -304,6 +304,8 @@ prints:
 
 - **Worth checking**: up to five findings with confidence from 50 up to the cut, one line each.
   They do not change the score.
+- **Rejected by verification**: each candidate the verification turned down, with its place,
+  confidence and the reason; only in the terminal, never on the pull request.
 - **Repository debt**: problems that are real but that this change neither introduces nor worsens
   (an exported function no caller uses that the change only touches, say), one line each with its
   place and why. See [Repository debt](#repository-debt).
@@ -845,13 +847,38 @@ needs to know what it already saw.
 
 ### Misses
 
-A miss is a problem a person pointed out that Phada did not: a thread opened on a pull request
-after Phada reviewed it, by someone who is not a bot, not Phada and not the author of the pull
-request, on lines that a later commit changed (GitHub marks the thread outdated), with no Phada
-finding in the same file within 5 lines of it. General comments, without a file and a line, are
-not misses. Each miss keeps the commit Phada reviewed, the commit the person commented on, the
-file and lines, the author and their role in the repository (owner, member, collaborator,
-contributor or external), the comment (up to 2 KB) and the link to the thread.
+A miss is a problem someone pointed out that Phada did not. It comes from one of three places
+(its **origin**):
+
+- **person**: a thread opened on a pull request by someone who is not a bot, not Phada and not the
+  author of the pull request, on lines that a later commit changed (GitHub marks the thread
+  outdated), with no Phada finding near it;
+- **bot**: the same, from a bot you list in `misses.bots` (see below); other bots never count;
+- **phada**: a finding of Phada (from any review of the pull request, a replay included) that the
+  latest review at a later commit no longer reports, although the lines it points to did not
+  change between the two commits. A finding Phada published as a comment is left out, and so is
+  one whose comparison GitHub cannot give (after a force-push, say).
+
+Each miss is also marked **missed-live** when Phada had reviewed the pull request before the
+thread (or, for `phada`, the review that lost it), or **not-reviewed** when Phada never had: a
+pull request Phada never reviewed still gives misses, so the list grows from the first day.
+
+A finding is **near** a thread when it is in the same code element: the innermost function,
+method, class, type or top-level declaration that holds the line, read from the file at that
+commit (TypeScript, JavaScript, Python and Go). For other files, for a line outside any element,
+or when the file cannot be read, near means within 5 lines; in an element longer than 80 lines,
+within 10. General comments, without a file and a line, are not misses. Each miss keeps the commit
+Phada reviewed, the commit to replay, the file and lines, the author and their role in the
+repository (owner, member, collaborator, contributor or external), the comment (up to 2 KB) and
+the link to the thread.
+
+To count the threads of a review bot as misses, list its login in your own config (globally, or
+in `repos/<owner>/<repo>/config.yml`; a repository's `.phada/` cannot set it):
+
+```yaml
+misses:
+  bots: [review-bot]
+```
 
 Misses are collected without the AI whenever the comments are read — by the watch, by
 `phada history --refresh` and by `phada misses --refresh` — and stay only in the history on your
@@ -862,18 +889,24 @@ phada misses                          # the open misses
 phada misses owner/repo --all         # one repository, dismissed ones included
 phada misses --refresh                # read the reviewed pull requests on GitHub first
 phada misses owner/repo#123 --refresh # read that pull request, even one the history lacks
+phada misses owner/repo --refresh --since 2026-10-01
+                                      # also the pull requests closed or merged since that day
 phada misses dismiss 7                # take miss 7 off the list
 ```
 
-Each miss starts with its id; a dismissed miss stays dismissed when it is collected again.
+`--since <YYYY-MM-DD>` reads the pull requests of the repository closed or merged since that day
+(the 50 closed last), besides the ones the history follows, without the AI.
+
+Each miss starts with its id, its origin and its mark; a dismissed miss stays dismissed when it is
+collected again.
 `--format json` prints them with `schemaVersion: 1`.
 
 `phada misses --replay` checks whether Phada catches its misses now. It groups the open misses by
 pull request and by the commit the person commented on, and reviews each group once with your AI,
 as the pull request was at that commit (a dry run, as `phada review --head` does): each group is a
 full review, and a line before each one says which pull request, commit and how many misses it
-covers. A miss is **caught** when the replay finds something in the same file within 5 lines of
-it, **missed** otherwise. The replays are kept in the history as runs of their own (never
+covers. A miss is **caught** when the replay finds something near it (as above, in the file at that
+commit), **missed** otherwise. The replays are kept in the history as runs of their own (never
 published, never counted as feedback), and the outcome of each miss is kept per Phada version:
 replaying again with the same version replaces it. The output lists each miss with its outcome
 and the total (`3 of 7 caught in 0.12.0.`), and, when an earlier version replayed the same
@@ -1458,6 +1491,7 @@ ci:
 | `hooks`                   | Commands that get the [review events](#review-events-and-hooks)                                                                              | your config (top level) |
 | `slack`                   | Slack channels the watch listens to (see [Slack](#slack))                                                                                    | your config (top level) |
 | `history`                 | `false` keeps reviews out of the [history](#history)                                                                                         | your config (top level) |
+| `misses.bots`             | Logins of the bots whose threads count as [misses](#misses)                                                                                  | your config             |
 | `disabledRules`           | Ids of rules from other config files to turn off; from a subfolder's `.phada/`, only inside that folder                                      | both                    |
 
 Globs follow the usual `*`/`**` rules and are relative to the folder of the `.phada/` that

@@ -6,6 +6,7 @@ import { memoryFiles } from '../../test/support/memory-files.js'
 import { nodeFileSystem } from '../config/local-files.js'
 import type { Miss } from '../publish/misses.js'
 import type { MissReplayRun } from '../app/replay-misses.js'
+import { createExtractor } from '../repo-map/extract.js'
 import { openHistoryStore } from '../store/history-store.js'
 import type { HistoryStore } from '../store/history-store.js'
 import { MissingGitHubTokenError, UsageError } from './errors.js'
@@ -21,6 +22,9 @@ const COMMIT = 'c'.repeat(40)
 
 function miss(threadId: string, overrides: Partial<Miss> = {}): Miss {
   return {
+    key: threadId,
+    origin: 'person',
+    seen: 'missed-live',
     repo: 'acme/shop',
     number: 3,
     reviewedSha: 'a'.repeat(40),
@@ -42,6 +46,7 @@ function harness(
     config?: string
     token?: boolean
     replays?: Record<number, MissReplayRun | Error>
+    fetchRepositoryFile?: MissesReplayDeps['fetchRepositoryFile']
   } = {},
 ) {
   const data = join(root, `d${++dirs}`)
@@ -68,6 +73,9 @@ function harness(
     stderr: { write: (text: string) => err.push(text) },
     clock: () => NOW,
     openHistoryStore: (path) => openHistoryStore(path),
+    fetchRepositoryFile: options.fetchRepositoryFile ?? (async () => null),
+    fetchComparison: async () => [],
+    createExtractor,
     fetchReviewState: () => Promise.reject(new Error('not read')),
     onSignal: (handler) => signals.push(handler),
     abort: (code) => aborts.push(code),
@@ -104,6 +112,31 @@ function harness(
 const COMMAND = { format: 'text' as const }
 
 describe('runMissesReplay', () => {
+  it('reads the file at the commit of the miss to tell whether the replay caught it in the same function', async () => {
+    const source = [
+      'export function total(items: number[]): number {',
+      ...Array.from({ length: 23 }, (_, index) => `  items.push(${index})`),
+      '  return items.length',
+      '}',
+    ].join('\n')
+    const read: string[] = []
+    const h = harness({
+      replays: { 3: { findings: [{ file: 'src/shop.ts', line: 8 }] } },
+      fetchRepositoryFile: async ({ owner, repo, token, path, ref }) => {
+        read.push(`${owner}/${repo} ${token} ${path}@${ref.slice(0, 1)}`)
+        return source
+      },
+    })
+    await h.seed((store) => {
+      store.recordMisses([miss('T1')], 'x')
+    })
+
+    expect(await runMissesReplay(COMMAND, h.deps, h.replayer)).toBe(0)
+
+    expect(read).toEqual(['acme/shop ghp_test src/shop.ts@c'])
+    expect(h.stdout()).toContain('1 of 1 caught in 0.12.0.\n')
+  })
+
   it('announces each review before it runs and prints the outcome of each miss', async () => {
     const h = harness({
       replays: { 3: { findings: [{ file: 'src/shop.ts', line: 22 }] }, 4: { findings: [] } },
@@ -124,8 +157,12 @@ describe('runMissesReplay', () => {
         '',
       ].join('\n'),
     )
-    expect(h.stdout()).toContain('acme/shop#3  src/shop.ts:20  alice (member)  caught')
-    expect(h.stdout()).toContain('acme/shop#3  src/shop.ts:70  alice (member)  missed')
+    expect(h.stdout()).toContain(
+      'acme/shop#3  src/shop.ts:20  alice (member)  person · missed-live  caught',
+    )
+    expect(h.stdout()).toContain(
+      'acme/shop#3  src/shop.ts:70  alice (member)  person · missed-live  missed',
+    )
     expect(h.stdout()).toContain('1 of 3 caught in 0.12.0.\n')
   })
 

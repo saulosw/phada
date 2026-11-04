@@ -7,6 +7,7 @@ import { pullRequestFixture } from '../../test/support/pull-request.js'
 import { reviewState, reviewThread } from '../../test/support/review-state.js'
 import type { PullRequestReviewState } from '../github/pull-request-reviews.js'
 import { FINDING_MARKER, reviewMarker } from '../publish/markers.js'
+import { createExtractor } from '../repo-map/extract.js'
 import { openHistoryStore } from '../store/history-store.js'
 import type { HistoryStore } from '../store/history-store.js'
 import { recordReviewFeedback, refreshFeedback } from './feedback.js'
@@ -18,6 +19,7 @@ afterAll(() => rmSync(dir, { recursive: true, force: true }))
 let files = 0
 const fresh = () => openHistoryStore(join(dir, `h${++files}`, 'history.sqlite'))
 
+const extractor = createExtractor()
 const PR = pullRequestFixture()
 const OLD = '0'.repeat(40)
 const NOW = '2026-10-22T12:00:00.000Z'
@@ -168,6 +170,10 @@ describe('refreshFeedback', () => {
     return {
       history: store,
       fetchReviewState,
+      missBots: async () => [],
+      readFile: async () => null,
+      extractor,
+      compare: async () => [],
       isNotFound: (error) => error instanceof Error && error.message === 'not found',
       isRateLimited: (error) => error instanceof Error && error.message === 'rate limited',
       now: () => NOW,
@@ -272,6 +278,34 @@ describe('refreshFeedback', () => {
         ])
       }))
 
+    it('records the thread of a bot the user lists for that repository, on a pull request never reviewed', () =>
+      withStore(async (store) => {
+        const bot = reviewThread({
+          ...person,
+          id: 'T7',
+          author: 'review-bot[bot]',
+          association: 'NONE',
+          bot: true,
+        })
+        const asked: string[] = []
+        const { counts, deps: d } = counting(store, { ...harvested, threads: [bot] })
+
+        await refreshFeedback([{ repo: 'acme/shop', number: 3 }], 'refresh', {
+          ...d,
+          missBots: async (repo) => {
+            asked.push(repo)
+            return ['review-bot']
+          },
+        })
+
+        expect(asked).toEqual(['acme/shop'])
+        expect(counts).toEqual([1])
+        expect(store.misses({}).misses).toMatchObject([
+          { origin: 'bot', seen: 'not-reviewed', author: 'review-bot[bot]' },
+        ])
+        expect(store.misses({}).misses[0]).not.toHaveProperty('reviewedSha')
+      }))
+
     it('a finding the local run kept near the thread is not a miss', () =>
       withStore(async (store) => {
         store.addRun(
@@ -284,6 +318,254 @@ describe('refreshFeedback', () => {
         expect(counts).toEqual([0])
         expect(store.misses({}).total).toBe(0)
       }))
+
+    describe('near by the code element at the commit of the thread', () => {
+      const SOURCE = [
+        ...Array.from({ length: 17 }, (_, index) => `// note ${index + 1}`),
+        'export function settle(total: number): number {',
+        ...Array.from({ length: 15 }, (_, index) => `  total += ${index}`),
+        '  return total',
+        '}',
+        'export function refund(total: number): number {',
+        ...Array.from({ length: 15 }, (_, index) => `  total -= ${index}`),
+        '  return total',
+        '}',
+      ].join('\n')
+      const at31 = reviewThread({ ...person, originalLine: 31 })
+
+      function serving(text: string | null) {
+        const reads: string[] = []
+        return {
+          reads,
+          readFile: async (repo: string, commit: string, path: string) => {
+            reads.push(`${repo}@${commit.slice(0, 1)}:${path}`)
+            return text
+          },
+        }
+      }
+
+      async function missesWith(
+        store: HistoryStore,
+        threads: ReturnType<typeof reviewThread>[],
+        findings: { file: string; line: number }[],
+        readFile: FeedbackRefreshDeps['readFile'],
+      ) {
+        store.addRun(localRun(JSON.stringify({ review: { findings } })))
+        const { counts, deps: d } = counting(store, { ...harvested, threads })
+        await refreshFeedback([{ repo: 'acme/shop', number: 3 }], 'refresh', { ...d, readFile })
+        return counts
+      }
+
+      it('a finding 11 lines away in the same function is not a miss', () =>
+        withStore(async (store) => {
+          const file = serving(SOURCE)
+
+          const counts = await missesWith(
+            store,
+            [at31],
+            [{ file: 'src/shop.ts', line: 20 }],
+            file.readFile,
+          )
+
+          expect(counts).toEqual([0])
+          expect(file.reads).toEqual(['acme/shop@c:src/shop.ts'])
+        }))
+
+      it('a finding 11 lines away in the next function is a miss', () =>
+        withStore(async (store) => {
+          const counts = await missesWith(
+            store,
+            [at31],
+            [{ file: 'src/shop.ts', line: 42 }],
+            serving(SOURCE).readFile,
+          )
+
+          expect(counts).toEqual([1])
+        }))
+
+      it('reads the file once for two threads on it at the same commit', () =>
+        withStore(async (store) => {
+          const file = serving(SOURCE)
+          const at33 = reviewThread({ ...person, id: 'T8', originalLine: 33 })
+
+          const counts = await missesWith(
+            store,
+            [at31, at33],
+            [{ file: 'src/shop.ts', line: 20 }],
+            file.readFile,
+          )
+
+          expect(counts).toEqual([0])
+          expect(file.reads).toHaveLength(1)
+        }))
+
+      it('a file missing at the commit, or a file with no grammar, keeps 5 lines', () =>
+        withStore(async (store) => {
+          const missing = serving(null)
+          const prose = serving(SOURCE)
+          const doc = reviewThread({ ...at31, id: 'T6', path: 'docs/guide.md' })
+
+          const counts = await missesWith(
+            store,
+            [at31, doc],
+            [
+              { file: 'src/shop.ts', line: 20 },
+              { file: 'docs/guide.md', line: 20 },
+            ],
+            (repo, commit, path) =>
+              path.endsWith('.md')
+                ? prose.readFile(repo, commit, path)
+                : missing.readFile(repo, commit, path),
+          )
+
+          expect(counts).toEqual([2])
+          expect(missing.reads).toHaveLength(1)
+          expect(prose.reads).toEqual([])
+        }))
+
+      it('a rate limit while reading the file stops the refresh as at any other read', () =>
+        withStore(async (store) => {
+          const counts = await missesWith(
+            store,
+            [at31],
+            [{ file: 'src/shop.ts', line: 20 }],
+            async () => {
+              throw new Error('rate limited')
+            },
+          )
+
+          expect(counts).toEqual([])
+        }))
+
+      it('leaves a pull request due when its misses could not be collected', () =>
+        withStore(async (store) => {
+          await missesWith(store, [at31], [{ file: 'src/shop.ts', line: 20 }], async () => {
+            throw new Error('Server error')
+          })
+
+          expect(store.feedbackDue({ repo: 'acme/shop' }, NOW)).toEqual([
+            { repo: 'acme/shop', number: 3 },
+          ])
+        }))
+    })
+
+    describe('a finding of Phada that a later real review lost', () => {
+      const FOUND = 'f'.repeat(40)
+      const HEAD = 'e'.repeat(40)
+      const finding = (title: string, line: number) => ({
+        file: 'README.md',
+        line,
+        title,
+        why: 'The invoke waits forever.',
+      })
+
+      function seedRuns(store: HistoryStore, findings: unknown[], lost: string = '[]') {
+        store.addRun({
+          ...localRun(JSON.stringify({ review: { findings, worthChecking: [] } })),
+          source: 'replay',
+          headSha: FOUND,
+        })
+        store.addRun({
+          ...localRun(JSON.stringify({ review: { findings: JSON.parse(lost) } })),
+          headSha: HEAD,
+          finishedAt: '2026-10-21T10:00:00.000Z',
+        })
+      }
+
+      function comparing(answer: () => Promise<'unavailable' | []>) {
+        const asked: string[] = []
+        return {
+          asked,
+          compare: async (repo: string, base: string, head: string) => {
+            asked.push(`${repo} ${base.slice(0, 1)}...${head.slice(0, 1)}`)
+            return answer()
+          },
+        }
+      }
+
+      it('records it once, comparing the two commits once per refresh', () =>
+        withStore(async (store) => {
+          seedRuns(store, [finding('No read timeout', 40), finding('No retry', 70)])
+          const compared = comparing(async () => [])
+          const { counts, deps: d } = counting(store, reviewState({ viewer: 'octocat' }))
+
+          await refreshFeedback([{ repo: 'acme/shop', number: 3 }], 'refresh', {
+            ...d,
+            compare: compared.compare,
+          })
+          await refreshFeedback([{ repo: 'acme/shop', number: 3 }], 'refresh', {
+            ...d,
+            compare: compared.compare,
+          })
+
+          expect(counts).toEqual([2, 0])
+          expect(compared.asked).toEqual(['acme/shop f...e'])
+          expect(store.misses({}).misses).toMatchObject([
+            { origin: 'phada', file: 'README.md', line: 70 },
+            {
+              origin: 'phada',
+              seen: 'missed-live',
+              commitSha: HEAD,
+              file: 'README.md',
+              line: 40,
+              author: 'phada',
+              body: 'No read timeout\n\nThe invoke waits forever.',
+            },
+          ])
+        }))
+
+      it('is no miss when the commits cannot be compared', () =>
+        withStore(async (store) => {
+          seedRuns(store, [finding('No read timeout', 40)])
+          const { counts, deps: d } = counting(store, reviewState({ viewer: 'octocat' }))
+
+          await refreshFeedback([{ repo: 'acme/shop', number: 3 }], 'refresh', {
+            ...d,
+            compare: async () => 'unavailable',
+          })
+
+          expect(counts).toEqual([0])
+        }))
+
+      it('is no miss when the later review cannot be read', () =>
+        withStore(async (store) => {
+          store.addRun({
+            ...localRun(JSON.stringify({ review: { findings: [finding('No read timeout', 40)] } })),
+            source: 'replay',
+            headSha: FOUND,
+          })
+          store.addRun({
+            ...localRun('{not json'),
+            headSha: HEAD,
+            finishedAt: '2026-10-21T10:00:00.000Z',
+          })
+          const compared = comparing(async () => [])
+          const { counts, deps: d } = counting(store, reviewState({ viewer: 'octocat' }))
+
+          await refreshFeedback([{ repo: 'acme/shop', number: 3 }], 'refresh', {
+            ...d,
+            compare: compared.compare,
+          })
+
+          expect(counts).toEqual([0])
+          expect(compared.asked).toEqual([])
+        }))
+
+      it('a rate limit while comparing stops the refresh as at any other read', () =>
+        withStore(async (store) => {
+          seedRuns(store, [finding('No read timeout', 40)])
+          const { counts, deps: d } = counting(store, reviewState({ viewer: 'octocat' }))
+
+          await refreshFeedback([{ repo: 'acme/shop', number: 3 }], 'refresh', {
+            ...d,
+            compare: async () => {
+              throw new Error('rate limited')
+            },
+          })
+
+          expect(counts).toEqual([])
+        }))
+    })
 
     it('a stored review that cannot be read counts as a review without findings', () =>
       withStore(async (store) => {

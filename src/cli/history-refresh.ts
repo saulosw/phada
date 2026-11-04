@@ -1,6 +1,6 @@
 import { refreshFeedback } from '../app/feedback.js'
 import { toTerminalText } from '../app/terminal-text.js'
-import type { DueFilter, HistoryStore } from '../store/history-store.js'
+import type { DueFilter, DuePull, HistoryStore } from '../store/history-store.js'
 import { UsageError } from './errors.js'
 import { requireGitHubToken } from './github-token.js'
 import type { HistoryCommandDeps } from './history-access.js'
@@ -19,11 +19,12 @@ export async function refreshHistory(
   filter: Pick<DueFilter, 'repo' | 'number'>,
   token: string,
   deps: HistoryCommandDeps,
+  closed: readonly number[] = [],
 ): Promise<void> {
   const due =
     filter.repo !== undefined && filter.number !== undefined
       ? [{ repo: filter.repo.toLowerCase(), number: filter.number }]
-      : history.feedbackDue(filter, deps.clock().toISOString())
+      : withClosed(history.feedbackDue(filter, deps.clock().toISOString()), filter.repo, closed)
   if (due.length === 0) return
   deps.stderr.write(`Refreshing ${formatCount(due.length, 'pull request')}…\n`)
   let misses = 0
@@ -40,4 +41,17 @@ export async function refreshHistory(
   if (misses > 0) {
     deps.stderr.write(`Found ${formatCount(misses, 'new miss', 'new misses')}.\n`)
   }
+}
+
+function withClosed(
+  due: DuePull[],
+  repo: string | undefined,
+  closed: readonly number[],
+): DuePull[] {
+  if (repo === undefined) return due
+  const known = new Set(closed)
+  return [
+    ...closed.map((number) => ({ repo: repo.toLowerCase(), number })),
+    ...due.filter((pull) => !known.has(pull.number)),
+  ]
 }

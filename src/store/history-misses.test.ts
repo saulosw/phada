@@ -17,6 +17,9 @@ const T2 = '2026-10-20T12:00:00.000Z'
 
 function miss(overrides: Partial<Miss> = {}): Miss {
   return {
+    key: overrides.threadId ?? 'T9',
+    origin: 'person',
+    seen: 'missed-live',
     repo: 'Acme/Shop',
     number: 3,
     reviewedSha: 'a'.repeat(40),
@@ -76,6 +79,31 @@ describe('HistoryStore misses', () => {
       })
     }))
 
+  it('records misses without a thread once per key, and a key harvested again updates its miss', () =>
+    withStore((store) => {
+      const found = (key: string, line: number): Miss => ({
+        key,
+        origin: 'phada',
+        seen: 'missed-live',
+        repo: 'acme/shop',
+        number: 3,
+        commitSha: 'c'.repeat(40),
+        file: 'src/shop.ts',
+        line,
+        author: 'phada',
+        body: 'The timeout is never read.',
+        createdAt: '2026-10-20T10:00:00Z',
+      })
+
+      expect(store.recordMisses([found('phada:4:a', 10), found('phada:5:a', 12)], T1)).toBe(2)
+      expect(store.recordMisses([found('phada:4:a', 11)], T2)).toBe(0)
+
+      expect(store.misses({}).misses).toEqual([
+        { ...found('phada:5:a', 12), id: expect.any(Number), state: 'open', harvestedAt: T1 },
+        { ...found('phada:4:a', 11), id: expect.any(Number), state: 'open', harvestedAt: T1 },
+      ])
+    }))
+
   it('a dismissed miss stays dismissed when it is harvested again', () =>
     withStore((store) => {
       store.recordMisses([miss()], T1)
@@ -126,6 +154,15 @@ describe('HistoryStore misses', () => {
       ).toEqual([
         [T1, 'watch'],
         [T2, 'manual'],
+      ])
+      expect(
+        store
+          .aiRuns({ repo: 'Acme/Shop', number: 3 }, { replays: true })
+          .map(({ id, finishedAt, source }) => [id, finishedAt, source]),
+      ).toEqual([
+        [2, T1, 'watch'],
+        [3, T1, 'replay'],
+        [1, T2, 'manual'],
       ])
     }))
 

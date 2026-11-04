@@ -39,6 +39,9 @@ function edge(id: number, createdAt: string): ObservedEdge {
 function openMiss(id: number, repo: string): MissRecord {
   return {
     id,
+    key: `T${id}`,
+    origin: 'person',
+    seen: 'missed-live',
     repo,
     number: 3,
     reviewedSha: 'a'.repeat(40),

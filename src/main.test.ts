@@ -340,6 +340,7 @@ function harness(
     },
     listOpenPullRequests:
       overrides.listPulls ?? (() => Promise.resolve({ status: 'ok' as const, pulls: [] })),
+    listClosedPullRequests: () => Promise.resolve([]),
     listIssueComments:
       overrides.comments ?? (() => Promise.resolve({ status: 'ok' as const, comments: [] })),
     addCommentReaction: async (options) => {
@@ -3660,6 +3661,9 @@ describe('run review --head', () => {
     seeded.recordMisses(
       [
         {
+          key: 'PRRT_1',
+          origin: 'person',
+          seen: 'missed-live',
           repo: 'acme/shop',
           number: 12,
           reviewedSha: OLD_HEAD,
@@ -3705,6 +3709,9 @@ describe('run review --head', () => {
     seeded.recordMisses(
       [
         {
+          key: 'PRRT_1',
+          origin: 'person',
+          seen: 'missed-live',
           repo: 'acme/shop',
           number: 12,
           reviewedSha: OLD_HEAD,

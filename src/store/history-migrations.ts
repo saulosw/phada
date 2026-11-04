@@ -242,4 +242,41 @@ create table miss_replay (
 );
 `,
   },
+  {
+    version: 6,
+    rebuildsTables: true,
+    sql: `
+create table miss_rebuilt (
+  id integer primary key,
+  key text not null unique,
+  origin text not null check (origin in ('person', 'bot', 'phada')),
+  seen text not null check (seen in ('missed-live', 'not-reviewed')),
+  repo text not null,
+  number integer not null,
+  reviewed_sha text,
+  commit_sha text,
+  thread_id text,
+  thread_url text,
+  file text not null,
+  start_line integer,
+  line integer,
+  author text not null,
+  role text
+    check (role in ('owner', 'member', 'collaborator', 'contributor', 'external')),
+  body text not null,
+  created_at text,
+  harvested_at text not null,
+  state text not null default 'open' check (state in ('open', 'dismissed'))
+);
+insert into miss_rebuilt (id, key, origin, seen, repo, number, reviewed_sha, commit_sha,
+  thread_id, thread_url, file, start_line, line, author, role, body, created_at, harvested_at,
+  state)
+  select id, thread_id, 'person', 'missed-live', repo, number, reviewed_sha, commit_sha,
+    thread_id, thread_url, file, start_line, line, author, role, body, created_at, harvested_at,
+    state from miss;
+drop table miss;
+alter table miss_rebuilt rename to miss;
+create index miss_by_pull on miss (repo, number);
+`,
+  },
 ]

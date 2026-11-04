@@ -118,6 +118,23 @@ describe('mergeConfig watch and history', () => {
     ])
   })
 
+  it('ignores the bots of the misses in the repository with a warning', () => {
+    const merged = mergeConfig([root({ misses: { bots: ['review-bot'] } })])
+
+    expect(merged.warnings).toEqual([
+      '.phada/config.yml: misses is only read from your own config; ignored.',
+    ])
+  })
+
+  it('reads the bots of the misses from both user configs without a warning', () => {
+    const merged = mergeConfig([
+      user({ misses: { bots: ['a'] } }),
+      userRepo({ misses: { bots: ['b'] } }),
+    ])
+
+    expect(merged.warnings).toEqual([])
+  })
+
   it('reads watch and history from the top-level user config without a warning', () => {
     expect(mergeConfig([user({ watch: { repos: ['a/b'] }, history: false })]).warnings).toEqual([])
   })
