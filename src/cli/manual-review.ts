@@ -35,12 +35,13 @@ import {
   mcpNameChecker,
   pullRequestReviewDeps,
   renderReview,
+  replayReaders,
   reviewAndPublishEvents,
   reviewRunJson,
 } from './review-wiring.js'
-import type { Choice, ReviewWiringDeps } from './review-wiring.js'
+import type { Choice, ReplayReaderDeps, ReviewWiringDeps } from './review-wiring.js'
 
-export interface ManualReviewDeps extends ReviewWiringDeps {
+export interface ManualReviewDeps extends ReviewWiringDeps, ReplayReaderDeps {
   fetchPullRequest: (options: FetchPullRequestOptions) => Promise<PullRequest>
   fetchReviewState: (options: FetchReviewStateOptions) => Promise<PullRequestReviewState>
   fetchPullComments: (options: FetchReviewStateOptions) => Promise<PullComment[]>
@@ -64,6 +65,7 @@ export interface ManualReviewInput {
   force: boolean
   dryRun: boolean
   waitCi: boolean
+  head?: string
   options: ReviewOptions
   signal?: AbortSignal
 }
@@ -133,6 +135,7 @@ export async function runManualReview(
       dryRun: input.dryRun,
       publish: true,
       ...(input.waitCi ? { waitCi: { since: startedAt } } : {}),
+      ...(input.head === undefined ? {} : { head: input.head }),
       options: input.options,
       userLayers: prepared.userLayers,
       mcp: prepared.mcp,
@@ -142,7 +145,7 @@ export async function runManualReview(
   )
   const { choice } = prepared
   const meta: RunMeta = {
-    source: 'manual',
+    source: input.head === undefined ? 'manual' : 'replay',
     startedAt,
     finishedAt: deps.clock().toISOString(),
     provider: choice.provider,
@@ -181,6 +184,7 @@ function manualReviewDeps(
         head: pullRequest.headSha,
       }),
     replyAndResolve: (threadId, body) => deps.replyAndResolve({ token, threadId, body }),
+    replay: replayReaders(deps, token),
     clock: {
       now: () => deps.clock().toISOString(),
       sleep: (ms) => deps.sleep(ms, signal),
@@ -209,6 +213,7 @@ async function saveRun(
     } catch (error) {
       return { status: 'not-saved', error: errorMessage(error) }
     }
+    if (meta.source === 'replay') return { status: 'saved', runId }
     try {
       recordReviewFeedback(history, run, { runId, source: 'manual', now: meta.finishedAt })
     } catch (error) {

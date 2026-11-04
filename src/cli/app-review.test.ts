@@ -68,6 +68,8 @@ function harness(changes: Partial<AppReviewDeps> = {}) {
     fetchPullRequest: async () => pullRequestFixture(),
     fetchReviewState: async () => reviewState(),
     fetchPullComments: async () => [],
+    fetchPullRequestTimeline: () => Promise.reject(new Error('no replay in this test')),
+    fetchCommitDiff: () => Promise.reject(new Error('no replay in this test')),
     createReview: async (options) => {
       posts.push(options)
       return { url: 'https://github.com/acme/shop/pull/12#pullrequestreview-9' }

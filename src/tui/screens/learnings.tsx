@@ -2,7 +2,7 @@ import { Box, Text } from 'ink'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 import type { FeedbackCounts } from '../../app/read-history.js'
-import type { Learnings, RepoLearnings } from '../../app/read-learnings.js'
+import type { Learnings, MissCounts, RepoLearnings } from '../../app/read-learnings.js'
 import {
   useAppDeps,
   useBack,
@@ -87,7 +87,11 @@ function LearningsList({ learnings, index }: { learnings: Learnings; index: numb
   }
   const header = [
     <Text bold>{m.title(repos.length)}</Text>,
-    ...[m.aboutRelations, m.aboutFeedback].flatMap((text) =>
+    ...[
+      m.aboutRelations,
+      m.aboutFeedback,
+      ...(repos.some(({ misses }) => misses !== null) ? [m.aboutMisses] : []),
+    ].flatMap((text) =>
       wrapText(text, size.columns).map((line) => <Text color={colors.dim}>{line}</Text>),
     ),
     <Text> </Text>,
@@ -114,6 +118,12 @@ function LearningsList({ learnings, index }: { learnings: Learnings; index: numb
             {'  '}
             <Text color={colors.soft}>{relationsText(repo, messages)}</Text>
             {' · '}
+            {repo.misses === null ? null : (
+              <>
+                <Text color={colors.warn}>{m.misses(repo.misses.open)}</Text>
+                {' · '}
+              </>
+            )}
             {repo.feedback === null ? (
               <Text color={colors.dim}>{m.noComments}</Text>
             ) : (
@@ -171,6 +181,23 @@ function RepoDetail({ repo }: { repo: RepoLearnings | undefined }) {
     }
   }
   lines.push(<Text> </Text>)
+  if (repo.misses !== null) {
+    lines.push(
+      <Text>
+        <Text color={colors.soft}>{d.misses}</Text>
+        {'  '}
+        {missesText(repo.misses, messages)}
+      </Text>,
+      <Text color={colors.dim}>
+        {'  '}
+        {d.replayHint}{' '}
+        <Text bold color={colors.accent}>
+          phada misses --replay
+        </Text>
+      </Text>,
+      <Text> </Text>,
+    )
+  }
   if (observed.state === 'unreadable') lines.push(...wrapped(d.unreadable, 0, colors.warn))
   else {
     const edges = observed.state === 'read' ? observed.edges : []
@@ -199,6 +226,15 @@ function RepoDetail({ repo }: { repo: RepoLearnings | undefined }) {
     }
   }
   return <ScrollText lines={lines} rows={size.rows} />
+}
+
+function missesText(misses: MissCounts, messages: UiMessages): string {
+  const d = messages.learnings.detail
+  const { latest } = misses
+  return [
+    d.missesOpen(misses.open),
+    latest === undefined ? d.notReplayed : d.caught(latest.caught, latest.replayed, latest.version),
+  ].join(' · ')
 }
 
 function relationsText({ observed }: RepoLearnings, messages: UiMessages): string {

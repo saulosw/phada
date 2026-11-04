@@ -8,6 +8,7 @@ import type {
 } from '../store/history-store.js'
 import type { Finding } from '../review/types.js'
 import { errorMessage } from './error-message.js'
+import { harvestMisses } from './harvest-misses.js'
 import type { ReviewRun } from './review-and-publish.js'
 
 export interface FeedbackMeta {
@@ -24,7 +25,7 @@ export interface FeedbackRefreshDeps {
   stopRequested?(): boolean
   now(): string
   events: {
-    observed(pull: DuePull, threads: number): void
+    observed(pull: DuePull, threads: number, misses: number): void
     warning(message: string): void
   }
 }
@@ -107,7 +108,8 @@ export async function refreshFeedback(
     }
     const seen = observation(pull.repo, pull.number, state, source, deps.now())
     deps.history.observeFeedback(seen)
-    deps.events.observed(pull, seen.threads.length)
+    const misses = harvestMisses(deps.history, pull, state, deps.now())
+    deps.events.observed(pull, seen.threads.length, misses)
     observed++
   }
   return { observed, failed }

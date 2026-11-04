@@ -32,6 +32,9 @@ import { runInit } from './cli/init.js'
 import { runPrompt } from './cli/prompt-command.js'
 import { runRules } from './cli/rules-command.js'
 import { runHistory, runHistoryPrune, runHistoryShow } from './cli/history-command.js'
+import { runMisses, runMissesDismiss } from './cli/misses-command.js'
+import { runMissesReplay } from './cli/misses-replay-command.js'
+import { reviewReplayer } from './cli/miss-replayer.js'
 import { reviewRunJson } from './cli/review-wiring.js'
 import { prepareReview, runManualReview } from './cli/manual-review.js'
 import type { ReviewRun } from './app/review-and-publish.js'
@@ -124,6 +127,16 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
       await runHistory(command, deps)
       return 0
     }
+    if (command.kind === 'misses') {
+      await runMisses(command, deps)
+      return 0
+    }
+    if (command.kind === 'misses-replay')
+      return await runMissesReplay(command, deps, reviewReplayer(deps))
+    if (command.kind === 'misses-dismiss') {
+      await runMissesDismiss(command, deps)
+      return 0
+    }
     if (command.kind === 'history-show') {
       await runHistoryShow(command, deps)
       return 0
@@ -156,6 +169,7 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
         force: command.force,
         dryRun: command.dryRun,
         waitCi: command.waitCi === true,
+        ...(command.head === undefined ? {} : { head: command.head }),
         options: {
           language: command.language,
           minConfidence: command.minConfidence,

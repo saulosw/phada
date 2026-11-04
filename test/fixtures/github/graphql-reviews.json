@@ -6,6 +6,9 @@
     "repository": {
       "pullRequest": {
         "state": "OPEN",
+        "author": {
+          "login": "octocat"
+        },
         "reviews": {
           "pageInfo": {
             "hasNextPage": false,
@@ -25,6 +28,7 @@
               },
               "state": "COMMENTED",
               "createdAt": "2026-10-08T00:58:40Z",
+              "submittedAt": "2026-10-08T00:58:40Z",
               "authorAssociation": "OWNER"
             }
           ]

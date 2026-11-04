@@ -70,6 +70,8 @@ describe('openHistoryStore migrations', () => {
       'feedback_pull',
       'finding',
       'job',
+      'miss',
+      'miss_replay',
       'review_request',
       'run',
       'signal',
@@ -169,6 +171,106 @@ describe('openHistoryStore migrations', () => {
     expect(store.addJob(JOB)).toBe(queued + 1)
     store.close()
     expect(userVersion(path)).toBe(HISTORY_MIGRATIONS.length)
+  })
+
+  it('migrates a version 4 file without losing its runs, findings and signals, and stores misses with their replays', async () => {
+    const path = fresh()
+    const v4 = await openHistoryStore(path, { migrations: HISTORY_MIGRATIONS.slice(0, 4) })
+    const job = v4.addJob({ ...JOB, status: 'done', finishedAt: JOB.notBefore })
+    const runId = v4.addRun({ ...RUN, jobId: job, verdict: 'comments', requestSource: 'watch' })
+    v4.recordPublished([
+      {
+        repo: 'acme/shop',
+        number: 3,
+        commitSha: RUN.headSha,
+        fingerprint: 'a.ts:x',
+        file: 'a.ts',
+        line: 1,
+        title: 'X',
+        severity: 'P2',
+        confidence: 80,
+        runId,
+        publishedAt: RUN.finishedAt,
+      },
+    ])
+    v4.observeFeedback({
+      repo: 'acme/shop',
+      number: 3,
+      pullState: 'open',
+      observedAt: RUN.finishedAt,
+      source: 'watch',
+      threads: [
+        {
+          threadId: 'T1',
+          fingerprint: 'a.ts:x',
+          url: 'https://github.com/acme/shop/pull/3#discussion_r1',
+          file: 'a.ts',
+          line: 1,
+          title: 'X',
+          severity: 'P2',
+          commitSha: RUN.headSha,
+          outdated: false,
+          destination: 'dismissed',
+          signals: ['dismissed'],
+        },
+      ],
+    })
+    const before = { runs: v4.runs({}), run: v4.run(runId), findings: v4.findings({}) }
+    v4.close()
+
+    const store = await openHistoryStore(path)
+    expect({ runs: store.runs({}), run: store.run(runId), findings: store.findings({}) }).toEqual(
+      before,
+    )
+    expect(store.findings({})).toMatchObject([{ runId, signals: [{ kind: 'dismissed' }] }])
+    expect(store.runOfJob(job)).toMatchObject({ id: runId, jobId: job })
+    const replay = store.addRun({ ...RUN, source: 'replay', status: 'dry-run' })
+    expect(replay).toBe(runId + 1)
+    store.close()
+    expect(userVersion(path)).toBe(HISTORY_MIGRATIONS.length)
+
+    const db = new DatabaseSync(path)
+    db.exec('pragma foreign_keys = on')
+    const indexes = db
+      .prepare("select name from sqlite_master where type = 'index' and tbl_name = 'run'")
+      .all()
+      .map((row) => row.name)
+    const miss = db
+      .prepare(
+        `insert into miss (repo, number, reviewed_sha, commit_sha, thread_id, thread_url, file,
+           start_line, line, author, role, body, created_at, harvested_at)
+         values ('acme/shop', 3, ?, ?, 'PRRT_1', 'https://github.com/acme/shop/pull/3#discussion_r9',
+           'a.ts', 4, 6, 'ana', 'member', 'This leaks the token', ?, ?)`,
+      )
+      .run(RUN.headSha, RUN.headSha, RUN.startedAt, RUN.finishedAt).lastInsertRowid
+    const sameThread = () =>
+      db
+        .prepare(
+          `insert into miss (repo, number, reviewed_sha, thread_id, file, author, role, body,
+             harvested_at) values ('acme/shop', 3, ?, 'PRRT_1', 'a.ts', 'ana', 'member', 'x', ?)`,
+        )
+        .run(RUN.headSha, RUN.finishedAt)
+    const addReplay = (version: string, outcome: string) =>
+      db
+        .prepare(
+          `insert into miss_replay (miss_id, version, run_id, outcome, replayed_at)
+           values (?, ?, ?, ?, ?)`,
+        )
+        .run(miss, version, replay, outcome, RUN.finishedAt)
+    addReplay('0.12.0', 'missed')
+    expect(sameThread).toThrow()
+    expect(() => addReplay('0.12.0', 'caught')).toThrow()
+    expect(() => addReplay('0.13.0', 'maybe')).toThrow()
+    db.prepare('delete from run where id = ?').run(replay)
+    const replays = db.prepare('select version, run_id, outcome from miss_replay').all()
+    const state = db.prepare('select state from miss where id = ?').get(miss)?.state
+    db.prepare('delete from miss where id = ?').run(miss)
+    const left = db.prepare('select count(*) as left from miss_replay').get()?.left
+    db.close()
+    expect(indexes).toEqual(expect.arrayContaining(['run_by_source', 'run_by_job']))
+    expect(replays).toEqual([{ version: '0.12.0', run_id: null, outcome: 'missed' }])
+    expect(state).toBe('open')
+    expect(left).toBe(0)
   })
 
   it('refuses a file written by a newer version and leaves it as it is', async () => {
@@ -501,11 +603,14 @@ describe('HistoryStore queries', () => {
     store.close()
   })
 
-  it('feedbackDue lists pulls with findings or published runs with findings, oldest observation first', async () => {
+  it('feedbackDue lists pulls with findings or runs where the AI was called, oldest observation first', async () => {
     const store = await openHistoryStore(fresh())
     store.addRun({ ...RUN, number: 7 })
     store.addRun({ ...RUN, number: 8, findings: 0 })
-    store.addRun({ ...RUN, number: 9, status: 'dry-run' })
+    store.addRun({ ...RUN, number: 9, status: 'dry-run', source: 'manual' })
+    store.addRun({ ...RUN, number: 10, status: 'failed', findings: 0 })
+    store.addRun({ ...RUN, number: 11, aiCalled: false, status: 'skipped', findings: 0 })
+    store.addRun({ ...RUN, number: 12, source: 'replay', status: 'dry-run' })
     store.observeFeedback({
       repo: 'acme/shop',
       number: 3,
@@ -531,6 +636,9 @@ describe('HistoryStore queries', () => {
 
     expect(store.feedbackDue({}, at(2))).toEqual([
       { repo: 'acme/shop', number: 7 },
+      { repo: 'acme/shop', number: 8 },
+      { repo: 'acme/shop', number: 9 },
+      { repo: 'acme/shop', number: 10 },
       { repo: 'acme/shop', number: 3 },
     ])
     expect(store.feedbackDue({}, at(2), 1)).toEqual([{ repo: 'acme/shop', number: 7 }])
@@ -772,6 +880,16 @@ describe('HistoryStore run', () => {
 
     expect(store.run(id)).toEqual({ ...RUN, id })
     expect(store.run(id + 1)).toBeUndefined()
+    store.close()
+  })
+
+  it('stores a replay run and reads it back', async () => {
+    const store = await openHistoryStore(fresh())
+    const replay: RunRecord = { ...RUN, source: 'replay', status: 'dry-run', url: undefined }
+    const id = store.addRun(replay)
+
+    const { url: _url, ...stored } = replay
+    expect(store.run(id)).toEqual({ ...stored, id })
     store.close()
   })
 })

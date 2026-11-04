@@ -53,10 +53,10 @@ be posted and posts nothing; `phada publish <id>` then posts exactly that, witho
 AI again (see [Look first, publish later](#look-first-publish-later)).
 
 `phada --help` lists the commands, and `phada review --help`, `phada publish --help`, `phada setup --help`,
-`phada init --help`, `phada index --help`, `phada rules --help`, `phada prompt --help`, `phada watch --help` and
-`phada history --help` list their options. To have new pull requests and pushes reviewed without running anything, see
+`phada init --help`, `phada index --help`, `phada rules --help`, `phada prompt --help`, `phada watch --help`,
+`phada history --help` and `phada misses --help` list their options. To have new pull requests and pushes reviewed without running anything, see
 [Watch mode](#watch-mode); to see what happened to the comments Phada published, see
-[History](#history). To see all of it in one place, run `phada` alone (see
+[History](#history), and for what people pointed out that Phada did not, [Misses](#misses). To see all of it in one place, run `phada` alone (see
 [Terminal app](#terminal-app)).
 
 ### GitHub token
@@ -101,7 +101,7 @@ phada
 | Automation   | The watch, the CI wait, the request sources that are on (pull request comments, `phada enqueue`, `phada mcp`, Slack), the hooks and the `when` commands                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | Provider     | The provider and model you chose and where they come from, the language, each AI checked (installed, logged in, Ollama running and its models) with the command that fixes it, and your MCP servers; `c`, `L` and `l` change them                                                                                                                                                                                                                                                                                                                                                 |
 | Graph        | The [map](#repository-map) of each repository of the Repositories screen: whether it is indexed, its commit, files, symbols and size → its commit and branch, when it was indexed and how long it took, its files per language, its symbols by kind, its imports, exports, calls and uses, and the files left out and why, and its connections: each related repository it declares (`context.repos`) linked by the packages one publishes and the other uses, without a link, or not indexed and why; `i` indexes it and `I` the related ones not indexed; `s` explores a symbol |
-| Learnings    | Per repository, the relations learned from reviews and what happened to Phada's comments, per repository and per rule                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Learnings    | Per repository, the relations learned from reviews, what happened to Phada's comments, per repository and per rule, and the open [misses](#misses) with how many the latest replay caught                                                                                                                                                                                                                                                                                                                                                                                         |
 
 Keys: `←`/`→` or `Tab` move between screens, `1`–`9` jump to one, `/` finds a screen by name (and
 `/setup` the setup, `/language` the language, `/index` the Graph, `/review` a review), `?` lists every key, `↑`/`↓` and `Enter` open an
@@ -479,6 +479,32 @@ Phada review of the pull request is skipped without calling the AI: a push that 
 ignored files, or a merge of the base branch that only moves the changed lines, does not trigger
 a new review. `--force` reviews anyway and `--dry-run` says it would skip.
 
+### Replaying an earlier commit
+
+`--head <sha>` reviews the pull request as it was at an earlier commit, to see whether this
+version of Phada (or your config) finds a problem it missed there:
+
+```bash
+phada review owner/repo#123 --head 1e6a005 --dry-run
+```
+
+The SHA is a commit of the pull request (at least 7 characters), including one a force-push
+replaced. The review gets the diff from the base up to that commit and nothing created after the
+moment it became the head: reviews, comments, threads and replies written later are left out,
+Phada's own included; the threads from before are shown open and current, on the line where they
+were written, since GitHub keeps no record of when a thread was resolved; a check that finished later is shown as still running; and
+a native skill reads nothing of the repository on GitHub (it works on the checkout at that commit,
+and `gh pr view`, `gh pr diff` and `gh pr checks` answer from the replay). The moment is the
+first force-push that brought the commit; GitHub does not record when a normal push happened, so
+otherwise the cut is the commit date, which comes before the push, and the run warns
+`The cut is approximate`. The title and the description are the ones of today.
+
+A replay always runs with `--dry-run` (without it Phada refuses: a replay never publishes),
+never skips, rechecks and resolves no comment, and does not wait for the checks (`--wait-ci` is
+refused). It is kept in the [history](#history) as a replay, which `phada publish` refuses and
+the feedback of the comments does not count. `phada prompt owner/repo#123 --head <sha>` shows the
+prompt of the replay without calling the AI.
+
 Text written by the AI cannot mention anyone, link other issues or pull requests (`#12`, `owner/repo#12`), add HTML or forge Phada's own markers, and a body
 longer than GitHub allows is shortened with a visible "(truncated)". Two runs on the same pull
 request at the same time can both publish. GitHub refuses a new review while you have a pending
@@ -804,8 +830,8 @@ thread: a resolved comment that is reopened is open again, and a removed reactio
 The history keeps when each one started and, when it stopped, when.
 
 `phada review` saves the state of the threads it reads on every run. `phada watch` also reads
-the pull requests with Phada comments every 30 minutes when the queue is idle, and once more when
-they are merged or closed. Without the watch, `phada history --refresh` reads them on demand
+the pull requests Phada reviewed (with comments or not, dry runs included) every 30 minutes when
+the queue is idle, and once more when they are merged or closed. Without the watch, `phada history --refresh` reads them on demand
 (it needs a GitHub token); `phada history owner/repo#123 --refresh` reads that pull request even
 when the history has nothing about it yet.
 
@@ -816,6 +842,50 @@ outcome. They are signals, not verdicts: a dismissed comment may still have been
 or the stats, with `schemaVersion: 1`. `phada history prune --older-than <age>` removes reviews,
 comments and finished jobs older than that age (`1d` at least); it never touches what the watch
 needs to know what it already saw.
+
+### Misses
+
+A miss is a problem a person pointed out that Phada did not: a thread opened on a pull request
+after Phada reviewed it, by someone who is not a bot, not Phada and not the author of the pull
+request, on lines that a later commit changed (GitHub marks the thread outdated), with no Phada
+finding in the same file within 5 lines of it. General comments, without a file and a line, are
+not misses. Each miss keeps the commit Phada reviewed, the commit the person commented on, the
+file and lines, the author and their role in the repository (owner, member, collaborator,
+contributor or external), the comment (up to 2 KB) and the link to the thread.
+
+Misses are collected without the AI whenever the comments are read — by the watch, by
+`phada history --refresh` and by `phada misses --refresh` — and stay only in the history on your
+machine: Phada never publishes them.
+
+```bash
+phada misses                          # the open misses
+phada misses owner/repo --all         # one repository, dismissed ones included
+phada misses --refresh                # read the reviewed pull requests on GitHub first
+phada misses owner/repo#123 --refresh # read that pull request, even one the history lacks
+phada misses dismiss 7                # take miss 7 off the list
+```
+
+Each miss starts with its id; a dismissed miss stays dismissed when it is collected again.
+`--format json` prints them with `schemaVersion: 1`.
+
+`phada misses --replay` checks whether Phada catches its misses now. It groups the open misses by
+pull request and by the commit the person commented on, and reviews each group once with your AI,
+as the pull request was at that commit (a dry run, as `phada review --head` does): each group is a
+full review, and a line before each one says which pull request, commit and how many misses it
+covers. A miss is **caught** when the replay finds something in the same file within 5 lines of
+it, **missed** otherwise. The replays are kept in the history as runs of their own (never
+published, never counted as feedback), and the outcome of each miss is kept per Phada version:
+replaying again with the same version replaces it. The output lists each miss with its outcome
+and the total (`3 of 7 caught in 0.12.0.`), and, when an earlier version replayed the same
+misses, its tally over them. A pull request whose review fails, or runs no AI (an empty diff,
+every changed file ignored, no skill that applies), is a warning, its misses get no outcome, and
+the replay goes on with the next one; Ctrl-C stops after the current review (twice aborts it).
+
+```bash
+phada misses --replay                 # every open miss
+phada misses --replay owner/repo      # the open misses of one repository
+phada misses --replay --format json   # outcomes and tallies as data (schemaVersion: 1)
+```
 
 ## Rules and repository context
 
@@ -1074,6 +1144,7 @@ Text published on the pull request is checked for token patterns, which are repl
 ```bash
 phada prompt owner/repo#123                     # the prompt of each pass for this pull request
 phada prompt owner/repo#123 --skill security-review
+phada prompt owner/repo#123 --head 1e6a005      # as a replay of that commit would send it
 phada prompt --default                          # the built-in prompt, no token needed
 ```
 
@@ -1084,7 +1155,9 @@ diff); the conversation and the checks are read unless the config turns them off
 Phada adds, the commands and folders it may use, and the instructions that turn its output into
 findings. The tool sections are shown as a review sends them when the
 repository index is ready; the impact of the change and related repositories are computed during
-a review and are not shown. `--format json` prints the same with `schemaVersion: 1`.
+a review and are not shown. With `--head <sha>` it shows the prompt at that commit, with the
+conversation and the checks cut as in a [replay](#replaying-an-earlier-commit) and the warning
+when the cut is approximate. `--format json` prints the same with `schemaVersion: 1`.
 
 ## Repository investigation
 

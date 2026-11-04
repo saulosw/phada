@@ -160,6 +160,8 @@ export function feedbackDue(
       select repo, number from finding
       union
       select repo, number from run where status = 'published' and findings > 0
+      union
+      select repo, number from run where ai_called = 1 and source in ('watch', 'manual')
     ) p left join feedback_pull f on f.repo = p.repo and f.number = p.number
     ${clause}${inRepos}
     order by f.observed_at is not null, f.observed_at, p.repo, p.number

@@ -1,3 +1,5 @@
+import { shortSha } from './review-text.js'
+
 export class UsageError extends Error {
   override readonly name = 'UsageError'
 }
@@ -23,6 +25,22 @@ export class RunNotFoundError extends Error {
 
   constructor(id: number) {
     super(`No run ${id} in the history.`)
+  }
+}
+
+export class MissNotFoundError extends Error {
+  override readonly name = 'MissNotFoundError'
+
+  constructor(id: number) {
+    super(`No miss ${id} in the history.`)
+  }
+}
+
+export class ReplayRanNoAiError extends Error {
+  override readonly name = 'ReplayRanNoAiError'
+
+  constructor(sha: string, reason: string) {
+    super(`the review at ${shortSha(sha)} ran no AI: ${reason}.`)
   }
 }
 

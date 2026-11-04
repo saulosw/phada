@@ -185,6 +185,8 @@ function harness(
     pullComments?: MainDeps['fetchPullComments']
     checkRuns?: MainDeps['fetchCheckRuns']
     ghToken?: MainDeps['ghToken']
+    timeline?: MainDeps['fetchPullRequestTimeline']
+    commitDiff?: MainDeps['fetchCommitDiff']
   } = {},
 ): Harness {
   const checkouts: (GitMirrorOptions & { sha: string; keepAs: string })[] = []
@@ -253,6 +255,14 @@ function harness(
       commentFetches.push(options)
       return overrides.pullComments?.(options) ?? Promise.resolve([])
     },
+    fetchPullRequestTimeline:
+      overrides.timeline ??
+      (() =>
+        Promise.resolve({
+          commits: [{ oid: HEAD_SHA, committedDate: '2026-10-18T11:00:00Z' }],
+          forcePushes: [],
+        })),
+    fetchCommitDiff: overrides.commitDiff ?? (() => Promise.resolve(pullRequestFixture().diff)),
     fetchCheckRuns: (options) => {
       const { owner, repo, token, sha } = options
       ciFetches.push(`runs ${owner}/${repo} ${sha} ${token === TOKEN ? 'token' : 'other'}`)
@@ -3527,5 +3537,227 @@ describe('run review --wait-ci', () => {
 
     expect(reads).toBe(1)
     expect(h.stderr()).not.toContain('Waiting for CI')
+  })
+})
+
+describe('run review --head', () => {
+  const OLD_HEAD = '1e6a005c3b7d4e2f8a9b0c1d2e3f4a5b6c7d8e9f'
+  const OLD_DIFF = [
+    'diff --git a/src/old.ts b/src/old.ts',
+    '--- a/src/old.ts',
+    '+++ b/src/old.ts',
+    '@@ -1 +1 @@',
+    '-before',
+    '+old change',
+    '',
+  ].join('\n')
+  const timeline = () =>
+    Promise.resolve({
+      commits: [
+        { oid: OLD_HEAD, committedDate: '2026-10-18T09:00:00Z' },
+        { oid: HEAD_SHA, committedDate: '2026-10-18T11:00:00Z' },
+      ],
+      forcePushes: [],
+    })
+  const pullComments = () =>
+    Promise.resolve([
+      {
+        id: 'IC1',
+        author: 'alice',
+        bot: false,
+        association: 'MEMBER',
+        createdAt: '2026-10-18T08:00:00Z',
+        body: 'Earlier comment.',
+      },
+      {
+        id: 'IC2',
+        author: 'alice',
+        bot: false,
+        association: 'MEMBER',
+        createdAt: '2026-10-18T10:00:00Z',
+        body: 'Later comment: the fee is added twice.',
+      },
+    ])
+  const replayHarness = () =>
+    harness({
+      env: { GITHUB_TOKEN: TOKEN, PHADA_CONFIG_HOME: '/cfg', PHADA_DATA_HOME: '/data' },
+      timeline,
+      pullComments,
+      commitDiff: () => Promise.resolve(OLD_DIFF),
+    })
+  const rowsOf = (h: Harness, table: string): Record<string, unknown>[] => {
+    const file = h.historyFiles[0]?.split(' → ')[1]
+    if (file === undefined) return []
+    const db = new DatabaseSync(file)
+    const rows = db.prepare(`select * from ${table} order by rowid`).all() as Record<
+      string,
+      unknown
+    >[]
+    db.close()
+    return rows
+  }
+
+  it('refuses to replay without --dry-run', async () => {
+    const h = replayHarness()
+
+    expect(await run(['review', 'acme/shop#12', '--head', '1e6a005'], h.deps)).toBe(2)
+    expect(h.stderr()).toContain('--head only runs with --dry-run: a replay never publishes.')
+    expect(h.prompts).toEqual([])
+  })
+
+  it('refuses a commit that is not in the pull request', async () => {
+    const h = replayHarness()
+
+    expect(await run(['review', 'acme/shop#12', '--head', 'abcdef0', '--dry-run'], h.deps)).toBe(1)
+    expect(h.stderr()).toContain('abcdef0 is not a commit of acme/shop#12.')
+    expect(h.prompts).toEqual([])
+  })
+
+  it('reviews the commit cut at its date, warns the cut is approximate and keeps it as a replay outside the feedback', async () => {
+    const h = replayHarness()
+
+    expect(
+      await run(
+        ['review', 'acme/shop#12', '--head', '1e6a005', '--dry-run', '--no-verify'],
+        h.deps,
+      ),
+    ).toBe(0)
+
+    expect(h.stderr()).toContain(
+      'Warning: The cut is approximate: GitHub does not record when a normal push happened, so the conversation is cut at the commit date of 1e6a005 (2026-10-18T09:00:00Z).',
+    )
+    expect(h.stderr()).toContain('Dry run: nothing was posted.')
+    expect(h.posts).toEqual([])
+    const [review] = h.prompts
+    expect(review?.data).toContain('+old change')
+    expect(review?.data).toContain('Earlier comment.')
+    expect(review?.data).not.toContain('Later comment')
+    expect(h.ciFetches).toContain(`runs acme/shop ${OLD_HEAD} token`)
+    expect(rowsOf(h, 'run')).toEqual([
+      expect.objectContaining({ source: 'replay', head_sha: OLD_HEAD, status: 'dry-run' }),
+    ])
+    expect(rowsOf(h, 'feedback_pull')).toEqual([])
+  })
+
+  it('records the feedback of a dry run that is not a replay', async () => {
+    const h = replayHarness()
+
+    expect(await run(['review', 'acme/shop#12', '--dry-run', '--no-verify'], h.deps)).toBe(0)
+
+    expect(rowsOf(h, 'run')).toEqual([expect.objectContaining({ source: 'manual' })])
+    expect(rowsOf(h, 'feedback_pull')).not.toEqual([])
+  })
+
+  it('replays the open misses with phada misses --replay and keeps the outcome per version', async () => {
+    const h = harness({
+      env: { GITHUB_TOKEN: TOKEN, PHADA_CONFIG_HOME: '/cfg', PHADA_DATA_HOME: '/data' },
+      files: memoryFiles({ '/data/history.sqlite': '' }),
+      timeline,
+      pullComments,
+      commitDiff: () => Promise.resolve(OLD_DIFF),
+    })
+    const seeded = await h.deps.openHistoryStore('/data/history.sqlite')
+    seeded.recordMisses(
+      [
+        {
+          repo: 'acme/shop',
+          number: 12,
+          reviewedSha: OLD_HEAD,
+          commitSha: OLD_HEAD,
+          threadId: 'PRRT_1',
+          threadUrl: 'https://github.com/acme/shop/pull/12#discussion_r1',
+          file: 'src/old.ts',
+          line: 1,
+          author: 'alice',
+          role: 'member',
+          body: 'The fee is added twice.',
+          createdAt: '2026-10-18T10:00:00Z',
+        },
+      ],
+      '2026-10-19T00:00:00.000Z',
+    )
+    seeded.close()
+
+    expect(await run(['misses', '--replay', 'acme/shop'], h.deps)).toBe(0)
+
+    expect(h.stderr()).toContain('[1/1] Reviewing acme/shop#12 at 1e6a005 again for 1 miss…')
+    expect(h.posts).toEqual([])
+    expect(h.prompts[0]?.data).toContain('+old change')
+    expect(h.prompts[0]?.data).not.toContain('Later comment')
+    expect(h.stdout()).toContain('0 of 1 caught in 1.2.3.')
+    const [replayRun] = rowsOf(h, 'run')
+    expect(replayRun).toMatchObject({ source: 'replay', head_sha: OLD_HEAD, status: 'dry-run' })
+    expect(rowsOf(h, 'miss_replay')).toEqual([
+      expect.objectContaining({ version: '1.2.3', run_id: replayRun?.id, outcome: 'missed' }),
+    ])
+    expect(rowsOf(h, 'feedback_pull')).toEqual([])
+  })
+
+  it('does not count a replay whose review ran no AI', async () => {
+    const h = harness({
+      env: { GITHUB_TOKEN: TOKEN, PHADA_CONFIG_HOME: '/cfg', PHADA_DATA_HOME: '/data' },
+      files: memoryFiles({ '/data/history.sqlite': '' }),
+      timeline,
+      pullComments,
+      commitDiff: () => Promise.resolve(''),
+    })
+    const seeded = await h.deps.openHistoryStore('/data/history.sqlite')
+    seeded.recordMisses(
+      [
+        {
+          repo: 'acme/shop',
+          number: 12,
+          reviewedSha: OLD_HEAD,
+          commitSha: OLD_HEAD,
+          threadId: 'PRRT_1',
+          threadUrl: 'https://github.com/acme/shop/pull/12#discussion_r1',
+          file: 'src/old.ts',
+          line: 1,
+          author: 'alice',
+          role: 'member',
+          body: 'The fee is added twice.',
+          createdAt: '2026-10-18T10:00:00Z',
+        },
+      ],
+      '2026-10-19T00:00:00.000Z',
+    )
+    seeded.close()
+
+    expect(await run(['misses', '--replay', 'acme/shop'], h.deps)).toBe(1)
+
+    expect(h.prompts).toEqual([])
+    expect(h.stderr()).toContain(
+      'Warning: acme/shop#12 at 1e6a005 was not replayed: the review at 1e6a005 ran no AI: the diff is empty.',
+    )
+    expect(h.stdout()).toContain('0 of 0 caught in 1.2.3.')
+    expect(rowsOf(h, 'miss_replay')).toEqual([])
+  })
+
+  it('shows the prompt at the commit, with the conversation cut', async () => {
+    const replay = replayHarness()
+    const today = replayHarness()
+
+    expect(
+      await run(['prompt', 'acme/shop#12', '--head', '1e6a005', '--format', 'json'], replay.deps),
+    ).toBe(0)
+    await run(['prompt', 'acme/shop#12', '--format', 'json'], today.deps)
+
+    type View = {
+      pullRequest: { headSha: string }
+      warnings: string[]
+      passes: { data: { name: string; bytes: number }[] }[]
+    }
+    const cut = JSON.parse(replay.stdout()) as View
+    const now = JSON.parse(today.stdout()) as View
+    const bytesOf = (view: View, name: string) =>
+      view.passes[0]?.data.find((block) => block.name === name)?.bytes ?? 0
+    expect(cut.pullRequest.headSha).toBe(OLD_HEAD)
+    expect(cut.warnings).toContain(
+      'The cut is approximate: GitHub does not record when a normal push happened, so the conversation is cut at the commit date of 1e6a005 (2026-10-18T09:00:00Z).',
+    )
+    expect(bytesOf(cut, 'PHADA_CONVERSATION')).toBeGreaterThan(0)
+    expect(bytesOf(cut, 'PHADA_CONVERSATION')).toBeLessThan(bytesOf(now, 'PHADA_CONVERSATION'))
+    expect(bytesOf(cut, 'PHADA_DIFF')).toBeLessThan(bytesOf(now, 'PHADA_DIFF'))
+    expect(replay.prompts).toEqual([])
   })
 })

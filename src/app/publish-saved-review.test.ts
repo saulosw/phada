@@ -246,7 +246,7 @@ describe('publishSavedReview', () => {
     expect(closed.resolved).toEqual([])
   })
 
-  it('refuses a run that is missing, was not a dry run, or found nothing to post', async () => {
+  it('refuses a run that is missing, was not a dry run, found nothing to post or replayed an earlier commit', async () => {
     const refusal = async (run: RunRecord | undefined, id = 7) => {
       const { deps, posted } = fakes(run === undefined ? {} : { run })
       const published = await publishSavedReview({ id, force: true }, deps)
@@ -267,6 +267,7 @@ describe('publishSavedReview', () => {
         storedRun({}, formatReviewJson(PR, { status: 'skipped', reason: 'all-ignored' }, DRY_RUN)),
       ),
     ).toEqual({ kind: 'nothing-to-publish' })
+    expect(await refusal(storedRun({ source: 'replay' }))).toEqual({ kind: 'replay' })
   })
 
   it('refuses a run saved without what publishing needs rather than post something else', async () => {

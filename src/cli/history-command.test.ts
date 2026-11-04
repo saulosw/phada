@@ -24,7 +24,7 @@ import type { ReviewResult } from '../review/types.js'
 import { formatAlreadyReviewedJson, formatReviewJson, publishedRunJson } from './format-json.js'
 import type { Publication } from './format-json.js'
 import { formatLocalTime } from './units.js'
-import type { HistoryCommandDeps } from './history-command.js'
+import type { HistoryCommandDeps } from './history-access.js'
 
 const root = mkdtempSync(join(tmpdir(), 'phada-history-command-'))
 afterAll(() => rmSync(root, { recursive: true, force: true }))

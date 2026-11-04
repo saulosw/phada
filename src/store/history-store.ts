@@ -32,6 +32,16 @@ import type {
   FindingRecord,
   PublishedFinding,
 } from './history-feedback.js'
+import {
+  aiRuns,
+  dismissMiss,
+  missReplays,
+  misses,
+  recordMisses,
+  recordMissReplays,
+} from './history-misses.js'
+import type { MissFilter, MissRecord, MissReplayRecord } from './history-misses.js'
+import type { Miss } from '../publish/misses.js'
 import type {
   FailureKind,
   JobRecord,
@@ -51,6 +61,7 @@ export type {
   PublishedFinding,
   SignalSource,
 } from './history-feedback.js'
+export type { MissFilter, MissOutcome, MissRecord, MissReplayRecord } from './history-misses.js'
 
 export type RunStatus =
   'published' | 'dry-run' | 'not-published' | 'superseded' | 'skipped' | 'nothing' | 'failed'
@@ -71,7 +82,7 @@ export interface RepoRecord {
 export interface RunRecord {
   id?: number
   jobId?: number
-  source: 'watch' | 'manual'
+  source: 'watch' | 'manual' | 'replay'
   repo: string
   number: number
   headSha: string
@@ -151,6 +162,12 @@ export interface HistoryStore {
   observeFeedback(observation: FeedbackObservation): void
   findings(filter: FindingFilter): FindingRecord[]
   feedbackDue(filter: DueFilter, before: string, limit?: number): DuePull[]
+  aiRuns(pull: DuePull): RunRecord[]
+  recordMisses(misses: readonly Miss[], harvestedAt: string): number
+  misses(filter: MissFilter): { misses: MissRecord[]; total: number }
+  dismissMiss(id: number): boolean
+  recordMissReplays(replays: readonly MissReplayRecord[]): void
+  missReplays(missIds: readonly number[]): MissReplayRecord[]
   runs(filter: HistoryFilter): { runs: ListedRun[]; total: number }
   prune(before: string): PruneCounts
   close(): void
@@ -541,6 +558,30 @@ class SqliteHistoryStore implements HistoryStore {
 
   feedbackDue(filter: DueFilter, before: string, limit?: number): DuePull[] {
     return feedbackDue(this.#db, filter, before, limit)
+  }
+
+  aiRuns(pull: DuePull): RunRecord[] {
+    return aiRuns(this.#db, pull)
+  }
+
+  recordMisses(found: readonly Miss[], harvestedAt: string): number {
+    return recordMisses(this.#db, found, harvestedAt)
+  }
+
+  misses(filter: MissFilter): { misses: MissRecord[]; total: number } {
+    return misses(this.#db, filter)
+  }
+
+  dismissMiss(id: number): boolean {
+    return dismissMiss(this.#db, id)
+  }
+
+  recordMissReplays(replays: readonly MissReplayRecord[]): void {
+    recordMissReplays(this.#db, replays)
+  }
+
+  missReplays(missIds: readonly number[]): MissReplayRecord[] {
+    return missReplays(this.#db, missIds)
   }
 
   runs(filter: HistoryFilter): { runs: ListedRun[]; total: number } {

@@ -231,8 +231,8 @@ export const english: UiMessages = {
       indexed: (repo, sha) => `${repo}: index of the default branch updated to ${sha}.`,
       indexPartial: (repo) =>
         `${repo}: indexing the default branch; it goes on when the queue is idle.`,
-      feedback: (ref, comments) =>
-        `Feedback: ${ref}, ${number(comments)} ${comments === 1 ? 'comment' : 'comments'}.`,
+      feedback: (ref, comments, misses) =>
+        `Feedback: ${ref}, ${number(comments)} ${comments === 1 ? 'comment' : 'comments'}${misses > 0 ? `, ${number(misses)} ${misses === 1 ? 'new miss' : 'new misses'}` : ''}.`,
       warning: (message) => `Warning: ${message}`,
       limited: (count, until) =>
         `${number(count)} ${count === 1 ? 'review' : 'reviews'} in the last hour: the next one starts at ${until}.`,
@@ -275,6 +275,7 @@ export const english: UiMessages = {
     sources: {
       watch: 'watch',
       manual: 'review',
+      replay: 'replay',
       enqueue: 'enqueue',
       mcp: 'MCP',
       'pr-command': '/phada',
@@ -676,6 +677,7 @@ export const english: UiMessages = {
     aboutRelations:
       'Relations: code that a verified finding tied to a file the code itself does not link.',
     aboutFeedback: 'Feedback: what happened to the comments Phada published.',
+    aboutMisses: 'Misses: threads of people that no Phada finding came near.',
     nothing: 'Nothing learned yet: Phada learns from the reviews it publishes.',
     noneYet: 'No published comments or relations yet.',
     hint: 'Review a pull request with',
@@ -685,6 +687,7 @@ export const english: UiMessages = {
     unreadable: 'relations unreadable',
     comments: (count) => `${count} ${count === 1 ? 'comment' : 'comments'}`,
     noComments: 'no comments',
+    misses: (count) => `${count} ${count === 1 ? 'miss' : 'misses'}`,
     outcome: {
       fixed: (count) => `${count} fixed`,
       dismissed: (count) => `${count} dismissed`,
@@ -703,6 +706,11 @@ export const english: UiMessages = {
         'None yet. Phada learns them from verified findings that cite a file the code does not link, once the repository has its map (phada index).',
       unreadable:
         'The relations file could not be read: another Phada version wrote it, or it is damaged. The next review that learns a relation writes it again.',
+      misses: 'Misses of Phada',
+      missesOpen: (count) => `${count} open`,
+      caught: (caught, replayed, version) => `${caught} of ${replayed} caught in ${version}`,
+      notReplayed: 'not replayed yet',
+      replayHint: 'Review them again with',
       gone: 'This repository has nothing learned any more.',
     },
   },
@@ -996,6 +1004,8 @@ export const english: UiMessages = {
         notFound: 'Not published: this review is no longer in the history.',
         published: 'Not published: this review was already published.',
         notADryRun: 'Not published: this run is not a review that only looked.',
+        replay:
+          'Not published: this run replayed an earlier commit, and a replay is never published.',
         nothing: 'Not published: this review found nothing to post.',
         outdated:
           'Not published: this run was kept by an older Phada without everything needed to publish it.',

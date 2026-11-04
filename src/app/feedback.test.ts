@@ -197,6 +197,105 @@ describe('refreshFeedback', () => {
       expect(store.findings({ number: 1 })[0]?.signals[0]?.source).toBe('refresh')
     }))
 
+  describe('harvesting the misses', () => {
+    const REVIEWED = 'a'.repeat(40)
+    const RUN_AT = '2026-10-20T10:00:00.000Z'
+    const person = reviewThread({
+      id: 'T9',
+      path: 'src/shop.ts',
+      line: null,
+      originalLine: 22,
+      originalCommit: 'c'.repeat(40),
+      isOutdated: true,
+      url: 'https://github.com/acme/shop/pull/3#discussion_r9',
+      author: 'alice',
+      association: 'MEMBER',
+      bot: false,
+      body: 'This loses the balance.',
+      createdAt: '2026-10-20T11:00:00Z',
+    })
+    const harvested = reviewState({ viewer: 'octocat', author: 'bob', threads: [person] })
+
+    function localRun(resultJson: string) {
+      return {
+        source: 'manual' as const,
+        repo: 'acme/shop',
+        number: 3,
+        headSha: REVIEWED,
+        startedAt: RUN_AT,
+        finishedAt: RUN_AT,
+        status: 'dry-run' as const,
+        aiCalled: true,
+        provider: 'claude',
+        findings: 0,
+        resultJson,
+      }
+    }
+
+    function counting(store: HistoryStore, state: PullRequestReviewState) {
+      const counts: number[] = []
+      const d = deps(store, async () => state)
+      return {
+        counts,
+        deps: {
+          ...d,
+          events: {
+            ...d.events,
+            observed: (_pull: unknown, _threads: number, misses: number) => counts.push(misses),
+          },
+        },
+      }
+    }
+
+    it('records a person’s thread after a local dry run as a miss and reports only the new ones', () =>
+      withStore(async (store) => {
+        store.addRun(localRun('{"review":{"findings":[]}}'))
+        const { counts, deps: d } = counting(store, harvested)
+
+        await refreshFeedback([{ repo: 'acme/shop', number: 3 }], 'refresh', d)
+        await refreshFeedback([{ repo: 'acme/shop', number: 3 }], 'refresh', d)
+
+        expect(counts).toEqual([1, 0])
+        expect(store.misses({}).misses).toMatchObject([
+          {
+            repo: 'acme/shop',
+            number: 3,
+            reviewedSha: REVIEWED,
+            commitSha: 'c'.repeat(40),
+            threadId: 'T9',
+            line: 22,
+            author: 'alice',
+            role: 'member',
+            state: 'open',
+            harvestedAt: NOW,
+          },
+        ])
+      }))
+
+    it('a finding the local run kept near the thread is not a miss', () =>
+      withStore(async (store) => {
+        store.addRun(
+          localRun(JSON.stringify({ review: { findings: [{ file: 'src/shop.ts', line: 20 }] } })),
+        )
+        const { counts, deps: d } = counting(store, harvested)
+
+        await refreshFeedback([{ repo: 'acme/shop', number: 3 }], 'refresh', d)
+
+        expect(counts).toEqual([0])
+        expect(store.misses({}).total).toBe(0)
+      }))
+
+    it('a stored review that cannot be read counts as a review without findings', () =>
+      withStore(async (store) => {
+        store.addRun(localRun('{not json'))
+        const { counts, deps: d } = counting(store, harvested)
+
+        await refreshFeedback([{ repo: 'acme/shop', number: 3 }], 'refresh', d)
+
+        expect(counts).toEqual([1])
+      }))
+  })
+
   it('not found marks the pull closed and keeps going', () =>
     withStore(async (store) => {
       store.observeFeedback({

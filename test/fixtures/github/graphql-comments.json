@@ -12,6 +12,7 @@
               "id": "IC_kwDOQNCyRM7cQ1aa",
               "body": "The retry is temporary, it goes away in the next pull request.",
               "createdAt": "2026-10-07T21:03:11Z",
+              "publishedAt": "2026-10-07T21:03:11Z",
               "authorAssociation": "OWNER",
               "author": {
                 "login": "saulosw",
@@ -22,6 +23,7 @@
               "id": "IC_kwDOQNCyRM7cQ1bb",
               "body": "Coverage dropped by 0.4%.",
               "createdAt": "2026-10-07T21:05:42Z",
+              "publishedAt": "2026-10-07T21:05:42Z",
               "authorAssociation": "NONE",
               "author": {
                 "login": "codecov",

@@ -1,3 +1,4 @@
+import { ComparisonNotFoundError } from './compare-commits.js'
 import { DiffTooLargeError, PullRequestNotFoundError } from './errors.js'
 import {
   arrayField,
@@ -59,6 +60,11 @@ export interface FetchPullRequestOptions extends PullRequestRef {
 
 export type PullRequestMetadata = Omit<PullRequest, 'diff'>
 
+export interface FetchCommitDiffOptions extends FetchPullRequestOptions {
+  base: string
+  head: string
+}
+
 /** Fetches a pull request's metadata and then its diff (two sequential requests). */
 export async function fetchPullRequest(options: FetchPullRequestOptions): Promise<PullRequest> {
   const { owner, repo, number } = options
@@ -77,6 +83,21 @@ export async function fetchPullRequest(options: FetchPullRequestOptions): Promis
     maxDiffBytes: options.maxDiffBytes ?? DEFAULT_MAX_DIFF_BYTES,
   })
   return { ...metadata, diff }
+}
+
+export async function fetchCommitDiff(options: FetchCommitDiffOptions): Promise<string> {
+  const { owner, repo, number, base, head } = options
+  const ctx: GitHubRequestContext = {
+    token: options.token,
+    fetch: options.fetch ?? globalThis.fetch,
+    timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+  }
+  const path = `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`
+  return fetchDiff(ctx, path, {
+    ref: `${formatPullRequestRef({ owner, repo, number })} at ${head.slice(0, 7)}`,
+    maxDiffBytes: options.maxDiffBytes ?? DEFAULT_MAX_DIFF_BYTES,
+    notFound: () => new ComparisonNotFoundError(base, head),
+  })
 }
 
 export async function fetchPullRequestMetadata(
@@ -112,27 +133,34 @@ async function fetchMetadata(
 
 interface DiffLimits {
   ref: string
-  changedFiles: number
+  changedFiles?: number
   maxDiffBytes: number
+  notFound?: () => Error
 }
 
 async function fetchDiff(
   ctx: GitHubRequestContext,
   path: string,
-  { ref, changedFiles, maxDiffBytes }: DiffLimits,
+  { ref, changedFiles, maxDiffBytes, notFound }: DiffLimits,
 ): Promise<string> {
   const response = await sendGitHubRequest(ctx, path, ACCEPT_DIFF)
+  if (response.status === 404 && notFound !== undefined) throw notFound()
   // 406/422 is how GitHub says "this diff is too large to render".
   if (response.status === 406 || response.status === 422) {
     const apiMessage = await readApiMessage(response, ctx)
-    throw new DiffTooLargeError({ ref, changedFiles, apiMessage })
+    throw new DiffTooLargeError({
+      ref,
+      ...(changedFiles === undefined ? {} : { changedFiles }),
+      ...(apiMessage === undefined ? {} : { apiMessage }),
+    })
   }
   await ensureOk(response, ctx)
 
   const diff = await readText(response, ctx)
   const bytes = Buffer.byteLength(diff, 'utf8')
   if (bytes > maxDiffBytes) {
-    throw new DiffTooLargeError({ ref, changedFiles, bytes, maxBytes: maxDiffBytes })
+    const files = changedFiles ?? diff.match(/^diff --git /gm)?.length ?? 0
+    throw new DiffTooLargeError({ ref, changedFiles: files, bytes, maxBytes: maxDiffBytes })
   }
   return diff
 }

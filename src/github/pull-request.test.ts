@@ -10,7 +10,13 @@ import {
   GitHubRequestError,
   PullRequestNotFoundError,
 } from './errors.js'
-import { fetchPullRequest, fetchPullRequestHead, fetchPullRequestMetadata } from './pull-request.js'
+import { ComparisonNotFoundError } from './compare-commits.js'
+import {
+  fetchCommitDiff,
+  fetchPullRequest,
+  fetchPullRequestHead,
+  fetchPullRequestMetadata,
+} from './pull-request.js'
 import type { FetchPullRequestOptions } from './pull-request.js'
 import { ACCEPT_DIFF, ACCEPT_JSON } from './request.js'
 
@@ -399,5 +405,64 @@ describe('fetchPullRequestMetadata', () => {
     })
 
     expect(pull.labels).toEqual(['phada', 'ui'])
+  })
+})
+
+describe('fetchCommitDiff', () => {
+  const BASE = '0'.repeat(40)
+  const HEAD = '1e6a005c3b7d4e2f8a9b0c1d2e3f4a5b6c7d8e9f'
+  const diffAt = (answers: FakeResponse[], maxDiffBytes?: number) => {
+    const github = fakeGitHub([], answers)
+    return {
+      result: fetchCommitDiff({
+        owner: 'saulosw',
+        repo: 'phada-dev-web',
+        number: 3,
+        token: TOKEN,
+        base: BASE,
+        head: HEAD,
+        fetch: github.fetch,
+        ...(maxDiffBytes === undefined ? {} : { maxDiffBytes }),
+      }),
+      calls: github.calls,
+    }
+  }
+
+  it('reads the diff from the base to a commit with the diff media type', async () => {
+    const { result, calls } = diffAt([ok(DIFF)])
+
+    expect(await result).toBe(DIFF)
+    expect(calls[0]?.url).toBe(
+      `https://api.github.com/repos/saulosw/phada-dev-web/compare/${BASE}...${HEAD}`,
+    )
+    expect(calls[0]?.headers.accept).toBe(ACCEPT_DIFF)
+  })
+
+  it('rejects a diff above maxDiffBytes, naming the commit and its files', async () => {
+    const { result } = diffAt([ok(DIFF)], 10)
+
+    const error = await failureOf(result)
+
+    expect(error).toBeInstanceOf(DiffTooLargeError)
+    expect((error as DiffTooLargeError).message).toBe(
+      `The diff of saulosw/phada-dev-web#3 at 1e6a005 has ${Buffer.byteLength(DIFF)} bytes (1 changed files), above the limit of 10 bytes.`,
+    )
+  })
+
+  it('throws DiffTooLargeError when GitHub refuses the diff of the commit', async () => {
+    const { result } = diffAt([{ status: 406, body: '{"message":"too big"}' }])
+
+    const error = await failureOf(result)
+
+    expect(error).toBeInstanceOf(DiffTooLargeError)
+    expect((error as DiffTooLargeError).message).toBe(
+      'GitHub refused to return the diff of saulosw/phada-dev-web#3 at 1e6a005. GitHub says: too big',
+    )
+  })
+
+  it('throws ComparisonNotFoundError when the commit is gone', async () => {
+    const { result } = diffAt([{ status: 404, body: '{"message":"Not Found"}' }])
+
+    await expect(result).rejects.toBeInstanceOf(ComparisonNotFoundError)
   })
 })

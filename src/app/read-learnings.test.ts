@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { FindingRecord } from '../store/history-store.js'
+import type { FindingRecord, MissRecord, MissReplayRecord } from '../store/history-store.js'
 import type { ObservedEdge } from '../store/observed-store.js'
 import { readLearnings } from './read-learnings.js'
 import type { LearningsReaders, ObservedRead } from './read-learnings.js'
@@ -36,12 +36,43 @@ function edge(id: number, createdAt: string): ObservedEdge {
   }
 }
 
+function openMiss(id: number, repo: string): MissRecord {
+  return {
+    id,
+    repo,
+    number: 3,
+    reviewedSha: 'a'.repeat(40),
+    commitSha: 'a'.repeat(40),
+    threadId: `T${id}`,
+    threadUrl: '',
+    file: 'src/a.ts',
+    line: 4,
+    author: 'alice',
+    role: 'member',
+    body: 'Missed.',
+    createdAt: '2026-10-22T10:00:00.000Z',
+    harvestedAt: '2026-10-22T11:00:00.000Z',
+    state: 'open',
+  }
+}
+
 function readers(
   findings: FindingRecord[] | undefined,
   observed: Record<string, ObservedRead> = {},
+  misses: { open: MissRecord[]; replays: MissReplayRecord[] } = { open: [], replays: [] },
 ): LearningsReaders {
   return {
-    history: findings === undefined ? undefined : { findings: () => findings },
+    history:
+      findings === undefined
+        ? undefined
+        : {
+            findings: () => findings,
+            misses: (filter) => {
+              expect(filter).toEqual({ state: 'open' })
+              return { misses: misses.open, total: misses.open.length }
+            },
+            missReplays: (ids) => misses.replays.filter(({ missId }) => ids.includes(missId)),
+          },
     observedRepos: async () => Object.keys(observed),
     readObserved: async (repo) => observed[repo] ?? { state: 'unreadable' },
   }
@@ -113,6 +144,7 @@ describe('readLearnings', () => {
       observed: { state: 'unreadable' },
       feedback: null,
       rules: [],
+      misses: null,
     })
   })
 
@@ -134,5 +166,37 @@ describe('readLearnings', () => {
       },
     })
     expect(learnings.repos[0]?.observed).toEqual({ state: 'unreadable' })
+  })
+
+  it('counts the open misses of each repository and how many the latest replayed version caught', async () => {
+    const replay = (missId: number, version: string, outcome: 'caught' | 'missed', at: string) => ({
+      missId,
+      version,
+      outcome,
+      replayedAt: at,
+    })
+    const learnings = await readLearnings(
+      readers(
+        [finding(1)],
+        {},
+        {
+          open: [openMiss(1, 'acme/shop'), openMiss(2, 'acme/shop'), openMiss(3, 'acme/api')],
+          replays: [
+            replay(1, '0.11.1', 'caught', '2026-10-30T10:00:00.000Z'),
+            replay(2, '0.11.1', 'caught', '2026-10-30T10:00:00.000Z'),
+            replay(1, '0.12.0', 'caught', '2026-11-02T10:00:00.000Z'),
+            replay(2, '0.12.0', 'missed', '2026-11-02T10:00:00.000Z'),
+          ],
+        },
+      ),
+    )
+
+    const [api, shop] = learnings.repos
+    expect(api).toMatchObject({ repo: 'acme/api', feedback: null, misses: { open: 1 } })
+    expect(api?.misses?.latest).toBeUndefined()
+    expect(shop?.misses).toEqual({
+      open: 2,
+      latest: { version: '0.12.0', caught: 1, replayed: 2 },
+    })
   })
 })

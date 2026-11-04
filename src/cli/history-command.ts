@@ -1,30 +1,22 @@
-import { refreshFeedback } from '../app/feedback.js'
 import { readFeedbackStats, readFindings, readReviews } from '../app/read-history.js'
 import { readRunReport } from '../app/read-run-report.js'
 import { formatRunReportJson, formatRunReportText } from './format-run-report.js'
 import { dataFiles } from '../config/data-paths.js'
-import type { LocalFileSystem } from '../config/local-files.js'
 import { loadTopLevelUserLayers } from '../config/user-config.js'
 import { historyEnabled } from '../config/watch-settings.js'
-import type {
-  FetchReviewStateOptions,
-  PullRequestReviewState,
-} from '../github/pull-request-reviews.js'
-import { openExistingHistoryStore, openHistoryStore } from '../store/history-store.js'
+import { openHistoryStore } from '../store/history-store.js'
 import type { HistoryStore } from '../store/history-store.js'
 import type { IndexFormat, RulesTarget } from './args.js'
-import { RunNotFoundError, UsageError } from './errors.js'
-import { requireGitHubToken } from './github-token.js'
-import type { GitHubTokenDeps } from './github-token.js'
+import { RunNotFoundError } from './errors.js'
+import { existingHistory, filterOf } from './history-access.js'
+import type { Filter, HistoryCommandDeps } from './history-access.js'
+import { refreshHistory, refreshToken } from './history-refresh.js'
 import {
   formatHistoryJson,
   formatHistoryText,
   formatStatsJson,
   formatStatsText,
 } from './format-history.js'
-import type { TextOutput } from './progress.js'
-import { feedbackRefreshDeps } from './review-wiring.js'
-import { toTerminalText } from '../app/terminal-text.js'
 import { formatCount } from './units.js'
 
 export interface HistoryCommand {
@@ -43,17 +35,6 @@ export interface HistoryPruneCommand {
 export interface HistoryShowCommand {
   id: number
   format: IndexFormat
-}
-
-export interface HistoryCommandDeps extends GitHubTokenDeps {
-  home: string
-  files: LocalFileSystem
-  stdout: TextOutput
-  stderr: TextOutput
-  clock: () => Date
-  openHistoryStore: (path: string) => Promise<HistoryStore>
-  openHistoryReader?: (path: string) => Promise<HistoryStore>
-  fetchReviewState: (options: FetchReviewStateOptions) => Promise<PullRequestReviewState>
 }
 
 export async function runHistory(command: HistoryCommand, deps: HistoryCommandDeps): Promise<void> {
@@ -78,7 +59,7 @@ export async function runHistory(command: HistoryCommand, deps: HistoryCommandDe
     return
   }
   try {
-    if (token !== undefined) await refresh(history, filter, token, deps)
+    if (token !== undefined) await refreshHistory(history, filter, token, deps)
     deps.stdout.write(render(command, since, history, filter))
   } finally {
     history.close()
@@ -109,20 +90,6 @@ export async function runHistoryShow(
   }
 }
 
-async function existingHistory(
-  path: string,
-  deps: HistoryCommandDeps,
-  open: (path: string) => Promise<HistoryStore> = deps.openHistoryStore,
-): Promise<HistoryStore | undefined> {
-  const opening = await openExistingHistoryStore(path, {
-    exists: (file) => deps.files.exists(file),
-    open,
-  })
-  if (opening.status === 'missing') return undefined
-  if (opening.status === 'open') return opening.history
-  throw opening.error
-}
-
 export async function runHistoryPrune(
   command: HistoryPruneCommand,
   deps: HistoryCommandDeps,
@@ -146,11 +113,6 @@ export async function runHistoryPrune(
   } finally {
     history.close()
   }
-}
-
-interface Filter {
-  repo?: string
-  number?: number
 }
 
 function render(
@@ -178,40 +140,4 @@ function render(
 function onlyCommentsText(comments: number): string {
   const one = comments === 1
   return `No reviews in the history yet, but ${formatCount(comments, 'Phada comment')} ${one ? 'is' : 'are'} recorded. See what happened to ${one ? 'it' : 'them'} with --stats, or with owner/repo#N for one pull request.\n`
-}
-
-async function refresh(
-  history: HistoryStore,
-  filter: Filter,
-  token: string,
-  deps: HistoryCommandDeps,
-): Promise<void> {
-  const due =
-    filter.repo !== undefined && filter.number !== undefined
-      ? [{ repo: filter.repo.toLowerCase(), number: filter.number }]
-      : history.feedbackDue(filter, deps.clock().toISOString())
-  if (due.length === 0) return
-  deps.stderr.write(`Refreshing ${formatCount(due.length, 'pull request')}…\n`)
-  await refreshFeedback(
-    due,
-    'refresh',
-    feedbackRefreshDeps(history, token, deps, {
-      observed: () => undefined,
-      warning: (message) => deps.stderr.write(`Warning: ${toTerminalText(message)}\n`),
-    }),
-  )
-}
-
-async function refreshToken(deps: HistoryCommandDeps, enabled: boolean): Promise<string> {
-  if (!enabled) {
-    throw new UsageError('--refresh saves to the history; remove history: false from your config.')
-  }
-  return requireGitHubToken(deps, 'read the pull requests and their comments')
-}
-
-function filterOf(target: RulesTarget | undefined): Filter {
-  if (target === undefined) return {}
-  if (target.kind === 'repo') return { repo: `${target.repo.owner}/${target.repo.repo}` }
-  const { owner, repo, number } = target.ref
-  return { repo: `${owner}/${repo}`, number }
 }

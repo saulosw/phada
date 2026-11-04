@@ -158,6 +158,41 @@ export const SIGNAL_TABLE: HistoryTable = {
   },
 }
 
+export const MISS_TABLE: HistoryTable = {
+  name: 'miss',
+  keys: ['id'],
+  columns: {
+    id: 'id',
+    repo: 'repo',
+    number: 'number',
+    reviewedSha: 'reviewed_sha',
+    commitSha: 'commit_sha',
+    threadId: 'thread_id',
+    threadUrl: 'thread_url',
+    file: 'file',
+    startLine: 'start_line',
+    line: 'line',
+    author: 'author',
+    role: 'role',
+    body: 'body',
+    createdAt: 'created_at',
+    harvestedAt: 'harvested_at',
+    state: 'state',
+  },
+}
+
+export const MISS_REPLAY_TABLE: HistoryTable = {
+  name: 'miss_replay',
+  keys: ['missId', 'version'],
+  columns: {
+    missId: 'miss_id',
+    version: 'version',
+    runId: 'run_id',
+    outcome: 'outcome',
+    replayedAt: 'replayed_at',
+  },
+}
+
 const NUMBERS = new Set([
   'id',
   'number',
@@ -166,8 +201,10 @@ const NUMBERS = new Set([
   'score',
   'findings',
   'line',
+  'startLine',
   'confidence',
   'runId',
+  'missId',
   'findingId',
   'commentsLastId',
 ])
