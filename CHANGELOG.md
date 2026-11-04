@@ -7,6 +7,35 @@ output can change between minor versions.
 
 ## Unreleased
 
+### Added
+
+- `phada review owner/repo#N --head <sha> --dry-run` reviews the pull request as it was at an
+  earlier commit: the diff up to that commit, and the conversation, threads and CI cut at the
+  moment the commit became the head, so the AI never sees what people wrote afterwards. It only
+  runs as a dry run, the run is saved in the history as a replay and stays out of the feedback,
+  and a skill that runs natively reads nothing of the repository through `gh` as it is today. When GitHub has
+  no record of the push, the cut is made at the commit date, with a warning.
+  `phada prompt owner/repo#N --head <sha>` shows that prompt without calling the AI.
+- Misses: a thread a person opened on a pull request Phada reviewed, with no finding of Phada
+  within 5 lines of it, that became outdated because a later commit changed those lines. Phada
+  collects them when it refreshes the feedback (in `phada watch` and `phada history --refresh`)
+  and keeps them only in the local history; threads of bots, of Phada and of the author of the
+  pull request never count.
+- `phada misses [owner/repo]` lists the open misses (`--all` adds the dismissed ones,
+  `--format json`), `phada misses --refresh [owner/repo[#N]]` collects them now, and
+  `phada misses dismiss <id>` takes one off the list.
+- `phada misses --replay [owner/repo[#N]]` reviews each pull request again at the commit where the
+  person commented, once per pull request and commit, says for each miss whether this version of
+  Phada catches it, and keeps the result per version next to the tally of the version before.
+- The Learnings screen of the app shows the open misses of each repository and how many the
+  latest replay caught.
+
+### Changed
+
+- The feedback refresh also reads the pull requests Phada reviewed without publishing (a dry run)
+  or without findings, so their misses are collected too.
+- `phada publish <id>` refuses a run that is a replay.
+
 ## 0.11.1 - 2026-11-03
 
 ### Fixed

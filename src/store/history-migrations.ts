@@ -173,4 +173,73 @@ create index job_by_commit on job (repo, number, head_sha);
 create index job_by_created on job (created_at);
 `,
   },
+  {
+    version: 5,
+    rebuildsTables: true,
+    sql: `
+create table run_rebuilt (
+  id integer primary key,
+  job_id integer references job (id),
+  source text not null check (source in ('watch', 'manual', 'replay')),
+  repo text not null,
+  number integer not null,
+  head_sha text not null,
+  started_at text not null,
+  finished_at text not null,
+  status text not null
+    check (status in ('published', 'dry-run', 'not-published', 'superseded', 'skipped', 'nothing', 'failed')),
+  ai_called integer not null,
+  provider text,
+  model text,
+  score real,
+  findings integer,
+  url text,
+  reason text,
+  error_kind text,
+  error text,
+  result_json text,
+  verdict text check (verdict in ('clean', 'comments', 'blocking', 'failed', 'skipped')),
+  request_source text
+    check (request_source in ('watch', 'enqueue', 'mcp', 'pr-command', 'slack'))
+);
+insert into run_rebuilt (id, job_id, source, repo, number, head_sha, started_at, finished_at,
+  status, ai_called, provider, model, score, findings, url, reason, error_kind, error,
+  result_json, verdict, request_source)
+  select id, job_id, source, repo, number, head_sha, started_at, finished_at, status, ai_called,
+    provider, model, score, findings, url, reason, error_kind, error, result_json, verdict,
+    request_source from run;
+drop table run;
+alter table run_rebuilt rename to run;
+create index run_by_source on run (source, started_at);
+create index run_by_job on run (job_id);
+create table miss (
+  id integer primary key,
+  repo text not null,
+  number integer not null,
+  reviewed_sha text not null,
+  commit_sha text,
+  thread_id text not null unique,
+  thread_url text,
+  file text not null,
+  start_line integer,
+  line integer,
+  author text not null,
+  role text not null
+    check (role in ('owner', 'member', 'collaborator', 'contributor', 'external')),
+  body text not null,
+  created_at text,
+  harvested_at text not null,
+  state text not null default 'open' check (state in ('open', 'dismissed'))
+);
+create index miss_by_pull on miss (repo, number);
+create table miss_replay (
+  miss_id integer not null references miss (id) on delete cascade,
+  version text not null,
+  run_id integer references run (id) on delete set null,
+  outcome text not null check (outcome in ('caught', 'missed')),
+  replayed_at text not null,
+  primary key (miss_id, version)
+);
+`,
+  },
 ]

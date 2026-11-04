@@ -196,6 +196,7 @@ export interface ReviewFlowMessages {
       notFound: string
       published: string
       notADryRun: string
+      replay: string
       nothing: string
       outdated: string
       headMoved(from: string, to: string): string
@@ -526,7 +527,7 @@ export interface WatchLogMessages {
   failed(ref: string, reason: string): string
   indexed(repo: string, sha: string): string
   indexPartial(repo: string): string
-  feedback(ref: string, comments: number): string
+  feedback(ref: string, comments: number, misses: number): string
   warning(message: string): string
   limited(count: number, until: string): string
   refused(source: string, ref: string, reason: string): string
@@ -758,6 +759,7 @@ export interface LearningsMessages {
   title(repos: number): string
   aboutRelations: string
   aboutFeedback: string
+  aboutMisses: string
   nothing: string
   noneYet: string
   hint: string
@@ -767,6 +769,7 @@ export interface LearningsMessages {
   unreadable: string
   comments(count: number): string
   noComments: string
+  misses(count: number): string
   outcome: Readonly<Record<FeedbackFinding['destination'], (count: number) => string>>
   marks(negative: number, replies: number): string
   detail: {
@@ -777,6 +780,11 @@ export interface LearningsMessages {
     relations(count: number): string
     noRelations: string
     unreadable: string
+    misses: string
+    missesOpen(count: number): string
+    caught(caught: number, replayed: number, version: string): string
+    notReplayed: string
+    replayHint: string
     gone: string
   }
 }

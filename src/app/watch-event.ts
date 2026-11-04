@@ -18,7 +18,7 @@ export type WatchEvent =
   | { kind: 'failed'; job: JobRecord; error: unknown }
   | { kind: 'indexed'; repo: string; sha: string }
   | { kind: 'indexPartial'; repo: string }
-  | { kind: 'feedback'; repo: string; number: number; threads: number }
+  | { kind: 'feedback'; repo: string; number: number; threads: number; misses: number }
   | { kind: 'warning'; message: string }
   | { kind: 'limited'; count: number; until: string }
   | {
@@ -61,7 +61,8 @@ export function watchEventsTo(sink: WatchEventSink): WatchEvents {
     failed: (job, error) => sink({ kind: 'failed', job, error }),
     indexed: (repo, sha) => sink({ kind: 'indexed', repo, sha }),
     indexPartial: (repo) => sink({ kind: 'indexPartial', repo }),
-    feedback: (repo, number, threads) => sink({ kind: 'feedback', repo, number, threads }),
+    feedback: (repo, number, threads, misses) =>
+      sink({ kind: 'feedback', repo, number, threads, misses }),
     warning: (message) => sink({ kind: 'warning', message }),
     limited: (count, until) => sink({ kind: 'limited', count, until }),
     refused: (request, result) => sink({ kind: 'refused', request, result }),

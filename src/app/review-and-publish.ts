@@ -20,6 +20,9 @@ import { readCi } from './read-ci.js'
 import { stopIfCancelled } from './review-cancelled.js'
 import { wrapProviderRuns } from './wrap-provider-runs.js'
 import { readConversation } from './read-conversation.js'
+import { loadReplay, replayCut, ReplayNeedsDryRunError, replayWarning } from './replay.js'
+import type { Replay, ReplayReaders } from './replay.js'
+import { replayReads } from './replay-reads.js'
 import type { CiReaders } from './read-ci.js'
 import { waitForCi } from './wait-for-ci.js'
 import type { CiWaited, CiWaiting, WaitClock } from './wait-for-ci.js'
@@ -79,6 +82,7 @@ export interface ReviewAndPublishInput {
   publish: boolean
   acceptDraft?: boolean
   waitCi?: { since: string }
+  head?: string
   options: ReviewOptions
   userLayers: readonly ConfigLayer[]
   mcp: ResolvedMcp
@@ -121,6 +125,7 @@ export interface ReviewAndPublishDeps {
   compare(pullRequest: PullRequest, base: string): Promise<ComparedFile[]>
   replyAndResolve(threadId: string, body: string): Promise<void>
   checkHead?(pullRequest: PullRequest): Promise<HeadCheck>
+  replay?: ReplayReaders
   clock?: WaitClock
   events: ReviewAndPublishEvents
 }
@@ -161,20 +166,24 @@ async function reviewThenPublish(
   stopIfCancelled: () => void,
 ): Promise<ReviewRun> {
   stopIfCancelled()
-  const pullRequest = await deps.fetchPullRequest(input.ref)
+  const replay = await replayOf(input, deps)
+  const pullRequest = replay?.pullRequest ?? (await deps.fetchPullRequest(input.ref))
   stopIfCancelled()
   deps.events.fetched(pullRequest)
+  const cutWarning = replay === undefined ? undefined : replayWarning(replay)
+  if (cutWarning !== undefined) deps.events.warning(cutWarning)
   if (
     input.mode === 'watch' &&
     (pullRequest.state === 'closed' || (pullRequest.draft && input.acceptDraft !== true))
   ) {
     return { status: 'skipped', pullRequest, reason: { kind: 'closed-or-draft' } }
   }
-  const state = await deps.fetchReviewState(input.ref)
+  const cut = replayCut(replay)
+  const state = cut.state(await deps.fetchReviewState(input.ref))
   stopIfCancelled()
   const runOptions = {
     headSha: pullRequest.headSha,
-    force: input.force,
+    force: input.force || replay !== undefined,
     dryRun: input.dryRun,
     skipReviewedCommits: input.mode === 'watch',
   }
@@ -182,7 +191,11 @@ async function reviewThenPublish(
   if (early.action === 'skip')
     return { status: 'skipped', pullRequest, reason: early.reason, reviewState: state }
 
-  const reviewDeps = refusingAfterCancel(deps.reviewDeps(pullRequest), input.signal)
+  const reviewDeps = refusingAfterCancel(
+    replayReviewDeps(deps.reviewDeps(pullRequest), pullRequest, replay),
+    input.signal,
+  )
+  const ciReaders = cut.ci(deps.ci)
   const review = {
     pullRequest,
     userLayers: input.userLayers,
@@ -198,7 +211,7 @@ async function reviewThenPublish(
   }
 
   const readsCi = input.options.ci ?? loaded.options.ci.read
-  if (input.waitCi !== undefined) {
+  if (input.waitCi !== undefined && replay === undefined) {
     const { waitMs } = loaded.options.ci
     if (!readsCi) {
       deps.events.warning('--wait-ci has nothing to wait for: ci.read is false in the config')
@@ -218,7 +231,8 @@ async function reviewThenPublish(
     }
   }
 
-  const resolve = input.options.resolveThreads ?? loaded.options.resolveThreads ?? true
+  const resolve =
+    replay === undefined && (input.options.resolveThreads ?? loaded.options.resolveThreads ?? true)
   const recheck = resolve ? await threadsWithChanges(state, pullRequest, deps) : []
   stopIfCancelled()
   const conversation =
@@ -226,13 +240,13 @@ async function reviewThenPublish(
       ? await readConversation(
           state,
           pullRequest.author,
-          () => deps.fetchPullComments(input.ref),
+          async () => cut.comments(await deps.fetchPullComments(input.ref)),
           (message) => deps.events.warning(message),
         )
       : undefined
   stopIfCancelled()
   const ci: Ci | undefined = readsCi
-    ? await readCi(deps.ci, pullRequest.headSha, loaded.options.ci.checks, (message) =>
+    ? await readCi(ciReaders, pullRequest.headSha, loaded.options.ci.checks, (message) =>
         deps.events.warning(message),
       )
     : undefined
@@ -306,6 +320,25 @@ async function reviewThenPublish(
     ...(decision.wouldSkip === undefined ? {} : { wouldSkip: decision.wouldSkip }),
     reviewState: state,
   }
+}
+
+async function replayOf(
+  input: ReviewAndPublishInput,
+  deps: ReviewAndPublishDeps,
+): Promise<Replay | undefined> {
+  if (input.head === undefined) return undefined
+  if (!input.dryRun) throw new ReplayNeedsDryRunError()
+  if (deps.replay === undefined) throw new Error('This caller cannot replay an earlier commit.')
+  return loadReplay(input.ref, input.head, deps.replay)
+}
+
+function replayReviewDeps(
+  deps: PullRequestReviewDeps,
+  pullRequest: PullRequest,
+  replay: Replay | undefined,
+): PullRequestReviewDeps {
+  if (replay === undefined || deps.readGitHub === undefined) return deps
+  return { ...deps, readGitHub: replayReads(deps.readGitHub, pullRequest) }
 }
 
 async function publish(

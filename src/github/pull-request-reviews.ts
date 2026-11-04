@@ -34,6 +34,7 @@ const REVIEWS_QUERY = `query($owner: String!, $repo: String!, $number: Int!, $af
   repository(owner: $owner, name: $repo) {
     pullRequest(number: $number) {
       state
+      author { login }
       reviews(first: 100, after: $after) {
         pageInfo { hasNextPage endCursor }
         nodes {
@@ -41,6 +42,7 @@ const REVIEWS_QUERY = `query($owner: String!, $repo: String!, $number: Int!, $af
           body
           state
           createdAt
+          submittedAt
           authorAssociation
           author { login __typename }
           url
@@ -62,21 +64,25 @@ const THREADS_QUERY = `query($owner: String!, $repo: String!, $number: Int!, $af
           isOutdated
           path
           line
+          originalLine
+          originalStartLine
           comments(first: 1) {
             nodes {
               id
               url
               body
               createdAt
+              publishedAt
               authorAssociation
               author { login __typename }
               pullRequestReview { id }
+              originalCommit { oid }
               reactionGroups { content reactors { totalCount } }
             }
           }
           replies: comments(last: 20) {
             totalCount
-            nodes { id body createdAt authorAssociation author { login __typename } }
+            nodes { id body createdAt publishedAt authorAssociation author { login __typename } }
           }
         }
       }
@@ -89,7 +95,7 @@ const COMMENTS_QUERY = `query($owner: String!, $repo: String!, $number: Int!, $a
     pullRequest(number: $number) {
       comments(first: 100, after: $after) {
         pageInfo { hasNextPage endCursor }
-        nodes { id body createdAt authorAssociation author { login __typename } }
+        nodes { id body createdAt publishedAt authorAssociation author { login __typename } }
       }
     }
   }
@@ -133,6 +139,9 @@ export interface ReviewThread {
   isOutdated: boolean
   path: string
   line: number | null
+  originalLine?: number
+  originalStartLine?: number
+  originalCommit?: string
   url: string
   author: string
   body: string
@@ -151,6 +160,7 @@ export type PullState = 'open' | 'closed' | 'merged'
 export interface PullRequestReviewState {
   viewer: string
   pullState: PullState
+  author?: string
   reviews: PublishedReview[]
   threads: ReviewThread[]
 }
@@ -161,7 +171,7 @@ export interface FetchReviewStateOptions extends PullRequestRef {
   timeoutMs?: number
 }
 
-interface Page {
+export interface PullRequestPage {
   data: unknown
   nodes: unknown[]
 }
@@ -169,53 +179,44 @@ interface Page {
 export async function fetchReviewState(
   options: FetchReviewStateOptions,
 ): Promise<PullRequestReviewState> {
-  const { ctx, ref, variables } = requestOf(options)
-  const reviewPages = await fetchPages(ctx, ref, REVIEWS_QUERY, variables, 'reviews')
-  const threadPages = await fetchPages(ctx, ref, THREADS_QUERY, variables, 'reviewThreads')
+  const reviewPages = await fetchPullRequestPages(options, REVIEWS_QUERY, 'reviews')
+  const threadPages = await fetchPullRequestPages(options, THREADS_QUERY, 'reviewThreads')
   return {
     viewer: stringField(reviewPages[0]?.data, 'viewer.login'),
     pullState: pullStateOf(reviewPages[0]?.data),
+    author: login(reviewPages[0]?.data, 'repository.pullRequest.author'),
     reviews: reviewPages.flatMap(({ nodes }) => nodes.map(toReview)),
     threads: threadPages.flatMap(({ nodes }) => nodes.map(toThread)),
   }
 }
 
 export async function fetchPullComments(options: FetchReviewStateOptions): Promise<PullComment[]> {
-  const { ctx, ref, variables } = requestOf(options)
-  const pages = await fetchPages(ctx, ref, COMMENTS_QUERY, variables, 'comments')
+  const pages = await fetchPullRequestPages(options, COMMENTS_QUERY, 'comments')
   return pages.flatMap(({ nodes }) =>
     nodes.map((node) => ({
       id: stringField(node, 'id'),
       ...authorOf(node, 'author'),
       association: stringField(node, 'authorAssociation'),
-      createdAt: stringField(node, 'createdAt'),
+      createdAt: shownAt(node, 'publishedAt'),
       body: stringField(node, 'body'),
     })),
   )
 }
 
-function requestOf(options: FetchReviewStateOptions) {
+export async function fetchPullRequestPages(
+  options: FetchReviewStateOptions,
+  query: string,
+  connection: string,
+): Promise<PullRequestPage[]> {
   const { owner, repo, number } = options
   const ctx: GitHubRequestContext = {
     token: options.token,
     fetch: options.fetch ?? globalThis.fetch,
     timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
   }
-  return {
-    ctx,
-    ref: formatPullRequestRef({ owner, repo, number }),
-    variables: { owner, repo, number },
-  }
-}
-
-async function fetchPages(
-  ctx: GitHubRequestContext,
-  ref: string,
-  query: string,
-  variables: Record<string, unknown>,
-  connection: string,
-): Promise<Page[]> {
-  const pages: Page[] = []
+  const ref = formatPullRequestRef({ owner, repo, number })
+  const variables = { owner, repo, number }
+  const pages: PullRequestPage[] = []
   let after: string | null = null
   do {
     const data = await queryPullRequest(ctx, ref, query, { ...variables, after })
@@ -263,10 +264,14 @@ function toReview(node: unknown): PublishedReview {
     commitSha: field(node, 'commit') === null ? null : stringField(node, 'commit.oid'),
     ...(typeof field(node, 'url') === 'string' ? { url: stringField(node, 'url') } : {}),
     state,
-    createdAt: stringField(node, 'createdAt'),
+    createdAt: shownAt(node, 'submittedAt'),
     association: stringField(node, 'authorAssociation'),
     bot,
   }
+}
+
+function shownAt(node: unknown, published: 'submittedAt' | 'publishedAt'): string {
+  return nullableStringField(node, published) ?? stringField(node, 'createdAt')
 }
 
 function pullStateOf(data: unknown): PullState {
@@ -283,6 +288,7 @@ function toThread(node: unknown): ReviewThread {
     isOutdated: booleanField(node, 'isOutdated'),
     path: stringField(node, 'path'),
     line: nullableNumberField(node, 'line'),
+    ...originalLines(node),
     url: comment === undefined ? '' : stringField(comment, 'url'),
     author: comment === undefined ? '' : login(comment, 'author'),
     body: comment === undefined ? '' : stringField(comment, 'body'),
@@ -295,18 +301,30 @@ function toThread(node: unknown): ReviewThread {
       id: stringField(reply, 'id'),
       ...authorOf(reply, 'author'),
       body: stringField(reply, 'body'),
-      createdAt: stringField(reply, 'createdAt'),
+      createdAt: shownAt(reply, 'publishedAt'),
       association: stringField(reply, 'authorAssociation'),
     })),
     ...(comment === undefined
       ? {}
       : {
           commentId: stringField(comment, 'id'),
-          createdAt: stringField(comment, 'createdAt'),
+          createdAt: shownAt(comment, 'publishedAt'),
           association: stringField(comment, 'authorAssociation'),
           bot: authorOf(comment, 'author').bot,
+          ...(field(comment, 'originalCommit') === null
+            ? {}
+            : { originalCommit: stringField(comment, 'originalCommit.oid') }),
         }),
     comments: numberField(node, 'replies.totalCount'),
+  }
+}
+
+function originalLines(node: unknown): Pick<ReviewThread, 'originalLine' | 'originalStartLine'> {
+  const line = nullableNumberField(node, 'originalLine')
+  const start = nullableNumberField(node, 'originalStartLine')
+  return {
+    ...(line === null ? {} : { originalLine: line }),
+    ...(start === null ? {} : { originalStartLine: start }),
   }
 }
 

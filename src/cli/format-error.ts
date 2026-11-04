@@ -9,10 +9,12 @@ import { IndexStoreError } from '../store/index-store.js'
 import {
   MissingGitHubTokenError,
   PublishRefusedError,
+  MissNotFoundError,
   RunNotFoundError,
   UsageError,
   WatchRunningError,
 } from './errors.js'
+import { HeadNotInPullRequestError, ReplayNeedsDryRunError } from '../app/replay.js'
 import { toTerminalText } from '../app/terminal-text.js'
 
 export interface FormattedError {
@@ -61,11 +63,14 @@ function describe(error: unknown): { summary: string; exitCode: 1 | 2 } {
   if (error instanceof ConfigError) return { summary: error.message, exitCode: 2 }
   if (error instanceof SkillError) return { summary: error.message, exitCode: 2 }
   if (error instanceof InvalidPullRequestRefError) return { summary: error.message, exitCode: 2 }
+  if (error instanceof ReplayNeedsDryRunError) return { summary: error.message, exitCode: 2 }
+  if (error instanceof HeadNotInPullRequestError) return { summary: error.message, exitCode: 1 }
   if (error instanceof MissingGitHubTokenError) return { summary: error.message, exitCode: 1 }
   if (
     error instanceof WatchRunningError ||
     error instanceof HistoryStoreError ||
     error instanceof RunNotFoundError ||
+    error instanceof MissNotFoundError ||
     error instanceof PublishRefusedError
   ) {
     return { summary: error.message, exitCode: 1 }

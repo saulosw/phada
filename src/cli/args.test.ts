@@ -6,6 +6,7 @@ import {
   parseCliArgs,
   HISTORY_USAGE,
   INDEX_USAGE,
+  MISSES_USAGE,
   INIT_USAGE,
   PROMPT_USAGE,
   PUBLISH_USAGE,
@@ -56,7 +57,7 @@ describe('parseCliArgs', () => {
     ],
     [
       ['reveiw', 'acme/shop#12'],
-      'Unknown command "reveiw". Available: setup, review, publish, init, index, rules, prompt, watch, enqueue, mcp, history.',
+      'Unknown command "reveiw". Available: setup, review, publish, init, index, rules, prompt, watch, enqueue, mcp, history, misses.',
     ],
     [['--verify'], "Unknown option '--verify'."],
     [
@@ -125,6 +126,31 @@ describe('parseCliArgs', () => {
     })
     expect(parseCliArgs(['review', 'acme/shop#12'])).not.toHaveProperty('waitCi')
     expect(REVIEW_USAGE).toContain('--wait-ci')
+  })
+
+  it('replays an earlier commit with --head, only on a dry run', () => {
+    expect(
+      parseCliArgs(['review', 'acme/shop#12', '--head', '1E6A005', '--dry-run']),
+    ).toMatchObject({ kind: 'review', head: '1e6a005', dryRun: true })
+    expect(parseCliArgs(['review', 'acme/shop#12'])).not.toHaveProperty('head')
+    expect(REVIEW_USAGE).toContain('--head <sha>')
+  })
+
+  it.each([
+    [
+      ['review', 'acme/shop#12', '--head', '1e6a005'],
+      '--head only runs with --dry-run: a replay never publishes.',
+    ],
+    [
+      ['review', 'acme/shop#12', '--head', '1e6a0', '--dry-run'],
+      'Invalid --head "1e6a0". Use a commit SHA of at least 7 hex characters.',
+    ],
+    [
+      ['review', 'acme/shop#12', '--head', '1e6a005', '--dry-run', '--wait-ci'],
+      '--wait-ci waits for the checks of the current head; --head replays an earlier commit.',
+    ],
+  ])('rejects %j', (argv, message) => {
+    expect(() => parseCliArgs(argv)).toThrow(new UsageError(message))
   })
 
   it('refuses to wait for checks it was told not to read', () => {
@@ -284,6 +310,7 @@ describe('parseCliArgs', () => {
     ['prompt', PROMPT_USAGE],
     ['watch', WATCH_USAGE],
     ['history', HISTORY_USAGE],
+    ['misses', MISSES_USAGE],
     ['enqueue', ENQUEUE_USAGE],
     ['mcp', MCP_USAGE],
   ])('says the %s usage takes the token of the gh login without GITHUB_TOKEN', (_name, text) => {
@@ -446,6 +473,77 @@ describe('parseCliArgs watch', () => {
     expect(parseCliArgs(['watch', '--help'])).toEqual({ kind: 'help', text: WATCH_USAGE })
     expect(WATCH_USAGE.startsWith('Usage: phada watch [options]')).toBe(true)
     expect(USAGE).toContain('watch                  Review new pull requests and pushes on its own')
+  })
+})
+
+describe('parseCliArgs misses', () => {
+  it('lists the open misses by default', () => {
+    expect(parseCliArgs(['misses'])).toEqual({
+      kind: 'misses',
+      all: false,
+      refresh: false,
+      format: 'text',
+      debug: false,
+    })
+  })
+
+  it('reads a repository or a pull request and the options', () => {
+    expect(
+      parseCliArgs(['misses', 'acme/shop#3', '--refresh', '--all', '--format', 'json', '--debug']),
+    ).toEqual({
+      kind: 'misses',
+      target: { kind: 'pull', ref: { owner: 'acme', repo: 'shop', number: 3 } },
+      all: true,
+      refresh: true,
+      format: 'json',
+      debug: true,
+    })
+    expect(parseCliArgs(['misses', 'acme/shop'])).toMatchObject({
+      target: { kind: 'repo', repo: { owner: 'acme', repo: 'shop' } },
+    })
+  })
+
+  it('reads --replay with a repository or a pull request', () => {
+    expect(parseCliArgs(['misses', '--replay'])).toEqual({
+      kind: 'misses-replay',
+      format: 'text',
+      debug: false,
+    })
+    expect(parseCliArgs(['misses', '--replay', 'acme/shop', '--format', 'json'])).toEqual({
+      kind: 'misses-replay',
+      target: { kind: 'repo', repo: { owner: 'acme', repo: 'shop' } },
+      format: 'json',
+      debug: false,
+    })
+  })
+
+  it('reads dismiss with a miss id', () => {
+    expect(parseCliArgs(['misses', 'dismiss', '4'])).toEqual({
+      kind: 'misses-dismiss',
+      id: 4,
+      debug: false,
+    })
+  })
+
+  it('shows its help', () => {
+    expect(parseCliArgs(['misses', '--help'])).toEqual({ kind: 'help', text: MISSES_USAGE })
+    expect(USAGE).toContain('misses')
+  })
+
+  it.each([
+    [['misses', 'dismiss'], 'phada misses dismiss needs a miss id, e.g. phada misses dismiss 12.'],
+    [['misses', 'dismiss', 'x'], 'Invalid miss id "x". Use a whole number from 1.'],
+    [['misses', 'dismiss', '1', '--all'], 'phada misses dismiss takes only a miss id.'],
+    [['misses', 'a/b', 'c/d'], 'Give one repository or pull request at a time.'],
+    [['misses', '--format', 'yaml'], 'Invalid --format "yaml". Use text or json.'],
+    [['misses', '--replay', '--all'], '--replay reviews the open misses only; remove --all.'],
+    [
+      ['misses', '--replay', '--refresh'],
+      '--replay reviews the misses already kept; run phada misses --refresh first.',
+    ],
+    [['misses', 'dismiss', '1', '--replay'], 'phada misses dismiss takes only a miss id.'],
+  ])('refuses %j', (argv, message) => {
+    expect(() => parseCliArgs(argv)).toThrow(message)
   })
 })
 
@@ -671,6 +769,16 @@ describe('prompt command', () => {
     })
   })
 
+  it('reads an earlier commit with --head', () => {
+    expect(parseCliArgs(['prompt', 'acme/shop#12', '--head', '1e6a005'])).toEqual({
+      kind: 'prompt',
+      target: { kind: 'pull', ref: REF, head: '1e6a005' },
+      format: 'text',
+      debug: false,
+    })
+    expect(PROMPT_USAGE).toContain('--head <sha>')
+  })
+
   it('reads --default without a pull request', () => {
     expect(parseCliArgs(['prompt', '--default'])).toEqual({
       kind: 'prompt',
@@ -684,6 +792,11 @@ describe('prompt command', () => {
     [['prompt'], 'Missing the pull request, e.g. phada prompt owner/repo#123, or --default.'],
     [['prompt', '--default', 'acme/shop#12'], 'Use either a pull request or --default.'],
     [['prompt', '--default', '--skill', 'sec'], '--skill needs a pull request.'],
+    [['prompt', '--default', '--head', '1e6a005'], '--head needs a pull request.'],
+    [
+      ['prompt', 'acme/shop#12', '--head', 'main'],
+      'Invalid --head "main". Use a commit SHA of at least 7 hex characters.',
+    ],
     [['prompt', 'acme/shop#12', '--format', 'yaml'], 'Invalid --format "yaml". Use text or json.'],
   ])('rejects %j', (argv, message) => {
     expect(() => parseCliArgs(argv)).toThrow(new UsageError(message))

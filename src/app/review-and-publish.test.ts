@@ -17,6 +17,7 @@ import { RECHECK_JSON_SCHEMA } from '../review/recheck-schema.js'
 import { VERIFICATION_JSON_SCHEMA } from '../review/verification-schema.js'
 import { verdictFixture, verificationJson } from '../../test/support/verification.js'
 import { diffFingerprint } from '../review/diff-fingerprint.js'
+import { ReplayNeedsDryRunError } from './replay.js'
 import { reviewAndPublish } from './review-and-publish.js'
 import { ReviewCancelledError } from './review-cancelled.js'
 import { CheckoutUnavailableError } from '../repository/git-checkout.js'
@@ -1549,5 +1550,281 @@ describe('reviewAndPublish with a native skill', () => {
     )
 
     expect(viewers).toEqual(['octocat'])
+  })
+})
+
+describe('reviewAndPublish replaying an earlier commit', () => {
+  const OLD_HEAD = '1e6a005c3b7d4e2f8a9b0c1d2e3f4a5b6c7d8e9f'
+  const PUSHED_AT = '2026-10-01T12:00:00Z'
+  const OLD_DIFF = [
+    'diff --git a/src/old.ts b/src/old.ts',
+    '--- a/src/old.ts',
+    '+++ b/src/old.ts',
+    '@@ -1 +1 @@',
+    '-before',
+    '+old change',
+    '',
+  ].join('\n')
+  const REPLAY_INPUT: ReviewAndPublishInput = {
+    ...INPUT,
+    dryRun: true,
+    head: '1e6a005',
+    options: { ...INPUT.options, verify: true },
+  }
+  const thread = (id: string, createdAt: string, body: string, author = 'carol') => ({
+    id,
+    isResolved: true,
+    isOutdated: true,
+    path: 'src/old.ts',
+    line: 1,
+    url: '',
+    author,
+    body,
+    reviewId: null,
+    negativeReactions: 0,
+    commentId: `${id}-c`,
+    createdAt,
+    association: 'MEMBER',
+    bot: false,
+    comments: 1,
+    replies: [],
+  })
+  const fullState = async (): Promise<PullRequestReviewState> => ({
+    viewer: 'octocat',
+    pullState: 'open',
+    reviews: [
+      {
+        id: 'R1',
+        author: 'octocat',
+        body: `Review\n\n${reviewMarker({ sha: OLD_HEAD, findings: 1 })}`,
+        commitSha: OLD_HEAD,
+        state: 'commented',
+        createdAt: '2026-10-01T11:00:00Z',
+        association: 'OWNER',
+        bot: false,
+      },
+      {
+        id: 'R2',
+        author: 'dave',
+        body: 'Later review: the fee is added twice.',
+        commitSha: PR.headSha,
+        state: 'changes-requested',
+        createdAt: '2026-10-02T09:00:00Z',
+        association: 'MEMBER',
+        bot: false,
+      },
+    ],
+    threads: [
+      thread('T1', '2026-10-01T11:30:00Z', 'Is this name right?'),
+      thread('T2', '2026-10-02T10:00:00Z', 'Later thread: missing auth check.'),
+      {
+        ...thread(
+          'T3',
+          '2026-10-01T11:00:00Z',
+          `**P1** · Old finding · confidence 90\n\nWhy.\n\n${FINDING_MARKER}`,
+          'octocat',
+        ),
+        reviewId: 'R1',
+        isResolved: false,
+        isOutdated: false,
+      },
+    ],
+  })
+  const replayDeps = (overrides: Partial<ReviewAndPublishDeps> = {}) => {
+    const fetched: string[] = []
+    const { deps, calls } = setup(
+      {
+        fetchPullRequest: () => Promise.reject(new Error('the replay reads no head of today')),
+        fetchReviewState: fullState,
+        fetchPullComments: async () => [
+          {
+            id: 'IC1',
+            author: 'ana',
+            bot: false,
+            association: 'MEMBER',
+            createdAt: '2026-10-01T10:00:00Z',
+            body: 'Earlier comment.',
+          },
+          {
+            id: 'IC2',
+            author: 'ana',
+            bot: false,
+            association: 'MEMBER',
+            createdAt: '2026-10-03T10:00:00Z',
+            body: 'Later comment: this broke checkout.',
+          },
+        ],
+        replay: {
+          fetchPullRequestMetadata: async () => {
+            fetched.push('metadata')
+            const { diff: _diff, ...metadata } = PR
+            return metadata
+          },
+          fetchTimeline: async () => ({
+            commits: [
+              { oid: OLD_HEAD, committedDate: '2026-10-01T09:00:00Z' },
+              { oid: PR.headSha, committedDate: '2026-10-02T08:00:00Z' },
+            ],
+            forcePushes: [
+              {
+                createdAt: PUSHED_AT,
+                before: null,
+                after: { oid: OLD_HEAD, committedDate: '2026-10-01T09:00:00Z' },
+              },
+            ],
+          }),
+          fetchDiffAt: async (_ref, base, head) => {
+            fetched.push(`diff ${base.slice(0, 7)}...${head.slice(0, 7)}`)
+            return OLD_DIFF
+          },
+        },
+        ...overrides,
+      },
+      PR,
+      undefined,
+      () =>
+        reviewReportJson({
+          findings: [findingFixture({ file: 'src/old.ts', line: 1, confidence: 95 })],
+        }),
+    )
+    deps.ci = {
+      ...deps.ci,
+      checkRuns: async (sha) => {
+        calls.ciReads.push(`runs ${sha}`)
+        return [
+          {
+            id: 7,
+            name: 'test',
+            status: 'completed',
+            conclusion: 'failure',
+            title: 'Tests failed',
+            summary: null,
+            url: null,
+            app: 'other-ci',
+            startedAt: '2026-10-01T11:50:00Z',
+            completedAt: '2026-10-01T12:30:00Z',
+          },
+        ]
+      },
+    }
+    return { deps, calls, fetched }
+  }
+
+  it('reviews the diff up to the commit with nothing created after it became the head, as a dry run', async () => {
+    const { deps, calls, fetched } = replayDeps()
+
+    const run = await reviewAndPublish(REPLAY_INPUT, deps)
+
+    expect(fetched).toEqual(['metadata', `diff 0000000...1e6a005`])
+    expect(run.pullRequest).toMatchObject({ headSha: OLD_HEAD, diff: OLD_DIFF })
+    expect(run).toMatchObject({ status: 'reviewed', publication: { status: 'dry-run' } })
+    const [review, verify] = calls.prompts
+    expect(verify?.outputSchema).toBe(VERIFICATION_JSON_SCHEMA)
+    for (const prompt of [review, verify]) {
+      expect(prompt?.data).toContain('+old change')
+      expect(prompt?.data).toContain('Earlier comment.')
+      expect(prompt?.data).toContain('Is this name right?')
+      expect(prompt?.data).not.toContain('Later')
+      expect(prompt?.data).not.toContain('"resolved":true')
+      expect(prompt?.data).not.toContain('"outdated":true')
+      expect(prompt?.data).toContain('"name":"test","state":"pending"')
+    }
+    expect(calls.ciReads).toEqual([`runs ${OLD_HEAD}`, `statuses ${OLD_HEAD}`])
+    expect(calls.posts).toEqual([])
+  })
+
+  it('reviews a commit Phada already reviewed, and rechecks and resolves nothing', async () => {
+    const { deps, calls } = replayDeps()
+
+    const run = await reviewAndPublish(REPLAY_INPUT, deps)
+
+    expect(run.status).toBe('reviewed')
+    expect(calls.rechecks).toEqual([])
+    expect(calls.log).not.toContain('compare')
+    expect(run.status === 'reviewed' && run.publication).toEqual({
+      status: 'dry-run',
+      wouldResolve: [],
+    })
+  })
+
+  it('refuses to run without a dry run, before reading anything', async () => {
+    const { deps, fetched } = replayDeps()
+
+    await expect(reviewAndPublish({ ...REPLAY_INPUT, dryRun: false }, deps)).rejects.toThrow(
+      new ReplayNeedsDryRunError(),
+    )
+    expect(fetched).toEqual([])
+  })
+
+  it('warns that the cut is approximate when no force-push brought the commit', async () => {
+    const { deps, calls } = replayDeps()
+    const replay = deps.replay!
+    deps.replay = {
+      ...replay,
+      fetchTimeline: async () => ({
+        commits: [{ oid: OLD_HEAD, committedDate: '2026-10-01T09:00:00Z' }],
+        forcePushes: [],
+      }),
+    }
+
+    await reviewAndPublish(REPLAY_INPUT, deps)
+
+    expect(calls.events).toContain(
+      'warning: The cut is approximate: GitHub does not record when a normal push happened, so the conversation is cut at the commit date of 1e6a005 (2026-10-01T09:00:00Z).',
+    )
+    expect(calls.prompts[0]?.data).not.toContain('Is this name right?')
+  })
+
+  it('gives a native skill the pull request at the commit and the cut CI, and no read of the repository on GitHub', async () => {
+    const reads: string[] = []
+    const answers: unknown[] = []
+    const inputs: NativeRunnerInput[] = []
+    const { deps } = replayDeps()
+    const base = deps.reviewDeps
+    deps.reviewDeps = (pull) => ({
+      ...base(pull),
+      runsSkills: true,
+      openMirror: async () => ({}) as never,
+      readGitHub: async (path) => {
+        reads.push(path)
+        return []
+      },
+      skills: {
+        find: async (name) => ({
+          name,
+          origin: 'Claude Code',
+          text: 'Skill built into Claude Code: code-review.',
+          omitted: [],
+          native: { kind: 'builtin', invoke: 'code-review' },
+        }),
+      },
+      openNativeRunner: async (input, runner) => {
+        inputs.push(input)
+        answers.push(
+          await runner.readGitHub('repos/acme/shop/issues/12/comments').catch(() => 'refused'),
+          await runner
+            .readGitHub(`repos/acme/shop/commits/${OLD_HEAD}/check-runs`)
+            .catch(() => 'refused'),
+          await runner.readGitHub('repos/acme/shop/contents/src/old.ts').catch(() => 'refused'),
+          await runner.readGitHub('repos/acme/lib/contents/src/old.ts'),
+        )
+        return {
+          runSkill: async () => ({ text: 'ok', captured: [], durationMs: 1, blocked: [] }),
+          close: async () => undefined,
+        }
+      },
+    })
+
+    await reviewAndPublish(
+      { ...REPLAY_INPUT, options: { ...REPLAY_INPUT.options, skills: ['claude:code-review'] } },
+      deps,
+    )
+
+    expect(answers).toEqual(['refused', 'refused', 'refused', []])
+    expect(reads).toEqual(['repos/acme/lib/contents/src/old.ts'])
+    const [input] = inputs
+    expect(input?.pullRequest.headSha).toBe(OLD_HEAD)
+    expect(input?.diff).toBe(OLD_DIFF)
+    expect(input?.checks).toEqual([expect.objectContaining({ name: 'test', state: 'pending' })])
   })
 })

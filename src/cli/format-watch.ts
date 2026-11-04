@@ -50,7 +50,7 @@ function eventText(event: WatchEvent): string {
     case 'indexPartial':
       return `${event.repo}: indexing the default branch; it goes on when the queue is idle.`
     case 'feedback':
-      return `Feedback: ${event.repo}#${event.number}, ${formatCount(event.threads, 'comment')}.`
+      return `Feedback: ${event.repo}#${event.number}, ${formatCount(event.threads, 'comment')}${event.misses > 0 ? `, ${formatCount(event.misses, 'new miss', 'new misses')}` : ''}.`
     case 'warning':
       return `Warning: ${event.message}`
     case 'limited':

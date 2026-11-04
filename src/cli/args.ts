@@ -49,6 +49,16 @@ export type CliCommand =
     }
   | { kind: 'history-prune'; olderThanMs: number; debug: boolean }
   | { kind: 'history-show'; id: number; format: IndexFormat; debug: boolean }
+  | {
+      kind: 'misses'
+      target?: RulesTarget
+      all: boolean
+      refresh: boolean
+      format: IndexFormat
+      debug: boolean
+    }
+  | { kind: 'misses-dismiss'; id: number; debug: boolean }
+  | { kind: 'misses-replay'; target?: RulesTarget; format: IndexFormat; debug: boolean }
   | { kind: 'publish'; id: number; force: boolean; format: IndexFormat; debug: boolean }
   | { kind: 'mcp'; debug: boolean }
   | {
@@ -60,7 +70,7 @@ export type CliCommand =
     }
   | {
       kind: 'prompt'
-      target: { kind: 'pull'; ref: PullRequestRef } | { kind: 'default' }
+      target: { kind: 'pull'; ref: PullRequestRef; head?: string } | { kind: 'default' }
       skills?: string[]
       format: IndexFormat
       debug: boolean
@@ -80,12 +90,14 @@ export type CliCommand =
       ci?: boolean
       waitCi?: boolean
       skills?: string[]
+      head?: string
       dryRun: boolean
       force: boolean
       debug: boolean
     }
 
 export const DEFAULT_HISTORY_LIMIT = 50
+const COMMIT_SHA = /^[0-9a-f]{7,40}$/i
 const MIN_PRUNE_MS = durationMs('1d')
 const MAX_AGE_MS = durationMs('36500d')
 
@@ -107,6 +119,8 @@ Commands:
   enqueue <pull request> Ask the watch to review a pull request
   mcp                    Let your AI ask for reviews: an MCP server over stdio
   history                Show past reviews and what happened to Phada's comments
+  misses                 Show what people pointed out on reviewed pull requests
+                         and Phada did not
 
 Options:
   -h, --help             Show this help
@@ -201,6 +215,10 @@ Options:
   --skill <name>        Review with this skill installed for your AI CLI (plugin:skill
                         for a skill of a plugin; phada is the built-in reviewer);
                         repeat it for several passes; replaces review.skills of the config
+  --head <sha>          Replay the review at an earlier commit of the pull request:
+                        the diff up to it, with the conversation, threads and checks
+                        as they were when it became the head; only with --dry-run,
+                        and kept in the history as a replay, never published
   --dry-run             Print what would be published and post nothing
   --force               Review again even if Phada already reviewed this commit
   --debug               Show error details
@@ -285,6 +303,8 @@ Options:
   --default          Show the built-in prompt, without a pull request or a token
   --skill <name>     Show the passes of these skills instead of review.skills;
                      repeat it for several
+  --head <sha>       Show the prompt at an earlier commit of the pull request, as
+                     phada review --head would send it
   --format <name>    Output: text or json (default: text)
   --debug            Show error details
   -h, --help         Show this help
@@ -395,6 +415,42 @@ Environment:
                        uses the token of your gh login (gh auth login)
   PHADA_DATA_HOME      Folder of the history (default: ~/.local/share/phada)`
 
+export const MISSES_USAGE = `Usage: phada misses [<owner/repo[#N]>] [options]
+       phada misses --replay [<owner/repo[#N]>] [--format <name>]
+       phada misses dismiss <id>
+
+Shows the misses kept in the local history: a thread a person (not a bot,
+not Phada, not the author of the pull request) opened on a pull request
+Phada had reviewed, with no Phada finding within 5 lines of it, that a later
+commit made outdated. Misses stay on this machine and are never published.
+The watch and phada history --refresh collect them; --refresh collects them
+now.
+
+dismiss <id> takes a miss off the list; collecting again keeps it dismissed.
+
+--replay reviews each pull request again, with your AI, as it was at the
+commit where the person commented: one review per pull request and commit,
+a dry run kept in the history and never published. A miss is caught when the
+replay finds something in the same file within 5 lines of it. The results
+are kept per Phada version; replaying again with the same version replaces
+them.
+
+Options:
+  --refresh            Read the pull requests on GitHub first: the ones due,
+                       or the pull request named with owner/repo#N
+  --replay             Review the open misses again and say which ones Phada
+                       catches now
+  --all                Also show the dismissed misses
+  --format <name>      Output: text or json (default: text)
+  --debug              Show error details
+  -h, --help           Show this help
+
+Environment:
+  GITHUB_TOKEN         GitHub token for --refresh and --replay
+  GH_TOKEN             Used when GITHUB_TOKEN is not set; with neither, Phada
+                       uses the token of your gh login (gh auth login)
+  PHADA_DATA_HOME      Folder of the history (default: ~/.local/share/phada)`
+
 const REPOSITORY_NAME = /^([\w.-]+)\/([\w.-]+)$/
 
 export function parseCliArgs(argv: readonly string[]): CliCommand {
@@ -408,6 +464,7 @@ export function parseCliArgs(argv: readonly string[]): CliCommand {
   if (command === 'prompt') return parsePromptArgs(rest)
   if (command === 'watch') return parseWatchArgs(rest)
   if (command === 'history') return parseHistoryArgs(rest)
+  if (command === 'misses') return parseMissesArgs(rest)
   if (command === 'enqueue') return parseEnqueueArgs(rest)
   if (command === 'mcp') return parseMcpArgs(rest)
   if (command !== undefined && !command.startsWith('-')) throw unknownCommand(command)
@@ -429,7 +486,7 @@ function unknownCommand(command: string): UsageError {
     return new UsageError(`Unknown command "${command}". Did you mean "phada review ${command}"?`)
   }
   return new UsageError(
-    `Unknown command "${command}". Available: setup, review, publish, init, index, rules, prompt, watch, enqueue, mcp, history.`,
+    `Unknown command "${command}". Available: setup, review, publish, init, index, rules, prompt, watch, enqueue, mcp, history, misses.`,
   )
 }
 
@@ -474,6 +531,15 @@ function parseReviewArgs(argv: readonly string[]): CliCommand {
     )
   }
   const skills = parseSkills(values.skill)
+  const head = parseHead(values.head)
+  if (head !== undefined && !values['dry-run']) {
+    throw new UsageError('--head only runs with --dry-run: a replay never publishes.')
+  }
+  if (head !== undefined && values['wait-ci'] === true) {
+    throw new UsageError(
+      '--wait-ci waits for the checks of the current head; --head replays an earlier commit.',
+    )
+  }
 
   return {
     kind: 'review',
@@ -490,10 +556,21 @@ function parseReviewArgs(argv: readonly string[]): CliCommand {
     ...(values['no-ci'] === true ? { ci: false } : {}),
     ...(values['wait-ci'] === true ? { waitCi: true } : {}),
     ...(skills === undefined ? {} : { skills }),
+    ...(head === undefined ? {} : { head }),
     dryRun: values['dry-run'],
     force: values.force,
     debug: values.debug,
   }
+}
+
+function parseHead(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined
+  if (!COMMIT_SHA.test(value)) {
+    throw new UsageError(
+      `Invalid --head "${value}". Use a commit SHA of at least 7 hex characters.`,
+    )
+  }
+  return value.toLowerCase()
 }
 
 const REVIEW_OPTIONS = {
@@ -511,6 +588,7 @@ const REVIEW_OPTIONS = {
   'no-ci': { type: 'boolean' },
   'wait-ci': { type: 'boolean' },
   skill: { type: 'string', multiple: true },
+  head: { type: 'string' },
   'dry-run': { type: 'boolean', default: false },
   force: { type: 'boolean', default: false },
   debug: { type: 'boolean', default: false },
@@ -600,6 +678,7 @@ function parsePromptArgs(argv: readonly string[]): CliCommand {
   const { values, positionals } = parseOptions(argv, {
     default: { type: 'boolean', default: false },
     skill: { type: 'string', multiple: true },
+    head: { type: 'string' },
     format: { type: 'string', default: 'text' },
     debug: { type: 'boolean', default: false },
     help: { type: 'boolean', short: 'h', default: false },
@@ -620,10 +699,20 @@ function parsePromptArgs(argv: readonly string[]): CliCommand {
   }
   const skills = parseSkills(values.skill)
   if (values.default && skills !== undefined) throw new UsageError('--skill needs a pull request.')
+  if (values.default && values.head !== undefined) {
+    throw new UsageError('--head needs a pull request.')
+  }
+  const head = parseHead(values.head)
   return {
     kind: 'prompt',
     target:
-      input === undefined ? { kind: 'default' } : { kind: 'pull', ref: parsePullRequestRef(input) },
+      input === undefined
+        ? { kind: 'default' }
+        : {
+            kind: 'pull',
+            ref: parsePullRequestRef(input),
+            ...(head === undefined ? {} : { head }),
+          },
     ...(skills === undefined ? {} : { skills }),
     format: values.format,
     debug: values.debug,
@@ -745,12 +834,7 @@ function parseHistoryArgs(argv: readonly string[]): CliCommand {
     throw new UsageError('Give one repository or pull request at a time.')
   }
   const [input] = positionals
-  const target: RulesTarget | undefined =
-    input === undefined
-      ? undefined
-      : isPullRequestRef(input)
-        ? { kind: 'pull', ref: parsePullRequestRef(input) }
-        : { kind: 'repo', repo: parseRepositoryName(input) }
+  const target = input === undefined ? undefined : targetOf(input)
   const sinceMs = values.since === undefined ? undefined : ageMs(values.since)
   if (values.since !== undefined && sinceMs === undefined) {
     throw new UsageError(`Invalid --since "${values.since}". Use a duration like 30d, 12h or 90m.`)
@@ -773,6 +857,62 @@ function parseHistoryArgs(argv: readonly string[]): CliCommand {
     format,
     debug: values.debug,
   }
+}
+
+function parseMissesArgs(argv: readonly string[]): CliCommand {
+  const { values, positionals } = parseOptions(argv, {
+    all: { type: 'boolean', default: false },
+    refresh: { type: 'boolean', default: false },
+    replay: { type: 'boolean', default: false },
+    format: { type: 'string' },
+    debug: { type: 'boolean', default: false },
+    help: { type: 'boolean', short: 'h', default: false },
+  })
+  if (values.help) return { kind: 'help', text: MISSES_USAGE }
+  if (positionals[0] === 'dismiss') {
+    if (values.all || values.refresh || values.replay || values.format !== undefined) {
+      throw new UsageError('phada misses dismiss takes only a miss id.')
+    }
+    const id = parseRunId(positionals.slice(1), 'phada misses dismiss', 'miss id')
+    return { kind: 'misses-dismiss', id, debug: values.debug }
+  }
+  if (positionals.length > 1) {
+    throw new UsageError('Give one repository or pull request at a time.')
+  }
+  const format = values.format ?? 'text'
+  if (format !== 'text' && format !== 'json') {
+    throw new UsageError(`Invalid --format "${format}". Use text or json.`)
+  }
+  const [input] = positionals
+  const target = input === undefined ? undefined : targetOf(input)
+  if (values.replay) {
+    if (values.all) throw new UsageError('--replay reviews the open misses only; remove --all.')
+    if (values.refresh) {
+      throw new UsageError(
+        '--replay reviews the misses already kept; run phada misses --refresh first.',
+      )
+    }
+    return {
+      kind: 'misses-replay',
+      ...(target === undefined ? {} : { target }),
+      format,
+      debug: values.debug,
+    }
+  }
+  return {
+    kind: 'misses',
+    ...(target === undefined ? {} : { target }),
+    all: values.all,
+    refresh: values.refresh,
+    format,
+    debug: values.debug,
+  }
+}
+
+function targetOf(input: string): RulesTarget {
+  return isPullRequestRef(input)
+    ? { kind: 'pull', ref: parsePullRequestRef(input) }
+    : { kind: 'repo', repo: parseRepositoryName(input) }
 }
 
 function parseHistoryShow(
@@ -813,15 +953,15 @@ function parsePublishArgs(argv: readonly string[]): CliCommand {
   return { kind: 'publish', id, force: values.force, format, debug: values.debug }
 }
 
-function parseRunId(positionals: readonly string[], command: string): number {
+function parseRunId(positionals: readonly string[], command: string, noun = 'run id'): number {
   const [input] = positionals
   if (input === undefined) {
-    throw new UsageError(`${command} needs a run id, e.g. ${command} 12.`)
+    throw new UsageError(`${command} needs a ${noun}, e.g. ${command} 12.`)
   }
-  if (positionals.length > 1) throw new UsageError(`${command} takes one run id.`)
+  if (positionals.length > 1) throw new UsageError(`${command} takes one ${noun}.`)
   const id = Number(input)
   if (!/^\d+$/.test(input) || !Number.isSafeInteger(id) || id < 1) {
-    throw new UsageError(`Invalid run id "${input}". Use a whole number from 1.`)
+    throw new UsageError(`Invalid ${noun} "${input}". Use a whole number from 1.`)
   }
   return id
 }

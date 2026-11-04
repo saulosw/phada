@@ -19,8 +19,8 @@ export function formatBytes(bytes: number): string {
   return withUnit(bytes, 1024, ['KB', 'MB'], ' ')
 }
 
-export function formatCount(count: number, noun: string): string {
-  return `${count} ${noun}${count === 1 ? '' : 's'}`
+export function formatCount(count: number, noun: string, plural = `${noun}s`): string {
+  return `${count} ${count === 1 ? noun : plural}`
 }
 
 function withUnit(

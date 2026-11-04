@@ -7,6 +7,7 @@ import type { CheckedNames, NameCheck } from './mcp-names.js'
 import type { FeedbackRefreshDeps } from '../app/feedback.js'
 import type { PullRequestReviewDeps } from '../app/review-pull-request.js'
 import type { CiReaders } from '../app/read-ci.js'
+import type { ReplayReaders } from '../app/replay.js'
 import type { CheckAnnotation, CheckRun } from '../github/check-runs.js'
 import type { CommitStatus } from '../github/commit-statuses.js'
 import { JobLogUnavailableError } from '../github/job-log.js'
@@ -32,7 +33,13 @@ import type {
 } from '../github/pull-request-reviews.js'
 import type { HistoryStore } from '../store/history-store.js'
 import type { PullRequestRef } from '../github/pull-request-ref.js'
-import type { PullRequest } from '../github/pull-request.js'
+import type {
+  FetchCommitDiffOptions,
+  FetchPullRequestOptions,
+  PullRequest,
+  PullRequestMetadata,
+} from '../github/pull-request.js'
+import type { PullRequestTimeline } from '../github/pull-request-timeline.js'
 import { RepositoryAccessError } from '../github/repository.js'
 import type { LocalFileSystem } from '../config/local-files.js'
 import type { RepositoryInfo } from '../github/repository.js'
@@ -93,6 +100,20 @@ export interface CiReaderDeps {
 }
 
 export type PublishTarget = PullRequestRef & { token: string }
+
+export interface ReplayReaderDeps {
+  fetchPullRequestMetadata: (options: FetchPullRequestOptions) => Promise<PullRequestMetadata>
+  fetchPullRequestTimeline: (options: FetchReviewStateOptions) => Promise<PullRequestTimeline>
+  fetchCommitDiff: (options: FetchCommitDiffOptions) => Promise<string>
+}
+
+export function replayReaders(deps: ReplayReaderDeps, token: string): ReplayReaders {
+  return {
+    fetchPullRequestMetadata: (ref) => deps.fetchPullRequestMetadata({ ...ref, token }),
+    fetchTimeline: (ref) => deps.fetchPullRequestTimeline({ ...ref, token }),
+    fetchDiffAt: (ref, base, head) => deps.fetchCommitDiff({ ...ref, token, base, head }),
+  }
+}
 
 export function ciReaders(deps: CiReaderDeps, { owner, repo, token }: PublishTarget): CiReaders {
   const repository = { owner, repo, token }

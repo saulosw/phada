@@ -68,7 +68,7 @@ export class PullRequestNotFoundError extends GitHubError {
 
 export interface DiffTooLargeDetails {
   ref: string
-  changedFiles: number
+  changedFiles?: number
   bytes?: number
   maxBytes?: number
   apiMessage?: string
@@ -77,7 +77,7 @@ export interface DiffTooLargeDetails {
 export class DiffTooLargeError extends GitHubError {
   override readonly name = 'DiffTooLargeError'
   readonly ref: string
-  readonly changedFiles: number
+  readonly changedFiles?: number
   readonly bytes?: number
   readonly maxBytes?: number
   readonly apiMessage?: string
@@ -98,7 +98,8 @@ function describeDiffTooLarge(details: DiffTooLargeDetails): string {
     return `The diff of ${ref} has ${bytes} bytes (${changedFiles} changed files), above the limit of ${maxBytes} bytes.`
   }
   const reason = apiMessage === undefined ? '' : ` GitHub says: ${apiMessage}`
-  return `GitHub refused to return the diff of ${ref} (${changedFiles} changed files).${reason}`
+  const files = changedFiles === undefined ? '' : ` (${changedFiles} changed files)`
+  return `GitHub refused to return the diff of ${ref}${files}.${reason}`
 }
 
 export interface GitHubRequestErrorOptions {

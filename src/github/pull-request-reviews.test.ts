@@ -65,6 +65,7 @@ describe('fetchReviewState', () => {
     expect(state).toEqual({
       viewer: 'saulosw',
       pullState: 'open',
+      author: 'octocat',
       reviews: [
         {
           id: REVIEW_ID,
@@ -85,6 +86,8 @@ describe('fetchReviewState', () => {
           isOutdated: false,
           path: 'api/src/routes/users.ts',
           line: 63,
+          originalLine: 63,
+          originalCommit: HEAD_SHA,
           url: 'https://github.com/saulosw/phada-dev-web/pull/11#discussion_r2410000001',
           author: 'saulosw',
           body: "**P0** · Any user can spend another user's crystals · confidence 95\n\nThe user id comes from the request body.\n\n<!-- phada:finding -->",
@@ -150,6 +153,47 @@ describe('fetchReviewState', () => {
     expect(thread).toMatchObject({ isOutdated: true, negativeReactions: 3 })
   })
 
+  it('reads where an outdated thread was written: its original lines and commit', async () => {
+    const threads = withPage(fixture('graphql-threads.json'), 'reviewThreads', (root) => {
+      const [thread] = root.nodes as Json[]
+      thread!.isOutdated = true
+      thread!.line = null
+      thread!.originalStartLine = 58
+      thread!.originalLine = 61
+      const [comment] = (thread!.comments as Json).nodes as Json[]
+      comment!.originalCommit = { oid: 'a'.repeat(40) }
+    })
+    const { fetch } = fakeGitHub([ok(fixture('graphql-reviews.json'))], [ok(threads)])
+
+    const [thread] = (await fetchWith(fetch)).threads
+
+    expect(thread).toMatchObject({
+      isOutdated: true,
+      line: null,
+      originalStartLine: 58,
+      originalLine: 61,
+      originalCommit: 'a'.repeat(40),
+    })
+  })
+
+  it('reads a pull request whose author was deleted and a thread without original lines', async () => {
+    const reviews = fixture('graphql-reviews.json')
+    ;(((reviews.data as Json).repository as Json).pullRequest as Json).author = null
+    const threads = withPage(fixture('graphql-threads.json'), 'reviewThreads', (root) => {
+      const [thread] = root.nodes as Json[]
+      thread!.originalLine = null
+      const [comment] = (thread!.comments as Json).nodes as Json[]
+      comment!.originalCommit = null
+    })
+    const { fetch } = fakeGitHub([ok(reviews)], [ok(threads)])
+
+    const state = await fetchWith(fetch)
+
+    expect(state.author).toBe('')
+    expect(state.threads[0]).not.toHaveProperty('originalLine')
+    expect(state.threads[0]).not.toHaveProperty('originalCommit')
+  })
+
   it('reads a null reaction list as no reactions', async () => {
     const threads = withPage(fixture('graphql-threads.json'), 'reviewThreads', (root) => {
       const [thread] = root.nodes as Json[]
@@ -171,6 +215,7 @@ describe('fetchReviewState', () => {
           id: 'C1',
           body: 'Deployed.',
           createdAt: '2026-10-08T01:00:00Z',
+          publishedAt: '2026-10-08T01:00:00Z',
           authorAssociation: 'NONE',
           author: { login: 'ci-bot', __typename: 'Bot' },
         },
@@ -178,6 +223,7 @@ describe('fetchReviewState', () => {
           id: 'C2',
           body: 'Gone.',
           createdAt: '2026-10-08T02:00:00Z',
+          publishedAt: '2026-10-08T02:00:00Z',
           authorAssociation: 'NONE',
           author: null,
         },
@@ -223,6 +269,51 @@ describe('fetchReviewState', () => {
     const [review] = (await fetchWith(fetch)).reviews
 
     expect(review).toMatchObject({ state: expected, author: 'lint-app', bot: true })
+  })
+
+  it('dates a review at its submission and a comment at its publication, not when its draft began', async () => {
+    const reviews = withPage(fixture('graphql-reviews.json'), 'reviews', (root) => {
+      const [review] = root.nodes as Json[]
+      review!.createdAt = '2026-10-08T00:10:00Z'
+      review!.submittedAt = '2026-10-08T00:58:40Z'
+    })
+    const threads = withPage(fixture('graphql-threads.json'), 'reviewThreads', (root) => {
+      const [thread] = root.nodes as Json[]
+      const [comment] = (thread!.comments as Json).nodes as Json[]
+      comment!.createdAt = '2026-10-08T00:10:00Z'
+      comment!.publishedAt = '2026-10-08T00:58:40Z'
+      const [reply] = (thread!.replies as Json).nodes as Json[]
+      reply!.createdAt = '2026-10-08T00:10:00Z'
+      reply!.publishedAt = '2026-10-08T00:58:41Z'
+    })
+    const { fetch, calls } = fakeGitHub([ok(reviews)], [ok(threads)])
+
+    const state = await fetchWith(fetch)
+
+    expect(state.reviews[0]?.createdAt).toBe('2026-10-08T00:58:40Z')
+    expect(state.threads[0]?.createdAt).toBe('2026-10-08T00:58:40Z')
+    expect(state.threads[0]?.replies[0]?.createdAt).toBe('2026-10-08T00:58:41Z')
+    expect(String(JSON.parse(calls[0]?.body ?? '{}').query)).toContain('submittedAt')
+    expect(String(JSON.parse(calls[1]?.body ?? '{}').query)).toContain('publishedAt')
+  })
+
+  it('dates a pending review, never submitted, and an unpublished comment when they were created', async () => {
+    const reviews = withPage(fixture('graphql-reviews.json'), 'reviews', (root) => {
+      const [review] = root.nodes as Json[]
+      review!.state = 'PENDING'
+      review!.submittedAt = null
+    })
+    const threads = withPage(fixture('graphql-threads.json'), 'reviewThreads', (root) => {
+      const [thread] = root.nodes as Json[]
+      const [comment] = (thread!.comments as Json).nodes as Json[]
+      comment!.publishedAt = null
+    })
+    const { fetch } = fakeGitHub([ok(reviews)], [ok(threads)])
+
+    const state = await fetchWith(fetch)
+
+    expect(state.reviews[0]?.createdAt).toBe('2026-10-08T00:58:40Z')
+    expect(state.threads[0]?.createdAt).toBe('2026-10-08T00:58:40Z')
   })
 
   it('rejects a review with an unknown state', async () => {
@@ -406,6 +497,20 @@ describe('fetchPullComments', () => {
       number: 11,
       after: null,
     })
+  })
+
+  it('dates a comment at its publication', async () => {
+    const page = withPage(fixture('graphql-comments.json'), 'comments', (root) => {
+      const [comment] = root.nodes as Json[]
+      comment!.createdAt = '2026-10-07T20:00:00Z'
+      comment!.publishedAt = '2026-10-07T21:03:11Z'
+    })
+    const { fetch, calls } = comments([ok(page)])
+
+    const [comment] = await read(fetch)
+
+    expect(comment?.createdAt).toBe('2026-10-07T21:03:11Z')
+    expect(String(JSON.parse(calls[0]?.body ?? '{}').query)).toContain('publishedAt')
   })
 
   it('follows the cursor and reads a deleted author as an empty login', async () => {

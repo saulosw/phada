@@ -97,7 +97,7 @@ streams and environment. The limits of each folder:
   comes in as data. Its records (`src/watch/types.ts`) are the watch's own; `src/store/` stores
   them.
 - `src/store/` only talks to SQLite and never runs `git`; it stores the feedback records of
-  `src/publish/feedback.ts` as types only.
+  `src/publish/feedback.ts` and the misses of `src/publish/misses.ts` as types only.
 - `src/repo-map/` parses text it is given (`web-tree-sitter`, reading only its grammars) and never
   runs `git`.
 - `src/repository/` runs `git` through `src/process/run-command.ts`.

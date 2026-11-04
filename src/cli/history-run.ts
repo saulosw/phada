@@ -12,7 +12,7 @@ import { errorSummary } from './format-error.js'
 import { ciSkipJson } from './stored-ci.js'
 
 export interface RunMeta {
-  source: 'watch' | 'manual'
+  source: 'watch' | 'manual' | 'replay'
   jobId?: number
   startedAt: string
   finishedAt: string

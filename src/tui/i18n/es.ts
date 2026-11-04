@@ -233,8 +233,8 @@ export const spanish: UiMessages = {
       indexed: (repo, sha) => `${repo}: índice de la rama por defecto actualizado a ${sha}.`,
       indexPartial: (repo) =>
         `${repo}: indexando la rama por defecto; sigue cuando la cola está libre.`,
-      feedback: (ref, comments) =>
-        `Feedback: ${ref}, ${number(comments)} ${comments === 1 ? 'comentario' : 'comentarios'}.`,
+      feedback: (ref, comments, misses) =>
+        `Feedback: ${ref}, ${number(comments)} ${comments === 1 ? 'comentario' : 'comentarios'}${misses > 0 ? `, ${number(misses)} ${misses === 1 ? 'miss nuevo' : 'misses nuevos'}` : ''}.`,
       warning: (message) => `Aviso: ${message}`,
       limited: (count, until) =>
         `${number(count)} ${count === 1 ? 'revisión' : 'revisiones'} en la última hora: la siguiente empieza a las ${until}.`,
@@ -277,6 +277,7 @@ export const spanish: UiMessages = {
     sources: {
       watch: 'watch',
       manual: 'review',
+      replay: 'replay',
       enqueue: 'enqueue',
       mcp: 'MCP',
       'pr-command': '/phada',
@@ -686,6 +687,7 @@ export const spanish: UiMessages = {
     aboutRelations:
       'Relaciones: código que un hallazgo verificado vinculó a un archivo que el propio código no enlaza.',
     aboutFeedback: 'Feedback: lo que pasó con los comentarios que Phada publicó.',
+    aboutMisses: 'Misses: hilos de personas a los que ningún hallazgo de Phada se acercó.',
     nothing: 'Nada aprendido todavía: Phada aprende de las revisiones que publica.',
     noneYet: 'Ningún comentario publicado ni relación todavía.',
     hint: 'Revisa un pull request con',
@@ -695,6 +697,7 @@ export const spanish: UiMessages = {
     unreadable: 'relaciones ilegibles',
     comments: (count) => `${count} ${count === 1 ? 'comentario' : 'comentarios'}`,
     noComments: 'sin comentarios',
+    misses: (count) => `${count} ${count === 1 ? 'miss' : 'misses'}`,
     outcome: {
       fixed: (count) => `${count} ${count === 1 ? 'corregido' : 'corregidos'}`,
       dismissed: (count) => `${count} ${count === 1 ? 'descartado' : 'descartados'}`,
@@ -713,6 +716,11 @@ export const spanish: UiMessages = {
         'Ninguna todavía. Phada las aprende de hallazgos verificados que citan un archivo que el código no enlaza, cuando el repositorio tiene su mapa (phada index).',
       unreadable:
         'No se pudo leer el archivo de relaciones: otra versión de Phada lo escribió, o está dañado. La próxima revisión que aprenda una relación lo escribe de nuevo.',
+      misses: 'Misses de Phada',
+      missesOpen: (count) => `${count} ${count === 1 ? 'abierto' : 'abiertos'}`,
+      caught: (caught, replayed, version) => `${caught} de ${replayed} detectados en ${version}`,
+      notReplayed: 'todavía sin replay',
+      replayHint: 'Revísalos de nuevo con',
       gone: 'Este repositorio ya no tiene nada aprendido.',
     },
   },
@@ -1017,6 +1025,8 @@ export const spanish: UiMessages = {
         notFound: 'No publicado: esta revisión ya no está en el historial.',
         published: 'No publicado: esta revisión ya se publicó.',
         notADryRun: 'No publicado: esta ejecución no es una revisión de solo mirar.',
+        replay:
+          'No publicado: esta ejecución repitió una revisión en un commit anterior, y eso nunca se publica.',
         nothing: 'No publicado: esta revisión no encontró nada para publicar.',
         outdated:
           'No publicado: esta ejecución la guardó una Phada más antigua, sin todo lo que publicar necesita.',

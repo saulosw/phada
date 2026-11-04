@@ -146,11 +146,15 @@ describe('formatWatchEvent', () => {
       '[14:03] acme/shop: indexing the default branch; it goes on when the queue is idle.',
     ],
     [
-      { kind: 'feedback', repo: 'acme/shop', number: 3, threads: 2 },
+      { kind: 'feedback', repo: 'acme/shop', number: 3, threads: 2, misses: 0 },
       '[14:03] Feedback: acme/shop#3, 2 comments.',
     ],
     [
-      { kind: 'feedback', repo: 'acme/shop', number: 3, threads: 1 },
+      { kind: 'feedback', repo: 'acme/shop', number: 3, threads: 0, misses: 2 },
+      '[14:03] Feedback: acme/shop#3, 0 comments, 2 new misses.',
+    ],
+    [
+      { kind: 'feedback', repo: 'acme/shop', number: 3, threads: 1, misses: 0 },
       '[14:03] Feedback: acme/shop#3, 1 comment.',
     ],
     [{ kind: 'warning', message: 'acme/web: no access' }, '[14:03] Warning: acme/web: no access'],

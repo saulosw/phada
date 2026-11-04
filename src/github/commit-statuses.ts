@@ -18,6 +18,7 @@ export interface CommitStatus {
   state: string
   description: string | null
   url: string | null
+  updatedAt?: string
 }
 
 export async function fetchCommitStatuses(
@@ -46,10 +47,12 @@ export async function fetchCommitStatuses(
 function toStatus(json: unknown): CommitStatus {
   const description = field(json, 'description')
   const url = field(json, 'target_url')
+  const updatedAt = field(json, 'updated_at')
   return {
     context: stringField(json, 'context'),
     state: stringField(json, 'state'),
     description: typeof description === 'string' ? description : null,
     url: typeof url === 'string' ? url : null,
+    ...(typeof updatedAt === 'string' ? { updatedAt } : {}),
   }
 }

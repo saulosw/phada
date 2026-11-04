@@ -21,10 +21,12 @@ import { setTimeout as wait } from 'node:timers/promises'
 import { addCommentReaction, listIssueComments } from './github/issue-comments.js'
 import { listOpenPullRequests } from './github/list-pull-requests.js'
 import {
+  fetchCommitDiff,
   fetchPullRequest,
   fetchPullRequestHead,
   fetchPullRequestMetadata,
 } from './github/pull-request.js'
+import { fetchPullRequestTimeline } from './github/pull-request-timeline.js'
 import { fetchBranchHead, fetchRepository } from './github/repository.js'
 import { ghTokenReader } from './cli/github-token.js'
 import { killDetachedChildren } from './process/run-command.js'
@@ -51,6 +53,8 @@ process.exitCode = await run(process.argv.slice(2), {
   fetchPullRequest,
   fetchReviewState,
   fetchPullComments,
+  fetchPullRequestTimeline,
+  fetchCommitDiff,
   fetchCheckRuns,
   fetchCommitStatuses,
   fetchCheckAnnotations,

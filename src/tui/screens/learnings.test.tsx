@@ -72,6 +72,7 @@ function shop(changes: Partial<RepoLearnings> = {}): RepoLearnings {
         negativeReaction: 0,
       }),
     ],
+    misses: null,
     ...changes,
   }
 }
@@ -81,7 +82,13 @@ function full(): Learnings {
     recorded: true,
     repos: [
       shop(),
-      { repo: 'acme/web', observed: { state: 'unreadable' }, feedback: null, rules: [] },
+      {
+        repo: 'acme/web',
+        observed: { state: 'unreadable' },
+        feedback: null,
+        rules: [],
+        misses: { open: 3, latest: { version: '0.12.0', caught: 1, replayed: 2 } },
+      },
       {
         repo: 'saulosw/verno',
         observed: { state: 'none' },
@@ -98,6 +105,7 @@ function full(): Learnings {
           }),
         },
         rules: [],
+        misses: null,
       },
     ],
   }
@@ -154,7 +162,10 @@ describe('the Learnings screen', () => {
     expect(row(text, 'acme/shop')).toMatch(
       /❯ acme\/shop\s+2 relations · 30 comments: 10 fixed · 5 dismissed · 8 ignored/,
     )
-    expect(row(text, 'acme/web')).toMatch(/acme\/web\s+relations unreadable · no comments/)
+    expect(text).toContain('Misses: threads of people that no Phada finding came near.')
+    expect(row(text, 'acme/web')).toMatch(
+      /acme\/web\s+relations unreadable · 3 misses · no comments/,
+    )
     expect(row(text, 'saulosw/verno')).toMatch(
       /saulosw\/verno\s+no relations · 4 comments: 1 fixed · 1 dismissed/,
     )
@@ -209,13 +220,31 @@ describe('the Learnings screen', () => {
     await press(KEYS.down, KEYS.enter)
     await showing('No comments published here yet.', 'Esc back')
     expect(frame()).toContain('No comments published here yet.')
+    expect(frame()).toMatch(
+      /Misses of Phada\s+3 open · 1 of 2 caught in 0\.12\.0\s*\n\s+Review them again with phada misses --replay/,
+    )
     expect(frame()).toContain('The relations file could not be read')
     await press(KEYS.escape)
     await showing('Enter open')
     await press(KEYS.down, KEYS.enter)
     await showing('None of these comments came from a rule.', 'Esc back')
     expect(frame()).toContain('None of these comments came from a rule.')
+    expect(frame()).not.toContain('Misses of Phada')
     expect(frame()).toContain('None yet. Phada learns them from verified findings')
+  })
+
+  it('says when the misses of a repository were never replayed', async () => {
+    const { frame, press, showing } = openLearnings(async () => ({
+      recorded: true,
+      repos: [shop({ misses: { open: 1 } })],
+    }))
+    await showing('acme/shop', 'Enter open')
+    expect(row(frame(), 'acme/shop')).toContain('2 relations · 1 miss · 30 comments')
+    await press(KEYS.enter)
+    await showing('Misses of Phada', 'Esc back')
+    expect(frame()).toMatch(
+      /Misses of Phada\s+1 open · not replayed yet\s*\n\s+Review them again with phada misses --replay/,
+    )
   })
 
   it('scrolls a long detail within 80×24', async () => {
@@ -262,6 +291,7 @@ describe('the Learnings screen', () => {
     await showing('O que o Phada aprendeu com os reviews', 'Enter abrir')
     expect(frame()).toContain('O que o Phada aprendeu com os reviews · 3 repositórios')
     expect(row(frame(), 'acme/shop')).toContain('2 relações · 30 comentários: 10 corrigidos')
+    expect(row(frame(), 'acme/web')).toContain('relações ilegíveis · 3 misses · sem comentários')
     await press(KEYS.enter)
     await showing('Por regra (2)', 'Esc voltar')
     expect(frame()).toContain('Por regra (2)')

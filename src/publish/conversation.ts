@@ -18,7 +18,12 @@ import type { Conversation } from './types.js'
 export const CONVERSATION_BUDGET_BYTES = 16 * 1024
 export const CONVERSATION_BODY_BYTES = 2 * 1024
 
-const ROLES: Readonly<Record<string, ConversationRole>> = {
+export type AssociationRole = Extract<
+  ConversationRole,
+  'owner' | 'member' | 'collaborator' | 'contributor' | 'external'
+>
+
+const ROLES: Readonly<Record<string, AssociationRole>> = {
   OWNER: 'owner',
   MEMBER: 'member',
   COLLABORATOR: 'collaborator',
@@ -47,7 +52,7 @@ export function buildConversation({ state, comments, author }: ConversationInput
       ? 'author'
       : who.bot === true
         ? 'bot'
-        : (ROLES[who.association ?? ''] ?? 'external')
+        : associationRole(who.association)
   const body = (text: string): string => cutBytes(text, CONVERSATION_BODY_BYTES, cuts)
   const own = (who: string, text: string): boolean =>
     who !== '' &&
@@ -77,6 +82,10 @@ export function buildConversation({ state, comments, author }: ConversationInput
       bytes: blockBytes(kept),
     },
   }
+}
+
+export function associationRole(association: string | undefined): AssociationRole {
+  return ROLES[association ?? ''] ?? 'external'
 }
 
 function reviewItem(

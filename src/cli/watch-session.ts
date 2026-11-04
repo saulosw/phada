@@ -302,7 +302,8 @@ function watchDeps(
           token,
           deps,
           {
-            observed: (pull, threads) => events.feedback(pull.repo, pull.number, threads),
+            observed: (pull, threads, misses) =>
+              events.feedback(pull.repo, pull.number, threads, misses),
             warning: (message) => events.warning(message),
           },
           () => stop.stopRequested(),

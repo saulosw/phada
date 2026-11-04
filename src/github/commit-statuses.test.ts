@@ -9,7 +9,7 @@ const JSON_ACCEPT = 'application/vnd.github+json'
 const OPTIONS = { owner: 'acme', repo: 'shop', token: TOKEN, sha: SHA }
 
 describe('fetchCommitStatuses', () => {
-  it('reads the latest status of each context of a commit, on every page', async () => {
+  it('reads the latest status of each context of a commit and when it changed, on every page', async () => {
     const next = `<https://api.github.com/repos/acme/shop/commits/${SHA}/status?per_page=100&page=2>; rel="next"`
     const { fetch, calls } = createFakeFetch({
       [JSON_ACCEPT]: [
@@ -25,6 +25,7 @@ describe('fetchCommitStatuses', () => {
                 state: 'failure',
                 description: 'Build failed',
                 target_url: 'https://ci.example.com/1',
+                updated_at: '2026-10-08T10:20:00Z',
               },
             ],
           }),
@@ -53,6 +54,7 @@ describe('fetchCommitStatuses', () => {
         state: 'failure',
         description: 'Build failed',
         url: 'https://ci.example.com/1',
+        updatedAt: '2026-10-08T10:20:00Z',
       },
       { context: 'deploy/preview', state: 'pending', description: null, url: null },
     ])

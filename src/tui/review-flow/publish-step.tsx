@@ -158,6 +158,8 @@ function refusalText(refusal: PublishRefusal, messages: UiMessages): string {
       return refusal.status === 'published' ? m.published : m.notADryRun
     case 'nothing-to-publish':
       return m.nothing
+    case 'replay':
+      return m.replay
     case 'outdated':
       return m.outdated
     case 'head-moved':

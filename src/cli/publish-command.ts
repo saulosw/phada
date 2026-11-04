@@ -110,6 +110,10 @@ function refusalError(id: number, refusal: PublishRefusal): Error {
       return new PublishRefusedError(
         `Run ${id} found nothing to review (every changed file was ignored): there is no review to publish.`,
       )
+    case 'replay':
+      return new PublishRefusedError(
+        `Run ${id} replayed an earlier commit of the pull request (phada review --head): a replay is never published.`,
+      )
     case 'outdated':
       return new PublishRefusedError(
         `Run ${id} was kept by an older Phada without everything needed to publish it as it was found: review the pull request again.`,

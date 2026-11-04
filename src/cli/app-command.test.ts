@@ -1621,6 +1621,8 @@ function fakeGitHub(options: { files?: Record<string, string>; failTree?: boolea
       calls.push('comments')
       return []
     },
+    fetchPullRequestTimeline: () => Promise.reject(new Error('no replay in this test')),
+    fetchCommitDiff: () => Promise.reject(new Error('no replay in this test')),
     fetchCheckRuns: async () => {
       calls.push('check runs')
       return []

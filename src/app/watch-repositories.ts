@@ -70,7 +70,7 @@ export interface WatchEvents {
   failed(job: JobRecord, error: unknown): void
   indexed(repo: string, sha: string): void
   indexPartial(repo: string): void
-  feedback(repo: string, number: number, threads: number): void
+  feedback(repo: string, number: number, threads: number, misses: number): void
   warning(message: string): void
   limited(count: number, until: string): void
   refused(request: ReviewRequestInput, result: SubmitResult & { status: 'refused' }): void

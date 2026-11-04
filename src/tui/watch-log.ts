@@ -122,7 +122,7 @@ function eventText(event: WatchEvent, messages: UiMessages): string {
     case 'indexPartial':
       return l.indexPartial(oneLine(event.repo))
     case 'feedback':
-      return l.feedback(pullRef(event.repo, event.number), event.threads)
+      return l.feedback(pullRef(event.repo, event.number), event.threads, event.misses)
     case 'warning':
       return l.warning(oneLine(event.message))
     case 'limited':

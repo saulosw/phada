@@ -40,7 +40,24 @@ src/
                          #   between stages and right before publishing, never once publishing
                          #   started (ReviewCancelledError, also for what a stage threw after
                          #   the abort), and passes it into reviewPullRequest; once aborted,
-                         #   no AI run of the review starts (a call to the provider throws it)
+                         #   no AI run of the review starts (a call to the provider throws it);
+                         #   with head (a replay, only with dryRun: ReplayNeedsDryRunError):
+                         #   loadReplay(), the state, comments and checks cut at its moment,
+                         #   never skipping, no recheck nor resolution, no CI wait, and the gh
+                         #   facade reading nothing of the repository (replayReads())
+    replay.ts            #   loadReplay(): the pull request at an earlier commit (ReplayReaders
+                         #   injected: today's metadata, the timeline, the diff base...sha) with
+                         #   its stats and the moment it became the head (the first force-push
+                         #   that brought it, else its commit date, approximate);
+                         #   replayCut(): the state, comments and CI readers cut at that moment
+                         #   (as they are without a replay); replayWarning();
+                         #   HeadNotInPullRequestError (not a commit of the pull request, or an
+                         #   ambiguous prefix), ReplayNeedsDryRunError
+    ci-at.ts             #   ciReadersAt(): CiReaders whose check runs finished and statuses set
+                         #   after a moment (or without a date) read as still running
+    replay-reads.ts      #   replayReads(): a ReadGitHub that refuses every read of the pull
+                         #   request's repository, and searches scoped to it, as GitHub shows
+                         #   them today (GhFacadeError); other repositories read as usual
     review-progress.ts   #   ReviewProgress: each step of a review as data (fetched, conversation
                          #   and CI read, CI wait, context, indexing, related, impact, passes, the
                          #   AI running a review, verify, recheck or skill run, publishing,
@@ -75,9 +92,10 @@ src/
                          #   again) or a refusal; whenInput()
     feedback.ts          #   recordReviewFeedback(): the threads a run read and the comments it
                          #   published → the history (recordFeedback(), also for a publication
-                         #   of a saved run); refreshFeedback(): read due pull requests
+                         #   of a saved run); refreshFeedback(): read due pull requests and
+                         #   harvest their misses
     publish-saved-review.ts # publishSavedReview(): a dry run of the history (readRun injected) →
-                         #   refused (not found, not a dry run, nothing to publish, saved
+                         #   refused (not found, not a dry run, a replay, nothing to publish, saved
                          #   without what publishing needs, the head moved unless force),
                          #   skipped (decideRun: a commit already reviewed or the same diff,
                          #   unless force) or published on the commit it reviewed: planned
@@ -142,6 +160,16 @@ src/
                          #   the shapes of the JSON), impact with its text, related, skills with
                          #   the fix of each blocked command, investigation and tokens; a block
                          #   the run did not keep is left out, one it kept as null is off
+    harvest-misses.ts    #   harvestMisses(): the threads read and the local runs with the AI
+                         #   (findings of the stored JSON, read leniently) → decideMisses() →
+                         #   the history; the count of new misses
+    read-misses.ts       #   readMisses(): the misses of a filter (open, or all), with the count
+                         #   of dismissed ones
+    replay-misses.ts     #   replayMisses(): the open misses grouped by pull request × commit, one
+                         #   injected replay per group → caught/missed by isNearMiss(), kept per
+                         #   Phada version; a failed group is an event and the rest goes on; stops
+                         #   between groups on the signal; the tally and the earlier version's
+    miss-tally.ts        #   latestTally(): caught/replayed of the latest version replayed
     stored-json.ts       #   parseJson(), objectOf(), stringOf(), numberOf(), stringsOf(): the
                          #   lenient reads of a stored JSON
     read-repositories.ts #   readRepositories(): watch.repos ∪ the user's repos/<owner>/<repo>/
@@ -216,8 +244,9 @@ src/
                          #   size), each index closed; extensionCounts() (also phada index's);
                          #   readers injected
     read-learnings.ts    #   readLearnings(): per repository, the observed relations (newest
-                         #   first; none, read or unreadable) and the feedback of Phada's comments
-                         #   per repository and per rule; readers injected
+                         #   first; none, read or unreadable), the feedback of Phada's comments
+                         #   per repository and per rule and the open misses with the latest
+                         #   replay's tally; readers injected
     read-home.ts         #   readHomeLocal(): the config, queue, repositories, last reviews and
                          #   chosen AI as facts (each read that fails is its own error), never a
                          #   slow reader; homeSnapshot(): + the last GitHub access and provider
@@ -233,15 +262,16 @@ src/
   cli/                   # terminal edge
     args.ts              #   parseCliArgs(): `setup` (--debug), `review` (--dry-run, --force, --verify/--no-verify,
                          #   --investigate/--no-investigate, --no-resolve, --no-conversation,
-                         #   --no-ci, --wait-ci, --skill), `init`, `index` (--ref, --format
-                         #   text|json), `rules` (--format text|json), `prompt` (--default,
-                         #   --skill, --format text|json), `watch` (--once,
+                         #   --no-ci, --wait-ci, --skill, --head only with --dry-run), `init`,
+                         #   `index` (--ref, --format text|json), `rules` (--format text|json),
+                         #   `prompt` (--default, --skill, --head, --format text|json), `watch` (--once,
                          #   --backfill, --status) and `history` (--since, --limit, --stats,
-                         #   --refresh, prune --older-than, show <id> --format), `publish` (<id>, --force, --format text|json), `enqueue` (--publish, --format) and
+                         #   --refresh, prune --older-than, show <id> --format), `misses` (--all,
+                         #   --refresh, --replay, --format, dismiss <id>), `publish` (<id>, --force, --format text|json), `enqueue` (--publish, --format) and
                          #   `mcp` commands, --help, --version, no command (the app, --debug);
                          #   USAGE, SETUP_USAGE, REVIEW_USAGE, INIT_USAGE,
                          #   INDEX_USAGE, RULES_USAGE, PROMPT_USAGE, WATCH_USAGE, ENQUEUE_USAGE,
-                         #   MCP_USAGE, HISTORY_USAGE, PUBLISH_USAGE
+                         #   MCP_USAGE, HISTORY_USAGE, MISSES_USAGE, PUBLISH_USAGE
     app-command.ts       #   runApp(): the app when stdin and stdout are TTYs (assertAppTerminal():
                          #   else the missing command error, or --debug alone refused as an
                          #   unknown option; phada setup without them a usage error), started
@@ -339,7 +369,8 @@ src/
     rules-command.ts     #   runRules(): token, user config, readRules() for a pull request or
                          #   the default branch, printed as text or JSON
     prompt-command.ts    #   runPrompt(): the built-in prompt, or the prompt of a pull request
-                         #   with its conversation and checks (as the config turns them on);
+                         #   with its conversation and checks (as the config turns them on), or
+                         #   at an earlier commit with --head (loadReplay(), cut as a replay);
                          #   pullRequestPrompt(): that prompt for a fetched pull request (also
                          #   the app's)
     format-prompt.ts     #   formatPromptText(), formatPromptJson() (schemaVersion 1)
@@ -390,10 +421,26 @@ src/
     watch-status.ts      #   watchStatusText(): readQueue() as --status in text or JSON
     history-command.ts   #   runHistory() (list, stats, --refresh) over the history use cases,
                          #   runHistoryPrune(), runHistoryShow() (the history opened read-only,
-                         #   RunNotFoundError for an unknown id); the history opened only when
-                         #   its file exists
+                         #   RunNotFoundError for an unknown id)
+    history-access.ts    #   HistoryCommandDeps, existingHistory() (the history opened only when
+                         #   its file exists), filterOf(): what the history and misses commands
+                         #   share
     format-history.ts    #   formatHistoryText/Json() (each run with its id), runJson(),
                          #   formatStatsText/Json() (schemaVersion 1)
+    history-refresh.ts   #   refreshToken(), refreshHistory(): the due pull requests (or the one
+                         #   named) read on GitHub for phada history and phada misses --refresh,
+                         #   with the count of new misses
+    misses-command.ts    #   runMisses() (list, --all, --refresh), runMissesDismiss()
+                         #   (MissNotFoundError for an unknown id)
+    format-misses.ts     #   formatMissesText/Json(): id, pull request, place, author and role,
+                         #   the comment's first line cut, the link, the state (schemaVersion 1)
+    misses-replay-command.ts # runMissesReplay(): phada misses --replay (history on, a token, a
+                         #   line before each review, Ctrl-C stops after it, twice aborts)
+    miss-replayer.ts     #   reviewReplayer(): one group through prepareReview() and
+                         #   runManualReview() with --head and --dry-run (a replay run) → its run
+                         #   id and findings
+    format-misses-replay.ts # formatMissesReplayText/Json(): each miss with its outcome, the total,
+                         #   the earlier version, the failed and the left (schemaVersion 1)
     format-run-report.ts #   formatRunReportText(): a run's header line (id, pull request, commit,
                          #   when, who asked, provider, how it ended), the CI of a ci-failing
                          #   skip (and the dry run a publication came from), then the posted
@@ -414,14 +461,15 @@ src/
     classify-failure.ts  #   classifyFailure(): an error → transient, usage-limit, rate-limit,
                          #   definitive or fatal
     review-wiring.ts     #   pullRequestReviewDeps() (its progress to a ReviewProgressSink),
-                         #   reviewAndPublishEvents(), ciReaders(), renderReview, reviewRunJson():
-                         #   shared by review, watch and prompt
+                         #   reviewAndPublishEvents(), ciReaders(), replayReaders(), renderReview,
+                         #   reviewRunJson(): shared by review, watch and prompt
     manual-review.ts     #   prepareReview(): user layers, provider and model (flags › config),
                          #   MCP servers resolved and their names checked; runManualReview():
                          #   reviewAndPublish() (mode manual, the signal also cutting the CI
                          #   wait) with its deps and progress, then
                          #   the run saved in the history when it is on, with its feedback
-                         #   (HistorySave); shared by phada review and the app
+                         #   (HistorySave; a replay is saved as source replay, without
+                         #   feedback); shared by phada review and the app
     publish-saved.ts     #   publishSavedRun(): the history opened (missing → not found), then
                          #   publishSavedReview() with the GitHub readers and writers of the
                          #   token and renderReview, the publication saved as a new manual run
@@ -586,8 +634,8 @@ src/
                          #   ProviderPicker and L → the LanguagePicker in a SubView, back on save
                          #   or Esc with the AIs checked again; none while the config is
                          #   invalid, when the AIs are checked without it), learnings.tsx (each
-                         #   repository's relations and feedback → its feedback per rule and its
-                         #   relations), rules.tsx (a repository → the lens and who set it, the
+                         #   repository's relations, misses and feedback → its feedback per rule,
+                         #   its misses and its relations), rules.tsx (a repository → the lens and who set it, the
                          #   user's rules at once, .phada/ and docs of the default branch on open
                          #   and on r; p and a number → the loaded rules of that pull request and
                          #   its prompt: each pass, its data blocks and instructions)
@@ -859,12 +907,17 @@ src/
                          #   ensureReadable(): a 403 names the permission the token lacks
     json-fields.ts       #   typed reads of fields in GitHub answers
     graphql.ts           #   sendGraphQL(): errors in an HTTP 200 become GitHubGraphQLError
-    pull-request.ts      #   fetchPullRequest(), fetchPullRequestMetadata(), fetchPullRequestHead()
+    pull-request.ts      #   fetchPullRequest(), fetchPullRequestMetadata(), fetchPullRequestHead();
+                         #   fetchCommitDiff(): the diff base...sha (compare), same limit
+    pull-request-timeline.ts # fetchPullRequestTimeline(): the commits (oid, committedDate) and
+                         #   force-pushes (date, before and after) of a pull request, paginated
     pull-request-reviews.ts # fetchReviewState(): viewer, pull request state, reviews (state, date,
                          #   author association, bot) and threads (id, outdated, first comment
                          #   with its URL and negative reactions, last 20 replies and the count),
                          #   paginated; fetchPullComments(): the general comments of the pull
-                         #   request
+                         #   request; fetchPullRequestPages(): a paginated pull request query.
+                         #   A review is dated when it was submitted and a comment when it was
+                         #   published (else when it was created), not when its draft began
     create-review.ts     #   createReview(): one COMMENT review with line comments (start_line for
                          #   several lines)
     compare-commits.ts   #   fetchComparison(): the files changed between two commits, with patches
@@ -878,8 +931,8 @@ src/
                          #   for the gh facade
     check-runs.ts        #   fetchCheckRuns(): the check runs of a commit with their times,
                          #   paginated; fetchCheckAnnotations(): the annotations of a check run
-    commit-statuses.ts   #   fetchCommitStatuses(): the statuses of a commit (none when the
-                         #   combined status counts zero)
+    commit-statuses.ts   #   fetchCommitStatuses(): the statuses of a commit and when each was
+                         #   set (none when the combined status counts zero)
     job-log.ts           #   fetchJobLog(): the end of an Actions job log, the redirect followed
                          #   without the token, the last 512 KB by Range, 10 MB at most
     user.ts              #   fetchAuthenticatedUser(): the login of the token owner (GET /user)
@@ -988,6 +1041,10 @@ src/
     feedback.ts          #   threadFeedback(): each Phada thread → outcome (fixed, dismissed,
                          #   ignored, open) and marks (negative-reaction, human-reply);
                          #   findingFingerprint()
+    misses.ts            #   decideMisses(): the outdated threads of people (not a bot, Phada or
+                         #   the author) after a Phada review (published or local) with no
+                         #   Phada finding within 5 lines → misses with the reviewed and the
+                         #   thread's commit; isNearMiss(): the 5-line window
     decide-run.ts        #   decideRun(): review, or skip a commit Phada already reviewed or whose
                          #   filtered diff did not change (same-diff)
     recheck-candidates.ts #  threadsToRecheck(), withChanges(): Phada's open threads of older commits
@@ -996,7 +1053,12 @@ src/
                          #   with the role of each author, without Phada's own (people's replies
                          #   to them kept), bodies cut at 2 KB, 16 KB in total (resolved ›
                          #   outdated › oldest left out first) and the report;
-                         #   conversationItemBytes()
+                         #   conversationItemBytes(); associationRole()
+    state-at.ts          #   reviewStateAt(), commentsAt(): reviews, threads, replies and comments
+                         #   created up to a moment (none without a date), the threads open and
+                         #   current on the line where they were written
+    written-line.ts      #   writtenLine(): the line where a thread was written (its original
+                         #   line, else its current one)
     plan-publication.ts  #   planPublication(): new comments vs findings still open in a thread vs
                          #   findings whose thread a person resolved vs findings of a thread found
                          #   fixed in this run
@@ -1043,10 +1105,16 @@ src/
                          #   (HistoryOutdatedError); openExistingHistoryStore(): missing, open,
                          #   newer, older or unreadable as data, never creating the file
     history-feedback.ts  #   published findings, observations and their signals (observed and
-                         #   cleared), feedbackDue()
+                         #   cleared), feedbackDue() (pull requests with findings or a run with
+                         #   the AI outside replays)
+    history-misses.ts    #   recordMisses() (one per thread; data refreshed, state and first
+                         #   harvest kept), misses(), dismissMiss(), aiRuns(),
+                         #   recordMissReplays() (one per miss × version, the last wins),
+                         #   missReplays()
     history-columns.ts   #   the history tables (columns, keys) and their insert/upsert/update
     history-migrations.ts #  versioned migrations (PRAGMA user_version), a table rebuilt with the
-                         #   foreign keys off; a newer file is refused
+                         #   foreign keys off; a newer file is refused; v5: replay runs, the
+                         #   misses (one per thread) and their replays (one per Phada version)
   watch/                 # pure: what the watch does, data in, decision out
     filters.ts           #   eligibility(): draft, bot, outside author, authors, labels, base
     plan-cycle.ts        #   planCycle(): baseline, seen, enqueue, supersede, move (the requests
