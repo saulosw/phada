@@ -175,6 +175,7 @@ class LinkedGraph implements RepositoryGraph {
         ...(site.in === undefined ? {} : { in: { ...site.in, repo: consumer.repo } }),
         kind: site.kind,
         how,
+        ...(site.receiver === undefined ? {} : { receiver: site.receiver }),
       })
     }
     return sites

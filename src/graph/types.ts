@@ -27,6 +27,7 @@ export interface Site {
   in?: GraphSymbol
   kind: EdgeKind
   how: EdgeHow
+  receiver?: string
   pullRequest?: number
 }
 
@@ -49,6 +50,7 @@ export interface ExternalSite {
   name: string
   in?: GraphSymbol
   kind: 'calls' | 'uses'
+  receiver?: string
   module?: string
   imported?: string
   member?: string

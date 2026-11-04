@@ -1,6 +1,8 @@
-import type { DiffImpact, ImpactSite, ImpactedSymbol } from './types.js'
+import type { DiffImpact, ImpactCode, ImpactSimilar, ImpactSite, ImpactedSymbol } from './types.js'
 
 export const IMPACT_BUDGET_BYTES = 4_000
+export const IMPACT_SIMILAR_BYTES = 1_000
+const SIMILAR_HEADING = 'Similar existing code (compare before you report a reimplementation):'
 
 export function reachesOutside(symbol: ImpactedSymbol): boolean {
   return (
@@ -12,11 +14,17 @@ export function reachesOutside(symbol: ImpactedSymbol): boolean {
 
 export function renderImpact(
   impact: DiffImpact,
-  budget = IMPACT_BUDGET_BYTES,
+  total = IMPACT_BUDGET_BYTES,
 ): { text: string; shown: number[] } {
   const lines: string[] = []
   const shown: number[] = []
   let used = 0
+  const similar = similarBlocks(impact.similar ?? [])
+  const reserved =
+    similar.length === 0
+      ? 0
+      : Math.min(IMPACT_SIMILAR_BYTES, bytesOf([SIMILAR_HEADING, ...similar.flat()]))
+  let budget = total - reserved
   const fits = (line: string) => used + Buffer.byteLength(line) + 1 <= budget
   const add = (line: string) => {
     lines.push(line)
@@ -40,10 +48,12 @@ export function renderImpact(
       `  +${symbol.callers - shownSites} more: use the callers tool`
     for (const site of symbol.sites) {
       const line = siteLine(site)
-      const reserve = symbol.callers - count - 1 > 0 ? Buffer.byteLength(more(count + 1)) + 1 : 0
+      const uses = site.repeated?.uses ?? 1
+      const reserve =
+        symbol.callers - count - uses > 0 ? Buffer.byteLength(more(count + uses)) + 1 : 0
       if (used + Buffer.byteLength(line) + 1 + reserve > budget) break
       add(line)
-      count += 1
+      count += uses
     }
     shownBySymbol[index] = count
     if (symbol.callers > count && fits(more(count))) add(more(count))
@@ -78,7 +88,39 @@ export function renderImpact(
     }
     add(tail)
   }
+  budget = total
+  const fitsAll = (next: readonly string[]) => used + bytesOf(next) <= budget
+  const [first] = similar
+  if (first !== undefined && fitsAll([SIMILAR_HEADING, ...first.slice(0, 2)])) {
+    add(SIMILAR_HEADING)
+    for (const [head, ...likes] of similar) {
+      if (head === undefined || !fitsAll([head, ...likes.slice(0, 1)])) break
+      add(head)
+      for (const like of likes) {
+        if (!fits(like)) break
+        add(like)
+      }
+    }
+  }
   return { text: lines.join('\n'), shown }
+}
+
+function similarBlocks(similar: readonly ImpactSimilar[]): string[][] {
+  return similar.map(({ symbol, like }) => [
+    `${code(symbol)}:`,
+    ...like.map(
+      (item) =>
+        `  ~ ${code(item)}${item.shared.length === 0 ? '' : `, shared calls: ${item.shared.join(', ')}`}`,
+    ),
+  ])
+}
+
+function code({ kind, name, path, startLine, endLine }: ImpactCode): string {
+  return `${kind} ${name} (${path}:${startLine}-${endLine})`
+}
+
+function bytesOf(lines: readonly string[]): number {
+  return lines.reduce((total, line) => total + Buffer.byteLength(line) + 1, 0)
 }
 
 function header(symbol: ImpactedSymbol): string {
@@ -88,7 +130,11 @@ function header(symbol: ImpactedSymbol): string {
     symbol.callers === 0 && symbol.capped !== true
       ? 'no callers or uses found'
       : `${symbol.callers}${more} caller${symbol.callers === 1 && more === '' ? '' : 's'} in ${symbol.files}${more} file${symbol.files === 1 && more === '' ? '' : 's'}${symbol.capped === true ? ' (search cut short: use the callers tool with path)' : ''}`
-  return `${symbol.kind} ${symbol.name} (${place}) — ${reach}`
+  const byName =
+    symbol.unresolved === undefined || symbol.unresolved === 0
+      ? ''
+      : `, +${symbol.unresolved} matched by name only (unresolved, not listed)`
+  return `${symbol.kind} ${symbol.name} (${place}) — ${reach}${byName}`
 }
 
 function siteLine(site: ImpactSite): string {
@@ -100,6 +146,12 @@ function siteLine(site: ImpactSite): string {
       : site.how === 'observed'
         ? ` [observed${site.pullRequest === undefined ? '' : ` #${site.pullRequest}`}]`
         : ''
+  if (site.repeated !== undefined) {
+    const { uses, files, also } = site.repeated
+    const places = [site, ...also].map((each) => `${place(each.repo, each.path)}:${each.line}`)
+    const rest = uses - places.length
+    return `  ${site.text}${tag} — ${uses} ${site.kind === 'calls' ? 'calls' : 'uses'} in ${files} files: ${places.join(', ')}${rest > 0 ? `, +${rest} more` : ''}`
+  }
   return `  ${place(site.repo, site.path)}:${site.line}${owner}${kind}${tag}: ${site.text}`
 }
 
