@@ -37,12 +37,19 @@ const ROLE = `You are a senior engineer reviewing a pull request. Aim for high s
 report only real problems that a careful senior reviewer would raise.`
 
 const SCOPE = `Look for bugs, security issues, data loss, performance problems and risky
-design decisions introduced by this change.`
+design decisions introduced by this change. Look also for:
+- code this change reimplements although the repository already has code that
+  does the same (a helper, a function, a module): P2, or P1 when the copy
+  diverges from the existing code and causes a bug. Report it only with
+  existing set to the place of the existing code you read;
+- a change that breaks a convention written in the repository's rules or
+  documentation.`
 
 const FALSE_POSITIVES = `Do not report:
 - problems that existed before this pull request or sit on lines it did not change
 - anything a linter, type checker, compiler or test run would catch
-- style nitpicks, naming preferences, or general remarks about tests and docs
+- style nitpicks, naming preferences, or suggestions to add tests or docs
+  without a concrete risk (test code itself is reviewed like any other code)
 - behavior changes that are clearly intentional for this pull request`
 
 export const LINE_NUMBERS = `${DIFF_LINE_NUMBERS}
@@ -50,7 +57,7 @@ Use that number for line. Removed lines have no number: point
 to the nearest numbered line.`
 
 export const OUTPUT_FORMAT = `The review is a single JSON object shaped like this:
-{"claims": [{"claim": "...", "verdict": "unverified", "evidence": "..."}], "summary": "...", "files": [{"path": "src/app.ts", "checked": "diff", "against": null, "change": "..."}], "findings": [{"severity": "P1", "confidence": 90, "file": "src/app.ts", "line": <number>, "title": "...", "why": "...", "fix": "...", "rule": null, "sources": [], "suggestion": null, "scope": "change"}]}
+{"claims": [{"claim": "...", "verdict": "unverified", "evidence": "..."}], "summary": "...", "files": [{"path": "src/app.ts", "checked": "diff", "against": null, "change": "..."}], "findings": [{"severity": "P1", "confidence": 90, "file": "src/app.ts", "line": <number>, "title": "...", "why": "...", "fix": "...", "rule": null, "existing": null, "sources": [], "suggestion": null, "scope": "change"}]}
 - summary: two to four sentences on what the pull request changes, as the code
   shows it; never state an unverified or contradicted claim of the description as fact.
 - files: one entry for every changed file shown in the diff. checked says what you
@@ -63,6 +70,11 @@ export const OUTPUT_FORMAT = `The review is a single JSON object shaped like thi
   line is the number shown at the start of that diff line; title is one line;
   why explains the impact; fix is a concrete fix, or null;
   rule is the key of the repository rule the finding breaks, or null;
+  existing is set only on a finding whose problem is the reimplementation
+  itself: the path:line of the existing code that already does what this change
+  reimplements, which you read with the tools (owner/repo:path:line for a related
+  repository). It is null on every other finding, even when existing code shows
+  the right way: cite that code in sources instead;
   sources lists the documents or files that support the finding (paths from the
   documentation, the rules or the diff), or an empty list;
   suggestion replaces lines startLine..endLine of the head with replacement:
@@ -243,7 +255,12 @@ export function reviewInstructionParts(
     phada('contract', SEVERITY),
     phada(
       'context',
-      diffScope(context, toolNames, mcpServers, diff === undefined ? '' : investigationAsks(diff)),
+      diffScope(
+        context,
+        toolNames,
+        mcpServers,
+        diff === undefined || toolNames === undefined ? '' : investigationAsks(diff, toolNames),
+      ),
     ),
     phada('contract', LINE_NUMBERS),
     phada('contract', OUTPUT_FORMAT),

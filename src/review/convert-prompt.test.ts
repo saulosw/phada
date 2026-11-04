@@ -43,6 +43,10 @@ describe('buildConvertPrompt', () => {
     )
   })
 
+  it('asks for no existing code, so each issue stays an ordinary finding', () => {
+    expect(prompt.instructions).toContain('- existing: null for every finding.')
+  })
+
   it('asks only for the claims of the description the output settles', () => {
     expect(prompt.instructions).toContain(
       '- claims: each concrete, checkable thing the title or description of the pull',
@@ -64,7 +68,7 @@ describe('buildConvertPrompt', () => {
 
   it('keeps its fixed text', () => {
     expect(createHash('sha256').update(prompt.instructions).digest('hex')).toBe(
-      'cfc9a105dc931465449709f39a6889c1f6a0fdc242702e7a40cfe09c4b99c5cb',
+      '79cfd9121021d22ff39f93f4fa34c7cc88aeb822f69f4d9e080659c3653f4fa7',
     )
   })
 })

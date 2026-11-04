@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { annotateDiff, findDiffFile, parseDiffFiles } from './diff-lines.js'
+import { annotateDiff, findDiffFile, newCodeShare, parseDiffFiles } from './diff-lines.js'
 import type { DiffFile } from './diff-lines.js'
 
 function diffOf(...lines: string[]): string {
@@ -315,4 +315,103 @@ describe('findDiffFile', () => {
       expect(findDiffFile(path, files)).toBeUndefined()
     },
   )
+})
+
+function newFile(path: string, added: number): string {
+  return diffOf(
+    `diff --git a/${path} b/${path}`,
+    'new file mode 100644',
+    'index 0000000..3333333',
+    '--- /dev/null',
+    `+++ b/${path}`,
+    `@@ -0,0 +1,${added} @@`,
+    ...Array.from({ length: added }, (_, index) => `+line ${index}`),
+  )
+}
+
+describe('newCodeShare', () => {
+  it('counts a diff of new files only as creating code', () => {
+    const share = newCodeShare(newFile('src/pay/charge.ts', 6) + newFile('src/pay/refund.ts', 2))
+
+    expect(share).toEqual({
+      share: 1,
+      added: 8,
+      inNewFiles: 8,
+      createsCode: true,
+      directories: [{ path: 'src/pay', files: 2, added: 8 }],
+    })
+  })
+
+  it('weighs the added lines of new files against all added lines', () => {
+    expect(newCodeShare(MODIFIED + ADDED)).toMatchObject({
+      share: 0.4,
+      added: 5,
+      inNewFiles: 2,
+      createsCode: false,
+    })
+    expect(newCodeShare(MODIFIED + newFile('src/fee.ts', 4))).toMatchObject({
+      share: 4 / 7,
+      createsCode: true,
+    })
+  })
+
+  it('needs more than half of the added lines in new files', () => {
+    const half = diffOf(
+      'diff --git a/src/a.ts b/src/a.ts',
+      '--- a/src/a.ts',
+      '+++ b/src/a.ts',
+      '@@ -1 +1,2 @@',
+      ' a',
+      '+b',
+    )
+
+    expect(newCodeShare(half + newFile('src/b.ts', 1))).toMatchObject({
+      share: 0.5,
+      createsCode: false,
+    })
+  })
+
+  it('leaves out binary, renamed and deleted files', () => {
+    const binaryNew = diffOf(
+      'diff --git a/assets/new.png b/assets/new.png',
+      'new file mode 100644',
+      'index 0000000..9999999',
+      'Binary files /dev/null and b/assets/new.png differ',
+    )
+
+    expect(newCodeShare(RENAMED + DELETED + BINARY + binaryNew)).toEqual({
+      share: 0,
+      added: 1,
+      inNewFiles: 0,
+      createsCode: false,
+      directories: [],
+    })
+  })
+
+  it('returns no share for a diff without added lines', () => {
+    expect(newCodeShare(DELETED)).toEqual({
+      share: 0,
+      added: 0,
+      inNewFiles: 0,
+      createsCode: false,
+      directories: [],
+    })
+    expect(newCodeShare('')).toMatchObject({ share: 0, createsCode: false })
+  })
+
+  it('lists the folders of the new files by added lines, nested ones inside their parent', () => {
+    const { directories } = newCodeShare(
+      newFile('test/pay/charge.test.ts', 3) +
+        newFile('src/pay/steps/refund.ts', 2) +
+        newFile('src/pay/steps/undo/void.ts', 1) +
+        newFile('src/pay/charge.ts', 4) +
+        newFile('README.md', 1),
+    )
+
+    expect(directories).toEqual([
+      { path: 'src/pay', files: 3, added: 7 },
+      { path: 'test/pay', files: 1, added: 3 },
+      { path: '', files: 1, added: 1 },
+    ])
+  })
 })

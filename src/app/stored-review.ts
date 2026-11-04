@@ -18,6 +18,7 @@ const FindingSchema = z.object({
   why: z.string(),
   fix: z.string().nullable(),
   rule: z.string().nullable(),
+  existing: z.string().nullable().optional(),
   sources: z.array(z.string()),
   reason: z.string().nullable(),
   suggestion: SuggestionSchema.nullable(),
@@ -101,6 +102,7 @@ const ReviewSchema = z.object({
     duplicate: z.number(),
     rejected: z.number(),
     debt: z.number(),
+    unbacked: z.number().optional(),
   }),
   provider: z.object({ id: z.string(), model: z.string().nullable() }),
   durationMs: z.number(),
@@ -183,6 +185,9 @@ export function storedReview(json: unknown): StoredReview | undefined {
       duplicate: dropped.duplicate,
       rejected: dropped.rejected,
       ...(dropped.debt === 0 ? {} : { debt: dropped.debt }),
+      ...(dropped.unbacked === undefined || dropped.unbacked === 0
+        ? {}
+        : { unbacked: dropped.unbacked }),
     },
     claims: review.claims,
     ...(coverage === undefined ? {} : { coverage }),
@@ -199,7 +204,7 @@ export function storedReview(json: unknown): StoredReview | undefined {
 }
 
 function findingOf(stored: z.infer<typeof FindingSchema>): Finding {
-  const { rule, sources, reason, suggestion, scope, closeToCut } = stored
+  const { rule, existing, sources, reason, suggestion, scope, closeToCut } = stored
   return {
     severity: stored.severity,
     confidence: stored.confidence,
@@ -209,6 +214,7 @@ function findingOf(stored: z.infer<typeof FindingSchema>): Finding {
     why: stored.why,
     fix: stored.fix,
     ...(rule === null ? {} : { rule }),
+    ...(existing === undefined || existing === null ? {} : { existing }),
     ...(sources.length === 0 ? {} : { sources }),
     ...(reason === null ? {} : { reason }),
     ...(suggestion === null ? {} : { suggestion }),

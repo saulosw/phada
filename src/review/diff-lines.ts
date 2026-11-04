@@ -9,6 +9,22 @@ export interface DiffFile {
   newText: ReadonlyMap<number, NewSideLine>
 }
 
+export interface NewCode {
+  share: number
+  added: number
+  inNewFiles: number
+  createsCode: boolean
+  directories: NewCodeDirectory[]
+}
+
+export interface NewCodeDirectory {
+  path: string
+  files: number
+  added: number
+}
+
+const CREATES_CODE_ABOVE = 0.5
+
 export interface NewSideLine {
   text: string
   hunk: number
@@ -60,6 +76,45 @@ export function parseDiffFiles(diff: string): DiffFile[] {
     removedAt: draft.removedAt,
     newText: draft.newText,
   }))
+}
+
+export function newCodeShare(diff: string): NewCode {
+  const files = parseDiffFiles(diff)
+  const newFiles = files.filter(({ status }) => status === 'added')
+  const added = files.reduce((total, file) => total + file.added.size, 0)
+  const inNewFiles = newFiles.reduce((total, file) => total + file.added.size, 0)
+  const share = added === 0 ? 0 : inNewFiles / added
+  return {
+    share,
+    added,
+    inNewFiles,
+    createsCode: share > CREATES_CODE_ABOVE,
+    directories: newCodeDirectories(newFiles),
+  }
+}
+
+function newCodeDirectories(newFiles: readonly DiffFile[]): NewCodeDirectory[] {
+  const parents = [...new Set(newFiles.map(({ path }) => parentOf(path)))].sort(
+    (a, b) => a.length - b.length,
+  )
+  const outermost = (parent: string): string =>
+    parents.find((other) => other !== '' && parent.startsWith(`${other}/`)) ?? parent
+  const directories = new Map<string, NewCodeDirectory>()
+  for (const file of newFiles) {
+    const path = outermost(parentOf(file.path))
+    const directory = directories.get(path) ?? { path, files: 0, added: 0 }
+    directories.set(path, {
+      path,
+      files: directory.files + 1,
+      added: directory.added + file.added.size,
+    })
+  }
+  return [...directories.values()].sort((a, b) => b.added - a.added || a.path.localeCompare(b.path))
+}
+
+function parentOf(path: string): string {
+  const slash = path.lastIndexOf('/')
+  return slash === -1 ? '' : path.slice(0, slash)
 }
 
 export function annotateDiff(diff: string): string {

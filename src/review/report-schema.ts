@@ -24,6 +24,7 @@ const FINDING_SHAPE = {
 
 const REFERENCE_SHAPE = {
   rule: z.string().nullable(),
+  existing: z.string().nullable(),
   sources: z.array(z.string()),
   suggestion: SuggestionSchema.nullable(),
 }
@@ -50,6 +51,7 @@ export const ReportClaimSchema = z.object({
 export const ReportFindingSchema = z.object({
   ...FINDING_SHAPE,
   rule: z.unknown().optional(),
+  existing: z.unknown().optional(),
   sources: z.unknown().optional(),
   suggestion: z.unknown().optional(),
   scope: z.unknown().optional(),

@@ -32,9 +32,10 @@ export function parseReviewReport(text: string): ParsedReport {
   const findings = envelope.data.findings.flatMap((item): Finding[] => {
     const parsed = ReportFindingSchema.safeParse(item)
     if (!parsed.success) return []
-    const { rule, sources, suggestion, scope, ...finding } = parsed.data
+    const { rule, existing, sources, suggestion, scope, ...finding } = parsed.data
     const fix = SuggestionSchema.safeParse(suggestion)
     const ruleKey = typeof rule === 'string' ? rule.trim() : ''
+    const existingAt = typeof existing === 'string' ? existing.trim() : ''
     const texts = (Array.isArray(sources) ? sources : [])
       .filter((source): source is string => typeof source === 'string')
       .map((source) => source.trim())
@@ -43,6 +44,7 @@ export function parseReviewReport(text: string): ParsedReport {
       {
         ...finding,
         ...(ruleKey === '' ? {} : { rule: ruleKey }),
+        ...(existingAt === '' ? {} : { existing: existingAt }),
         ...(texts.length === 0 ? {} : { sources: texts }),
         ...(fix.success ? { suggestion: fix.data } : {}),
         ...(scope === 'repository' ? { scope } : {}),

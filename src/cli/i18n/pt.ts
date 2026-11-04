@@ -62,6 +62,10 @@ export const portuguese: Messages = {
       [dropped.belowFloor, `${dropped.belowFloor} abaixo da confiança ${CONFIDENCE_FLOOR}`],
       [dropped.invalid, count(dropped.invalid, 'inválido', 'inválidos')],
       [dropped.debt ?? 0, `${dropped.debt ?? 0} débito do repositório`],
+      [
+        dropped.unbacked ?? 0,
+        `${count(dropped.unbacked ?? 0, 'achado', 'achados')} de reimplementação sem o código existente lido`,
+      ],
     ]
     const shown = reasons.filter(([value]) => value > 0)
     const total = shown.reduce((sum, [value]) => sum + value, 0)

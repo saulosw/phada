@@ -76,6 +76,16 @@ describe('Portuguese texts', () => {
       pt.dropped({ invalid: 1, belowFloor: 0, outsideDiff: 2, duplicate: 1, rejected: 1 }),
     ).toBe('5 descartados (1 rejeitado pela verificação, 2 fora do diff, 1 duplicado, 1 inválido)')
     expect(
+      pt.dropped({
+        invalid: 0,
+        belowFloor: 0,
+        outsideDiff: 0,
+        duplicate: 0,
+        rejected: 0,
+        unbacked: 2,
+      }),
+    ).toBe('2 descartados (2 achados de reimplementação sem o código existente lido)')
+    expect(
       pt.verification({ candidates: 2, confirmed: 0, unverified: 2, rejected: [], durationMs: 1 }),
     ).toBe('não verificado (2 sem resposta)')
   })
@@ -125,6 +135,16 @@ describe('Spanish texts', () => {
     expect(
       es.dropped({ invalid: 0, belowFloor: 1, outsideDiff: 0, duplicate: 0, rejected: 0 }),
     ).toBe('1 descartado (1 por debajo de la confianza 50)')
+    expect(
+      es.dropped({
+        invalid: 0,
+        belowFloor: 0,
+        outsideDiff: 0,
+        duplicate: 0,
+        rejected: 0,
+        unbacked: 1,
+      }),
+    ).toBe('1 descartado (1 hallazgo de reimplementación sin el código existente leído)')
     expect(
       es.verification({ candidates: 2, confirmed: 0, unverified: 2, rejected: [], durationMs: 1 }),
     ).toBe('no verificado (2 sin respuesta)')

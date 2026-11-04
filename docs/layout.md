@@ -534,8 +534,8 @@ src/
     format-impact.ts     #   the "Impact:" line and the impact section of --dry-run (the text
                          #   the AI got, or each changed symbol when the run did not keep it)
     format-conversation.ts # the "Conversation:" line and the conversation section of --dry-run
-                         #   (each item, what was left out over 16 KB and the bodies cut), the
-                         #   section from the conversation block of the JSON
+                         #   (each item, what was left out over 16 KB, bots among it, and the
+                         #   bodies cut), the section from the conversation block of the JSON
     format-ci.ts         #   the "CI:" line and the CI section of --dry-run (each check, the
                          #   annotations and logs left out, the cuts and the warnings), the
                          #   section from the CI block of the JSON
@@ -885,8 +885,9 @@ src/
     ignore.ts            #   DEFAULT_IGNORE (lockfiles, minified files, source maps), applyIgnore()
     byte-cut.ts          #   byteLength(), cutBytes(): a text cut at a number of UTF-8 bytes with
                          #   the "[truncated by Phada: …]" line (docs, CI and conversation)
-    select-docs.ts       #   docs by priority (including other tools' instruction files), the
-                         #   60 KB budget, cutting a doc at 20 KB
+    select-docs.ts       #   docs by priority (the ones the pull request changes first, other
+                         #   tools' instruction files included), the 60 KB budget, cutting a doc
+                         #   at 20 KB or at what is left (4 KB at least)
     frontmatter.ts       #   readFrontmatter(): the front matter of an instruction file, line by line
     claude-rules.ts      #   claudeRule(): a .claude/rules file → a rule named by its path, its
                          #   paths: as the scope (every file without it or with an unreadable
@@ -996,7 +997,11 @@ src/
     repository-links.ts  #   linkRepositories(): packages one repository publishes and the other uses
     linked-graph.ts      #   linkGraphs(): callers in consumers, dependencies in publishers
     similar.ts           #   scoreSimilar(): calls, parameters, name tokens, owner kind
-    impact.ts            #   changedLines(), computeImpact(): changed symbols → callers and dependencies
+    impact.ts            #   changedLines(), computeImpact(): changed symbols (changed before new)
+                         #   → callers and dependencies; a match by name only is kept when its
+                         #   receiver names the class or the name has one definition (unresolved);
+                         #   the same line in several files as one site; in a pull request that
+                         #   creates code, the existing code similar to the new functions
     observe.ts           #   learnObservedEdges(): confirmed finding + source the AI read → relation
     report.ts            #   buildImpactReport(): the impact for the CLI and the JSON
   investigation/         # the AI reads the pull request head with Phada's read-only tools
@@ -1082,8 +1087,9 @@ src/
                          #   and what changed in their files
     conversation.ts      #   buildConversation(): comments, reviews and threads → items oldest first
                          #   with the role of each author, without Phada's own (people's replies
-                         #   to them kept), bodies cut at 2 KB, 16 KB in total (resolved ›
-                         #   outdated › oldest left out first) and the report;
+                         #   to them kept), bodies cut at 2 KB, 16 KB in total (bots › resolved
+                         #   › outdated › oldest left out first) and the report, with the bots
+                         #   left out;
                          #   conversationItemBytes(); associationRole()
     state-at.ts          #   reviewStateAt(), commentsAt(): reviews, threads, replies and comments
                          #   created up to a moment (none without a date), the threads open and
@@ -1181,8 +1187,10 @@ src/
     prompt-parts.ts      #   text shared by the review and verification prompts: rules section,
                          #   docs block, conversation block and its rules, CI block and its rules
                          #   (a check cited as ci:<name>), related repositories
-                         #   (RELATED, relatedBlocks()), impact block, diff scope and tools
-    impact-text.ts       #   renderImpact(): the impact of the diff within its 4 KB budget
+                         #   (RELATED, relatedBlocks()), impact block, diff scope and tools,
+                         #   PHADA_PR (with the New code line of a pull request that creates code)
+    impact-text.ts       #   renderImpact(): the impact of the diff within its 4 KB budget, with up
+                         #   to 1 KB kept for the similar existing code
     prompt.ts            #   buildReviewPrompt(): instructions + nonce-delimited data + output schema;
                          #   reviewInstructionParts(): the reviewer lens (built-in, append, replace,
                          #   skill) and the fixed contract (the claims of the description to
@@ -1192,20 +1200,24 @@ src/
     verify-prompt.ts     #   buildVerifyPrompt(): the second, skeptical pass (--verify); a finding
                          #   whose condition the repository does not meet is rejected
     investigation-asks.ts # investigationAsks(): the accounting of every file and the
-                         #   comparison of new files for the prompt, and the changed CI,
-                         #   container, infrastructure and manifest files to investigate
+                         #   comparison of new files for the prompt, the closest existing code
+                         #   to compare with when the pull request creates code, and the changed
+                         #   CI, container, infrastructure and manifest files to investigate
     coverage.ts          #   measureCoverage(): what each pass declared in files[] against the
                          #   files it read (full, partial below every file, low below 70%; a new
                          #   file of 50+ lines covered only when compared with code read outside
                          #   the diff); gapText()
-    recorded-reads.ts    #   recordingReads(): the files a pass read with read_file
+    recorded-reads.ts    #   recordingReads(): the files a pass read with read_file, in this
+                         #   repository and (as owner/repo:path) in a related one
     continuation-prompt.ts # buildContinuationPrompt(): the review prompt with PHADA_COVERAGE (the
                          #   gaps and the findings of the earlier passes)
     report-schema.ts     #   Zod schemas of the AI report (claims, summary, files, findings with
-                         #   their scope: change or repository) + the JSON schema sent to providers
+                         #   their scope: change or repository, and the existing code they
+                         #   reimplement) + the JSON schema sent to providers
     verification-schema.ts # Zod schema of the verification verdicts
     diff-lines.ts        #   unified diff parsing and line numbering; the text and @@ section of
-                         #   each new-side line
+                         #   each new-side line; newCodeShare(): the share of added lines in new
+                         #   files and their folders (creates code above 50%)
     diff-fingerprint.ts  #   diffFingerprint(): paths and +/- lines of the filtered diff, hashed
     suggestions.ts       #   checkSuggestion(), checkSuggestions(): a code suggestion against the diff
     convert-prompt.ts    #   buildConvertPrompt(): a native skill's output → Phada's report (the
@@ -1229,6 +1241,9 @@ src/
     verify-findings.ts   #   verifyCandidates(), applyVerdicts()
     context-findings.ts  #   known rule and sources on each finding (ci:<name> of a failing check);
                          #   the severity a rule sets
+    reimplementation.ts  #   withBackedReimplementations(): a finding with existing kept only when
+                         #   that path was read and the line is not added by the diff (counted
+                         #   as unbacked otherwise), with existing in its sources
     select-findings.ts   #   candidate filtering, confidence cut, worth checking, ordering; the
                          #   kept findings at most CLOSE_TO_CUT_MARGIN (10) above the cut marked
                          #   closeToCut
