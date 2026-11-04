@@ -163,6 +163,9 @@ export const MISS_TABLE: HistoryTable = {
   keys: ['id'],
   columns: {
     id: 'id',
+    key: 'key',
+    origin: 'origin',
+    seen: 'seen',
     repo: 'repo',
     number: 'number',
     reviewedSha: 'reviewed_sha',

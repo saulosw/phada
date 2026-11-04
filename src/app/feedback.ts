@@ -6,9 +6,13 @@ import type {
   HistoryStore,
   SignalSource,
 } from '../store/history-store.js'
+import type { Extractor } from '../repo-map/extract.js'
 import type { Finding } from '../review/types.js'
+import { codeElements } from './code-elements.js'
+import type { ReadFileAt } from './code-elements.js'
 import { errorMessage } from './error-message.js'
-import { harvestMisses } from './harvest-misses.js'
+import { comparedCommits, harvestMisses } from './harvest-misses.js'
+import type { CompareCommits } from './harvest-misses.js'
 import type { ReviewRun } from './review-and-publish.js'
 
 export interface FeedbackMeta {
@@ -20,6 +24,10 @@ export interface FeedbackMeta {
 export interface FeedbackRefreshDeps {
   history: HistoryStore
   fetchReviewState(pull: DuePull): Promise<PullRequestReviewState>
+  missBots(repo: string): Promise<readonly string[]>
+  readFile: ReadFileAt
+  extractor: Extractor
+  compare: CompareCommits
   isNotFound(error: unknown): boolean
   isRateLimited(error: unknown): boolean
   stopRequested?(): boolean
@@ -78,11 +86,25 @@ export async function refreshFeedback(
 ): Promise<{ observed: number; failed: number }> {
   let observed = 0
   let failed = 0
+  const elements = codeElements(deps.readFile, deps.extractor)
+  const compare = comparedCommits(deps.compare)
   for (const [index, pull] of pulls.entries()) {
     if (deps.stopRequested?.() === true) break
-    let state: PullRequestReviewState
     try {
-      state = await deps.fetchReviewState(pull)
+      const bots = await deps.missBots(pull.repo)
+      const state = await deps.fetchReviewState(pull)
+      const misses = await harvestMisses(deps.history, {
+        pull,
+        state,
+        bots,
+        elements,
+        compare,
+        now: deps.now(),
+      })
+      const seen = observation(pull.repo, pull.number, state, source, deps.now())
+      deps.history.observeFeedback(seen)
+      deps.events.observed(pull, seen.threads.length, misses)
+      observed++
     } catch (error) {
       if (deps.isNotFound(error)) {
         deps.history.observeFeedback({
@@ -104,13 +126,7 @@ export async function refreshFeedback(
       }
       deps.events.warning(`${pull.repo}#${pull.number}: ${errorMessage(error)}`)
       failed++
-      continue
     }
-    const seen = observation(pull.repo, pull.number, state, source, deps.now())
-    deps.history.observeFeedback(seen)
-    const misses = harvestMisses(deps.history, pull, state, deps.now())
-    deps.events.observed(pull, seen.threads.length, misses)
-    observed++
   }
   return { observed, failed }
 }

@@ -33,6 +33,7 @@ import { runPrompt } from './cli/prompt-command.js'
 import { runRules } from './cli/rules-command.js'
 import { runHistory, runHistoryPrune, runHistoryShow } from './cli/history-command.js'
 import { runMisses, runMissesDismiss } from './cli/misses-command.js'
+import type { MissesCommandDeps } from './cli/misses-command.js'
 import { runMissesReplay } from './cli/misses-replay-command.js'
 import { reviewReplayer } from './cli/miss-replayer.js'
 import { reviewRunJson } from './cli/review-wiring.js'
@@ -57,7 +58,8 @@ import { CodexCliProvider } from './providers/codex.js'
 import { OllamaProvider } from './providers/ollama.js'
 import type { ReviewProvider } from './providers/types.js'
 
-export interface MainDeps extends WatchCommandDeps, McpCommandDeps, AppCommandDeps {
+export interface MainDeps
+  extends WatchCommandDeps, McpCommandDeps, AppCommandDeps, MissesCommandDeps {
   cwd: string
   pathSize: (path: string) => Promise<number>
   killDetachedChildren: () => void

@@ -45,22 +45,30 @@ export async function listOpenPullRequests(
       page === 0 && options.etag !== undefined ? { ifNoneMatch: options.etag } : {},
     )
     if (page === 0 && response.status === 304) return { status: 'not-modified' }
-    if (response.status === 404) throw new RepositoryAccessError(name, 404)
-    try {
-      await ensureOk(response, ctx)
-    } catch (error) {
-      if (error instanceof GitHubAuthError && error.status === 403) {
-        throw new RepositoryAccessError(name, 403)
-      }
-      throw error
-    }
     if (page === 0) etag = response.headers.get('etag') ?? undefined
-    const items = await readJson(response, ctx)
-    if (!Array.isArray(items)) throw new RepositoryAccessError(name, response.status)
-    pulls.push(...items.map(toOpenPull))
+    pulls.push(...(await readPullPage(response, ctx, name)).map(toOpenPull))
     path = nextPagePath(response.headers.get('link'))
   }
   return { status: 'ok', ...(etag === undefined ? {} : { etag }), pulls }
+}
+
+export async function readPullPage(
+  response: Response,
+  ctx: GitHubRequestContext,
+  name: string,
+): Promise<unknown[]> {
+  if (response.status === 404) throw new RepositoryAccessError(name, 404)
+  try {
+    await ensureOk(response, ctx)
+  } catch (error) {
+    if (error instanceof GitHubAuthError && error.status === 403) {
+      throw new RepositoryAccessError(name, 403)
+    }
+    throw error
+  }
+  const items = await readJson(response, ctx)
+  if (!Array.isArray(items)) throw new RepositoryAccessError(name, response.status)
+  return items
 }
 
 function toOpenPull(json: unknown): OpenPull {

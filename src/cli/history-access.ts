@@ -8,8 +8,9 @@ import type { HistoryStore } from '../store/history-store.js'
 import type { RulesTarget } from './args.js'
 import type { GitHubTokenDeps } from './github-token.js'
 import type { TextOutput } from './progress.js'
+import type { CodeElementDeps, CompareDeps } from './review-wiring.js'
 
-export interface HistoryCommandDeps extends GitHubTokenDeps {
+export interface HistoryCommandDeps extends GitHubTokenDeps, CodeElementDeps, CompareDeps {
   home: string
   files: LocalFileSystem
   stdout: TextOutput

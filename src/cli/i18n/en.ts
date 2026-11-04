@@ -64,6 +64,7 @@ export const english: Messages = {
     worthCheckingCount: (count) => `${count} worth checking`,
     closeToCut: 'close to the cut',
     closeToCutCount: (count) => `${count} close to the cut`,
+    rejectedByVerification: 'Rejected by verification',
     tokens: (input, output) => `${input} in / ${output} out`,
   },
   github: {

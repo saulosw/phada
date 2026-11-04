@@ -6,7 +6,7 @@ import type {
   ReviewThread,
 } from '../github/pull-request-reviews.js'
 import { FINDING_MARKER, reviewMarker } from './markers.js'
-import { decideMisses, isNearMiss } from './misses.js'
+import { decideMisses, isNearMiss, missElementSites } from './misses.js'
 import type { LocalReview } from './misses.js'
 
 const REVIEWED = 'a'.repeat(40)
@@ -71,14 +71,21 @@ function stateWith(
   })
 }
 
-function missesOf(state: PullRequestReviewState, localReviews: LocalReview[] = []) {
-  return decideMisses({ ...PULL, state, localReviews })
+function missesOf(
+  state: PullRequestReviewState,
+  localReviews: LocalReview[] = [],
+  bots: string[] = [],
+) {
+  return decideMisses({ ...PULL, state, localReviews, bots })
 }
 
 describe('decideMisses', () => {
   it('a person’s thread, made outdated after Phada’s review, with no finding there, is a miss', () => {
     expect(missesOf(stateWith([personThread()]))).toEqual([
       {
+        key: 'T9',
+        origin: 'person',
+        seen: 'missed-live',
         repo: 'acme/shop',
         number: 3,
         reviewedSha: REVIEWED,
@@ -113,10 +120,55 @@ describe('decideMisses', () => {
     expect(missesOf(stateWith([own]))).toEqual([])
   })
 
-  it('a thread written before any Phada review is not a miss', () => {
+  it('a thread on a pull request Phada never reviewed is a miss it did not see', () => {
+    const [miss] = missesOf(stateWith([personThread()], { reviews: [] }))
+
+    expect(miss).toMatchObject({
+      key: 'T9',
+      origin: 'person',
+      seen: 'not-reviewed',
+      commitSha: THREAD_COMMIT,
+      line: 22,
+    })
+    expect(miss).not.toHaveProperty('reviewedSha')
+  })
+
+  it('a thread written before the first Phada review is a miss Phada did not see', () => {
     const early = personThread({ createdAt: '2026-10-08T09:00:00Z' })
 
-    expect(missesOf(stateWith([early]))).toEqual([])
+    expect(missesOf(stateWith([early]))).toMatchObject([{ seen: 'not-reviewed' }])
+    expect(missesOf(stateWith([early]))[0]).not.toHaveProperty('reviewedSha')
+  })
+
+  it('a not reviewed thread without the commit it was written on is not a miss', () => {
+    const unplaced = personThread({ originalCommit: undefined })
+
+    expect(missesOf(stateWith([unplaced], { reviews: [] }))).toEqual([])
+  })
+
+  it.each([
+    ['the same login', 'review-bot', 'review-bot'],
+    ['the app login with [bot]', 'review-bot[bot]', 'review-bot'],
+    ['a listed login with [bot]', 'review-bot', 'Review-Bot[bot]'],
+    ['another case', 'Review-Bot', 'review-bot'],
+  ])('a thread of a bot the user lists is a miss from a bot: %s', (_name, author, listed) => {
+    const bot = personThread({ author, bot: true, association: 'NONE' })
+
+    expect(missesOf(stateWith([bot], { reviews: [] }), [], [listed])).toMatchObject([
+      { origin: 'bot', seen: 'not-reviewed', author, role: 'external' },
+    ])
+  })
+
+  it('a thread of a bot the user does not list is not a miss', () => {
+    const bot = personThread({ author: 'ci-bot[bot]', bot: true })
+
+    expect(missesOf(stateWith([bot]), [], ['review-bot'])).toEqual([])
+  })
+
+  it('the pull request author is not a miss even when listed as a bot', () => {
+    const own = personThread({ author: 'bob', bot: true })
+
+    expect(missesOf(stateWith([own], { reviews: [] }), [], ['bob'])).toEqual([])
   })
 
   it('a Phada finding within 5 lines of the thread is not a miss; at 6 lines it is', () => {
@@ -178,7 +230,9 @@ describe('decideMisses', () => {
   it('a review by someone else with a Phada marker is not a Phada review', () => {
     const forged = { ...phadaReview(REVIEWED, REVIEWED_AT), author: 'mallory' }
 
-    expect(missesOf(stateWith([personThread()], { reviews: [forged] }))).toEqual([])
+    expect(missesOf(stateWith([personThread()], { reviews: [forged] }))).toMatchObject([
+      { seen: 'not-reviewed' },
+    ])
   })
 
   it('falls back to the reviewed commit and to the current line when GitHub has no original ones', () => {
@@ -206,6 +260,47 @@ describe('decideMisses', () => {
   })
 })
 
+describe('the code elements of the threads', () => {
+  const block = [{ startLine: 10, endLine: 30 }]
+
+  it('a Phada finding in the element that holds the thread is not a miss, at any distance', () => {
+    const state = stateWith([personThread(), phadaThread(11)])
+    const asked: string[] = []
+    const elementsAt = (commitSha: string, file: string) => {
+      asked.push(`${commitSha.slice(0, 1)}:${file}`)
+      return block
+    }
+
+    expect(decideMisses({ ...PULL, state, localReviews: [], bots: [], elementsAt })).toEqual([])
+    expect(asked).toEqual(['c:src/shop.ts'])
+    expect(missesOf(state)).toHaveLength(1)
+  })
+
+  it('a Phada finding outside the element is still a miss', () => {
+    const state = stateWith([personThread(), phadaThread(31)])
+
+    expect(
+      decideMisses({ ...PULL, state, localReviews: [], bots: [], elementsAt: () => block }),
+    ).toHaveLength(1)
+  })
+
+  it('needs the elements only where a thread could be a miss and a finding sits in its file', () => {
+    const cart = personThread({ id: 'T8', path: 'src/cart.ts' })
+    const resolved = personThread({ id: 'T7', isOutdated: false, path: 'src/pay.ts' })
+    const state = stateWith([
+      personThread(),
+      cart,
+      resolved,
+      phadaThread(90),
+      phadaThread(3, { path: 'src/pay.ts' }),
+    ])
+
+    expect(missElementSites({ ...PULL, state, localReviews: [], bots: [] })).toEqual([
+      { commitSha: THREAD_COMMIT, file: 'src/shop.ts' },
+    ])
+  })
+})
+
 describe('isNearMiss', () => {
   it('is near in the same file within 5 lines of the range', () => {
     const range = { file: 'a.ts', startLine: 10, line: 12 }
@@ -216,5 +311,55 @@ describe('isNearMiss', () => {
     expect(isNearMiss(range, { file: 'a.ts', line: 18 })).toBe(false)
     expect(isNearMiss(range, { file: 'b.ts', line: 11 })).toBe(false)
     expect(isNearMiss({ file: 'a.ts', line: 12 }, { file: 'a.ts', line: 7 })).toBe(true)
+  })
+
+  it('is near anywhere in the innermost code element that holds the line', () => {
+    const range = { file: 'a.ts', line: 31 }
+    const functions = [
+      { startLine: 18, endLine: 35 },
+      { startLine: 36, endLine: 50 },
+    ]
+
+    expect(isNearMiss(range, { file: 'a.ts', line: 20 }, functions)).toBe(true)
+    expect(isNearMiss(range, { file: 'a.ts', line: 18 }, functions)).toBe(true)
+    expect(isNearMiss(range, { file: 'a.ts', line: 17 }, functions)).toBe(false)
+    expect(isNearMiss(range, { file: 'a.ts', line: 36 }, functions)).toBe(false)
+    expect(isNearMiss(range, { file: 'b.ts', line: 20 }, functions)).toBe(false)
+  })
+
+  it('the method inside a class wins over the class', () => {
+    const range = { file: 'a.ts', line: 30 }
+    const classAndMethods = [
+      { startLine: 1, endLine: 60 },
+      { startLine: 25, endLine: 40 },
+      { startLine: 41, endLine: 59 },
+    ]
+
+    expect(isNearMiss(range, { file: 'a.ts', line: 39 }, classAndMethods)).toBe(true)
+    expect(isNearMiss(range, { file: 'a.ts', line: 42 }, classAndMethods)).toBe(false)
+  })
+
+  it('an element of more than 80 lines falls back to 10 lines around the range', () => {
+    const range = { file: 'a.ts', startLine: 50, line: 52 }
+    const long = [{ startLine: 1, endLine: 81 }]
+
+    expect(isNearMiss(range, { file: 'a.ts', line: 40 }, long)).toBe(true)
+    expect(isNearMiss(range, { file: 'a.ts', line: 62 }, long)).toBe(true)
+    expect(isNearMiss(range, { file: 'a.ts', line: 39 }, long)).toBe(false)
+    expect(isNearMiss(range, { file: 'a.ts', line: 63 }, long)).toBe(false)
+    expect(isNearMiss(range, { file: 'a.ts', line: 75 }, [{ startLine: 1, endLine: 80 }])).toBe(
+      true,
+    )
+  })
+
+  it('outside any element, or without elements, it is 5 lines around the range', () => {
+    const range = { file: 'a.ts', line: 30 }
+    const elsewhere = [{ startLine: 1, endLine: 20 }]
+
+    expect(isNearMiss(range, { file: 'a.ts', line: 25 }, elsewhere)).toBe(true)
+    expect(isNearMiss(range, { file: 'a.ts', line: 24 }, elsewhere)).toBe(false)
+    expect(isNearMiss(range, { file: 'a.ts', line: 24 }, [])).toBe(false)
+    expect(isNearMiss(range, { file: 'a.ts', line: 35 }, undefined)).toBe(true)
+    expect(isNearMiss(range, { file: 'a.ts', line: 36 }, undefined)).toBe(false)
   })
 })

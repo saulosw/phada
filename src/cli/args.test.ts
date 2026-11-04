@@ -517,6 +517,18 @@ describe('parseCliArgs misses', () => {
     })
   })
 
+  it('reads --since with --refresh and a repository as the start of that day in UTC', () => {
+    expect(parseCliArgs(['misses', '--refresh', 'acme/shop', '--since', '2026-10-01'])).toEqual({
+      kind: 'misses',
+      target: { kind: 'repo', repo: { owner: 'acme', repo: 'shop' } },
+      all: false,
+      refresh: true,
+      since: '2026-10-01T00:00:00.000Z',
+      format: 'text',
+      debug: false,
+    })
+  })
+
   it('reads dismiss with a miss id', () => {
     expect(parseCliArgs(['misses', 'dismiss', '4'])).toEqual({
       kind: 'misses-dismiss',
@@ -542,6 +554,32 @@ describe('parseCliArgs misses', () => {
       '--replay reviews the misses already kept; run phada misses --refresh first.',
     ],
     [['misses', 'dismiss', '1', '--replay'], 'phada misses dismiss takes only a miss id.'],
+    [
+      ['misses', 'dismiss', '1', '--since', '2026-10-01'],
+      'phada misses dismiss takes only a miss id.',
+    ],
+    [
+      ['misses', 'acme/shop', '--since', '2026-10-01'],
+      '--since says which closed pull requests --refresh reads; add --refresh.',
+    ],
+    [
+      ['misses', '--refresh', 'acme/shop#3', '--since', '2026-10-01'],
+      '--since reads the pull requests closed in a repository; give owner/repo, not owner/repo#N.',
+    ],
+    [
+      ['misses', '--refresh', '--since', '2026-10-01'],
+      '--since needs a repository, e.g. phada misses --refresh acme/shop --since 2026-10-01.',
+    ],
+    [
+      ['misses', '--replay', 'acme/shop', '--since', '2026-10-01'],
+      '--replay reviews the misses already kept; remove --since.',
+    ],
+    ...['2026-1-01', '2026-02-30', '2026-13-01', 'yesterday', '2026-10-01T00:00:00Z'].map(
+      (since): [string[], string] => [
+        ['misses', '--refresh', 'acme/shop', '--since', since],
+        `Invalid --since "${since}". Use a date as YYYY-MM-DD, e.g. 2026-10-01.`,
+      ],
+    ),
   ])('refuses %j', (argv, message) => {
     expect(() => parseCliArgs(argv)).toThrow(message)
   })

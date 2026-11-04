@@ -7,11 +7,18 @@ import { phadaThreads } from './phada-state.js'
 import { writtenLine } from './written-line.js'
 
 const MISS_WINDOW_LINES = 5
-const MISS_BODY_BYTES = 2 * 1024
+const LONG_ELEMENT_LINES = 80
+const LONG_ELEMENT_WINDOW_LINES = 10
+export const MISS_BODY_BYTES = 2 * 1024
 
 export interface FindingPlace {
   file: string
   line: number
+}
+
+export interface LineSpan {
+  startLine: number
+  endLine: number
 }
 
 export interface MissRange {
@@ -26,15 +33,22 @@ export interface LocalReview {
   findings: readonly FindingPlace[]
 }
 
+export type MissOrigin = 'person' | 'bot' | 'phada'
+
+export type MissSeen = 'missed-live' | 'not-reviewed'
+
 export interface Miss extends MissRange {
+  key: string
+  origin: MissOrigin
+  seen: MissSeen
   repo: string
   number: number
-  reviewedSha: string
+  reviewedSha?: string
   commitSha: string
-  threadId: string
-  threadUrl: string
+  threadId?: string
+  threadUrl?: string
   author: string
-  role: AssociationRole
+  role?: AssociationRole
   body: string
   createdAt: string
 }
@@ -44,6 +58,8 @@ export interface MissInput {
   number: number
   state: PullRequestReviewState
   localReviews: readonly LocalReview[]
+  bots: readonly string[]
+  elementsAt?: (commitSha: string, file: string) => readonly LineSpan[] | undefined
 }
 
 interface PhadaReview {
@@ -52,11 +68,40 @@ interface PhadaReview {
   findings: readonly FindingPlace[]
 }
 
-export function decideMisses({ repo, number, state, localReviews }: MissInput): Miss[] {
+export interface ElementSite {
+  commitSha: string
+  file: string
+}
+
+interface Candidate {
+  miss: Miss
+  findings: FindingPlace[]
+}
+
+export function decideMisses(input: MissInput): Miss[] {
+  return candidates(input).flatMap(({ miss, findings }) => {
+    const elements =
+      findings.length === 0 ? undefined : input.elementsAt?.(miss.commitSha, miss.file)
+    return findings.some((finding) => isNearMiss(miss, finding, elements)) ? [] : [miss]
+  })
+}
+
+export function missElementSites(input: MissInput): ElementSite[] {
+  const sites = new Map<string, ElementSite>()
+  for (const { miss, findings } of candidates(input)) {
+    if (findings.length === 0) continue
+    sites.set(siteKey(miss.commitSha, miss.file), { commitSha: miss.commitSha, file: miss.file })
+  }
+  return [...sites.values()]
+}
+
+function candidates({ repo, number, state, localReviews, bots }: MissInput): Candidate[] {
   const own = phadaThreads(state)
   const reviews = [...publishedReviews(state), ...localReviews.flatMap(datedReview)]
-  return state.threads.flatMap((thread): Miss[] => {
-    if (!byPerson(state, thread) || own.includes(thread) || !thread.isOutdated) return []
+  const listed = new Set(bots.map(botLogin))
+  return state.threads.flatMap((thread): Candidate[] => {
+    const origin = originOf(state, thread, listed)
+    if (origin === undefined || own.includes(thread) || !thread.isOutdated) return []
     const range = rangeOf(thread)
     const at = thread.createdAt === undefined ? Number.NaN : Date.parse(thread.createdAt)
     if (range === undefined || Number.isNaN(at)) return []
@@ -65,43 +110,91 @@ export function decideMisses({ repo, number, state, localReviews }: MissInput): 
       (latest, review) => (latest === undefined || review.at >= latest.at ? review : latest),
       undefined,
     )
-    if (reviewed === undefined) return []
+    const commitSha = thread.originalCommit ?? reviewed?.sha
+    if (commitSha === undefined) return []
     const findings = [
       ...before.flatMap((review) => review.findings),
       ...own.filter((item) => undatedOrUpTo(item, at)).flatMap(placeOf),
-    ]
-    if (findings.some((finding) => isNearMiss(range, finding))) return []
-    return [
-      {
-        repo,
-        number,
-        reviewedSha: reviewed.sha,
-        commitSha: thread.originalCommit ?? reviewed.sha,
-        threadId: thread.id,
-        threadUrl: thread.url,
-        ...range,
-        author: thread.author,
-        role: associationRole(thread.association),
-        body: cutBytes(thread.body, MISS_BODY_BYTES, { truncated: 0 }),
-        createdAt: thread.createdAt ?? '',
-      },
-    ]
+    ].filter((finding) => finding.file === range.file)
+    const miss: Miss = {
+      key: thread.id,
+      origin,
+      seen: reviewed === undefined ? 'not-reviewed' : 'missed-live',
+      repo,
+      number,
+      ...(reviewed === undefined ? {} : { reviewedSha: reviewed.sha }),
+      commitSha,
+      threadId: thread.id,
+      threadUrl: thread.url,
+      ...range,
+      author: thread.author,
+      role: associationRole(thread.association),
+      body: cutBytes(thread.body, MISS_BODY_BYTES, { truncated: 0 }),
+      createdAt: thread.createdAt ?? '',
+    }
+    return [{ miss, findings }]
   })
 }
 
-export function isNearMiss(range: MissRange, finding: FindingPlace): boolean {
-  const start = Math.min(range.startLine ?? range.line, range.line)
-  const end = Math.max(range.startLine ?? range.line, range.line)
-  return (
-    finding.file === range.file &&
-    finding.line >= start - MISS_WINDOW_LINES &&
-    finding.line <= end + MISS_WINDOW_LINES
-  )
+export function siteKey(commitSha: string, file: string): string {
+  return `${commitSha}\0${file}`
 }
 
-function byPerson(state: PullRequestReviewState, thread: ReviewThread): boolean {
-  if (thread.bot === true || thread.author === '') return false
-  return state.author === undefined || state.author === '' || thread.author !== state.author
+export function isNearMiss(
+  range: MissRange,
+  finding: FindingPlace,
+  elements?: readonly LineSpan[],
+): boolean {
+  if (finding.file !== range.file) return false
+  const { startLine, endLine } = missWindow(range, elements ?? [])
+  return finding.line >= startLine && finding.line <= endLine
+}
+
+export function missWindow(range: MissRange, elements: readonly LineSpan[]): LineSpan {
+  const start = Math.min(range.startLine ?? range.line, range.line)
+  const end = Math.max(range.startLine ?? range.line, range.line)
+  const element = innermost(elements, range.line)
+  if (element === undefined) return around(start, end, MISS_WINDOW_LINES)
+  if (element.endLine - element.startLine + 1 > LONG_ELEMENT_LINES) {
+    return around(start, end, LONG_ELEMENT_WINDOW_LINES)
+  }
+  return { startLine: Math.min(start, element.startLine), endLine: Math.max(end, element.endLine) }
+}
+
+function innermost(elements: readonly LineSpan[], line: number): LineSpan | undefined {
+  return elements
+    .filter((element) => element.startLine <= line && line <= element.endLine)
+    .reduce<LineSpan | undefined>(
+      (inner, element) =>
+        inner === undefined || element.endLine - element.startLine < inner.endLine - inner.startLine
+          ? element
+          : inner,
+      undefined,
+    )
+}
+
+function around(start: number, end: number, lines: number): LineSpan {
+  return { startLine: start - lines, endLine: end + lines }
+}
+
+function originOf(
+  state: PullRequestReviewState,
+  thread: ReviewThread,
+  bots: ReadonlySet<string>,
+): 'person' | 'bot' | undefined {
+  if (thread.author === '') return undefined
+  if (state.author !== undefined && state.author !== '' && thread.author === state.author) {
+    return undefined
+  }
+  if (thread.bot !== true) return 'person'
+  return bots.has(botLogin(thread.author)) ? 'bot' : undefined
+}
+
+function botLogin(login: string): string {
+  return login
+    .trim()
+    .toLowerCase()
+    .replace(/\[bot\]$/, '')
 }
 
 function rangeOf(thread: ReviewThread): MissRange | undefined {

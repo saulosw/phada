@@ -78,6 +78,7 @@ export const portuguese: Messages = {
     worthCheckingCount: (value) => `${value} para verificar`,
     closeToCut: 'rente ao corte',
     closeToCutCount: (value) => `${value} rente ao corte`,
+    rejectedByVerification: 'Rejeitados pela verificação',
     tokens: (input, output) => `${input} de entrada / ${output} de saída`,
   },
   github: {

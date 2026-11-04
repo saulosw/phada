@@ -326,7 +326,76 @@ describe('formatReview', () => {
     const output = formatReview(pullRequestFixture(), { ...RESULT, verification })
 
     expect(output.endsWith(`\n${footer}\n`)).toBe(true)
-    expect(output).not.toContain('Speculative.')
+  })
+
+  it('lists the candidates the verification rejected, with the reason of each', () => {
+    const verification = {
+      candidates: 4,
+      confirmed: 2,
+      unverified: 0,
+      rejected: [
+        {
+          ...findingFixture({
+            severity: 'P2' as const,
+            confidence: 68,
+            file: 'README.md',
+            line: 58,
+            title: 'aws lambda invoke without --cli-read-timeout',
+          }),
+          reason: 'The README is\nonly an example.',
+        },
+        {
+          ...findingFixture({ severity: 'P1' as const, confidence: 40, line: 9, title: 'Race' }),
+          reason: 'Guarded by the lock.',
+        },
+      ],
+      durationMs: 30_000,
+    }
+
+    const output = formatReview(pullRequestFixture(), {
+      ...RESULT,
+      worthChecking: TO_CHECK,
+      minConfidence: 80,
+      verification,
+    })
+
+    expect(output).toContain(
+      [
+        '- **P2** · src/cooldown.ts:2: Magic number (confidence 55)',
+        '',
+        '## Rejected by verification',
+        '',
+        '- **P2** · README.md:58: aws lambda invoke without --cli-read-timeout (confidence 68): The README is only an example.',
+        '- **P1** · src/shop.ts:9: Race (confidence 40): Guarded by the lock.',
+        '',
+        '---',
+      ].join('\n'),
+    )
+  })
+
+  it('leaves out the rejected section when the verification rejected nothing', () => {
+    const verification = { candidates: 3, confirmed: 3, unverified: 0, rejected: [], durationMs: 1 }
+
+    const output = formatReview(pullRequestFixture(), { ...RESULT, verification })
+
+    expect(output).not.toContain('## Rejected by verification')
+  })
+
+  it('names the rejected section in the language of the review', () => {
+    const verification = {
+      candidates: 1,
+      confirmed: 0,
+      unverified: 0,
+      rejected: [{ ...findingFixture(), reason: 'Especulativo.' }],
+      durationMs: 1,
+    }
+
+    expect(
+      formatReview(pullRequestFixture(), { ...RESULT, verification }, messagesFor('pt-BR')),
+    ).toContain('## Rejeitados pela verificação\n')
+    expect(
+      formatReview(pullRequestFixture(), { ...RESULT, verification }, messagesFor('es')),
+    ).toContain('## Rechazados por la verificación\n')
   })
 
   it('says the review was not verified when no finding got a verdict', () => {

@@ -4,6 +4,7 @@ import { ACCEPT_JSON, ensureOk, readJson, sendGitHubRequest } from './request.js
 import type { GitHubRequestContext } from './request.js'
 
 const DEFAULT_TIMEOUT_MS = 30_000
+export const COMPARE_MAX_FILES = 300
 
 export interface ComparedFile {
   path: string

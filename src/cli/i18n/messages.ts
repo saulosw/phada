@@ -41,6 +41,7 @@ export interface Messages {
     worthCheckingCount(count: number): string
     closeToCut: string
     closeToCutCount(count: number): string
+    rejectedByVerification: string
     tokens(input: string, output: string): string
   }
   github: {

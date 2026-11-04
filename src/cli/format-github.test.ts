@@ -95,6 +95,16 @@ describe('formatGitHubReview body', () => {
     )
   })
 
+  it('never publishes the candidates the verification rejected', () => {
+    const rejected = [{ ...P2, title: 'Rejected candidate', reason: 'Only an example.' }]
+    const verification = { candidates: 4, confirmed: 3, unverified: 0, rejected, durationMs: 1 }
+
+    const { body } = formatGitHubReview(result({ verification }), PLAN)
+
+    expect(body).not.toContain('Rejected candidate')
+    expect(body).not.toContain('Only an example.')
+  })
+
   it('writes the score, summary, files, counts, worth checking, drops and marker', () => {
     expect(formatGitHubReview(RESULT, PLAN).body).toBe(
       [

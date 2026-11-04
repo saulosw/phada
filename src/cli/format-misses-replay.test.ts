@@ -6,6 +6,9 @@ import { formatMissesReplayJson, formatMissesReplayText } from './format-misses-
 function miss(id: number, overrides: Partial<MissRecord> = {}): MissRecord {
   return {
     id,
+    key: `T${id}`,
+    origin: 'person',
+    seen: 'missed-live',
     repo: 'acme/shop',
     number: 3,
     reviewedSha: 'a'.repeat(40),
@@ -48,15 +51,15 @@ describe('formatMissesReplayText', () => {
   it('shows each miss with its outcome, the total and the earlier version', () => {
     expect(formatMissesReplayText(REPLAY)).toBe(
       [
-        '   1  acme/shop#3  src/shop.ts:20-22  alice (member)  caught',
+        '   1  acme/shop#3  src/shop.ts:20-22  alice (member)  person · missed-live  caught',
         '      This loses the balance',
         '      https://github.com/acme/shop/pull/3#discussion_r1',
         '',
-        '   2  acme/shop#3  src/shop.ts:8  alice (member)  missed',
+        '   2  acme/shop#3  src/shop.ts:8  alice (member)  person · missed-live  missed',
         '      Total is wrong.',
         '      https://github.com/acme/shop/pull/3#discussion_r2',
         '',
-        '   3  acme/shop#4  src/shop.ts:20-22  alice (member)  not replayed',
+        '   3  acme/shop#4  src/shop.ts:20-22  alice (member)  person · missed-live  not replayed',
         '      This loses the balance',
         '',
         '1 of 2 caught in 0.12.0.',

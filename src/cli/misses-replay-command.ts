@@ -11,6 +11,7 @@ import { formatMissesReplayJson, formatMissesReplayText } from './format-misses-
 import { requireGitHubToken } from './github-token.js'
 import { existingHistory, filterOf } from './history-access.js'
 import type { HistoryCommandDeps } from './history-access.js'
+import { fileAtCommit } from './review-wiring.js'
 import { formatCount } from './units.js'
 import { ABORTED_EXIT_CODE } from './watch-command.js'
 
@@ -56,6 +57,8 @@ export async function runMissesReplay(
             {
               history,
               replay: replayer(token),
+              readFile: fileAtCommit(deps, token),
+              extractor: deps.createExtractor(),
               now: () => deps.clock().toISOString(),
               events: progressLines(deps),
               signal: stop.signal,

@@ -4,12 +4,20 @@ import { connectMcp } from '../investigation/mcp/mcp-client.js'
 import { withoutGitHubTokens } from '../providers/cli-run.js'
 import { checkMcpNames } from './mcp-names.js'
 import type { CheckedNames, NameCheck } from './mcp-names.js'
+import type { ReadFileAt } from '../app/code-elements.js'
 import type { FeedbackRefreshDeps } from '../app/feedback.js'
+import type { CompareCommits } from '../app/harvest-misses.js'
 import type { PullRequestReviewDeps } from '../app/review-pull-request.js'
 import type { CiReaders } from '../app/read-ci.js'
 import type { ReplayReaders } from '../app/replay.js'
 import type { CheckAnnotation, CheckRun } from '../github/check-runs.js'
 import type { CommitStatus } from '../github/commit-statuses.js'
+import {
+  COMPARE_MAX_FILES,
+  ComparisonDivergedError,
+  ComparisonNotFoundError,
+} from '../github/compare-commits.js'
+import type { ComparedFile, CompareOptions } from '../github/compare-commits.js'
 import { JobLogUnavailableError } from '../github/job-log.js'
 import type { JobLog } from '../github/job-log.js'
 import type {
@@ -21,6 +29,9 @@ import type {
 import { reportProgress } from '../app/review-progress.js'
 import type { ReviewProgressSink } from '../app/review-progress.js'
 import { repositoryCache } from '../config/cache-paths.js'
+import { loadUserLayers } from '../config/user-config.js'
+import { missBots } from '../config/watch-settings.js'
+import { remembered } from '../app/remembered.js'
 import {
   GitHubPermissionError,
   GitHubRateLimitError,
@@ -128,9 +139,38 @@ export function ciReaders(deps: CiReaderDeps, { owner, repo, token }: PublishTar
 }
 export type Choice = { provider: string; model?: string; mcpNames?: CheckedNames }
 
-export interface FeedbackWiringDeps {
+export interface FeedbackWiringDeps extends CodeElementDeps, CompareDeps {
+  env: NodeJS.ProcessEnv
+  home: string
+  files: LocalFileSystem
   fetchReviewState: (options: FetchReviewStateOptions) => Promise<PullRequestReviewState>
   clock: () => Date
+}
+
+export interface CodeElementDeps extends Pick<ContextReaders, 'fetchRepositoryFile'> {
+  createExtractor: () => Extractor
+}
+
+export interface CompareDeps {
+  fetchComparison: (options: CompareOptions) => Promise<ComparedFile[]>
+}
+
+function comparedAt(deps: CompareDeps, token: string): CompareCommits {
+  return (repo, base, head) =>
+    deps.fetchComparison({ ...splitRepoName(repo), token, base, head }).then(
+      (files) => (files.length >= COMPARE_MAX_FILES ? ('unavailable' as const) : files),
+      (error: unknown) => {
+        if (error instanceof ComparisonNotFoundError || error instanceof ComparisonDivergedError) {
+          return 'unavailable' as const
+        }
+        throw error
+      },
+    )
+}
+
+export function fileAtCommit(deps: CodeElementDeps, token: string): ReadFileAt {
+  return (repo, commit, path) =>
+    deps.fetchRepositoryFile({ ...splitRepoName(repo), token, path, ref: commit })
 }
 
 export function feedbackRefreshDeps(
@@ -145,6 +185,13 @@ export function feedbackRefreshDeps(
     ...(stopRequested === undefined ? {} : { stopRequested }),
     fetchReviewState: (pull) =>
       deps.fetchReviewState({ ...splitRepoName(pull.repo), number: pull.number, token }),
+    missBots: remembered(
+      (repo: string) => repo.toLowerCase(),
+      (repo: string) => loadUserLayers({ ...deps, ...splitRepoName(repo) }).then(missBots),
+    ),
+    readFile: fileAtCommit(deps, token),
+    extractor: deps.createExtractor(),
+    compare: comparedAt(deps, token),
     isNotFound: (error) => error instanceof PullRequestNotFoundError,
     isRateLimited: (error) => error instanceof GitHubRateLimitError,
     now: () => deps.clock().toISOString(),

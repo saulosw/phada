@@ -7,6 +7,8 @@ output can change between minor versions.
 
 ## Unreleased
 
+## 0.12.0 - 2026-11-04
+
 ### Added
 
 - `phada review owner/repo#N --head <sha> --dry-run` reviews the pull request as it was at an
@@ -16,11 +18,23 @@ output can change between minor versions.
   and a skill that runs natively reads nothing of the repository through `gh` as it is today. When GitHub has
   no record of the push, the cut is made at the commit date, with a warning.
   `phada prompt owner/repo#N --head <sha>` shows that prompt without calling the AI.
-- Misses: a thread a person opened on a pull request Phada reviewed, with no finding of Phada
-  within 5 lines of it, that became outdated because a later commit changed those lines. Phada
-  collects them when it refreshes the feedback (in `phada watch` and `phada history --refresh`)
-  and keeps them only in the local history; threads of bots, of Phada and of the author of the
-  pull request never count.
+- Misses: a thread a person opened on a pull request, with no finding of Phada near it, that
+  became outdated because a later commit changed those lines. Phada collects them when it
+  refreshes the feedback (in `phada watch` and `phada history --refresh`) and keeps them only in
+  the local history; threads of Phada and of the author of the pull request never count. A pull
+  request Phada never reviewed gives misses too, marked `not-reviewed` (`missed-live` when Phada
+  had reviewed it before the thread).
+- `misses.bots` in your own config lists the bots whose threads count as misses (origin `bot`);
+  other bots never count.
+- A finding of Phada that the latest review at a later commit no longer reports, on lines that
+  did not change between the two commits, is kept as a miss with origin `phada`.
+- A finding is near a miss when it is in the same code element (the innermost function, method,
+  class, type or top-level declaration that holds the line, in the file at that commit); within 5
+  lines for other files or outside any element, and within 10 in an element longer than 80 lines.
+  The same rule decides whether a replay caught a miss.
+- `phada misses --refresh owner/repo --since <YYYY-MM-DD>` also collects the misses of the pull
+  requests closed or merged since that day (the 50 closed last), without the AI.
+- The review in the terminal lists the candidates the verification rejected, with the reason.
 - `phada misses [owner/repo]` lists the open misses (`--all` adds the dismissed ones,
   `--format json`), `phada misses --refresh [owner/repo[#N]]` collects them now, and
   `phada misses dismiss <id>` takes one off the list.

@@ -20,6 +20,7 @@ import { openHistoryStore } from './store/history-store.js'
 import { setTimeout as wait } from 'node:timers/promises'
 import { addCommentReaction, listIssueComments } from './github/issue-comments.js'
 import { listOpenPullRequests } from './github/list-pull-requests.js'
+import { listClosedPullRequests } from './github/list-closed-pull-requests.js'
 import {
   fetchCommitDiff,
   fetchPullRequest,
@@ -73,6 +74,7 @@ process.exitCode = await run(process.argv.slice(2), {
   createProvider,
   openHistoryStore: (path) => openHistoryStore(path),
   listOpenPullRequests,
+  listClosedPullRequests,
   listIssueComments,
   addCommentReaction,
   fetchPullRequestHead,

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import type { FindingPlace, Miss } from '../publish/misses.js'
+import { createExtractor } from '../repo-map/extract.js'
 import { openHistoryStore } from '../store/history-store.js'
 import type { HistoryStore } from '../store/history-store.js'
 import { ReviewCancelledError } from './review-cancelled.js'
@@ -18,9 +19,13 @@ const T1 = '2026-11-01T10:00:00.000Z'
 const T2 = '2026-11-02T10:00:00.000Z'
 const SHA_A = 'a'.repeat(40)
 const SHA_B = 'b'.repeat(40)
+const extractor = createExtractor()
 
 function miss(threadId: string, overrides: Partial<Miss> = {}): Miss {
   return {
+    key: threadId,
+    origin: 'person',
+    seen: 'missed-live',
     repo: 'acme/shop',
     number: 3,
     reviewedSha: SHA_A,
@@ -39,7 +44,12 @@ function miss(threadId: string, overrides: Partial<Miss> = {}): Miss {
 
 type Replays = Record<string, MissReplayRun | Error>
 
-function harness(history: HistoryStore, replays: Replays, signal?: AbortSignal) {
+function harness(
+  history: HistoryStore,
+  replays: Replays,
+  signal?: AbortSignal,
+  readFile: ReplayMissesDeps['readFile'] = async () => null,
+) {
   const calls: string[] = []
   const groups: MissGroup[] = []
   const failures: string[] = []
@@ -53,6 +63,8 @@ function harness(history: HistoryStore, replays: Replays, signal?: AbortSignal) 
       if (found instanceof Error) throw found
       return found
     },
+    readFile,
+    extractor,
     now: () => T2,
     events: {
       replaying: (group) => groups.push(group),
@@ -114,6 +126,82 @@ describe('replayMisses', () => {
       expect(result.earlier).toBeUndefined()
       expect(result.left).toBe(0)
       expect(history.missReplays(result.misses.map(({ miss }) => miss.id))).toHaveLength(4)
+    }))
+
+  it('a replay finding in the code element of the miss, 11 lines away, caught it', () =>
+    withHistory(async (history) => {
+      const source = [
+        ...Array.from({ length: 17 }, (_, index) => `// note ${index + 1}`),
+        'export function settle(total: number): number {',
+        ...Array.from({ length: 15 }, (_, index) => `  total += ${index}`),
+        '  return total',
+        '}',
+        'export function refund(total: number): number {',
+        ...Array.from({ length: 15 }, (_, index) => `  total -= ${index}`),
+        '  return total',
+        '}',
+      ].join('\n')
+      history.recordMisses([miss('T1', { line: 31 }), miss('T2', { line: 42 })], T1)
+      const reads: string[] = []
+      const { deps } = harness(
+        history,
+        { [`acme/shop#3@${SHA_A}`]: found({ file: 'src/shop.ts', line: 20 }) },
+        undefined,
+        async (repo, commit, path) => {
+          reads.push(`${repo}@${commit.slice(0, 1)}:${path}`)
+          return source
+        },
+      )
+
+      const result = await replayMisses({ filter: {}, version: '0.12.0' }, deps)
+
+      expect(outcomes(result)).toEqual([
+        ['T1', 'caught'],
+        ['T2', 'missed'],
+      ])
+      expect(reads).toEqual(['acme/shop@a:src/shop.ts'])
+    }))
+
+  it('a field of a class is not an element of its own: the class holds it', () =>
+    withHistory(async (history) => {
+      const source = [
+        'export class Cart {',
+        '  private total = 0',
+        ...Array.from({ length: 10 }, (_, index) => `  // note ${index + 1}`),
+        '  add(price: number): void {',
+        '    this.total += price',
+        '  }',
+        '}',
+      ].join('\n')
+      history.recordMisses([miss('T1', { line: 2 })], T1)
+      const { deps } = harness(
+        history,
+        { [`acme/shop#3@${SHA_A}`]: found({ file: 'src/shop.ts', line: 14 }) },
+        undefined,
+        async () => source,
+      )
+
+      const result = await replayMisses({ filter: {}, version: '0.12.0' }, deps)
+
+      expect(outcomes(result)).toEqual([['T1', 'caught']])
+    }))
+
+  it('a file that cannot be read fails the group like a replay that fails', () =>
+    withHistory(async (history) => {
+      history.recordMisses([miss('T1', { line: 31 })], T1)
+      const { deps, failures } = harness(
+        history,
+        { [`acme/shop#3@${SHA_A}`]: found({ file: 'src/shop.ts', line: 20 }) },
+        undefined,
+        async () => {
+          throw new Error('rate limited')
+        },
+      )
+
+      const result = await replayMisses({ filter: {}, version: '0.12.0' }, deps)
+
+      expect(outcomes(result)).toEqual([['T1', 'failed']])
+      expect(failures).toEqual(['acme/shop#3: rate limited'])
     }))
 
   it('replays only the open misses of the repository asked for', () =>

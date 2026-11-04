@@ -41,6 +41,7 @@ export function formatReview(
     filesSection(result.files, messages),
     findingsSection(result.findings, messages),
     worthCheckingSection(result, messages),
+    rejectedSection(result, messages),
     debtSection(result.debt ?? [], messages),
     ['---', countsLine(result, messages), leftOut(result, messages), footer(result, messages)]
       .filter((line) => line !== '')
@@ -134,6 +135,16 @@ function worthCheckingSection(
   )
   if (worthCheckingOmitted > 0) items.push(`- ${messages.moreItems(worthCheckingOmitted)}`)
   return [`## ${messages.worthChecking(minConfidence)}`, '', ...items].join('\n')
+}
+
+function rejectedSection({ verification }: ReviewResult, messages: Messages): string {
+  const rejected = verification?.rejected ?? []
+  if (rejected.length === 0) return ''
+  const items = rejected.map(
+    ({ severity, file, line, title, confidence, reason }) =>
+      `- **${severity}** · ${singleLine(file)}:${line}: ${singleLine(title)} (${messages.confidence} ${confidence}): ${singleLine(reason)}`,
+  )
+  return [`## ${messages.terminal.rejectedByVerification}`, '', ...items].join('\n')
 }
 
 function debtSection(debt: readonly Finding[], messages: Messages): string {

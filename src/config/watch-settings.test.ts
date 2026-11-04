@@ -3,6 +3,7 @@ import type { ConfigLayer } from './types.js'
 import { durationMs } from './duration.js'
 import {
   historyEnabled,
+  missBots,
   resolveHookSettings,
   resolveSlackSettings,
   resolveWatchSettings,
@@ -89,6 +90,19 @@ describe('historyEnabled', () => {
     expect(historyEnabled([])).toBe(true)
     expect(historyEnabled([user({ history: false })])).toBe(false)
     expect(historyEnabled([{ ...user({ history: false }), kind: 'repo-root' }])).toBe(true)
+  })
+})
+
+describe('missBots', () => {
+  it('joins the bots of the top-level and the per-repository user config, never the repository', () => {
+    const layers: ConfigLayer[] = [
+      user({ misses: { bots: ['review-bot', 'lint-bot'] } }),
+      { ...user({ misses: { bots: ['lint-bot', 'shop-bot'] } }), kind: 'user-repo' },
+      { ...user({ misses: { bots: ['planted-bot'] } }), kind: 'repo-root' },
+    ]
+
+    expect(missBots(layers)).toEqual(['review-bot', 'lint-bot', 'shop-bot'])
+    expect(missBots([user({})])).toEqual([])
   })
 })
 

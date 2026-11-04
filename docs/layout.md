@@ -161,13 +161,23 @@ src/
                          #   the fix of each blocked command, investigation and tokens; a block
                          #   the run did not keep is left out, one it kept as null is off
     harvest-misses.ts    #   harvestMisses(): the threads read and the local runs with the AI
-                         #   (findings of the stored JSON, read leniently) → decideMisses() →
-                         #   the history; the count of new misses
+                         #   (findings of the stored JSON, read leniently), the code elements of
+                         #   the files missElementSites() names → decideMisses(), and the runs
+                         #   with replays, the known misses, the code elements and the commit
+                         #   comparisons vanishedElementSites/Comparisons() name →
+                         #   decideVanished() → the history; the count of new misses;
+                         #   comparedCommits(): an injected compare cached per commit pair
+    remembered.ts        #   remembered(): an async read cached per key, read again after a
+                         #   failure
+    code-elements.ts     #   codeElements(): the code elements (line spans) of a file at a commit,
+                         #   from an injected readFile and extractor, cached per repository,
+                         #   commit and path; none without a grammar, a file or a parse
     read-misses.ts       #   readMisses(): the misses of a filter (open, or all), with the count
                          #   of dismissed ones
     replay-misses.ts     #   replayMisses(): the open misses grouped by pull request × commit, one
-                         #   injected replay per group → caught/missed by isNearMiss(), kept per
-                         #   Phada version; a failed group is an event and the rest goes on; stops
+                         #   injected replay per group → caught/missed by isNearMiss() with the
+                         #   code elements at the miss's commit (a file read failing fails the
+                         #   group), kept per Phada version; a failed group is an event and the rest goes on; stops
                          #   between groups on the signal; the tally and the earlier version's
     miss-tally.ts        #   latestTally(): caught/replayed of the latest version replayed
     stored-json.ts       #   parseJson(), objectOf(), stringOf(), numberOf(), stringsOf(): the
@@ -428,9 +438,10 @@ src/
     format-history.ts    #   formatHistoryText/Json() (each run with its id), runJson(),
                          #   formatStatsText/Json() (schemaVersion 1)
     history-refresh.ts   #   refreshToken(), refreshHistory(): the due pull requests (or the one
-                         #   named) read on GitHub for phada history and phada misses --refresh,
-                         #   with the count of new misses
-    misses-command.ts    #   runMisses() (list, --all, --refresh), runMissesDismiss()
+                         #   named), with the closed ones listed, read on GitHub for phada history
+                         #   and phada misses --refresh, with the count of new misses
+    misses-command.ts    #   runMisses() (list, --all, --refresh, --since: the pull requests
+                         #   closed since the date), runMissesDismiss()
                          #   (MissNotFoundError for an unknown id)
     format-misses.ts     #   formatMissesText/Json(): id, pull request, place, author and role,
                          #   the comment's first line cut, the link, the state (schemaVersion 1)
@@ -462,7 +473,10 @@ src/
                          #   definitive or fatal
     review-wiring.ts     #   pullRequestReviewDeps() (its progress to a ReviewProgressSink),
                          #   reviewAndPublishEvents(), ciReaders(), replayReaders(), renderReview,
-                         #   reviewRunJson(): shared by review, watch and prompt
+                         #   reviewRunJson(): shared by review, watch and prompt;
+                         #   feedbackRefreshDeps() with fileAtCommit() (a file at a commit) and
+                         #   comparedAt() (two commits compared; 404, diverged or the 300 files
+                         #   GitHub lists → unavailable) for the misses
     manual-review.ts     #   prepareReview(): user layers, provider and model (flags › config),
                          #   MCP servers resolved and their names checked; runManualReview():
                          #   reviewAndPublish() (mode manual, the signal also cutting the CI
@@ -857,7 +871,8 @@ src/
                          #   file
     data-paths.ts        #   the data folder (PHADA_DATA_HOME › XDG › ~/.local/share/phada):
                          #   history.sqlite and watch.lock
-    watch-settings.ts    #   resolveWatchSettings() with the defaults, historyEnabled()
+    watch-settings.ts    #   resolveWatchSettings() with the defaults, historyEnabled(),
+                         #   missBots() (misses.bots of the user's layers, joined)
     duration.ts          #   durationMs(): 90s, 5m, 1h, 30d
     errors.ts            #   ConfigError
   context/               # what the review sends besides the diff, with injected readers
@@ -921,10 +936,15 @@ src/
     create-review.ts     #   createReview(): one COMMENT review with line comments (start_line for
                          #   several lines)
     compare-commits.ts   #   fetchComparison(): the files changed between two commits, with patches
+                         #   (at most COMPARE_MAX_FILES)
     resolve-thread.ts    #   replyAndResolve(): resolve a review thread, then reply on it
     repository-files.ts  #   fetchRepositoryTree(), fetchRepositoryFile(): the repository at a commit
     repository.ts        #   fetchRepository(): visibility, default branch, empty; fetchBranchHead()
-    list-pull-requests.ts #  listOpenPullRequests(): open pull requests, ETag of the first page
+    list-pull-requests.ts #  listOpenPullRequests(): open pull requests, ETag of the first page;
+                         #   readPullPage() (404/403 → RepositoryAccessError), MAX_PULL_PAGES
+    list-closed-pull-requests.ts # listClosedPullRequests(): the numbers of the pull requests
+                         #   closed or merged since a time (every page updated since then
+                         #   read), the most recently closed first, at most 50
     issue-comments.ts    #   listIssueComments(): the comments of a repository since a time, ETag;
                          #   addCommentReaction()
     read-repository.ts   #   repositoryReader(): GET reads of one repository (and search/issues)
@@ -1041,10 +1061,17 @@ src/
     feedback.ts          #   threadFeedback(): each Phada thread → outcome (fixed, dismissed,
                          #   ignored, open) and marks (negative-reaction, human-reply);
                          #   findingFingerprint()
-    misses.ts            #   decideMisses(): the outdated threads of people (not a bot, Phada or
-                         #   the author) after a Phada review (published or local) with no
-                         #   Phada finding within 5 lines → misses with the reviewed and the
-                         #   thread's commit; isNearMiss(): the 5-line window
+    misses.ts            #   decideMisses(): the outdated threads of people and of the bots the
+                         #   user lists (not Phada or the author), missed live or not reviewed,
+                         #   with no Phada finding near → misses with the thread's commit;
+                         #   missElementSites(): the commit and file whose code elements decide;
+                         #   isNearMiss(), missWindow(): the innermost code element holding the
+                         #   line, ±10 in one of more than 80 lines, ±5 outside any or without them
+    vanished-findings.ts #   decideVanished(): a final finding of a run with the AI (replays too),
+                         #   not published nor recorded, that the latest real review at a later
+                         #   commit lost while no hunk of the comparison touched its window →
+                         #   a miss of Phada at that commit, its line moved by the hunks above;
+                         #   vanishedElementSites(), vanishedComparisons(): what decides
     decide-run.ts        #   decideRun(): review, or skip a commit Phada already reviewed or whose
                          #   filtered diff did not change (same-diff)
     recheck-candidates.ts #  threadsToRecheck(), withChanges(): Phada's open threads of older commits
@@ -1108,7 +1135,8 @@ src/
                          #   cleared), feedbackDue() (pull requests with findings or a run with
                          #   the AI outside replays)
     history-misses.ts    #   recordMisses() (one per thread; data refreshed, state and first
-                         #   harvest kept), misses(), dismissMiss(), aiRuns(),
+                         #   harvest kept), misses(), dismissMiss(), aiRuns() (replays when
+                         #   asked),
                          #   recordMissReplays() (one per miss × version, the last wins),
                          #   missReplays()
     history-columns.ts   #   the history tables (columns, keys) and their insert/upsert/update

@@ -8,6 +8,7 @@ import { nodeFileSystem } from '../config/local-files.js'
 import { PullRequestNotFoundError } from '../github/errors.js'
 import type { FetchReviewStateOptions } from '../github/pull-request-reviews.js'
 import { FINDING_MARKER } from '../publish/markers.js'
+import { createExtractor } from '../repo-map/extract.js'
 import { openHistoryStore } from '../store/history-store.js'
 import type { RunRecord } from '../store/history-store.js'
 import { MissingGitHubTokenError, UsageError } from './errors.js'
@@ -82,6 +83,9 @@ function harness(
     stderr: { write: (text: string) => err.push(text) },
     clock: () => NOW,
     openHistoryStore: (path) => openHistoryStore(path),
+    fetchRepositoryFile: async () => null,
+    fetchComparison: async () => [],
+    createExtractor,
     fetchReviewState: async (request) => {
       fetched.push(request)
       if (options.fetchReviewState !== undefined) return options.fetchReviewState(request)

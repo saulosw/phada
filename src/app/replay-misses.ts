@@ -7,6 +7,9 @@ import type {
   MissRecord,
   MissReplayRecord,
 } from '../store/history-store.js'
+import type { Extractor } from '../repo-map/extract.js'
+import { codeElements } from './code-elements.js'
+import type { CodeElements, ReadFileAt } from './code-elements.js'
 import { errorMessage } from './error-message.js'
 import { latestTally } from './miss-tally.js'
 import type { VersionTally } from './miss-tally.js'
@@ -49,6 +52,8 @@ export interface ReplayMissesEvents {
 export interface ReplayMissesDeps {
   history: Pick<HistoryStore, 'misses' | 'recordMissReplays' | 'missReplays'>
   replay(pull: { repo: string; number: number }, sha: string): Promise<MissReplayRun>
+  readFile: ReadFileAt
+  extractor: Extractor
   now(): string
   events: ReplayMissesEvents
   signal?: AbortSignal
@@ -68,6 +73,7 @@ export async function replayMisses(
   deps.events.started?.(groups.length, open.length)
   const replayed: ReplayedMiss[] = []
   const stopped = () => deps.signal?.aborted === true
+  const elements = codeElements(deps.readFile, deps.extractor)
   let left = open.length
   for (const [index, misses] of groups.entries()) {
     if (stopped()) break
@@ -83,8 +89,15 @@ export async function replayMisses(
     }
     deps.events.replaying(group)
     let run: MissReplayRun
+    const decided: { miss: MissRecord; outcome: MissOutcome }[] = []
     try {
       run = await deps.replay({ repo: group.repo, number: group.number }, group.commitSha)
+      for (const miss of misses) {
+        decided.push({
+          miss,
+          outcome: (await caught(miss, run.findings, elements)) ? 'caught' : 'missed',
+        })
+      }
     } catch (error) {
       if (error instanceof ReviewCancelledError || stopped()) break
       const message = errorMessage(error)
@@ -94,10 +107,7 @@ export async function replayMisses(
       continue
     }
     const runId = run.runId === undefined ? {} : { runId: run.runId }
-    const outcomes = misses.map((miss) => {
-      const outcome: MissOutcome = run.findings.some((finding) => isNearMiss(miss, finding))
-        ? 'caught'
-        : 'missed'
+    const outcomes = decided.map(({ miss, outcome }) => {
       const record: MissReplayRecord = {
         missId: miss.id,
         version,
@@ -112,6 +122,17 @@ export async function replayMisses(
     left -= misses.length
   }
   return { version, misses: replayed, ...tallies(replayed, version, deps.history), left }
+}
+
+async function caught(
+  miss: MissRecord,
+  findings: readonly FindingPlace[],
+  elements: CodeElements,
+): Promise<boolean> {
+  const inFile = findings.filter((finding) => finding.file === miss.file)
+  if (inFile.length === 0) return false
+  const spans = await elements(miss.repo, miss.commitSha, miss.file)
+  return inFile.some((finding) => isNearMiss(miss, finding, spans))
 }
 
 function groupMisses(misses: readonly MissRecord[]): MissRecord[][] {
