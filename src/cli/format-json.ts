@@ -18,6 +18,7 @@ import type { Conversation, SkipReason } from '../publish/types.js'
 import type {
   CiCheck,
   ConversationItem,
+  Coverage,
   Finding,
   RecheckReport,
   RecheckVerdict,
@@ -313,6 +314,29 @@ function skipJson(reason: SkipReason) {
   }
 }
 
+function coverageJson(coverage: Coverage) {
+  return {
+    level: coverage.level,
+    covered: coverage.covered,
+    total: coverage.total,
+    declaredOnly: coverage.declaredOnly,
+    skipped: coverage.skipped,
+    gaps: coverage.gaps.map(({ path, kind, reason }) => ({ path, kind, reason: reason ?? null })),
+    verified: coverage.verified,
+    reason: coverage.reason,
+    continuation:
+      coverage.continuation === undefined
+        ? null
+        : {
+            before: {
+              level: coverage.continuation.before.level,
+              covered: coverage.continuation.before.covered,
+              total: coverage.continuation.before.total,
+            },
+          },
+  }
+}
+
 function reviewJson(
   result: ReviewResult,
   fixFor?: (blocked: BlockedCommand) => string,
@@ -321,6 +345,7 @@ function reviewJson(
   const { score, dropped } = result
   return {
     score: { value: score.value, reason: score.reason },
+    coverage: result.coverage === undefined ? null : coverageJson(result.coverage),
     summary: result.summary,
     claims: result.claims.map(({ claim, verdict, evidence }) => ({ claim, verdict, evidence })),
     files: result.files.map(({ path, change, findings }) => ({ path, change, findings })),

@@ -1,6 +1,6 @@
 import type { ReviewPrompt } from '../providers/types.js'
 import type { McpServerInfo, Toolbox } from '../investigation/toolbox.js'
-import { investigationFloorText } from './investigation-floor.js'
+import { investigationAsks } from './investigation-asks.js'
 import { annotateDiff } from './diff-lines.js'
 import {
   block,
@@ -50,10 +50,15 @@ Use that number for line. Removed lines have no number: point
 to the nearest numbered line.`
 
 export const OUTPUT_FORMAT = `The review is a single JSON object shaped like this:
-{"claims": [{"claim": "...", "verdict": "unverified", "evidence": "..."}], "summary": "...", "files": [{"path": "src/app.ts", "change": "..."}], "findings": [{"severity": "P1", "confidence": 90, "file": "src/app.ts", "line": <number>, "title": "...", "why": "...", "fix": "...", "rule": null, "sources": [], "suggestion": null, "scope": "change"}]}
+{"claims": [{"claim": "...", "verdict": "unverified", "evidence": "..."}], "summary": "...", "files": [{"path": "src/app.ts", "checked": "diff", "against": null, "change": "..."}], "findings": [{"severity": "P1", "confidence": 90, "file": "src/app.ts", "line": <number>, "title": "...", "why": "...", "fix": "...", "rule": null, "sources": [], "suggestion": null, "scope": "change"}]}
 - summary: two to four sentences on what the pull request changes, as the code
   shows it; never state an unverified or contradicted claim of the description as fact.
-- files: one entry per changed file worth mentioning, with a one-line description of its change.
+- files: one entry for every changed file shown in the diff. checked says what you
+  checked: diff when you judged it from the diff; file when you read the file with
+  the tools; compared when you compared it with another path you read, given in
+  against; skipped when you did not review it, with the reason in change. against
+  is null unless checked is compared. change describes the change in one line, or
+  is empty when the file is not worth mentioning.
 - findings: one entry per problem. file is the path shown in the diff;
   line is the number shown at the start of that diff line; title is one line;
   why explains the impact; fix is a concrete fix, or null;
@@ -238,12 +243,7 @@ export function reviewInstructionParts(
     phada('contract', SEVERITY),
     phada(
       'context',
-      diffScope(
-        context,
-        toolNames,
-        mcpServers,
-        diff === undefined ? '' : investigationFloorText(diff),
-      ),
+      diffScope(context, toolNames, mcpServers, diff === undefined ? '' : investigationAsks(diff)),
     ),
     phada('contract', LINE_NUMBERS),
     phada('contract', OUTPUT_FORMAT),

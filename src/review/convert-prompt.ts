@@ -22,6 +22,8 @@ review report.
   otherwise how firmly the output states it.
 - summary: the summary of the output, in its own words, in at most three sentences.
 - title, why and fix: in the words of the output.
+- files: every changed file of the diff, with checked diff and against null;
+  change describes the change as the output does, or is empty.
 - claims: each concrete, checkable thing the title or description of the pull
   request asserts the change does or guarantees, such as "X prevents Y" or
   "covers Z", that the output confirms or contradicts: the verdict confirmed or

@@ -268,6 +268,17 @@ describe('loadContext', () => {
     })
   })
 
+  it('takes whether a low coverage continues from the config', async () => {
+    const sources = fakeSources({ '.phada/config.yml': 'review:\n  continuation: false' })
+
+    const loaded = await loadContext({ diff: DIFF, baseSha: SHA, userLayers: [], sources })
+
+    expect(loaded.options).toEqual({
+      continuation: false,
+      ci: { read: true, waitMs: 900_000, onFailure: 'review' },
+    })
+  })
+
   it('takes what to do with the repository debt from the config', async () => {
     const sources = fakeSources({ '.phada/config.yml': 'review:\n  debt: comments' })
 

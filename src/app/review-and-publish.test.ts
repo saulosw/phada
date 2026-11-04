@@ -1718,8 +1718,11 @@ describe('reviewAndPublish replaying an earlier commit', () => {
     expect(fetched).toEqual(['metadata', `diff 0000000...1e6a005`])
     expect(run.pullRequest).toMatchObject({ headSha: OLD_HEAD, diff: OLD_DIFF })
     expect(run).toMatchObject({ status: 'reviewed', publication: { status: 'dry-run' } })
-    const [review, verify] = calls.prompts
-    expect(verify?.outputSchema).toBe(VERIFICATION_JSON_SCHEMA)
+    const review = calls.prompts[0]
+    const verify = calls.prompts.find(
+      ({ outputSchema }) => outputSchema === VERIFICATION_JSON_SCHEMA,
+    )
+    expect(verify).toBeDefined()
     for (const prompt of [review, verify]) {
       expect(prompt?.data).toContain('+old change')
       expect(prompt?.data).toContain('Earlier comment.')

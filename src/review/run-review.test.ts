@@ -51,6 +51,17 @@ const OUTPUT: ReviewOutput = {
   usage: { inputTokens: 3512, outputTokens: 420 },
 }
 
+const DIFF_COVERAGE = {
+  level: 'full',
+  covered: 1,
+  total: 1,
+  declaredOnly: 0,
+  skipped: 0,
+  gaps: [],
+  verified: false,
+  reason: 'every file accounted for',
+}
+
 describe('runReview', () => {
   it('sends the prompt to the provider and returns the review with its target', async () => {
     const provider = new FakeProvider(() => Promise.resolve(OUTPUT))
@@ -82,6 +93,7 @@ describe('runReview', () => {
         score: { value: 3, reason: '1 P1 finding (shop.ts:1)' },
         dropped: { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0, rejected: 0 },
         claims: [],
+        coverage: DIFF_COVERAGE,
       },
     })
   })
@@ -322,6 +334,7 @@ describe('runReview', () => {
       score: { value: 5, reason: 'no problems found' },
       dropped: { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0, rejected: 0 },
       claims: [],
+      coverage: DIFF_COVERAGE,
     })
   })
 
@@ -357,6 +370,7 @@ describe('runReview', () => {
       score: { value: 3, reason: '1 P1 finding (shop.ts:1)' },
       dropped: { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0, rejected: 0 },
       claims: [],
+      coverage: DIFF_COVERAGE,
     })
   })
 
@@ -879,28 +893,70 @@ describe('runReview with the repository tools', () => {
   })
 })
 
-describe('runReview with an investigation floor', () => {
-  const diff = [
-    'diff --git a/src/a.ts b/src/a.ts',
-    '--- a/src/a.ts',
-    '+++ b/src/a.ts',
-    '@@ -1,1 +1,2 @@',
-    ' keep',
-    `+${'x'.repeat(64 * 1024)}`,
-  ].join('\n')
-  const smallDiff = diff.replace(/x+$/, 'x'.repeat(2_000))
+describe('runReview coverage', () => {
+  const modified = (path: string) =>
+    [
+      `diff --git a/${path} b/${path}`,
+      `--- a/${path}`,
+      `+++ b/${path}`,
+      '@@ -1,1 +1,2 @@',
+      ' keep',
+      '+added',
+    ].join('\n')
+  const created = (path: string, lines: number) =>
+    [
+      `diff --git a/${path} b/${path}`,
+      'new file mode 100644',
+      '--- /dev/null',
+      `+++ b/${path}`,
+      `@@ -0,0 +1,${lines} @@`,
+      ...Array.from({ length: lines }, (_, index) => `+line ${index + 1}`),
+    ].join('\n')
+  const diff = [modified('src/a.ts'), modified('src/b.ts'), created('src/new.ts', 60)].join('\n')
   const toolbox: Toolbox = {
     definitions: [{ name: 'read_file', description: 'r', inputSchema: { type: 'object' } }],
-    call: async () => ({ text: '', isError: false }),
+    call: async (_name, args) => ({
+      text: 'content',
+      isError:
+        (args as { path?: string }).path === 'src/gone.ts' ||
+        (args as { from?: number }).from === 999,
+    }),
     touchedPaths: () => [],
   }
+  const file = (path: string, checked: string, against: string | null = null, change = '') => ({
+    path,
+    checked,
+    against,
+    change,
+  })
 
-  function investigating(calls: number, output: Partial<ReviewOutput> = {}): ReviewProvider {
+  interface Turn {
+    calls?: [string, unknown][]
+    files: unknown[]
+    findings?: unknown[]
+    output?: Partial<ReviewOutput>
+    error?: Error
+  }
+
+  function answering(...turns: Turn[]): ReviewProvider & { prompts: ReviewPrompt[] } {
+    let next = 0
+    const prompts: ReviewPrompt[] = []
     return {
       id: 'fake-cli',
+      prompts,
       review: async (prompt) => {
-        for (let call = 0; call < calls; call++) await prompt.tools?.call('read_file', {})
-        return { ...OUTPUT, ...output }
+        prompts.push(prompt)
+        const turn = turns[next++] ?? { files: [] }
+        if (turn.error !== undefined) throw turn.error
+        for (const [name, args] of turn.calls ?? []) await prompt.tools?.call(name, args)
+        return {
+          ...OUTPUT,
+          text: reviewReportJson({
+            files: turn.files,
+            ...(turn.findings === undefined ? {} : { findings: turn.findings }),
+          }),
+          ...turn.output,
+        }
       },
     }
   }
@@ -910,69 +966,310 @@ describe('runReview with an investigation floor', () => {
     {
       tools = () => toolbox,
       passes,
-      diff: reviewed = diff,
-    }: { tools?: (() => Toolbox) | null; passes?: SkillPass[]; diff?: string } = {},
+      continuation,
+      diff: reviewedDiff = diff,
+    }: {
+      tools?: (() => Toolbox) | null
+      passes?: SkillPass[]
+      continuation?: boolean
+      diff?: string
+    } = {},
   ) {
     const outcome = await runReview(
       {
-        pullRequest: pullRequestFixture({ diff: reviewed }),
+        pullRequest: pullRequestFixture({ diff: reviewedDiff }),
         ...(passes === undefined ? {} : { passes }),
+        ...(continuation === undefined ? {} : { continuation }),
       },
-      { provider, ...(tools === null ? {} : { tools }) },
+      { provider, ...(tools === null ? {} : { tools }), createNonce: nonces('abcdefabcdef') },
     )
     if (outcome.status !== 'reviewed') throw new Error('expected a review')
     return outcome.result
   }
 
-  it('warns when the review pass investigated less than the diff asks for', async () => {
-    const result = await reviewedWith(investigating(4))
+  it('checks what the answer says it read against the files read_file read', async () => {
+    const result = await reviewedWith(
+      answering({
+        calls: [
+          ['read_file', { path: 'src/a.ts' }],
+          ['grep', { pattern: 'x', path: 'src/b.ts' }],
+          ['read_file', { path: 'src/b.ts', repo: 'acme/other' }],
+          ['read_file', { path: 'src/gone.ts' }],
+          ['read_file', { path: 'src/b.ts', from: 999 }],
+          ['read_file', { path: './src/near.ts', from: 1, to: 40 }],
+        ],
+        files: [
+          file('src/a.ts', 'file', null, 'Changes a'),
+          file('src/b.ts', 'file'),
+          file('src/new.ts', 'compared', 'src/near.ts'),
+          file('docs/elsewhere.md', 'file'),
+        ],
+      }),
+    )
 
-    const warning = 'Investigated 4 times for a 64 KB diff (expected at least 6).'
-    expect(result.warnings).toEqual([warning])
-    expect(result.investigationFloor).toEqual({ expected: 6, shortfalls: [warning] })
+    expect(result.coverage).toEqual({
+      level: 'full',
+      covered: 3,
+      total: 3,
+      declaredOnly: 1,
+      skipped: 0,
+      gaps: [{ path: 'src/b.ts', kind: 'declared-only' }],
+      verified: true,
+      reason: '1 file declared as read but never read',
+    })
+    expect(result.files).toEqual([{ path: 'src/a.ts', change: 'Changes a', findings: 0 }])
   })
 
-  it('does not warn when the pass reached the floor', async () => {
-    const result = await reviewedWith(investigating(6))
+  it('leaves the score as it is when the coverage is low', async () => {
+    const full = await reviewedWith(
+      answering({
+        calls: [['read_file', { path: 'src/near.ts' }]],
+        files: [
+          file('src/a.ts', 'diff'),
+          file('src/b.ts', 'diff'),
+          file('src/new.ts', 'compared', 'src/near.ts'),
+        ],
+      }),
+    )
+    const low = await reviewedWith(
+      answering({ files: [file('src/a.ts', 'diff'), file('src/new.ts', 'diff')] }),
+    )
 
-    expect(result).not.toHaveProperty('warnings')
-    expect(result.investigationFloor).toEqual({ expected: 6, shortfalls: [] })
+    expect(full.coverage?.level).toBe('full')
+    expect(low.coverage).toMatchObject({
+      level: 'low',
+      covered: 1,
+      total: 3,
+      reason: '1 file not accounted for, 1 new file not compared with existing code',
+    })
+    expect(low.score).toEqual(full.score)
+    expect(low).not.toHaveProperty('warnings')
   })
 
-  it('names the skill of each pass that investigated too little', async () => {
-    const result = await reviewedWith(investigating(1), {
-      passes: [
+  it('measures the coverage over every text pass', async () => {
+    const result = await reviewedWith(
+      answering(
+        { files: [file('src/a.ts', 'diff')] },
         {
-          skill: 'code-review',
-          lens: { kind: 'skill', name: 'code-review', text: 'x', origin: 'y' },
+          calls: [['read_file', { path: 'src/near.ts' }]],
+          files: [file('src/b.ts', 'diff'), file('src/new.ts', 'compared', 'src/near.ts')],
         },
-      ],
+      ),
+      {
+        passes: [
+          { skill: 'phada', lens: { kind: 'default' } },
+          { skill: 'security', lens: { kind: 'skill', name: 'security', text: 'x', origin: 'y' } },
+        ],
+      },
+    )
+
+    expect(result.coverage).toMatchObject({ level: 'full', covered: 3, gaps: [] })
+  })
+
+  it('takes the answer as it is when the provider could not offer the tools to its model', async () => {
+    const result = await reviewedWith(
+      answering({
+        files: [file('src/a.ts', 'file'), file('src/b.ts', 'diff'), file('src/new.ts', 'diff')],
+        output: { withoutTools: true },
+      }),
+    )
+
+    expect(result.coverage).toMatchObject({ level: 'full', declaredOnly: 0, verified: false })
+  })
+
+  it('takes the answer as it is without tools', async () => {
+    const result = await reviewedWith(
+      answering({ files: [file('src/a.ts', 'file'), file('src/new.ts', 'diff')] }),
+      { tools: null },
+    )
+
+    expect(result.coverage).toMatchObject({
+      level: 'low',
+      covered: 2,
+      gaps: [{ path: 'src/b.ts', kind: 'missing' }],
+      verified: false,
+    })
+  })
+
+  it('counts every file as missing when the answer has no files', async () => {
+    const { files: _files, ...withoutFiles } = JSON.parse(reviewReportJson()) as Record<
+      string,
+      unknown
+    >
+    const result = await reviewedWith({
+      id: 'fake-cli',
+      review: async () => ({ ...OUTPUT, text: JSON.stringify(withoutFiles) }),
     })
 
-    expect(result.warnings).toEqual([
-      'Skill code-review: investigated 1 time for a 64 KB diff (expected at least 6).',
-    ])
+    expect(result.coverage).toMatchObject({ level: 'low', covered: 0, total: 3 })
+    expect(result.summary).toBe('Adds a spend endpoint.')
   })
 
-  it('expects no minimum for a small diff without CI or infrastructure files', async () => {
-    const result = await reviewedWith(investigating(0), { diff: smallDiff })
+  describe('continuation pass', () => {
+    const first = findingFixture({ file: 'src/a.ts', line: 2, title: 'First' })
+    const second = findingFixture({ file: 'src/b.ts', line: 2, title: 'Second' })
+    const partOne: Turn = { files: [file('src/a.ts', 'diff')], findings: [first] }
+    const complete: Turn = {
+      calls: [['read_file', { path: 'src/near.ts' }]],
+      files: [file('src/b.ts', 'diff'), file('src/new.ts', 'compared', 'src/near.ts')],
+      findings: [first, second],
+      output: { durationMs: 1000, usage: { inputTokens: 900, outputTokens: 80 } },
+    }
 
-    expect(result).not.toHaveProperty('warnings')
-    expect(result).not.toHaveProperty('investigationFloor')
-  })
+    it('continues a low coverage with the gaps and the earlier findings', async () => {
+      const provider = answering(partOne, complete)
 
-  it('expects nothing without tools', async () => {
-    const result = await reviewedWith(investigating(0), { tools: null })
+      await reviewedWith(provider)
 
-    expect(result).not.toHaveProperty('warnings')
-    expect(result).not.toHaveProperty('investigationFloor')
-  })
+      expect(provider.prompts).toHaveLength(2)
+      const [initial, continued] = provider.prompts
+      expect(continued?.instructions.startsWith(`${initial?.instructions}\n\n`)).toBe(true)
+      expect(continued?.instructions).toContain('An earlier pass of this review')
+      expect(continued?.outputSchema).toEqual(initial?.outputSchema)
+      expect(continued?.tools?.definitions).toEqual(toolbox.definitions)
+      expect(continued?.data).toBe(
+        [
+          initial?.data,
+          [
+            '<<<PHADA_COVERAGE_abcdefabcdef',
+            'Files without coverage:',
+            '- src/b.ts: not accounted for',
+            '- src/new.ts: not accounted for',
+            '',
+            'Findings already reported:',
+            '- src/a.ts:2 First',
+            'PHADA_COVERAGE_abcdefabcdef>>>',
+          ].join('\n'),
+        ].join('\n\n'),
+      )
+    })
 
-  it('expects nothing when the provider could not offer the tools to its model', async () => {
-    const result = await reviewedWith(investigating(0, { withoutTools: true }))
+    it('joins the findings without duplicates and measures the coverage again', async () => {
+      const result = await reviewedWith(answering(partOne, complete))
 
-    expect(result).not.toHaveProperty('warnings')
-    expect(result).not.toHaveProperty('investigationFloor')
+      expect(result.findings.map(({ title }) => title)).toEqual(['First', 'Second'])
+      expect(result.dropped.duplicate).toBe(1)
+      expect(result.coverage).toEqual({
+        level: 'full',
+        covered: 3,
+        total: 3,
+        declaredOnly: 0,
+        skipped: 0,
+        gaps: [],
+        verified: true,
+        reason: 'every file accounted for',
+        continuation: { before: { level: 'low', covered: 1, total: 3 } },
+      })
+      expect(result.summary).toBe('Adds a spend endpoint.')
+      expect(result.passUsage).toEqual([
+        { pass: 'review', usage: OUTPUT.usage },
+        { pass: 'continuation', usage: { inputTokens: 900, outputTokens: 80 } },
+      ])
+      expect(result.usage).toEqual({ inputTokens: 4412, outputTokens: 500 })
+      expect(result.durationMs).toBe(2234)
+    })
+
+    it('lists each gap with what is missing', async () => {
+      const provider = answering({
+        files: [
+          file('src/a.ts', 'file'),
+          file('src/b.ts', 'skipped', null, 'Generated code'),
+          file('src/new.ts', 'diff'),
+        ],
+        findings: [],
+      })
+
+      await reviewedWith(provider)
+
+      expect(provider.prompts[1]?.data).toContain(
+        [
+          'Files without coverage:',
+          '- src/a.ts: declared as read but never read',
+          '- src/b.ts: skipped (Generated code)',
+          '- src/new.ts: new file not compared with existing code',
+          '',
+          'Findings already reported: none',
+        ].join('\n'),
+      )
+    })
+
+    it('continues at most once', async () => {
+      const provider = answering(partOne, partOne, complete)
+
+      const result = await reviewedWith(provider)
+
+      expect(provider.prompts).toHaveLength(2)
+      expect(result.coverage).toMatchObject({
+        level: 'low',
+        continuation: { before: { level: 'low', covered: 1, total: 3 } },
+      })
+    })
+
+    it('does not continue a partial or full coverage', async () => {
+      const paths = ['src/a.ts', 'src/b.ts', 'src/c.ts', 'src/d.ts']
+      const partial = answering({ files: paths.slice(0, 3).map((path) => file(path, 'diff')) })
+      const full = answering({ files: paths.map((path) => file(path, 'diff')) })
+
+      const results = [
+        await reviewedWith(partial, { diff: paths.map(modified).join('\n') }),
+        await reviewedWith(full, { diff: paths.map(modified).join('\n') }),
+      ]
+
+      expect(results.map(({ coverage }) => coverage?.level)).toEqual(['partial', 'full'])
+      expect([partial.prompts.length, full.prompts.length]).toEqual([1, 1])
+      expect(results[0]?.coverage).not.toHaveProperty('continuation')
+      expect(results[0]?.passUsage.map(({ pass }) => pass)).toEqual(['review'])
+    })
+
+    it('does not continue when the continuation is off', async () => {
+      const provider = answering(partOne, complete)
+
+      const result = await reviewedWith(provider, { continuation: false })
+
+      expect(provider.prompts).toHaveLength(1)
+      expect(result.coverage).toMatchObject({ level: 'low', covered: 1 })
+      expect(result.coverage).not.toHaveProperty('continuation')
+    })
+
+    it('continues with the lens of the first text pass', async () => {
+      const security: SkillPass = {
+        skill: 'security',
+        lens: { kind: 'skill', name: 'security', text: 'Look for leaks.', origin: 'y' },
+      }
+      const provider = answering(partOne, { files: [] }, complete)
+
+      const result = await reviewedWith(provider, {
+        passes: [security, { skill: 'phada', lens: { kind: 'default' } }],
+      })
+
+      expect(provider.prompts).toHaveLength(3)
+      expect(
+        provider.prompts[2]?.instructions.startsWith(`${provider.prompts[0]?.instructions}\n\n`),
+      ).toBe(true)
+      expect(result.findings.find(({ title }) => title === 'Second')?.skill).toBe('security')
+    })
+
+    it('keeps the first result with a warning when the continuation answer is invalid', async () => {
+      const result = await reviewedWith(
+        answering(partOne, { files: [], output: { text: 'not a review' } }),
+      )
+
+      expect(result.findings.map(({ title }) => title)).toEqual(['First'])
+      expect(result.coverage).toMatchObject({ level: 'low', covered: 1 })
+      expect(result.coverage).not.toHaveProperty('continuation')
+      expect(result.passUsage.map(({ pass }) => pass)).toEqual(['review'])
+      expect(result.warnings).toEqual([
+        expect.stringMatching(
+          /^The continuation pass failed, so the review keeps the first answer: /,
+        ),
+      ])
+    })
+
+    it('fails the review when the continuation fails for another reason', async () => {
+      await expect(
+        reviewedWith(answering(partOne, { files: [], error: new Error('provider crashed') })),
+      ).rejects.toThrow('provider crashed')
+    })
   })
 })
 
@@ -1350,6 +1647,34 @@ describe('runReview with a native skill pass', () => {
     )
     return { outcome, provider, ran }
   }
+
+  it('measures no coverage and never continues when only native skill passes ran', async () => {
+    const { outcome, provider } = await nativeReview(
+      [NATIVE],
+      [{ ...OUTPUT, text: reviewReportJson({ files: [] }) }],
+    )
+
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(outcome.result).not.toHaveProperty('coverage')
+    expect(provider.prompts).toHaveLength(1)
+  })
+
+  it('measures the coverage from the text passes only and continues the text pass', async () => {
+    const lowAnswer = { ...OUTPUT, text: reviewReportJson({ files: [] }) }
+    const { outcome, provider } = await nativeReview([NATIVE, PHADA], [OUTPUT, lowAnswer, OUTPUT])
+
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(outcome.result.coverage).toMatchObject({
+      level: 'full',
+      covered: 1,
+      total: 1,
+      continuation: { before: { level: 'low', covered: 0, total: 1 } },
+    })
+    expect(provider.prompts).toHaveLength(3)
+    expect(
+      provider.prompts[2]?.instructions.startsWith(`${provider.prompts[1]?.instructions}\n\n`),
+    ).toBe(true)
+  })
 
   it('runs the skill, then converts its output without tools', async () => {
     const { outcome, provider, ran } = await nativeReview([NATIVE], [OUTPUT])

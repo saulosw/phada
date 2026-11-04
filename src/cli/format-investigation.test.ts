@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { InvestigationReport } from '../investigation/tools/report.js'
+import type { Coverage } from '../review/types.js'
 import { formatInvestigationLine, formatInvestigationSection } from './format-investigation.js'
 
 const call = (
@@ -123,34 +124,6 @@ describe('formatInvestigationSection', () => {
     )
   })
 
-  it('says how many calls the diff asked for and which passes made fewer', () => {
-    const section = formatInvestigationSection({
-      ...used,
-      floor: {
-        expected: 12,
-        shortfalls: ['Investigated 5 times for a 124 KB diff (expected at least 12).'],
-      },
-    })
-
-    expect(section).toContain(
-      [
-        '- read_file big.ts · error: budget',
-        '',
-        'Expected at least 12 calls per review pass.',
-        'Warning: Investigated 5 times for a 124 KB diff (expected at least 12).',
-        '',
-      ].join('\n'),
-    )
-  })
-
-  it('says nothing more when every pass reached the floor', () => {
-    expect(
-      formatInvestigationSection({ ...used, floor: { expected: 3, shortfalls: [] } }),
-    ).toContain(
-      '- read_file big.ts · error: budget\n\nExpected at least 3 calls per review pass.\n',
-    )
-  })
-
   it('marks the calls of the recheck of earlier comments', () => {
     const recheck = {
       ...used,
@@ -244,5 +217,108 @@ describe('formatInvestigationSection', () => {
         calls: [],
       }),
     ).toBe('## Investigation\n\nNot available: git was not found.\n')
+  })
+
+  describe('coverage', () => {
+    const partial: Coverage = {
+      level: 'partial',
+      covered: 4,
+      total: 5,
+      declaredOnly: 1,
+      skipped: 0,
+      gaps: [
+        { path: 'src/new.ts', kind: 'not-compared' },
+        { path: 'src/read.ts', kind: 'declared-only' },
+      ],
+      verified: true,
+      reason: '1 new file not compared with existing code, 1 file declared as read but never read',
+    }
+    const one = {
+      ...used,
+      calls: [call('read_file', 'src/b.ts')],
+      totals: { calls: 1, bytes: 2048 },
+    }
+
+    it('follows the calls with a coverage below full and each gap', () => {
+      expect(formatInvestigationSection(one, partial)).toBe(
+        [
+          '## Investigation',
+          '',
+          '- read_file src/b.ts (2.0 KB)',
+          '',
+          'Coverage: partial, 4 of 5 files — 1 new file not compared with existing code, 1 file declared as read but never read',
+          '- src/new.ts: new file not compared with existing code',
+          '- src/read.ts: declared as read but never read',
+          '',
+        ].join('\n'),
+      )
+    })
+
+    it('says what the coverage was before a continuation pass', () => {
+      const after: Coverage = {
+        ...partial,
+        continuation: { before: { level: 'low', covered: 2, total: 9 } },
+      }
+
+      expect(formatInvestigationSection(one, after)).toContain(
+        'Coverage: partial, 4 of 5 files — 1 new file not compared with existing code, 1 file declared as read but never read, after a continuation pass (was low, 2 of 9)\n',
+      )
+    })
+
+    it('says the coverage is declared, with the reason a skip gave, even without the tools', () => {
+      const declared: Coverage = {
+        level: 'low',
+        covered: 1,
+        total: 3,
+        declaredOnly: 0,
+        skipped: 1,
+        gaps: [
+          { path: 'yarn.lock', kind: 'skipped', reason: 'lockfile\u0007' },
+          { path: 'src/b.ts', kind: 'missing' },
+        ],
+        verified: false,
+        reason: '1 file not accounted for, 1 file skipped',
+      }
+
+      expect(formatInvestigationSection({ ...used, status: 'off', calls: [] }, declared)).toBe(
+        [
+          '## Investigation',
+          '',
+          'Off.',
+          '',
+          'Coverage (declared): low, 1 of 3 files — 1 file not accounted for, 1 file skipped',
+          '- yarn.lock: skipped (lockfile)',
+          '- src/b.ts: not accounted for',
+          '',
+        ].join('\n'),
+      )
+    })
+
+    it('caps the list of gaps', () => {
+      const gaps = Array.from({ length: 23 }, (_, index) => ({
+        path: `src/f${index}.ts`,
+        kind: 'missing' as const,
+      }))
+      const low: Coverage = {
+        ...partial,
+        level: 'low',
+        covered: 0,
+        total: 23,
+        declaredOnly: 0,
+        gaps,
+      }
+
+      const section = formatInvestigationSection(one, low)
+
+      expect(section).toContain('- src/f19.ts: not accounted for\n- … (+3 more)\n')
+      expect(section).not.toContain('src/f20.ts')
+    })
+
+    it('leaves the coverage out when it is full', () => {
+      const full: Coverage = { ...partial, level: 'full', covered: 5, gaps: [] }
+
+      expect(formatInvestigationSection(one, full)).toBe(formatInvestigationSection(one))
+      expect(formatInvestigationSection(one)).not.toContain('Coverage')
+    })
   })
 })

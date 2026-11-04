@@ -60,6 +60,7 @@ export interface ReviewOptions {
   language?: string
   minConfidence?: number
   verify?: boolean
+  continuation?: boolean
   investigate?: boolean
   resolveThreads?: boolean
   conversation?: boolean
@@ -361,6 +362,7 @@ export async function reviewPullRequest(
         language,
         minConfidence: options.minConfidence ?? loaded.options.minConfidence,
         verify: options.verify ?? loaded.options.verify ?? true,
+        continuation: options.continuation ?? loaded.options.continuation ?? true,
         ...(loaded.options.debt === undefined ? {} : { debt: loaded.options.debt }),
         context: loaded.context,
         ...(impact === undefined ? {} : { impact }),
@@ -390,7 +392,6 @@ export async function reviewPullRequest(
       findings: reviewed?.findings ?? [],
       external: reviewed?.externalCalls ?? [],
       ...mcpReports(investigation !== undefined, outside, input.mcp, mcpOpened),
-      ...(reviewed?.investigationFloor === undefined ? {} : { floor: reviewed.investigationFloor }),
     })
     return {
       outcome,

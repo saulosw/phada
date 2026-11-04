@@ -123,6 +123,9 @@ describe('config templates with review focus and skills', () => {
     expect(template).toContain(
       '#   debt: summary              # problems the change did not cause: summary, comments or off',
     )
+    expect(template).toContain(
+      '#   continuation: true         # one more pass over the files a low-coverage review left out',
+    )
   })
 })
 

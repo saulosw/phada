@@ -30,7 +30,14 @@ const REFERENCE_SHAPE = {
 
 const FindingScopeSchema = z.enum(['change', 'repository'])
 
-const FILE_SHAPE = { path: z.string().min(1), change: z.string() }
+const FileCheckSchema = z.enum(['diff', 'file', 'compared', 'skipped'])
+
+const FILE_SHAPE = {
+  path: z.string().min(1),
+  checked: FileCheckSchema,
+  against: z.string().nullable(),
+  change: z.string(),
+}
 
 export const ClaimVerdictSchema = z.enum(['confirmed', 'contradicted', 'unverified'])
 
@@ -48,12 +55,17 @@ export const ReportFindingSchema = z.object({
   scope: z.unknown().optional(),
 })
 
-export const ReportFileSchema = z.object(FILE_SHAPE)
+export const ReportFileSchema = z.object({
+  path: FILE_SHAPE.path,
+  checked: FileCheckSchema.catch('diff'),
+  against: z.string().trim().nullable().catch(null),
+  change: z.string().catch(''),
+})
 
 export const ReportEnvelopeSchema = z.object({
   claims: z.unknown().optional(),
   summary: z.string(),
-  files: z.array(z.unknown()),
+  files: z.array(z.unknown()).catch([]),
   findings: z.array(z.unknown()),
 })
 

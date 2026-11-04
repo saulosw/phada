@@ -71,6 +71,7 @@ export async function loadContext(input: {
       ...(merged.language === undefined ? {} : { language: merged.language }),
       ...(merged.minConfidence === undefined ? {} : { minConfidence: merged.minConfidence }),
       ...(merged.verify === undefined ? {} : { verify: merged.verify }),
+      ...(merged.continuation === undefined ? {} : { continuation: merged.continuation }),
       ...(merged.investigate === undefined ? {} : { investigate: merged.investigate }),
       ...(merged.resolveThreads === undefined ? {} : { resolveThreads: merged.resolveThreads }),
       ...(merged.conversation === undefined ? {} : { conversation: merged.conversation }),

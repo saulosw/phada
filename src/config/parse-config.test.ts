@@ -41,6 +41,14 @@ describe('parseConfigText', () => {
     expect(parseConfigText('review:\n  debt: hide\n').ok).toBe(false)
   })
 
+  it('reads whether a low coverage gets a continuation pass', () => {
+    expect(parseConfigText('review:\n  continuation: false\n')).toEqual({
+      ok: true,
+      config: { review: { continuation: false } },
+    })
+    expect(parseConfigText('review:\n  continuation: sometimes\n').ok).toBe(false)
+  })
+
   it('reads every key', () => {
     const text = [
       'provider: codex',

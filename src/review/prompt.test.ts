@@ -12,8 +12,8 @@ const NONCE = '0123456789ab'
 
 describe('buildReviewPrompt', () => {
   it.each([
-    [undefined, '753869471fbc3c0bb678bbf64b278cf8946c5aedd80b2103bae47fdb871d5264'],
-    ['pt-BR', '4e4cab4dbd58d9d34a052def656cc1f7ae2bbf6af1c4cf67cc382b1afa93ad11'],
+    [undefined, 'f0450350367b71b137830929d250d273af5824d81a27c38d7df417ca2ffea273'],
+    ['pt-BR', '3552a75cf094bf6ae8c66664fbdc6e1fe65c7fd541db85180fa6ebdd77c6ff77'],
   ])('keeps the review instructions word for word (language %s)', (language, digest) => {
     const { instructions } = buildReviewPrompt(
       { pullRequest: pullRequestFixture(), language },
@@ -427,7 +427,7 @@ describe('buildReviewPrompt with repository context', () => {
 
 describe('reviewer lens', () => {
   const pullRequest = pullRequestFixture()
-  const DEFAULT_DIGEST = '753869471fbc3c0bb678bbf64b278cf8946c5aedd80b2103bae47fdb871d5264'
+  const DEFAULT_DIGEST = 'f0450350367b71b137830929d250d273af5824d81a27c38d7df417ca2ffea273'
   const digest = (text: string) => createHash('sha256').update(text).digest('hex')
 
   it('keeps the instructions word for word with the built-in phada pass', () => {

@@ -110,6 +110,26 @@ describe('parseCliArgs', () => {
     expect(REVIEW_USAGE).toContain('--no-conversation')
   })
 
+  it('turns the continuation pass off with --no-continuation', () => {
+    expect(parseCliArgs(['review', 'acme/shop#12', '--no-continuation'])).toMatchObject({
+      kind: 'review',
+      continuation: false,
+    })
+    expect(parseCliArgs(['review', 'acme/shop#12'])).not.toHaveProperty('continuation')
+    expect(REVIEW_USAGE).toContain('--no-continuation')
+  })
+
+  it('turns the continuation pass back on with --continuation, and refuses both', () => {
+    expect(parseCliArgs(['review', 'acme/shop#12', '--continuation'])).toMatchObject({
+      kind: 'review',
+      continuation: true,
+    })
+    expect(REVIEW_USAGE).toContain('--continuation ')
+    expect(() =>
+      parseCliArgs(['review', 'acme/shop#12', '--continuation', '--no-continuation']),
+    ).toThrow('Use either --continuation or --no-continuation.')
+  })
+
   it('turns the reading of the checks off with --no-ci', () => {
     expect(parseCliArgs(['review', 'acme/shop#12', '--no-ci'])).toMatchObject({
       kind: 'review',

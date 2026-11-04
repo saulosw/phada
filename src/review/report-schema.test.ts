@@ -63,11 +63,15 @@ describe('REVIEW_REPORT_JSON_SCHEMA', () => {
     expect(suggestion.anyOf[0].additionalProperties).toBe(false)
   })
 
-  it('requires every file field', () => {
-    const file = report.properties.files?.items
+  it('requires every file field and limits checked to diff, file, compared or skipped', () => {
+    const file = report.properties.files?.items as unknown as ObjectSchema & {
+      properties: Record<string, { enum?: string[]; type?: unknown }>
+    }
 
-    expect(file?.required).toEqual(['path', 'change'])
-    expect(file?.additionalProperties).toBe(false)
+    expect(file.required).toEqual(['path', 'checked', 'against', 'change'])
+    expect(file.additionalProperties).toBe(false)
+    expect(file.properties.checked?.enum).toEqual(['diff', 'file', 'compared', 'skipped'])
+    expect(file.properties.against?.type).toEqual(['string', 'null'])
   })
 
   it('requires every claim field and limits the verdict to confirmed, contradicted or unverified', () => {

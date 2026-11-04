@@ -50,6 +50,7 @@ function reviewFocus(promptFile: string, own = false): string {
 #     mode: append
 #   skills: [phada, security-review]
 #   debt: summary              # problems the change did not cause: summary, comments or off
+#   continuation: true         # one more pass over the files a low-coverage review left out
 ${own ? OWN_REVIEW_OPTIONS : ''}`
 }
 

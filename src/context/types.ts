@@ -58,6 +58,7 @@ export interface ContextOptions {
   language?: string
   minConfidence?: number
   verify?: boolean
+  continuation?: boolean
   investigate?: boolean
   resolveThreads?: boolean
   conversation?: boolean

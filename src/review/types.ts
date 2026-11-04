@@ -146,6 +146,7 @@ export interface ReviewRequest {
   language?: string
   minConfidence?: number
   verify?: boolean
+  continuation?: boolean
   debt?: DebtMode
   context?: ReviewContext
   impact?: DiffImpact
@@ -284,12 +285,38 @@ export interface SkillBody {
   text: string
 }
 
-export interface InvestigationFloor {
-  expected: number
-  shortfalls: string[]
+export type FileCheck = 'diff' | 'file' | 'compared' | 'skipped'
+
+export interface FileDeclaration {
+  path: string
+  checked: FileCheck
+  against: string | null
+  change: string
 }
 
-export type UsagePass = 'review' | 'verify' | 'recheck'
+export type CoverageLevel = 'full' | 'partial' | 'low'
+
+export type CoverageGapKind = 'missing' | 'skipped' | 'not-compared' | 'declared-only'
+
+export interface CoverageGap {
+  path: string
+  kind: CoverageGapKind
+  reason?: string
+}
+
+export interface Coverage {
+  level: CoverageLevel
+  covered: number
+  total: number
+  declaredOnly: number
+  skipped: number
+  gaps: CoverageGap[]
+  verified: boolean
+  reason: string
+  continuation?: { before: Pick<Coverage, 'level' | 'covered' | 'total'> }
+}
+
+export type UsagePass = 'review' | 'continuation' | 'verify' | 'recheck'
 
 export interface PassUsage {
   pass: UsagePass
@@ -315,7 +342,7 @@ export interface ReviewResult {
   score: Score
   dropped: DroppedFindings
   claims: Claim[]
-  investigationFloor?: InvestigationFloor
+  coverage?: Coverage
   verification?: Verification
   suggestions?: SuggestionCounts
   ignored?: string[]

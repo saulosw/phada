@@ -1,4 +1,3 @@
-import type { z } from 'zod'
 import { InvalidReviewReportError } from './errors.js'
 import { jsonObjects, preview } from './json-objects.js'
 import {
@@ -8,13 +7,11 @@ import {
   ReportFindingSchema,
   SuggestionSchema,
 } from './report-schema.js'
-import type { Claim, Finding } from './types.js'
-
-export type ReportFile = z.infer<typeof ReportFileSchema>
+import type { Claim, FileDeclaration, Finding } from './types.js'
 
 export interface ParsedReport {
   summary: string
-  files: ReportFile[]
+  files: FileDeclaration[]
   findings: Finding[]
   invalid: number
   claims: Claim[] | undefined
@@ -30,7 +27,7 @@ export function parseReviewReport(text: string): ParsedReport {
     .map((object) => ReportEnvelopeSchema.safeParse(object))
     .find((parsed) => parsed.success)
   if (envelope === undefined || !envelope.success) {
-    throw new InvalidReviewReportError('missing summary, files or findings', preview(text))
+    throw new InvalidReviewReportError('missing summary or findings', preview(text))
   }
   const findings = envelope.data.findings.flatMap((item): Finding[] => {
     const parsed = ReportFindingSchema.safeParse(item)
@@ -52,9 +49,12 @@ export function parseReviewReport(text: string): ParsedReport {
       },
     ]
   })
-  const files = envelope.data.files.flatMap((item) => {
+  const files = envelope.data.files.flatMap((item): FileDeclaration[] => {
     const parsed = ReportFileSchema.safeParse(item)
-    return parsed.success ? [parsed.data] : []
+    if (!parsed.success) return []
+    const { against, ...file } = parsed.data
+    const compared = file.checked === 'compared' && against !== null && against !== ''
+    return [{ ...file, against: compared ? against : null }]
   })
   const listed = envelope.data.claims
   const claims = Array.isArray(listed)
