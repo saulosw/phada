@@ -59,6 +59,7 @@ function detail(changes: Partial<ReviewDetail> = {}): ReviewDetail {
     pullRequest: { url: 'https://github.com/acme/shop/pull/12', title: 'Let users spend crystals' },
     verdict: 'comments',
     score: { value: 3, reason: 'One P1.' },
+    coverage: null,
     summary: 'Adds a spend endpoint.',
     claims: [],
     findings: [
@@ -327,6 +328,42 @@ describe('reviewing a pull request from the app', () => {
     await press(KEYS.escape)
     await showing('Review pull requests with the AI you already use.')
     expect(frame()).toContain('Home')
+  })
+
+  it('shows a low coverage under the score of the result, and none at full', async () => {
+    const low = openFlow()
+    await looked(
+      low,
+      detail({
+        coverage: {
+          level: 'low',
+          covered: 11,
+          total: 63,
+          verified: true,
+          gaps: { missing: 52, notCompared: 0, skipped: 0 },
+        },
+      }),
+      { status: 'saved', runId: 3 },
+    )
+    expect(low.frame()).toMatch(/Coverage\s+low · 11 of 63 files · 52 not accounted for\n/)
+    expectFits(low.frame(), { columns: 80, rows: 24 })
+
+    const full = openFlow()
+    await looked(
+      full,
+      detail({
+        coverage: {
+          level: 'full',
+          covered: 9,
+          total: 9,
+          verified: true,
+          gaps: { missing: 0, notCompared: 0, skipped: 0 },
+        },
+      }),
+      { status: 'saved', runId: 3 },
+    )
+    expect(full.frame()).toMatch(/Score\s+3\/5/)
+    expect(full.frame()).not.toContain('Coverage')
   })
 
   it('asks before publishing, with the pull request and who publishes it, and Esc goes back to the mode', async () => {

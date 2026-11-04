@@ -3,7 +3,7 @@ import { findingFixture } from '../../test/support/finding.js'
 import { parseReviewMarker } from '../publish/markers.js'
 import type { PublicationPlan } from '../publish/types.js'
 import type { CiSummary } from '../context/types.js'
-import type { FileChange, Finding, ReviewResult } from '../review/types.js'
+import type { Coverage, FileChange, Finding, ReviewResult } from '../review/types.js'
 import {
   formatGitHubPreview,
   formatGitHubReview,
@@ -320,6 +320,85 @@ describe('formatGitHubReview body', () => {
 
     expect(body).toContain('## 🦋 nenhum problema novo')
     expect(body).toContain('1 comentário de revisões anteriores continua aberto: resolva-o')
+  })
+
+  describe('coverage label', () => {
+    const LOW: Coverage = {
+      level: 'low',
+      covered: 2,
+      total: 9,
+      declaredOnly: 0,
+      skipped: 0,
+      gaps: Array.from({ length: 7 }, (_, index) => ({
+        path: `src/f${index}.ts`,
+        kind: 'missing' as const,
+      })),
+      verified: true,
+      reason: '7 files not accounted for',
+    }
+    const heading = (coverage: Coverage | undefined, language = 'en') =>
+      formatGitHubReview(
+        result(coverage === undefined ? {} : { coverage }),
+        PLAN,
+        GITHUB_BODY_LIMIT,
+        messagesFor(language),
+      ).body.split('\n')[0]
+
+    it.each([
+      [
+        'en',
+        '## 🦋 3/5 (implementation issues) · low coverage: 2 of 9 files (7 files not accounted for)',
+      ],
+      [
+        'pt',
+        '## 🦋 3/5 (problemas de implementação) · cobertura baixa: 2 de 9 arquivos (7 arquivos sem revisão declarada)',
+      ],
+      [
+        'es',
+        '## 🦋 3/5 (problemas de implementación) · cobertura baja: 2 de 9 archivos (7 archivos sin revisión declarada)',
+      ],
+    ])('follows the score with the coverage in %s', (language, expected) => {
+      expect(heading(LOW, language)).toBe(expected)
+    })
+
+    it('says the coverage is declared when the reads could not be checked', () => {
+      expect(
+        heading({
+          ...LOW,
+          level: 'partial',
+          covered: 7,
+          gaps: LOW.gaps.slice(0, 2),
+          verified: false,
+        }),
+      ).toBe(
+        '## 🦋 3/5 (implementation issues) · partial coverage (declared): 7 of 9 files (2 files not accounted for)',
+      )
+    })
+
+    it('writes only the score with full coverage or none', () => {
+      const full: Coverage = { ...LOW, level: 'full', covered: 9, gaps: [] }
+
+      expect(heading(full)).toBe('## 🦋 3/5 (implementation issues)')
+      expect(heading(undefined)).toBe('## 🦋 3/5 (implementation issues)')
+    })
+
+    it('publishes neither the gaps nor the coverage before a continuation pass', () => {
+      const after: Coverage = {
+        ...LOW,
+        level: 'partial',
+        covered: 7,
+        gaps: LOW.gaps.slice(0, 2),
+        continuation: { before: { level: 'low', covered: 2, total: 9 } },
+      }
+      const { body } = formatGitHubReview(result({ coverage: after }), PLAN)
+
+      expect(body.split('\n')[0]).toBe(
+        '## 🦋 3/5 (implementation issues) · partial coverage: 7 of 9 files (2 files not accounted for)',
+      )
+      expect(body).not.toContain('src/f0.ts')
+      expect(body).not.toContain('2 of 9')
+      expect(body).not.toContain('continuation')
+    })
   })
 
   it('uses a singular for one inline comment', () => {

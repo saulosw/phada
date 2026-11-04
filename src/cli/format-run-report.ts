@@ -99,6 +99,7 @@ function sectionsOf(report: RunReport): RunSections {
     ...(report.investigation === undefined || report.investigation === null
       ? {}
       : { investigation: report.investigation }),
+    ...(report.coverage === undefined ? {} : { coverage: report.coverage }),
     ...(report.usage === undefined ? {} : { usage: report.usage }),
   }
 }

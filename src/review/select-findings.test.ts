@@ -379,9 +379,9 @@ describe('summarizeFiles', () => {
   it('counts the shown findings per file and puts files with more findings first', () => {
     const files = summarizeFiles(
       [
-        { path: 'b.ts', change: 'Changes b' },
-        { path: 'a.ts', change: 'Changes a' },
-        { path: 'c.ts', change: 'Changes c' },
+        { path: 'b.ts', checked: 'diff', against: null, change: 'Changes b' },
+        { path: 'a.ts', checked: 'diff', against: null, change: 'Changes a' },
+        { path: 'c.ts', checked: 'diff', against: null, change: 'Changes c' },
       ],
       [
         findingFixture({ file: 'c.ts' }),
@@ -402,8 +402,8 @@ describe('summarizeFiles', () => {
     expect(
       summarizeFiles(
         [
-          { path: 'a.ts', change: 'First' },
-          { path: 'a.ts', change: 'Second' },
+          { path: 'a.ts', checked: 'diff', against: null, change: 'First' },
+          { path: 'a.ts', checked: 'diff', against: null, change: 'Second' },
         ],
         [],
         DIFF_FILES,
@@ -421,12 +421,31 @@ describe('summarizeFiles', () => {
     expect(
       summarizeFiles(
         [
-          { path: 'users.ts', change: 'Short path' },
-          { path: 'docs/missing.md', change: 'Not in the diff' },
+          { path: 'users.ts', checked: 'diff', against: null, change: 'Short path' },
+          { path: 'docs/missing.md', checked: 'diff', against: null, change: 'Not in the diff' },
         ],
         [],
         DIFF_FILES,
       ),
     ).toEqual([{ path: 'api/src/users.ts', change: 'Short path', findings: 0 }])
+  })
+
+  it('leaves out files with nothing to say and no findings, and the reason a file was skipped', () => {
+    expect(
+      summarizeFiles(
+        [
+          { path: 'a.ts', checked: 'diff', against: null, change: '' },
+          { path: 'b.ts', checked: 'skipped', against: null, change: 'Generated' },
+          { path: 'c.ts', checked: 'skipped', against: null, change: 'Generated' },
+          { path: 'z.ts', checked: 'file', against: null, change: '' },
+          { path: 'z.ts', checked: 'diff', against: null, change: 'Changes z' },
+        ],
+        [findingFixture({ file: 'c.ts' })],
+        DIFF_FILES,
+      ),
+    ).toEqual([
+      { path: 'c.ts', change: '', findings: 1 },
+      { path: 'z.ts', change: 'Changes z', findings: 0 },
+    ])
   })
 })

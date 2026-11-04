@@ -391,6 +391,7 @@ describe('runHistoryShow', () => {
     usage: { inputTokens: 9700, outputTokens: 417 },
     passUsage: [
       { pass: 'review', usage: { inputTokens: 9000, cachedInputTokens: 4000, outputTokens: 400 } },
+      { pass: 'continuation', usage: { inputTokens: 40, outputTokens: 0 } },
       { pass: 'verify', usage: { inputTokens: 700, outputTokens: 17 } },
     ],
     summary: 'Adds a spend endpoint.',
@@ -563,6 +564,7 @@ describe('runHistoryShow', () => {
       '  - blocked: npm test — add Bash(npm test) to review.commands',
       '- read_file src/wallet.ts (2.0 KB) · used in a finding',
       '- review: 9.0k in (4.0k cached) · 400 out',
+      '- continuation: 40 in · 0 out',
       '- total: 9.7k in (4.0k cached) · 417 out',
     ]) {
       expect(out).toContain(`${line}\n`)
@@ -611,6 +613,42 @@ describe('runHistoryShow', () => {
     )
   })
 
+  it('shows the coverage of a run that left files out in its investigation section', async () => {
+    const h = harness()
+    const coverage: ReviewResult['coverage'] = {
+      level: 'partial',
+      covered: 4,
+      total: 5,
+      declaredOnly: 0,
+      skipped: 1,
+      gaps: [{ path: 'docs/big.md', kind: 'skipped', reason: 'generated' }],
+      verified: true,
+      reason: '4 of 5 files reviewed; 1 skipped.',
+      continuation: { before: { level: 'low', covered: 2, total: 5 } },
+    }
+    const json = formatReviewJson(
+      pullRequestFixture(),
+      { status: 'reviewed', result: { ...RESULT, coverage } },
+      DRY_RUN,
+      contextReportFixture(),
+      INVESTIGATION,
+      null,
+      null,
+      null,
+    )
+    await h.seed((store) => store.addRun(storedRun(json)))
+
+    await runHistoryShow(SHOW, h.deps)
+
+    expect(h.stdout()).toContain(
+      [
+        '',
+        'Coverage: partial, 4 of 5 files — 4 of 5 files reviewed; 1 skipped., after a continuation pass (was low, 2 of 5)',
+        '- docs/big.md: skipped (generated)',
+      ].join('\n'),
+    )
+  })
+
   it('shows what a run of an older version kept', async () => {
     const h = harness()
     const old = JSON.stringify({
@@ -630,7 +668,13 @@ describe('runHistoryShow', () => {
       context: contextReportFixture(),
       conversation: null,
       ci: null,
-      investigation: { status: 'off', calls: [], external: [], totals: { calls: 0, bytes: 0 } },
+      investigation: {
+        status: 'used',
+        calls: [],
+        external: [],
+        floor: { expected: 6, shortfalls: ['Investigated 0 times for a 64 KB diff.'] },
+        totals: { calls: 0, bytes: 0 },
+      },
       impact: { ...IMPACT },
     })
     await h.seed((store) => store.addRun(storedRun(old, { status: 'published' })))
@@ -647,6 +691,8 @@ describe('runHistoryShow', () => {
     ])
     expect(out).toContain('## Conversation sent to the AI\n\nOff.\n')
     expect(out).toContain('## Impact\n\n- function spend (src/shop.ts:1-9): 2 callers in 1 file\n')
+    expect(out).toContain('## Investigation\n\nNo tool calls.\n')
+    expect(out).not.toContain('Investigated 0 times')
   })
 
   it('says why a run was skipped or failed', async () => {

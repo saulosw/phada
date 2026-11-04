@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { findingFixture } from '../../test/support/finding.js'
 import { pullRequestFixture } from '../../test/support/pull-request.js'
-import type { ReviewResult } from '../review/types.js'
+import type { Coverage, ReviewResult } from '../review/types.js'
 import { formatPullRequestSummary, formatReview } from './format-review.js'
 import { messagesFor } from './i18n/messages.js'
 
@@ -266,6 +266,77 @@ describe('formatReview', () => {
     const output = formatReview(pullRequestFixture(), { ...RESULT, score: { value, reason: 'r' } })
 
     expect(output).toContain(`**Confidence score: ${value}/5** (${label}): `)
+  })
+
+  describe('coverage label', () => {
+    const clean: ReviewResult = {
+      ...RESULT,
+      findings: [],
+      score: { value: 5, reason: 'no problems found' },
+    }
+    const coverage = (overrides: Partial<Coverage>): Coverage => ({
+      level: 'low',
+      covered: 11,
+      total: 63,
+      declaredOnly: 0,
+      skipped: 0,
+      gaps: Array.from({ length: 52 }, (_, index) => ({
+        path: `src/f${index}.ts`,
+        kind: 'missing' as const,
+      })),
+      verified: true,
+      reason: '52 files not accounted for',
+      ...overrides,
+    })
+    const scoreLineOf = (result: ReviewResult, language = 'en') =>
+      formatReview(pullRequestFixture(), result, messagesFor(language))
+        .split('\n')
+        .find((line) => line.startsWith('**'))
+
+    it('follows the score with a low coverage and what left the files out', () => {
+      expect(scoreLineOf({ ...clean, coverage: coverage({}) })).toBe(
+        '**Confidence score: 5/5** (ready to merge): no problems found · low coverage: 11 of 63 files (52 files not accounted for)',
+      )
+    })
+
+    it('labels a partial coverage with each kind of gap that lowers it', () => {
+      const partial = coverage({
+        level: 'partial',
+        covered: 7,
+        total: 9,
+        skipped: 1,
+        declaredOnly: 1,
+        gaps: [
+          { path: 'src/new.ts', kind: 'not-compared' },
+          { path: 'yarn.lock', kind: 'skipped', reason: 'lockfile' },
+          { path: 'src/read.ts', kind: 'declared-only' },
+        ],
+      })
+
+      expect(scoreLineOf({ ...RESULT, coverage: partial })).toBe(
+        '**Confidence score: 1/5** (critical problems): 1 P0 finding (shop.ts:3) · partial coverage: 7 of 9 files (1 new file not compared with existing code, 1 file skipped)',
+      )
+    })
+
+    it('says the coverage is only declared when the reads could not be checked', () => {
+      expect(scoreLineOf({ ...clean, coverage: coverage({ verified: false }) })).toBe(
+        '**Confidence score: 5/5** (ready to merge): no problems found · low coverage (declared): 11 of 63 files (52 files not accounted for)',
+      )
+    })
+
+    it('leaves the score line alone with full coverage or none', () => {
+      const full = coverage({ level: 'full', covered: 2, total: 2, gaps: [], reason: '' })
+      const line = '**Confidence score: 5/5** (ready to merge): no problems found'
+
+      expect(scoreLineOf({ ...clean, coverage: full })).toBe(line)
+      expect(scoreLineOf(clean)).toBe(line)
+    })
+
+    it('writes the label in the language of the review', () => {
+      expect(scoreLineOf({ ...clean, coverage: coverage({}) }, 'pt')).toBe(
+        '**Nota de confiança: 5/5** (pronto para merge): nenhum problema encontrado · cobertura baixa: 11 de 63 arquivos (52 arquivos sem revisão declarada)',
+      )
+    })
   })
 
   it('writes the whole review artifact in Brazilian Portuguese', () => {

@@ -1,4 +1,5 @@
 import { CONFIDENCE_FLOOR } from '../../review/select-findings.js'
+import { coverageLabel } from '../coverage-label.js'
 import { joinNames } from '../name-list.js'
 import { formatCount } from '../units.js'
 import type { CiNames, Messages } from './messages.js'
@@ -20,6 +21,18 @@ export const english: Messages = {
     focus === undefined
       ? 'no problems found'
       : `${focus.count} ${focus.severity} ${focus.count === 1 ? 'finding' : 'findings'} (${focus.locations.join(', ')})`,
+  coverage: (coverage) =>
+    coverageLabel(coverage, {
+      level: { partial: 'partial coverage', low: 'low coverage' },
+      declared: 'declared',
+      files: (covered, total) => `${covered} of ${formatCount(total, 'file')}`,
+      gaps: {
+        missing: (count) => `${formatCount(count, 'file')} not accounted for`,
+        'not-compared': (count) =>
+          `${count} new ${count === 1 ? 'file' : 'files'} not compared with existing code`,
+        skipped: (count) => `${formatCount(count, 'file')} skipped`,
+      },
+    }),
   confidence: 'confidence',
   fix: 'Fix',
   basedOn: 'Based on',

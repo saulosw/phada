@@ -74,6 +74,7 @@ describe('formatReviewJson', () => {
       pullRequest: PULL_REQUEST,
       review: {
         score: { value: 1, reason: '1 P0 finding (shop.ts:3)' },
+        coverage: null,
         summary: 'Adds a spend endpoint.',
         claims: [],
         files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint', findings: 1 }],
@@ -221,6 +222,70 @@ describe('formatReviewJson', () => {
     })
 
     expect(parse(output)).toMatchObject({ review: { claims } })
+  })
+
+  it('prints the coverage of the files with its gaps', () => {
+    const coverage = {
+      level: 'low',
+      covered: 11,
+      total: 63,
+      declaredOnly: 1,
+      skipped: 1,
+      gaps: [
+        { path: 'src/a.ts', kind: 'missing' },
+        { path: 'yarn.lock', kind: 'skipped', reason: 'Generated' },
+        { path: 'src/b.ts', kind: 'declared-only' },
+      ],
+      verified: true,
+      reason: '51 files not accounted for, 1 file skipped',
+    } as const
+    const output = formatReviewJson(pullRequestFixture(), {
+      status: 'reviewed',
+      result: { ...RESULT, coverage: { ...coverage, gaps: [...coverage.gaps] } },
+    })
+
+    expect(parse(output)).toMatchObject({
+      review: {
+        coverage: {
+          ...coverage,
+          gaps: [
+            { path: 'src/a.ts', kind: 'missing', reason: null },
+            { path: 'yarn.lock', kind: 'skipped', reason: 'Generated' },
+            { path: 'src/b.ts', kind: 'declared-only', reason: null },
+          ],
+          continuation: null,
+        },
+      },
+    })
+  })
+
+  it('prints the coverage measured before the continuation pass', () => {
+    const output = formatReviewJson(pullRequestFixture(), {
+      status: 'reviewed',
+      result: {
+        ...RESULT,
+        coverage: {
+          level: 'full',
+          covered: 3,
+          total: 3,
+          declaredOnly: 0,
+          skipped: 0,
+          gaps: [],
+          verified: true,
+          reason: 'every file accounted for',
+          continuation: { before: { level: 'low', covered: 1, total: 3 } },
+        },
+      },
+    })
+
+    expect(parse(output)).toMatchObject({
+      review: {
+        coverage: {
+          level: 'full',
+          continuation: { before: { level: 'low', covered: 1, total: 3 } },
+        },
+      },
+    })
   })
 
   it('prints the skill of each finding and every pass', () => {

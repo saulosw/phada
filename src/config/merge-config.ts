@@ -74,6 +74,7 @@ export interface EffectiveConfig {
   language?: string
   minConfidence?: number
   verify?: boolean
+  continuation?: boolean
   investigate?: boolean
   resolveThreads?: boolean
   conversation?: boolean
@@ -138,6 +139,7 @@ export function mergeConfig(layers: readonly ConfigLayer[]): EffectiveConfig {
   const language = firstSet((config) => config.language)
   const minConfidence = firstSet((config) => config.minConfidence)
   const verify = firstSet((config) => config.verify)
+  const continuation = firstSet((config) => config.review?.continuation)
   const investigate = firstSet((config) => config.investigate)
   const resolveThreads = firstSet((config) => config.resolveThreads)
   const conversation = firstSet((config) => config.conversation)
@@ -149,6 +151,7 @@ export function mergeConfig(layers: readonly ConfigLayer[]): EffectiveConfig {
     ...(language === undefined ? {} : { language }),
     ...(minConfidence === undefined ? {} : { minConfidence }),
     ...(verify === undefined ? {} : { verify }),
+    ...(continuation === undefined ? {} : { continuation }),
     ...(investigate === undefined ? {} : { investigate }),
     ...(resolveThreads === undefined ? {} : { resolveThreads }),
     ...(conversation === undefined ? {} : { conversation }),

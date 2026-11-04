@@ -1,7 +1,6 @@
 import { findDiffFile } from './diff-lines.js'
 import type { DiffFile } from './diff-lines.js'
-import type { ReportFile } from './parse-report.js'
-import type { FileChange, Finding, Severity } from './types.js'
+import type { FileChange, FileDeclaration, Finding, Severity } from './types.js'
 
 export const CONFIDENCE_FLOOR = 50
 export const MAX_CONFIDENCE = 100
@@ -64,13 +63,14 @@ export function splitAtCut(findings: readonly Finding[], minConfidence: number):
 }
 
 export function summarizeFiles(
-  reportFiles: readonly ReportFile[],
+  reportFiles: readonly FileDeclaration[],
   findings: readonly Finding[],
   diffFiles: readonly DiffFile[],
 ): FileChange[] {
   const changes = new Map<string, string>()
-  for (const { path, change } of reportFiles) {
+  for (const { path, checked, change } of reportFiles) {
     const file = findDiffFile(path, diffFiles)
+    if (checked === 'skipped' || change.trim() === '') continue
     if (file !== undefined && !changes.has(file.path)) changes.set(file.path, change)
   }
   for (const { file } of findings) {

@@ -4,10 +4,11 @@ import type { ImpactReport } from '../graph/report.js'
 import type { InvestigationReport } from '../investigation/tools/report.js'
 import type { BlockedCommand } from '../providers/types.js'
 import type { UsageReport } from '../review/token-usage.js'
-import type { PassReport } from '../review/types.js'
+import type { Coverage, PassReport } from '../review/types.js'
 import type { RelatedReport } from './related-report.js'
 import { storedClaims, storedCi, storedFindings } from './read-history.js'
 import { numberOf, objectOf, parseJson, stringOf } from './stored-json.js'
+import { storedCoverage } from './stored-review.js'
 import type {
   HistoryReader,
   RunRecord,
@@ -90,6 +91,7 @@ export interface RunReport {
   related?: RelatedReport | null
   passes?: StoredPasses
   investigation?: InvestigationReport | null
+  coverage?: Coverage
   usage?: UsageReport
 }
 
@@ -124,6 +126,7 @@ function runReportOf(stored: RunRecord): RunReport {
     ...defined('related', blockOf(json, 'related', RelatedSchema)),
     ...(passes?.success === true && passes.data !== null ? { passes: passesOf(passes.data) } : {}),
     ...defined('investigation', blockOf(json, 'investigation', InvestigationSchema)),
+    ...defined('coverage', storedCoverage(review?.coverage)),
     ...defined('usage', UsageSchema.safeParse(json.usage).data),
   }
 }
@@ -419,14 +422,13 @@ const InvestigationSchema = z.object({
       }),
     ),
   ),
-  floor: optional(z.object({ expected: z.number(), shortfalls: strings })),
   totals: z.object({ calls: count, bytes: count }).catch({ calls: 0, bytes: 0 }),
 }) satisfies z.ZodType<InvestigationReport>
 
 const UsageSchema = z.object({
   passes: list(
     z.object({
-      pass: z.enum(['review', 'verify', 'recheck']),
+      pass: z.enum(['review', 'continuation', 'verify', 'recheck']),
       skill: optional(z.string()),
       usage: optional(TokensSchema),
     }),

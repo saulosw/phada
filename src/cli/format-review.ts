@@ -50,9 +50,11 @@ export function formatReview(
   return `${sections.filter((section) => section !== '').join('\n\n')}\n`
 }
 
-function scoreLine({ score, findings }: ReviewResult, messages: Messages): string {
+function scoreLine({ score, findings, coverage }: ReviewResult, messages: Messages): string {
   const reason = messages.scoreReason(scoreFocus(findings))
-  return `**${messages.terminal.score}: ${score.value}/5** (${messages.scoreLabels[score.value]}): ${singleLine(reason)}`
+  const label = coverage === undefined ? '' : messages.coverage(coverage)
+  const line = `**${messages.terminal.score}: ${score.value}/5** (${messages.scoreLabels[score.value]}): ${singleLine(reason)}`
+  return label === '' ? line : `${line} · ${label}`
 }
 
 function summarySection(summary: string, messages: Messages): string {

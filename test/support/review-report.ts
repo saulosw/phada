@@ -11,7 +11,9 @@ export function reviewReportJson(overrides: ReportOverrides = {}): string {
   return JSON.stringify({
     claims: [],
     summary: 'Adds a spend endpoint.',
-    files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint' }],
+    files: [
+      { path: 'src/shop.ts', checked: 'diff', against: null, change: 'Adds the spend endpoint' },
+    ],
     findings: [findingFixture()],
     ...overrides,
   })

@@ -127,7 +127,7 @@ describe('review prompt with the repository tools', () => {
     const request = { pullRequest: pullRequestFixture() }
 
     expect(digest(buildReviewPrompt(request, NONCE).instructions)).toBe(
-      '753869471fbc3c0bb678bbf64b278cf8946c5aedd80b2103bae47fdb871d5264',
+      'f0450350367b71b137830929d250d273af5824d81a27c38d7df417ca2ffea273',
     )
     expect(buildReviewPrompt(request, NONCE)).not.toHaveProperty('tools')
   })
@@ -237,7 +237,7 @@ describe('review prompt with MCP servers', () => {
   })
 })
 
-describe('review prompt with an investigation floor', () => {
+describe('review prompt asking to account for every file', () => {
   const fileDiff = (path: string, bytes = 200) =>
     [
       `diff --git a/${path} b/${path}`,
@@ -250,34 +250,25 @@ describe('review prompt with an investigation floor', () => {
   const withDiff = (diff: string) =>
     buildReviewPrompt({ pullRequest: pullRequestFixture({ diff }) }, NONCE, toolbox).instructions
 
-  it('asks for no number of tool calls for a small diff without CI or infrastructure files', () => {
-    expect(withDiff(fileDiff('src/a.ts', 2_000))).not.toContain('tool calls before you answer')
-  })
-
-  it('asks for the minimum for a small diff that changes CI or infrastructure files', () => {
-    expect(withDiff(fileDiff('.github/workflows/deploy.yml', 2_000))).toContain(
-      'This diff is 2 KB: make at least 3 tool calls before you answer.',
-    )
-  })
+  const ACCOUNT = `In files, account for every file of the diff. Compare each new file with 50 or
+more added lines with the existing code closest to it: read that code with the
+tools and give its path in against. Code moved out of a file this diff deletes or
+shrinks is compared with that file, which the diff shows.`
 
   it.each([
-    [
-      'a medium diff',
-      64 * 1024,
-      'This diff is 64 KB: make at least 6 tool calls before you answer.',
-    ],
-    [
-      'a large diff',
-      124 * 1024,
-      'This diff is 124 KB: make at least 12 tool calls before you answer.',
-    ],
-    [
-      'a huge diff',
-      900 * 1024,
-      'This diff is 900 KB: make at least 15 tool calls before you answer.',
-    ],
-  ])('asks for a number of tool calls that grows with %s', (_case, bytes, floor) => {
-    expect(withDiff(fileDiff('src/a.ts', bytes))).toContain(floor)
+    ['a small diff', 2_000],
+    ['a large diff', 900 * 1024],
+  ])('asks to account for every file of %s, without a number of tool calls', (_case, bytes) => {
+    const instructions = withDiff(fileDiff('src/a.ts', bytes))
+
+    expect(instructions).toContain(`Read only what helps you judge\nthe change.\n${ACCOUNT}\n`)
+    expect(instructions).not.toContain('tool calls')
+  })
+
+  it('keeps the request to investigate a diff that changes CI or infrastructure files', () => {
+    expect(withDiff(fileDiff('.github/workflows/deploy.yml', 2_000))).toContain(
+      `${ACCOUNT}\nThis diff changes CI workflows:`,
+    )
   })
 
   it('names the changed CI and infrastructure files as targets of the investigation', () => {
@@ -307,9 +298,13 @@ describe('review prompt with an investigation floor', () => {
     expect(withDiff(fileDiff('src/workflows/deploy.ts'))).not.toContain('This diff changes')
   })
 
-  it('asks for no floor without tools', () => {
-    const { instructions } = buildReviewPrompt({ pullRequest: pullRequestFixture() }, NONCE)
+  it('asks for no reading without tools', () => {
+    const { instructions } = buildReviewPrompt(
+      { pullRequest: pullRequestFixture({ diff: fileDiff('.github/workflows/deploy.yml') }) },
+      NONCE,
+    )
 
-    expect(instructions).not.toContain('tool calls')
+    expect(instructions).not.toContain('account for every file')
+    expect(instructions).not.toContain('This diff changes')
   })
 })

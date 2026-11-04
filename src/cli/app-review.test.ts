@@ -130,6 +130,7 @@ describe('a review the app asks for', () => {
       findings: [{ title: 'spend has no auth', file: 'src/shop.ts', line: 1 }],
       publication: { status: 'dry-run', comments: 1 },
     })
+    expect(review.detail.coverage).toMatchObject({ level: 'full', covered: 1, total: 1 })
     expect(review.history).toMatchObject({ status: 'saved' })
     const history = await openHistoryStore(join(data, 'history.sqlite'))
     expect(history.runs({ limit: 5 }).runs.map(({ status }) => status)).toEqual(['dry-run'])

@@ -160,10 +160,12 @@ function renderBody(
   messages: Messages,
   ci: string,
 ): string {
-  const { score } = result
+  const { score, coverage } = result
   const summary = githubBlock(parts.summary)
+  const label = coverage === undefined ? '' : messages.coverage(coverage)
+  const heading = `## ${BUTTERFLY} ${score.value}/5 (${messages.scoreLabels[score.value]})`
   return [
-    `## ${BUTTERFLY} ${score.value}/5 (${messages.scoreLabels[score.value]})`,
+    label === '' ? heading : `${heading} · ${label}`,
     ci,
     capitalize(githubBlock(parts.reason)),
     summary === '' ? '' : `### ${messages.summary}\n\n${summary}`,

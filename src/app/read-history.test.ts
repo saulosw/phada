@@ -498,6 +498,53 @@ describe('readReviewDetail', () => {
     expect(reviewDetailOf({ ...RUN, resultJson: REVIEW_JSON }, []).usage).toBeNull()
   })
 
+  it('reads the coverage of a stored review with its gaps counted by kind', () => {
+    const stored = JSON.parse(REVIEW_JSON) as { review: Record<string, unknown> }
+    const gap = (path: string, kind: string) => ({ path, kind, reason: null })
+    const covered = JSON.stringify({
+      ...stored,
+      review: {
+        ...stored.review,
+        coverage: {
+          level: 'low',
+          covered: 2,
+          total: 9,
+          declaredOnly: 1,
+          skipped: 1,
+          gaps: [
+            gap('src/a.ts', 'missing'),
+            gap('src/b.ts', 'missing'),
+            gap('src/c.ts', 'not-compared'),
+            gap('src/d.ts', 'skipped'),
+            gap('src/e.ts', 'declared-only'),
+          ],
+          verified: false,
+          reason: '2 of 9 files reviewed.',
+          continuation: null,
+        },
+      },
+    })
+
+    expect(reviewDetailOf({ ...RUN, resultJson: covered }, []).coverage).toEqual({
+      level: 'low',
+      covered: 2,
+      total: 9,
+      verified: false,
+      gaps: { missing: 2, notCompared: 1, skipped: 1 },
+    })
+  })
+
+  it('reads no coverage from a review stored before it was measured or with one it cannot read', () => {
+    const stored = JSON.parse(REVIEW_JSON) as { review: Record<string, unknown> }
+    const broken = JSON.stringify({
+      ...stored,
+      review: { ...stored.review, coverage: { level: 'most', covered: 'all' } },
+    })
+
+    expect(reviewDetailOf({ ...RUN, resultJson: REVIEW_JSON }, []).coverage).toBeNull()
+    expect(reviewDetailOf({ ...RUN, resultJson: broken }, []).coverage).toBeNull()
+  })
+
   it('reads nothing for an unknown run or without a history', () => {
     expect(readReviewDetail(fakeHistory([RUN]), 99)).toBeUndefined()
     expect(readReviewDetail(undefined, 7)).toBeUndefined()

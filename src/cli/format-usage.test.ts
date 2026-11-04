@@ -29,6 +29,23 @@ describe('formatUsageLine', () => {
     ).toBe('Tokens: code-review 900 in · 40 out')
   })
 
+  it('names the continuation pass apart from the review it continues', () => {
+    const review = { inputTokens: 900, outputTokens: 40 }
+    const continuation = { inputTokens: 700, cachedInputTokens: 600, outputTokens: 30 }
+
+    expect(
+      formatUsageLine({
+        passes: [
+          { pass: 'review', usage: review },
+          { pass: 'continuation', usage: continuation },
+        ],
+        total: { inputTokens: 1_600, cachedInputTokens: 600, outputTokens: 70 },
+      }),
+    ).toBe(
+      'Tokens: review 900 in · 40 out; continuation 700 in (600 cached) · 30 out; total 1.6k in (600 cached) · 70 out',
+    )
+  })
+
   it('says when no pass reported its tokens, and prints nothing without an AI call', () => {
     expect(formatUsageLine({ passes: [{ pass: 'review' }] })).toBe('Tokens: review not reported')
     expect(formatUsageLine({ passes: [] })).toBeUndefined()

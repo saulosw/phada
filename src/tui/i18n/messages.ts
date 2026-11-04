@@ -1,4 +1,9 @@
-import type { FeedbackFinding, ListedRun, ReviewDetail } from '../../app/read-history.js'
+import type {
+  FeedbackFinding,
+  ListedRun,
+  ReviewDetail,
+  StoredCoverage,
+} from '../../app/read-history.js'
 import type { PackageRef } from '../../app/read-connections.js'
 import type { GitHubTokenSource } from '../../app/read-home.js'
 import type { McpServerKind, NextStep } from '../../app/read-provider.js'
@@ -561,6 +566,11 @@ export interface ReviewsMessages {
   marks: Readonly<Record<FeedbackFinding['marks'][number], string>>
   detail: {
     score: string
+    coverage: string
+    coverageLevels: Readonly<Record<Exclude<StoredCoverage['level'], 'full'>, string>>
+    declared: string
+    coverageFiles(covered: number, total: number): string
+    coverageGaps: Readonly<Record<keyof StoredCoverage['gaps'], (count: number) => string>>
     verdict: string
     status: string
     reviewed: string
@@ -578,6 +588,7 @@ export interface ReviewsMessages {
     debtMark: string
     closeToCutMark: string
     tokens: string
+    continuationPass: string
     tokenCounts(input: string, cached: string | undefined, output: string): string
     notReported: string
     total: string

@@ -365,6 +365,22 @@ describe('investigation options', () => {
     ])
   })
 
+  it('takes review.continuation like verify, from the most specific layer', () => {
+    expect(mergeConfig([]).continuation).toBeUndefined()
+    expect(
+      mergeConfig([
+        user({ review: { continuation: true } }),
+        root({ review: { continuation: false } }),
+      ]).continuation,
+    ).toBe(false)
+    expect(
+      mergeConfig([
+        root({ review: { continuation: false } }),
+        userRepo({ review: { continuation: true } }),
+      ]).continuation,
+    ).toBe(true)
+  })
+
   it('takes investigate like verify, from the most specific layer', () => {
     expect(
       mergeConfig([user({ investigate: true }), root({ investigate: false })]).investigate,

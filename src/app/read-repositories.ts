@@ -294,6 +294,7 @@ export function userSettings(layers: readonly ConfigLayer[]): ConfigSetting[] {
       flag(false),
     ),
     first('review.debt', (config) => config.review?.debt, text, text(DEFAULT_DEBT_MODE)),
+    first('review.continuation', (config) => config.review?.continuation, flag, flag(true)),
     first(
       'review.prompt',
       (config) => config.review?.prompt,

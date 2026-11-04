@@ -18,7 +18,9 @@ describe('parseReviewReport', () => {
   it('reads a plain JSON report', () => {
     expect(parseReviewReport(reviewReportJson())).toEqual({
       summary: 'Adds a spend endpoint.',
-      files: [{ path: 'src/shop.ts', change: 'Adds the spend endpoint' }],
+      files: [
+        { path: 'src/shop.ts', checked: 'diff', against: null, change: 'Adds the spend endpoint' },
+      ],
       findings: [findingFixture()],
       invalid: 0,
       claims: [],
@@ -150,7 +152,7 @@ describe('parseReviewReport', () => {
       }),
     )
 
-    expect(parsed.files).toEqual([{ path: 'a.ts', change: 'x' }])
+    expect(parsed.files).toEqual([{ path: 'a.ts', checked: 'diff', against: null, change: 'x' }])
     expect(parsed.findings).toEqual([findingFixture()])
     expect(parsed.invalid).toBe(0)
   })
@@ -218,11 +220,48 @@ describe('parseReviewReport', () => {
   })
 
   it('ignores file entries with the wrong shape', () => {
-    const files = [{ path: 'a.ts', change: 'x' }, { path: '', change: 'y' }, { path: 'b.ts' }]
+    const files = [
+      { path: 'a.ts', change: 'x' },
+      { path: '', change: 'y' },
+      'b.ts',
+      { change: 'z' },
+    ]
 
     expect(parseReviewReport(reviewReportJson({ files })).files).toEqual([
-      { path: 'a.ts', change: 'x' },
+      { path: 'a.ts', checked: 'diff', against: null, change: 'x' },
     ])
+  })
+
+  it('reads what each file entry says was checked, as diff when it says nothing known', () => {
+    const files = [
+      { path: 'a.ts', checked: 'file', against: null, change: '' },
+      { path: 'b.ts', checked: 'compared', against: ' src/near.ts ', change: 'x' },
+      { path: 'c.ts', checked: 'skipped', against: null, change: 'Generated' },
+      { path: 'd.ts', checked: 'glanced', change: 'y' },
+      { path: 'e.ts', checked: 'diff', against: 'src/near.ts' },
+      { path: 'f.ts', checked: 'compared', against: '  ', change: '' },
+    ]
+
+    expect(parseReviewReport(reviewReportJson({ files })).files).toEqual([
+      { path: 'a.ts', checked: 'file', against: null, change: '' },
+      { path: 'b.ts', checked: 'compared', against: 'src/near.ts', change: 'x' },
+      { path: 'c.ts', checked: 'skipped', against: null, change: 'Generated' },
+      { path: 'd.ts', checked: 'diff', against: null, change: 'y' },
+      { path: 'e.ts', checked: 'diff', against: null, change: '' },
+      { path: 'f.ts', checked: 'compared', against: null, change: '' },
+    ])
+  })
+
+  it('reads an answer without files as no files', () => {
+    const { files: _files, ...withoutFiles } = JSON.parse(reviewReportJson()) as Record<
+      string,
+      unknown
+    >
+
+    expect(parseReviewReport(JSON.stringify(withoutFiles))).toMatchObject({
+      files: [],
+      findings: [findingFixture()],
+    })
   })
 
   it('accepts an empty findings array', () => {
@@ -236,9 +275,9 @@ describe('parseReviewReport', () => {
     ['', 'no JSON object in the answer'],
     ['No significant problems found.', 'no JSON object in the answer'],
     ['{"summary": "x", "files": [', 'no JSON object in the answer'],
-    ['{"summary": "x", "files": []}', 'missing summary, files or findings'],
-    ['{"summary": 1, "files": [], "findings": []}', 'missing summary, files or findings'],
-    ['{"summary": "x", "files": [], "findings": {}}', 'missing summary, files or findings'],
+    ['{"summary": "x", "files": []}', 'missing summary or findings'],
+    ['{"summary": 1, "files": [], "findings": []}', 'missing summary or findings'],
+    ['{"summary": "x", "files": [], "findings": {}}', 'missing summary or findings'],
   ])('rejects %j as an invalid review', (text, reason) => {
     const error = parseError(text)
 

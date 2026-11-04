@@ -64,7 +64,7 @@ describe('buildConvertPrompt', () => {
 
   it('keeps its fixed text', () => {
     expect(createHash('sha256').update(prompt.instructions).digest('hex')).toBe(
-      '7ff49ce116eb01f8d3e7789ff34009bb8bd524c9868368050a7e01958b314f25',
+      'cfc9a105dc931465449709f39a6889c1f6a0fdc242702e7a40cfe09c4b99c5cb',
     )
   })
 })

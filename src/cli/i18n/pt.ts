@@ -1,4 +1,5 @@
 import { CONFIDENCE_FLOOR } from '../../review/select-findings.js'
+import { coverageLabel } from '../coverage-label.js'
 import { joinNames } from '../name-list.js'
 import type { CiNames, Messages } from './messages.js'
 
@@ -23,6 +24,20 @@ export const portuguese: Messages = {
     focus === undefined
       ? 'nenhum problema encontrado'
       : `${count(focus.count, 'problema', 'problemas')} ${focus.severity} (${focus.locations.join(', ')})`,
+  coverage: (coverage) =>
+    coverageLabel(coverage, {
+      level: { partial: 'cobertura parcial', low: 'cobertura baixa' },
+      declared: 'declarada',
+      files: (covered, total) => `${covered} de ${count(total, 'arquivo', 'arquivos')}`,
+      gaps: {
+        missing: (value) => `${count(value, 'arquivo', 'arquivos')} sem revisão declarada`,
+        'not-compared': (value) =>
+          value === 1
+            ? '1 arquivo novo não comparado com o código existente'
+            : `${value} arquivos novos não comparados com o código existente`,
+        skipped: (value) => count(value, 'arquivo pulado', 'arquivos pulados'),
+      },
+    }),
   confidence: 'confiança',
   fix: 'Correção sugerida',
   basedOn: 'Com base em',

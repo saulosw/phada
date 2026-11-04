@@ -210,6 +210,30 @@ const input = {
 const toolNames = (prompt: ReviewPrompt | undefined) =>
   prompt?.tools?.definitions.map((tool) => tool.name)
 
+describe('reviewPullRequest continuation pass', () => {
+  const lowAnswer: ReviewOutput = { text: reviewReportJson({ files: [] }), durationMs: 10 }
+
+  it.each([
+    ['on by default', {}, undefined, 2],
+    ['off with review.continuation: false', {}, 'review:\n  continuation: false\n', 1],
+    [
+      'off with the option, over the config',
+      { continuation: false },
+      'review:\n  continuation: true\n',
+      1,
+    ],
+  ])('is %s', async (_case, options, config, prompts) => {
+    const h = setup(config === undefined ? {} : { contextSources: sources(config) }, [
+      lowAnswer,
+      lowAnswer,
+    ])
+
+    await reviewPullRequest({ ...input, options: { ...input.options, ...options } }, h.deps)
+
+    expect(h.prompts).toHaveLength(prompts)
+  })
+})
+
 describe('reviewPullRequest', () => {
   it('indexes the head, sends the impact of the diff and gives the AI the graph tools', async () => {
     const h = setup()
@@ -244,7 +268,6 @@ describe('reviewPullRequest', () => {
       totals: { symbols: 1, callers: 1, files: 1 },
     })
     expect(result.investigation).toMatchObject({ status: 'used', totals: { calls: 1 } })
-    expect(result.investigation).not.toHaveProperty('floor')
   })
 
   it('leaves out of the graph what the base config ignores, whatever the head config says', async () => {
@@ -450,7 +473,18 @@ describe('reviewPullRequest', () => {
       sources: ['src/routes.ts'],
     })
     const outputs: ReviewOutput[] = [
-      { text: reviewReportJson({ findings: [finding] }), durationMs: 10 },
+      {
+        text: reviewReportJson({
+          files: ['src/shop.ts', 'src/routes.ts'].map((path) => ({
+            path,
+            checked: 'diff',
+            against: null,
+            change: '',
+          })),
+          findings: [finding],
+        }),
+        durationMs: 10,
+      },
       {
         text: verificationJson([verdictFixture({ id: 1, reason: 'The route calls it by name' })]),
         durationMs: 5,

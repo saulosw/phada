@@ -4,6 +4,8 @@ import type {
   McpServerReport,
 } from '../investigation/tools/report.js'
 import { toTerminalText } from '../app/terminal-text.js'
+import { gapText } from '../review/coverage.js'
+import type { Coverage } from '../review/types.js'
 import { formatBytes, formatCount } from './units.js'
 
 const NOUNS: Readonly<Record<string, string>> = {
@@ -17,6 +19,7 @@ const NOUNS: Readonly<Record<string, string>> = {
   history: 'history lookup',
 }
 const MAX_HIDDEN_SHOWN = 5
+const MAX_GAPS_SHOWN = 20
 
 export function formatInvestigationLine(report: InvestigationReport): string | undefined {
   if (report.status === 'off') return 'Investigation: off'
@@ -39,11 +42,19 @@ export function formatInvestigationLine(report: InvestigationReport): string | u
   return `Investigated: ${sections.length === 0 ? 'no tool calls' : sections.join(' · ')}`
 }
 
-export function formatInvestigationSection(report: InvestigationReport): string {
-  const heading = '## Investigation\n\n'
-  if (report.status === 'off') return `${heading}Off.\n`
+export function formatInvestigationSection(
+  report: InvestigationReport,
+  coverage?: Coverage,
+): string {
+  const lines = coverage === undefined ? [] : coverageLines(coverage)
+  const more = lines.length === 0 ? '' : `\n${lines.join('\n')}\n`
+  return `## Investigation\n\n${investigationText(report)}\n${more}`
+}
+
+function investigationText(report: InvestigationReport): string {
+  if (report.status === 'off') return 'Off.'
   if (report.status === 'unavailable') {
-    return `${heading}Not available${report.reason === undefined ? '' : `: ${toTerminalText(report.reason)}`}.\n`
+    return `Not available${report.reason === undefined ? '' : `: ${toTerminalText(report.reason)}`}.`
   }
   const lines = [
     ...report.calls.map(callLine),
@@ -52,15 +63,25 @@ export function formatInvestigationSection(report: InvestigationReport): string 
     ),
     ...(report.mcp ?? []).map(serverLine),
   ]
-  return `${heading}${lines.length === 0 ? 'No tool calls.' : lines.join('\n')}\n${floorText(report)}`
+  return lines.length === 0 ? 'No tool calls.' : lines.join('\n')
 }
 
-function floorText({ floor }: InvestigationReport): string {
-  if (floor === undefined) return ''
-  const shortfalls = floor.shortfalls.map((text) => `Warning: ${toTerminalText(text)}`)
-  return ['', `Expected at least ${floor.expected} calls per review pass.`, ...shortfalls, ''].join(
-    '\n',
-  )
+function coverageLines(coverage: Coverage): string[] {
+  const { level, covered, total, gaps, verified, reason, continuation } = coverage
+  if (level === 'full') return []
+  const before =
+    continuation === undefined
+      ? ''
+      : `, after a continuation pass (was ${continuation.before.level}, ${continuation.before.covered} of ${continuation.before.total})`
+  const name = verified ? 'Coverage' : 'Coverage (declared)'
+  const hidden = gaps.length - MAX_GAPS_SHOWN
+  return [
+    `${name}: ${level}, ${covered} of ${formatCount(total, 'file')} — ${toTerminalText(reason)}${before}`,
+    ...gaps
+      .slice(0, MAX_GAPS_SHOWN)
+      .map((gap) => `- ${toTerminalText(gap.path)}: ${toTerminalText(gapText(gap))}`),
+    ...(hidden > 0 ? [`- … (+${hidden} more)`] : []),
+  ]
 }
 
 function callLine({

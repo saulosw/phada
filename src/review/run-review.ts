@@ -6,15 +6,13 @@ import { separateDebt, withoutDroppedDebt } from './debt.js'
 import { diffFingerprint } from './diff-fingerprint.js'
 import { findDiffFile, parseDiffFiles } from './diff-lines.js'
 import type { DiffFile } from './diff-lines.js'
-import {
-  countingToolbox,
-  investigationFloor,
-  investigationShortfall,
-} from './investigation-floor.js'
+import { measureCoverage } from './coverage.js'
+import { recordingReads } from './recorded-reads.js'
 import { newNonce } from './nonce.js'
 import { InvalidReviewReportError } from './errors.js'
 import { parseReviewReport } from './parse-report.js'
 import type { ParsedReport } from './parse-report.js'
+import { buildContinuationPrompt } from './continuation-prompt.js'
 import { buildConvertPrompt } from './convert-prompt.js'
 import { buildReviewPrompt } from './prompt.js'
 import { scoreFindings } from './score.js'
@@ -31,9 +29,10 @@ import {
   VERIFY_CANDIDATE_FLOOR,
 } from './select-findings.js'
 import type {
+  Coverage,
   DebtMode,
+  FileDeclaration,
   Finding,
-  InvestigationFloor,
   NativeSkillRun,
   PassReport,
   PassUsage,
@@ -78,18 +77,31 @@ export async function runReview(
     return { status: 'skipped', reason: 'no-skill-applies', passes: answered.reports }
   }
   const diffFiles = parseDiffFiles(pullRequest.diff)
+  const measured = coverageOf(answered.coverage, diffFiles)
+  const continuation =
+    measured?.level === 'low' && request.continuation !== false
+      ? await continueReview(request, deps, answered, measured)
+      : undefined
+  const continued = continuation?.pass
+  const coverage =
+    measured === undefined || continued === undefined
+      ? measured
+      : continuedCoverage(measured, answered.coverage, continued, diffFiles)
   const verify = request.verify === true
   const suggested = checkSuggestions(
-    answered.outputs.flatMap(({ findings }) => findings),
+    [...answered.outputs.flatMap(({ findings }) => findings), ...(continued?.findings ?? [])],
     diffFiles,
   )
-  const passExternalCalls = answered.outputs.flatMap(({ output }) => output.externalCalls ?? [])
+  const passExternalCalls = [
+    ...answered.outputs,
+    ...(continued === undefined ? [] : [continued]),
+  ].flatMap(({ output }) => output.externalCalls ?? [])
   const reported = withKnownReferences(
     suggested.findings,
     request.context,
     diffFiles.map((file) => file.path),
     {
-      touched: answered.touched,
+      touched: [...answered.touched, ...(continued?.touched ?? [])],
       servers: passExternalCalls.map((call) => call.server),
     },
     (request.ci ?? []).filter(({ state }) => state === 'failing').map(({ name }) => name),
@@ -118,6 +130,7 @@ export async function runReview(
   const { findings, debt } = separateDebt(selection.findings, debtMode)
   const passUsage: PassUsage[] = [
     ...answered.passUsage,
+    ...(continued === undefined ? [] : [usageOf('continuation', continued.output.usage)]),
     ...(checked === undefined || checked.verification.candidates === 0
       ? []
       : [usageOf('verify', checked.verification.usage)]),
@@ -129,6 +142,8 @@ export async function runReview(
     ...new Set([
       ...answered.warnings,
       ...answered.outputs.flatMap(({ output }) => output.warnings ?? []),
+      ...(continued?.output.warnings ?? []),
+      ...(continuation?.warning === undefined ? [] : [continuation.warning]),
       ...(checked?.warnings ?? []),
     ]),
   ]
@@ -151,7 +166,10 @@ export async function runReview(
       providerId: deps.provider.id,
       ...(model === undefined ? {} : { model }),
       ...(additionalModels === undefined ? {} : { additionalModels }),
-      durationMs: answered.durationMs + (checked?.verification.durationMs ?? 0),
+      durationMs:
+        answered.durationMs +
+        (continued?.output.durationMs ?? 0) +
+        (checked?.verification.durationMs ?? 0),
       ...(usage === undefined ? {} : { usage }),
       passUsage,
       summary: first.report.summary,
@@ -162,8 +180,11 @@ export async function runReview(
       worthCheckingOmitted: selection.worthCheckingOmitted,
       minConfidence,
       score: scoreFindings(findings),
+      ...(coverage === undefined ? {} : { coverage }),
       dropped: {
-        invalid: answered.outputs.reduce((sum, { report }) => sum + report.invalid, 0),
+        invalid:
+          answered.outputs.reduce((sum, { report }) => sum + report.invalid, 0) +
+          (continued?.invalid ?? 0),
         belowFloor: prepared.belowFloor + selection.belowFloor,
         outsideDiff: prepared.outsideDiff,
         duplicate: prepared.duplicate,
@@ -180,7 +201,6 @@ export async function runReview(
           onlySettled: onlySettledClaims === true,
         })),
       ),
-      ...floorOf(answered, investigationFloor(pullRequest.diff)),
       ...(ignored.length === 0 ? {} : { ignored: [...ignored] }),
       ...(externalCalls.length === 0 ? {} : { externalCalls }),
       ...(warnings.length === 0 ? {} : { warnings }),
@@ -205,8 +225,93 @@ interface AnsweredPasses {
   durationMs: number
   passUsage: PassUsage[]
   warnings: string[]
-  investigatedPasses: number
-  shortfalls: string[]
+  coverage: TextPassCoverage
+}
+
+interface TextPassCoverage {
+  passes: number
+  declarations: FileDeclaration[]
+  reads: string[]
+  verified: boolean
+  first?: { pass: SkillPass | undefined; nonce: string }
+}
+
+interface ContinuedPass {
+  output: ReviewOutput
+  findings: Finding[]
+  invalid: number
+  declarations: FileDeclaration[]
+  reads: string[]
+  verified: boolean
+  touched: string[]
+}
+
+function coverageOf(
+  { passes, declarations, reads, verified }: TextPassCoverage,
+  files: readonly DiffFile[],
+): Coverage | undefined {
+  return passes === 0
+    ? undefined
+    : measureCoverage({ files, declarations, reads: new Set(reads), verified })
+}
+
+function continuedCoverage(
+  before: Coverage,
+  first: TextPassCoverage,
+  continued: ContinuedPass,
+  files: readonly DiffFile[],
+): Coverage {
+  return {
+    ...measureCoverage({
+      files,
+      declarations: [...first.declarations, ...continued.declarations],
+      reads: new Set([...first.reads, ...continued.reads]),
+      verified: first.verified && continued.verified,
+    }),
+    continuation: { before: { level: before.level, covered: before.covered, total: before.total } },
+  }
+}
+
+async function continueReview(
+  request: ReviewRequest,
+  deps: RunReviewDeps,
+  answered: AnsweredPasses,
+  measured: Coverage,
+): Promise<{ pass?: ContinuedPass; warning?: string } | undefined> {
+  const first = answered.coverage.first
+  if (first === undefined) return undefined
+  const { pass, nonce } = first
+  const tools = deps.tools?.('review')
+  const recorded = tools === undefined ? undefined : recordingReads(tools)
+  try {
+    const output = await deps.provider.review(
+      buildContinuationPrompt(request, nonce, recorded?.toolbox, pass, {
+        gaps: measured.gaps,
+        findings: answered.outputs.flatMap(({ findings }) => findings),
+      }),
+    )
+    const report = parseReviewReport(output.text)
+    return {
+      pass: {
+        output,
+        findings:
+          pass === undefined
+            ? report.findings
+            : report.findings.map((finding) => ({ ...finding, skill: pass.skill })),
+        invalid: report.invalid,
+        declarations: report.files,
+        reads: recorded?.reads() ?? [],
+        verified: recorded !== undefined && output.withoutTools !== true,
+        touched: [...(tools?.touchedPaths() ?? [])],
+      },
+    }
+  } catch (error) {
+    if (!isAnswerFailure(error)) throw error
+    const message = error instanceof Error ? error.message : String(error)
+    return {
+      warning: `The continuation pass failed, so the review keeps the first answer: ${message}`,
+    }
+  }
 }
 
 async function runPasses(
@@ -223,8 +328,7 @@ async function runPasses(
     durationMs: 0,
     passUsage: [],
     warnings: [],
-    investigatedPasses: 0,
-    shortfalls: [],
+    coverage: { passes: 0, declarations: [], reads: [], verified: true },
   }
   let firstError: unknown
   let ran = 0
@@ -271,10 +375,11 @@ async function runPasses(
       continue
     }
     const tools = deps.tools?.('review')
-    const counted = tools === undefined ? undefined : countingToolbox(tools)
+    const recorded = tools === undefined ? undefined : recordingReads(tools)
+    const nonce = createNonce()
     try {
       const output = await deps.provider.review(
-        buildReviewPrompt(request, createNonce(), counted?.toolbox, pass),
+        buildReviewPrompt(request, nonce, recorded?.toolbox, pass),
       )
       answered.passUsage.push(usageOf('review', output.usage, pass?.skill))
       const report = parseReviewReport(output.text)
@@ -284,17 +389,12 @@ async function runPasses(
           : report.findings.map((finding) => ({ ...finding, skill: pass.skill }))
       answered.outputs.push({ output, report, findings })
       answered.warnings.push(...claimWarnings(report, pass?.skill))
-      if (counted !== undefined && output.withoutTools !== true) {
-        answered.investigatedPasses++
-        const shortfall = investigationShortfall(
-          counted.calls(),
-          request.pullRequest.diff,
-          pass?.skill,
-        )
-        if (shortfall !== undefined) {
-          answered.shortfalls.push(shortfall)
-          answered.warnings.push(shortfall)
-        }
+      if (answered.coverage.passes === 0) answered.coverage.first = { pass, nonce }
+      answered.coverage.passes++
+      answered.coverage.declarations.push(...report.files)
+      answered.coverage.reads.push(...(recorded?.reads() ?? []))
+      if (recorded === undefined || output.withoutTools === true) {
+        answered.coverage.verified = false
       }
       answered.touched.push(...(tools?.touchedPaths() ?? []))
       answered.durationMs += output.durationMs
@@ -461,12 +561,4 @@ function usageOf(
     ...(skill === undefined ? {} : { skill }),
     ...(usage === undefined ? {} : { usage }),
   }
-}
-
-function floorOf(
-  answered: Pick<AnsweredPasses, 'investigatedPasses' | 'shortfalls'>,
-  expected: number | undefined,
-): { investigationFloor?: InvestigationFloor } {
-  if (answered.investigatedPasses === 0 || expected === undefined) return {}
-  return { investigationFloor: { expected, shortfalls: answered.shortfalls } }
 }

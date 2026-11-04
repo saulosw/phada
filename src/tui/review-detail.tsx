@@ -4,6 +4,7 @@ import type {
   FeedbackFinding,
   ReviewDetail,
   StoredClaim,
+  StoredCoverage,
   StoredFinding,
   StoredTokens,
 } from '../app/read-history.js'
@@ -59,6 +60,10 @@ export function reviewDetailLines(
           detail.score === null
             ? undefined
             : `${detail.score.value}/5${detail.score.reason === null ? '' : ` — ${oneLine(detail.score.reason)}`}`,
+        ],
+        [
+          d.coverage,
+          detail.coverage === null ? undefined : coverageLine(detail.coverage, messages),
         ],
         [d.verdict, detail.verdict === null ? undefined : m.verdicts[detail.verdict]],
         [d.status, m.statuses[run.status]],
@@ -142,7 +147,10 @@ function usageLines(
 ): ReactNode[] {
   if (usage === null) return []
   const d = messages.reviews.detail
-  const runs: Readonly<Record<string, string>> = messages.reviewFlow.runs
+  const runs: Readonly<Record<string, string>> = {
+    ...messages.reviewFlow.runs,
+    continuation: d.continuationPass,
+  }
   const rows: [string, StoredTokens | null][] = [
     ...usage.passes.map(({ pass, skill, tokens }): [string, StoredTokens | null] => [
       skill === null ? (runs[pass] ?? oneLine(pass)) : oneLine(skill),
@@ -227,6 +235,24 @@ function feedbackLines(
       </Text>
     )
   })
+}
+
+const COVERAGE_GAPS = ['missing', 'notCompared', 'skipped'] as const
+
+function coverageLine(
+  { level, covered, total, verified, gaps }: StoredCoverage,
+  messages: UiMessages,
+): string | undefined {
+  if (level === 'full') return undefined
+  const d = messages.reviews.detail
+  const name = d.coverageLevels[level]
+  return [
+    verified ? name : `${name} (${d.declared})`,
+    d.coverageFiles(covered, total),
+    ...COVERAGE_GAPS.flatMap((kind) =>
+      gaps[kind] === 0 ? [] : [d.coverageGaps[kind](gaps[kind])],
+    ),
+  ].join(' · ')
 }
 
 function ciLine(ci: NonNullable<ReviewDetail['ci']>, messages: UiMessages): string {

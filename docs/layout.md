@@ -103,7 +103,8 @@ src/
                          #   still open resolved, no AI; PublishRefusal, SavedPublication
     stored-review.ts     #   storedReview(): the stored JSON of a dry run → the ReviewResult the
                          #   renderer needs, its language, CI summary and the threads it would
-                         #   resolve, read strictly (zod): a missing field is undefined
+                         #   resolve, read strictly (zod): a missing field is undefined;
+                         #   storedCoverage(): the coverage of a stored review
     index-repository.ts  #   indexRepository(): mirror → files left out and why → indexCommit();
                          #   with a signal, a cancel stops the fetch or stops between files
                          #   (IndexCancelled), the blobs extracted kept for the next run;
@@ -147,7 +148,7 @@ src/
     read-history.ts      #   readReviews(), readFindings() (destination and marks of each),
                          #   readFeedbackStats() (feedbackStats() per repository, ruleStats() per
                          #   rule), readReviewDetail(): one run with what its stored JSON keeps
-                         #   (score, summary, claims, findings with their scope and whether
+                         #   (score, coverage, summary, claims, findings with their scope and whether
                          #   they were close to the cut, repository debt, the tokens of each
                          #   AI pass and their total, publication with what a dry run
                          #   would resolve and why a publication was skipped, CI) and the
@@ -158,7 +159,7 @@ src/
                          #   JSON keeps, read leniently (zod): what was posted, close to the cut,
                          #   claims, context, conversation and CI (ConversationBlock, CiBlock,
                          #   the shapes of the JSON), impact with its text, related, skills with
-                         #   the fix of each blocked command, investigation and tokens; a block
+                         #   the fix of each blocked command, investigation, coverage and tokens; a block
                          #   the run did not keep is left out, one it kept as null is off
     harvest-misses.ts    #   harvestMisses(): the threads read and the local runs with the AI
                          #   (findings of the stored JSON, read leniently), the code elements of
@@ -526,6 +527,9 @@ src/
     format-context.ts    #   the "Context at base <sha>:" line and the context section of
                          #   --dry-run
     format-investigation.ts # the "Investigated:" line and the investigation section of --dry-run
+                         #   (the coverage and its gaps when it is not full)
+    coverage-label.ts    #   coverageLabel(): "low coverage: 11 of 63 files (…)" next to the score,
+                         #   in the review language; nothing when the coverage is full
     format-related.ts    #   the "Related:" line and the related repositories section of --dry-run
     format-impact.ts     #   the "Impact:" line and the impact section of --dry-run (the text
                          #   the AI got, or each changed symbol when the run did not keep it)
@@ -544,7 +548,7 @@ src/
     finding-references.ts #  the "Based on" line: sources (a CI check named as such), rule and,
                          #   for the author only (terminal), skill of a finding; on GitHub
                          #   neither local files nor the skill
-    format-json.ts       #   formatReviewJson(): schemaVersion 1, with the claims, the scope of
+    format-json.ts       #   formatReviewJson(): schemaVersion 1, with the claims, the coverage, the scope of
                          #   each finding (and closeToCut), the repository debt and the debt
                          #   dropped, publication, context, conversation (each item without its
                          #   texts, with its bytes), ci, investigation, impact (with the text
@@ -814,7 +818,7 @@ src/
                          #   watchLogText() (the time and the line from the catalogs, external
                          #   text through oneLine()), watchLogTone()
     review-detail.tsx    #   reviewDetailLines(): a review as lines — pull request and link,
-                         #   score, verdict, status, when, CI, publication (nothing posted,
+                         #   score, coverage below full, verdict, status, when, CI, publication (nothing posted,
                          #   would resolve, would skip and why), summary, claims of the
                          #   description with verdict and evidence, findings with their
                          #   body (a finding of the repository marked as debt, one close to the
@@ -1187,10 +1191,16 @@ src/
     nonce.ts             #   newNonce(): the random id of the data blocks
     verify-prompt.ts     #   buildVerifyPrompt(): the second, skeptical pass (--verify); a finding
                          #   whose condition the repository does not meet is rejected
-    investigation-floor.ts # investigationFloor(): the minimum tool calls of a review pass (1 per
-                         #   10 KB of diff, 3–15); investigationFloorText(): that minimum and the
-                         #   changed CI, container, infrastructure and manifest files for the
-                         #   prompt; investigationShortfall(), countingToolbox()
+    investigation-asks.ts # investigationAsks(): the accounting of every file and the
+                         #   comparison of new files for the prompt, and the changed CI,
+                         #   container, infrastructure and manifest files to investigate
+    coverage.ts          #   measureCoverage(): what each pass declared in files[] against the
+                         #   files it read (full, partial below every file, low below 70%; a new
+                         #   file of 50+ lines covered only when compared with code read outside
+                         #   the diff); gapText()
+    recorded-reads.ts    #   recordingReads(): the files a pass read with read_file
+    continuation-prompt.ts # buildContinuationPrompt(): the review prompt with PHADA_COVERAGE (the
+                         #   gaps and the findings of the earlier passes)
     report-schema.ts     #   Zod schemas of the AI report (claims, summary, files, findings with
                          #   their scope: change or repository) + the JSON schema sent to providers
     verification-schema.ts # Zod schema of the verification verdicts
@@ -1230,8 +1240,9 @@ src/
     run-review.ts        #   runReview(): one pass per skill (prompt → provider → parse, or a
                          #   native run → conversion), merged → suggestions → [verify] → select →
                          #   score; skill bodies for native passes without findings in the diff;
-                         #   the claims of the description merged; the calls of each pass with
-                         #   tools against its minimum (investigationFloor, a warning below it);
+                         #   the claims of the description merged; the coverage of the text
+                         #   passes and, when it is low, one continuation pass over the gaps
+                         #   (review.continuation);
                          #   the repository debt split by review.debt (DEFAULT_DEBT_MODE: summary),
                          #   out of the score; the tokens of each pass (a native skill with its
                          #   conversion, an answer that did not parse included) and the verify
