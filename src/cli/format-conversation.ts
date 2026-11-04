@@ -12,23 +12,32 @@ export function formatConversationLine({ report }: Conversation): string | undef
   const details = [
     ...(report.resolved > 0 ? [`${report.resolved} resolved`] : []),
     ...(report.bots > 0 ? [formatCount(report.bots, 'bot')] : []),
-    ...(report.omitted > 0 ? [`${report.omitted} left out over ${BUDGET}`] : []),
+    ...(report.omitted > 0 ? [leftOut(report.omitted, report.omittedBots)] : []),
     ...(report.truncated > 0 ? [`${report.truncated} cut at ${BODY}`] : []),
   ]
   return `Conversation: ${formatCount(report.items, 'comment')}${details.length === 0 ? '' : ` (${details.join(', ')})`}`
+}
+
+function leftOut(omitted: number, bots: number): string {
+  const others = omitted - bots
+  const parts = [
+    ...(bots > 0 ? [formatCount(bots, 'bot comment')] : []),
+    ...(others > 0 ? [bots > 0 ? formatCount(others, 'other') : String(others)] : []),
+  ]
+  return `${parts.join(' and ')} left out over ${BUDGET}`
 }
 
 const HEADING = '## Conversation sent to the AI\n\n'
 
 export function formatConversationSection(conversation: ConversationBlock | null): string {
   if (conversation === null) return `${HEADING}Off.\n`
-  const { items, count, omitted, truncated, budget } = conversation
+  const { items, count, omitted, omittedBots, truncated, budget } = conversation
   if (count === 0 && omitted === 0) return `${HEADING}No comments, reviews or threads.\n`
   const totals = [
     `Sent: ${formatBytes(budget.used)} of ${BUDGET}`,
     ...(omitted > 0
       ? [
-          `Left out: ${formatCount(omitted, 'item')} over ${BUDGET} (resolved threads, then outdated ones, then the oldest)`,
+          `Left out: ${formatCount(omitted, 'item')} over ${BUDGET}${omittedBots > 0 ? `, ${omittedBots} of them from bots` : ''} (bots first, then resolved threads, then outdated ones, then the oldest)`,
         ]
       : []),
     ...(truncated > 0

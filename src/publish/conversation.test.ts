@@ -309,12 +309,137 @@ describe('buildConversation', () => {
     expect(report).toEqual({
       items: 7,
       omitted: 5,
+      omittedBots: 0,
       resolved: 0,
       bots: 0,
       truncated: 0,
       bytes: expect.any(Number),
     })
     expect(report.bytes).toBeLessThanOrEqual(16 * 1024)
+  })
+
+  it('leaves the bots out first, keeping the people and the Phada threads they answered', () => {
+    const big = 'y'.repeat(1900)
+    const at = (minute: number) => `2026-10-01T10:${String(minute).padStart(2, '0')}:00Z`
+    const bots = Array.from({ length: 6 }, (_, index) =>
+      comment({
+        id: `BOT${index}`,
+        author: 'review-bot',
+        bot: true,
+        createdAt: at(20 + index),
+        body: `${index}${big}`,
+      }),
+    )
+    const phadaBody = `**P1** · Missing null check · confidence 90\n\nWhy.\n\n${FINDING_MARKER}`
+    const people = Array.from({ length: 5 }, (_, index) =>
+      comment({ id: `IC${index}`, createdAt: at(30 + index), body: `${index}${big}` }),
+    )
+    const threads = [
+      thread({ id: 'resolved', createdAt: at(1), isResolved: true, body: big, replies: [] }),
+      thread({
+        id: 'phada',
+        author: VIEWER,
+        createdAt: at(2),
+        body: phadaBody,
+        replies: [
+          reply({ id: 'C1', author: VIEWER, body: phadaBody }),
+          reply({ id: 'C3', body: big }),
+        ],
+      }),
+    ]
+
+    const { items, report } = build({ threads }, [...bots, ...people])
+
+    expect(items.map((item) => [item.at, item.role])).toEqual([
+      [at(1), 'member'],
+      [at(2), 'phada'],
+      [at(25), 'bot'],
+      ...[30, 31, 32, 33, 34].map((minute) => [at(minute), 'member']),
+    ])
+    expect(report).toEqual({
+      items: 8,
+      omitted: 5,
+      omittedBots: 5,
+      resolved: 1,
+      bots: 1,
+      truncated: 0,
+      bytes: expect.any(Number),
+    })
+  })
+
+  it('keeps a bot thread a person answered with the people', () => {
+    const big = 'y'.repeat(1900)
+    const at = (minute: number) => `2026-10-01T10:${String(minute).padStart(2, '0')}:00Z`
+    const bots = Array.from({ length: 4 }, (_, index) =>
+      comment({
+        id: `BOT${index}`,
+        author: 'review-bot',
+        bot: true,
+        createdAt: at(20 + index),
+        body: `${index}${big}`,
+      }),
+    )
+    const people = Array.from({ length: 5 }, (_, index) =>
+      comment({ id: `IC${index}`, createdAt: at(30 + index), body: `${index}${big}` }),
+    )
+    const threads = [
+      thread({
+        id: 'answered',
+        author: 'review-bot',
+        bot: true,
+        createdAt: at(1),
+        body: big,
+        comments: 2,
+        replies: [
+          reply({ id: 'C1', author: 'review-bot', bot: true, body: big }),
+          reply({ id: 'C2', author: 'alice', body: 'Intentional.' }),
+        ],
+      }),
+    ]
+
+    const { items, report } = build({ threads }, [...bots, ...people])
+
+    expect(items.map((item) => item.at)).toContain(at(1))
+    expect(
+      items.filter((item) => item.role === 'contributor' || item.role === 'member'),
+    ).toHaveLength(5)
+    expect(report.omittedBots).toBeGreaterThan(0)
+    expect(report.omittedBots).toBe(report.omitted)
+  })
+
+  it('does not count a bot thread a person answered among the bot comments left out', () => {
+    const big = 'y'.repeat(1900)
+    const at = (minute: number) => `2026-10-01T10:${String(minute).padStart(2, '0')}:00Z`
+    const bot = comment({
+      id: 'BOT',
+      author: 'review-bot',
+      bot: true,
+      createdAt: at(20),
+      body: big,
+    })
+    const people = Array.from({ length: 9 }, (_, index) =>
+      comment({ id: `IC${index}`, createdAt: at(30 + index), body: `${index}${big}` }),
+    )
+    const threads = [
+      thread({
+        id: 'answered',
+        author: 'review-bot',
+        bot: true,
+        createdAt: at(1),
+        body: big,
+        comments: 2,
+        replies: [
+          reply({ id: 'C1', author: 'review-bot', bot: true, body: big }),
+          reply({ id: 'C2', author: 'alice', body: 'Intentional.' }),
+        ],
+      }),
+    ]
+
+    const { items, report } = build({ threads }, [bot, ...people])
+
+    expect(items.map((item) => item.at)).not.toContain(at(1))
+    expect(report.omittedBots).toBe(1)
+    expect(report.omitted).toBeGreaterThan(1)
   })
 
   it('reports what entered: resolved threads and bot items', () => {
@@ -329,7 +454,15 @@ describe('buildConversation', () => {
   it('is empty for a pull request without conversation', () => {
     expect(build()).toEqual({
       items: [],
-      report: { items: 0, omitted: 0, resolved: 0, bots: 0, truncated: 0, bytes: 0 },
+      report: {
+        items: 0,
+        omitted: 0,
+        omittedBots: 0,
+        resolved: 0,
+        bots: 0,
+        truncated: 0,
+        bytes: 0,
+      },
     })
   })
 })
