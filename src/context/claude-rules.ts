@@ -31,7 +31,7 @@ export function claudeRule(path: string, text: string): ClaudeRule {
   return {
     rule: {
       key: path,
-      text: cut ? truncateDoc(body) : body,
+      text: cut ? truncateDoc(body, DOC_LIMIT_BYTES) : body,
       scope: scope.length === 0 ? EVERYWHERE : scope,
       origin: path,
     },

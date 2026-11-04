@@ -25,6 +25,7 @@ export type Fit = 'whole' | 'truncated' | 'omitted'
 
 export const DOCS_BUDGET_BYTES = 60_000
 export const DOC_LIMIT_BYTES = 20_000
+const DOC_MIN_CUT_BYTES = 4_000
 
 const MODULE_NAMES = ['README.md', 'AGENTS.md', 'CLAUDE.md', 'GEMINI.md']
 const AGENT_PATHS = ['AGENTS.md', 'CLAUDE.md', '.claude/CLAUDE.md']
@@ -48,14 +49,17 @@ const GLOB_CHARS = /[*?[\]{}!]/
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 
-export function fitDoc(size: number, remaining: number): Fit {
-  if (size <= DOC_LIMIT_BYTES) return size <= remaining ? 'whole' : 'omitted'
-  return DOC_LIMIT_BYTES <= remaining ? 'truncated' : 'omitted'
+export function fitDoc(size: number, remaining: number): { fit: Fit; bytes: number } {
+  const room = Math.min(remaining, DOC_LIMIT_BYTES)
+  if (size <= room) return { fit: 'whole', bytes: size }
+  return room >= DOC_MIN_CUT_BYTES
+    ? { fit: 'truncated', bytes: room }
+    : { fit: 'omitted', bytes: 0 }
 }
 
-export function truncateDoc(content: string): string {
+export function truncateDoc(content: string, limit: number): string {
   const bytes = encoder.encode(content)
-  const head = decoder.decode(bytes.slice(0, DOC_LIMIT_BYTES)).replace(/�$/, '')
+  const head = decoder.decode(bytes.slice(0, limit)).replace(/�$/, '')
   const lineEnd = head.lastIndexOf('\n')
   const kept = lineEnd > 0 ? head.slice(0, lineEnd) : head
   return `${kept}\n[truncated by Phada: ${byteLength(kept)} of ${bytes.length} bytes]`
@@ -114,7 +118,12 @@ export function repositoryDocCandidates(input: {
       missing.push(file)
     }
   }
-  if (!input.defaults) return { candidates, missing }
+  const changed = new Set(input.changedFiles)
+  const ordered = () => [
+    ...candidates.filter((candidate) => changed.has(candidate.path)),
+    ...candidates.filter((candidate) => !changed.has(candidate.path)),
+  ]
+  if (!input.defaults) return { candidates: ordered(), missing }
 
   for (const dir of moduleDirs(input.changedFiles)) {
     for (const name of MODULE_NAMES) addKnown(`${dir}/${name}`, 'module')
@@ -129,7 +138,7 @@ export function repositoryDocCandidates(input: {
   for (const path of paths.filter(matcher(OTHER_GLOBS))) {
     if (!EXCLUDED.test(posix.basename(path))) add(path, 'other', 'default')
   }
-  return { candidates, missing }
+  return { candidates: ordered(), missing }
 }
 
 function moduleDirs(changedFiles: readonly string[]): string[] {

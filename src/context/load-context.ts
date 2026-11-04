@@ -10,13 +10,7 @@ import type { DocFormat } from './doc-scope.js'
 import { applyIgnore, DEFAULT_IGNORE, matcher } from './ignore.js'
 import { phadaDirs, phadaFiles } from './phada-paths.js'
 import { byteLength } from './byte-cut.js'
-import {
-  DOC_LIMIT_BYTES,
-  DOCS_BUDGET_BYTES,
-  fitDoc,
-  repositoryDocCandidates,
-  truncateDoc,
-} from './select-docs.js'
+import { DOCS_BUDGET_BYTES, fitDoc, repositoryDocCandidates, truncateDoc } from './select-docs.js'
 import type { DocCandidate } from './select-docs.js'
 import { splitDiff } from './split-diff.js'
 import type {
@@ -271,11 +265,12 @@ async function collectDocs(
     source: 'repository',
     readPath: candidate.path,
   }))
-  const declaredCount = fromRepository.filter((doc) => doc.category === 'declared').length
+  const changed = new Set(files)
+  const leads = (doc: PlannedDoc) => changed.has(doc.path) || doc.category === 'declared'
   const planned = [
-    ...fromRepository.slice(0, declaredCount),
+    ...fromRepository.filter(leads),
     ...local,
-    ...fromRepository.slice(declaredCount),
+    ...fromRepository.filter((doc) => !leads(doc)),
   ]
   const probing = tree?.truncated ?? false
   return fillBudget(planned, files, sources, sha, warnings, report, probing)
@@ -374,8 +369,9 @@ async function fillBudget(
 
   let plan = planBudget(planned, contents, (doc) => dropped.has(doc) || skipped.has(doc))
   for (;;) {
-    await read(plan.chosen.filter((doc) => !contents.has(doc)))
-    const failed = plan.chosen.filter((doc) => dropReason(contents.get(doc)) !== undefined)
+    const chosen = [...plan.chosen.keys()]
+    await read(chosen.filter((doc) => !contents.has(doc)))
+    const failed = chosen.filter((doc) => dropReason(contents.get(doc)) !== undefined)
     if (failed.length === 0) break
     for (const doc of failed) dropped.add(doc)
     plan = planBudget(planned, contents, (doc) => dropped.has(doc) || skipped.has(doc))
@@ -395,12 +391,12 @@ async function fillBudget(
   }
   const docs: ContextDoc[] = []
   let used = 0
-  for (const doc of plan.chosen) {
+  for (const [doc, limit] of plan.chosen) {
     const content = contents.get(doc)
     if (typeof content !== 'string') continue
     const bytes = byteLength(content)
-    const truncated = bytes > DOC_LIMIT_BYTES
-    const shown = truncated ? truncateDoc(content) : content
+    const truncated = bytes > limit
+    const shown = truncated ? truncateDoc(content, limit) : content
     used += truncated ? byteLength(shown.slice(0, shown.lastIndexOf('\n['))) : bytes
     docs.push({ path: doc.path, content: shown })
     const scope = scopes.get(doc)
@@ -420,20 +416,21 @@ function planBudget(
   planned: readonly PlannedDoc[],
   contents: ReadonlyMap<PlannedDoc, DocContent>,
   isOut: (doc: PlannedDoc) => boolean,
-): { chosen: PlannedDoc[]; omitted: DocReport[] } {
+): { chosen: Map<PlannedDoc, number>; omitted: DocReport[] } {
   let remaining = DOCS_BUDGET_BYTES
-  const chosen: PlannedDoc[] = []
+  const chosen = new Map<PlannedDoc, number>()
   const omittedDocs: DocReport[] = []
   for (const doc of planned) {
     if (isOut(doc)) continue
     const content = contents.get(doc)
     const size = doc.size ?? (typeof content === 'string' ? byteLength(content) : 0)
-    if (fitDoc(size, remaining) === 'omitted') {
+    const { fit, bytes } = fitDoc(size, remaining)
+    if (fit === 'omitted') {
       omittedDocs.push({ ...omitted(doc.path, doc.source, 'budget', doc), bytes: size })
       continue
     }
-    remaining -= Math.min(size, DOC_LIMIT_BYTES)
-    chosen.push(doc)
+    remaining -= bytes
+    chosen.set(doc, bytes)
   }
   return { chosen, omitted: omittedDocs }
 }
