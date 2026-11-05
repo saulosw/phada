@@ -181,6 +181,16 @@ src/
                          #   group), kept per Phada version; a failed group is an event and the rest goes on; stops
                          #   between groups on the signal; the tally and the earlier version's
     miss-tally.ts        #   latestTally(): caught/replayed of the latest version replayed
+    propose-lessons.ts   #   proposeLessons(): per repository, the 50 most recent open misses of
+                         #   team people (owner, member, collaborator) no lesson holds → one AI
+                         #   call with the pending lessons and the user's rules → new lessons and
+                         #   misses added to pending ones, recorded together; none → no call
+    lesson-answers.ts    #   checkLessonAnswers(): misses not sent left out, a lesson with none
+                         #   dropped, a rule up to 1000 characters, 10 globs, a glob that matches
+                         #   none of its files → <folder>/** of one (a root file as itself),
+                         #   extends of an unknown lesson read as a new one
+    read-lessons.ts      #   readLessons(): the pending lessons (or all), most misses first, then
+                         #   newest, with the count of accepted and discarded ones
     stored-json.ts       #   parseJson(), objectOf(), stringOf(), numberOf(), stringsOf(): the
                          #   lenient reads of a stored JSON
     read-repositories.ts #   readRepositories(): watch.repos ∪ the user's repos/<owner>/<repo>/
@@ -436,6 +446,11 @@ src/
     history-access.ts    #   HistoryCommandDeps, existingHistory() (the history opened only when
                          #   its file exists), filterOf(): what the history and misses commands
                          #   share
+    lessons-command.ts   #   runLessons(): list, --all, --refresh (history on; the provider,
+                         #   model and rules of the user config of each repository; a line per
+                         #   repository)
+    format-lessons.ts    #   formatLessonsText/Json(): id, repository, state, miss count, the
+                         #   whole rule, the globs and each thread link (schemaVersion 1)
     format-history.ts    #   formatHistoryText/Json() (each run with its id), runJson(),
                          #   formatStatsText/Json() (schemaVersion 1)
     history-refresh.ts   #   refreshToken(), refreshHistory(): the due pull requests (or the one
@@ -1149,10 +1164,13 @@ src/
                          #   asked),
                          #   recordMissReplays() (one per miss × version, the last wins),
                          #   missReplays()
+    history-lessons.ts   #   recordLessons() (new lessons and misses added to pending ones, in
+                         #   one transaction), lessons() with their misses, linkedMissIds()
     history-columns.ts   #   the history tables (columns, keys) and their insert/upsert/update
     history-migrations.ts #  versioned migrations (PRAGMA user_version), a table rebuilt with the
                          #   foreign keys off; a newer file is refused; v5: replay runs, the
-                         #   misses (one per thread) and their replays (one per Phada version)
+                         #   misses (one per thread) and their replays (one per Phada version);
+                         #   v7: the lessons and their links to misses
   watch/                 # pure: what the watch does, data in, decision out
     filters.ts           #   eligibility(): draft, bot, outside author, authors, labels, base
     plan-cycle.ts        #   planCycle(): baseline, seen, enqueue, supersede, move (the requests
@@ -1230,6 +1248,11 @@ src/
     recheck-prompt.ts    #   buildRecheckPrompt(): earlier comments and what changed since them
     recheck-schema.ts    #   Zod schema of the recheck verdicts (fixed, still-valid, unsure)
     recheck-threads.ts   #   recheckThreads(): one call for the changed threads, verdicts per thread
+    lessons-prompt.ts    #   buildLessonsPrompt(): the misses (no links), the pending lessons and
+                         #   the user's rules as untrusted blocks; a lesson only for a rule that
+                         #   repeats
+    lessons-schema.ts    #   Zod schema of the lessons answer (rule, scope, misses, extends)
+    parse-lessons.ts     #   parseLessons(): the lessons list, items of the wrong shape left out
     json-objects.ts      #   top-level JSON objects found in a text
     parse-report.ts      #   parseReviewReport(): a missing claims list as undefined, claims of
                          #   the wrong shape left out and counted
@@ -1251,7 +1274,7 @@ src/
     debt.ts              #   withoutDroppedDebt() (review.debt: off), separateDebt() (summary):
                          #   the findings of the repository the change did not cause
     verdict.ts           #   reviewVerdict(): clean, comments or blocking, from the findings
-    errors.ts            #   InvalidReviewReportError
+    errors.ts            #   InvalidReviewReportError, InvalidLessonsAnswerError
     run-review.ts        #   runReview(): one pass per skill (prompt → provider → parse, or a
                          #   native run → conversion), merged → suggestions → [verify] → select →
                          #   score; skill bodies for native passes without findings in the diff;

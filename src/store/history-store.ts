@@ -41,6 +41,8 @@ import {
   recordMissReplays,
 } from './history-misses.js'
 import type { AiRunFilter, MissFilter, MissRecord, MissReplayRecord } from './history-misses.js'
+import { lessons, linkedMissIds, recordLessons } from './history-lessons.js'
+import type { LessonChanges, LessonFilter, LessonRecord } from './history-lessons.js'
 import type { Miss } from '../publish/misses.js'
 import type {
   FailureKind,
@@ -62,6 +64,7 @@ export type {
   SignalSource,
 } from './history-feedback.js'
 export type { MissFilter, MissOutcome, MissRecord, MissReplayRecord } from './history-misses.js'
+export type { LessonChanges, LessonRecord } from './history-lessons.js'
 
 export type RunStatus =
   'published' | 'dry-run' | 'not-published' | 'superseded' | 'skipped' | 'nothing' | 'failed'
@@ -168,6 +171,9 @@ export interface HistoryStore {
   dismissMiss(id: number): boolean
   recordMissReplays(replays: readonly MissReplayRecord[]): void
   missReplays(missIds: readonly number[]): MissReplayRecord[]
+  recordLessons(changes: LessonChanges, createdAt: string): number[]
+  lessons(filter: LessonFilter): LessonRecord[]
+  linkedMissIds(): Set<number>
   runs(filter: HistoryFilter): { runs: ListedRun[]; total: number }
   prune(before: string): PruneCounts
   close(): void
@@ -582,6 +588,18 @@ class SqliteHistoryStore implements HistoryStore {
 
   missReplays(missIds: readonly number[]): MissReplayRecord[] {
     return missReplays(this.#db, missIds)
+  }
+
+  recordLessons(changes: LessonChanges, createdAt: string): number[] {
+    return recordLessons(this.#db, changes, createdAt)
+  }
+
+  lessons(filter: LessonFilter): LessonRecord[] {
+    return lessons(this.#db, filter)
+  }
+
+  linkedMissIds(): Set<number> {
+    return linkedMissIds(this.#db)
   }
 
   runs(filter: HistoryFilter): { runs: ListedRun[]; total: number } {

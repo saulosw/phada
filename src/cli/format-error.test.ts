@@ -11,7 +11,7 @@ import {
   ReviewPermissionError,
 } from '../github/errors.js'
 import { ProviderError } from '../providers/types.js'
-import { InvalidReviewReportError } from '../review/errors.js'
+import { InvalidLessonsAnswerError, InvalidReviewReportError } from '../review/errors.js'
 import { MissingGitHubTokenError, UsageError } from './errors.js'
 import { errorSummary, formatError } from './format-error.js'
 
@@ -163,6 +163,15 @@ describe('formatError', () => {
         'phada: The AI did not return a valid review (no JSON object in the answer). Run with --debug to see its answer.',
       exitCode: 1,
     })
+  })
+
+  it('explains an answer that holds no lessons, with the answer in debug mode', () => {
+    const error = new InvalidLessonsAnswerError('no lessons list in the answer', 'Nothing here.')
+
+    expect(format(error).message).toBe(
+      'phada: The AI did not return valid lessons (no lessons list in the answer). Run with --debug to see its answer.',
+    )
+    expect(format(error, true).message).toContain('\nAI answer (start):\nNothing here.')
   })
 
   it('shows the start of the AI answer in debug mode, without control characters', () => {

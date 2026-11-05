@@ -279,4 +279,27 @@ alter table miss_rebuilt rename to miss;
 create index miss_by_pull on miss (repo, number);
 `,
   },
+  {
+    version: 7,
+    sql: `
+create table lesson (
+  id integer primary key,
+  repo text not null,
+  rule text not null,
+  scope text not null,
+  state text not null default 'pending' check (state in ('pending', 'accepted', 'discarded')),
+  provider text,
+  model text,
+  created_at text not null,
+  decided_at text
+);
+create index lesson_by_repo on lesson (repo, state);
+create table lesson_miss (
+  lesson_id integer not null references lesson (id) on delete cascade,
+  miss_id integer not null references miss (id) on delete cascade,
+  primary key (lesson_id, miss_id)
+);
+create index lesson_miss_by_miss on lesson_miss (miss_id);
+`,
+  },
 ]

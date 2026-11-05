@@ -6,6 +6,7 @@ import {
   parseCliArgs,
   HISTORY_USAGE,
   INDEX_USAGE,
+  LESSONS_USAGE,
   MISSES_USAGE,
   INIT_USAGE,
   PROMPT_USAGE,
@@ -57,7 +58,7 @@ describe('parseCliArgs', () => {
     ],
     [
       ['reveiw', 'acme/shop#12'],
-      'Unknown command "reveiw". Available: setup, review, publish, init, index, rules, prompt, watch, enqueue, mcp, history, misses.',
+      'Unknown command "reveiw". Available: setup, review, publish, init, index, rules, prompt, watch, enqueue, mcp, history, misses, lessons.',
     ],
     [['--verify'], "Unknown option '--verify'."],
     [
@@ -493,6 +494,51 @@ describe('parseCliArgs watch', () => {
     expect(parseCliArgs(['watch', '--help'])).toEqual({ kind: 'help', text: WATCH_USAGE })
     expect(WATCH_USAGE.startsWith('Usage: phada watch [options]')).toBe(true)
     expect(USAGE).toContain('watch                  Review new pull requests and pushes on its own')
+  })
+})
+
+describe('parseCliArgs lessons', () => {
+  it('lists the pending lessons of every repository by default', () => {
+    expect(parseCliArgs(['lessons'])).toEqual({
+      kind: 'lessons',
+      all: false,
+      refresh: false,
+      format: 'text',
+      debug: false,
+    })
+  })
+
+  it('reads a repository and the options', () => {
+    expect(
+      parseCliArgs(['lessons', 'acme/shop', '--refresh', '--all', '--format', 'json', '--debug']),
+    ).toEqual({
+      kind: 'lessons',
+      repo: { owner: 'acme', repo: 'shop' },
+      all: true,
+      refresh: true,
+      format: 'json',
+      debug: true,
+    })
+  })
+
+  it('shows its help', () => {
+    expect(parseCliArgs(['lessons', '--help'])).toEqual({ kind: 'help', text: LESSONS_USAGE })
+    expect(USAGE).toContain(
+      'lessons                Show the lessons Phada proposes from the misses',
+    )
+    expect(LESSONS_USAGE).toContain('--refresh')
+  })
+
+  it.each([
+    [['lessons', 'a/b', 'c/d'], 'Give one repository at a time.'],
+    [
+      ['lessons', 'acme/shop#3'],
+      'phada lessons takes a repository, e.g. acme/shop, not a pull request.',
+    ],
+    [['lessons', 'shop'], 'Invalid repository "shop". Use owner/repo.'],
+    [['lessons', '--format', 'yaml'], 'Invalid --format "yaml". Use text or json.'],
+  ])('refuses %j', (argv, message) => {
+    expect(() => parseCliArgs(argv)).toThrow(new UsageError(message))
   })
 })
 

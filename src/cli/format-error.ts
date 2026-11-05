@@ -2,7 +2,7 @@ import { ConfigError } from '../config/errors.js'
 import { DiffTooLargeError, GitHubError, InvalidPullRequestRefError } from '../github/errors.js'
 import { ProviderError } from '../providers/types.js'
 import { CheckoutUnavailableError } from '../repository/git-checkout.js'
-import { InvalidReviewReportError } from '../review/errors.js'
+import { InvalidLessonsAnswerError, InvalidReviewReportError } from '../review/errors.js'
 import { SkillError } from '../skills/errors.js'
 import { HistoryStoreError } from '../store/history-store.js'
 import { IndexStoreError } from '../store/index-store.js'
@@ -83,7 +83,7 @@ function describe(error: unknown): { summary: string; exitCode: 1 | 2 } {
     return { summary: error.message, exitCode: 1 }
   }
   if (error instanceof ProviderError) return { summary: describeProviderError(error), exitCode: 1 }
-  if (error instanceof InvalidReviewReportError) {
+  if (error instanceof InvalidReviewReportError || error instanceof InvalidLessonsAnswerError) {
     return { summary: `${error.message} Run with --debug to see its answer.`, exitCode: 1 }
   }
   const message = error instanceof Error ? error.message : String(error)
@@ -110,7 +110,8 @@ function details(error: unknown): string {
     lines.push(lines.length === 0 ? text : `Caused by: ${text}`)
     current = current instanceof Error ? current.cause : undefined
   }
-  if (error instanceof InvalidReviewReportError) lines.push(`AI answer (start):\n${error.preview}`)
+  if (error instanceof InvalidReviewReportError || error instanceof InvalidLessonsAnswerError)
+    lines.push(`AI answer (start):\n${error.preview}`)
   return toTerminalText(lines.join('\n'))
 }
 
