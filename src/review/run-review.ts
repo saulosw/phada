@@ -4,6 +4,8 @@ import { claimWarnings, mergeClaims, withSettledClaims } from './claims.js'
 import { withKnownReferences, withRuleSeverity } from './context-findings.js'
 import { separateDebt, withoutDroppedDebt } from './debt.js'
 import { diffFingerprint } from './diff-fingerprint.js'
+import { changedFiles, groupDiff, planDiffGroups } from './diff-groups.js'
+import { mapLimit } from './map-limit.js'
 import { findDiffFile, parseDiffFiles } from './diff-lines.js'
 import type { DiffFile } from './diff-lines.js'
 import { measureCoverage } from './coverage.js'
@@ -32,6 +34,8 @@ import {
 import type {
   Coverage,
   DebtMode,
+  DiffGroup,
+  DiffGroupReport,
   FileDeclaration,
   Finding,
   NativeSkillRun,
@@ -53,7 +57,10 @@ export interface RunReviewDeps {
   tools?: (pass: 'review' | 'verify') => Toolbox
   runSkill?: (pass: SkillPass) => Promise<NativeSkillRun>
   createNonce?: () => string
-  events?: { passStarted?(pass: SkillPass, index: number): void }
+  events?: {
+    passStarted?(pass: SkillPass, index: number): void
+    groupStarted?(group: DiffGroup, index: number, total: number, pass?: SkillPass): void
+  }
 }
 
 export async function runReview(
@@ -72,7 +79,16 @@ export async function runReview(
   }
 
   const createNonce = deps.createNonce ?? newNonce
-  const answered = await runPasses(request, deps, createNonce)
+  const groups =
+    request.groups === undefined
+      ? undefined
+      : planDiffGroups(pullRequest.diff, request.context?.generated)
+  const answered = await runPasses(
+    request,
+    deps,
+    createNonce,
+    groups === undefined ? undefined : { groups, concurrency: request.groups?.concurrency ?? 1 },
+  )
   const first = answered.outputs[0]
   if (first === undefined) {
     return { status: 'skipped', reason: 'no-skill-applies', passes: answered.reports }
@@ -197,7 +213,7 @@ export async function runReview(
           answered.outputs.reduce((sum, { report }) => sum + report.invalid, 0) +
           (continued?.invalid ?? 0),
         belowFloor: prepared.belowFloor + selection.belowFloor,
-        outsideDiff: prepared.outsideDiff,
+        outsideDiff: prepared.outsideDiff + answered.outsideGroups,
         duplicate: prepared.duplicate,
         rejected: checked?.verification.rejected.length ?? 0,
         ...(kept.dropped === 0 ? {} : { debt: kept.dropped }),
@@ -217,6 +233,7 @@ export async function runReview(
       ...(externalCalls.length === 0 ? {} : { externalCalls }),
       ...(warnings.length === 0 ? {} : { warnings }),
       ...(request.passes === undefined ? {} : { passes: answered.reports }),
+      ...(answered.grouped ? { groups: answered.groups } : {}),
       ...(skillBodies.length === 0 ? {} : { skillBodies }),
     },
   }
@@ -239,6 +256,27 @@ interface AnsweredPasses {
   passUsage: PassUsage[]
   warnings: string[]
   coverage: TextPassCoverage
+  outsideGroups: number
+  groups: DiffGroupReport[]
+  grouped: boolean
+}
+
+interface GroupPlan {
+  groups: DiffGroup[]
+  concurrency: number
+}
+
+interface TextAnswer {
+  answer: AnsweredPass
+  nonce: string
+  reads: string[]
+  relatedReads: string[]
+  verified: boolean
+  touched: string[]
+  durationMs: number
+  usage?: TokenUsage
+  warnings: string[]
+  outsideGroups: number
 }
 
 interface TextPassCoverage {
@@ -333,6 +371,7 @@ async function runPasses(
   request: ReviewRequest,
   deps: RunReviewDeps,
   createNonce: () => string,
+  plan: GroupPlan | undefined,
 ): Promise<AnsweredPasses> {
   const passes = request.passes
   const planned: (SkillPass | undefined)[] = passes ?? [undefined]
@@ -345,6 +384,9 @@ async function runPasses(
     passUsage: [],
     warnings: [],
     coverage: { passes: 0, declarations: [], reads: [], verified: true },
+    outsideGroups: 0,
+    groups: plan?.groups.map((group) => ({ ...group, findings: 0, durationMs: 0 })) ?? [],
+    grouped: false,
   }
   let firstError: unknown
   let ran = 0
@@ -390,41 +432,12 @@ async function runPasses(
       answered.reports.push(native.report)
       continue
     }
-    const tools = deps.tools?.('review')
-    const recorded = tools === undefined ? undefined : recordingReads(tools)
-    const nonce = createNonce()
     try {
-      const output = await deps.provider.review(
-        buildReviewPrompt(request, nonce, recorded?.toolbox, pass),
-      )
-      answered.passUsage.push(usageOf('review', output.usage, pass?.skill))
-      const report = parseReviewReport(output.text)
-      const findings =
-        pass === undefined
-          ? report.findings
-          : report.findings.map((finding) => ({ ...finding, skill: pass.skill }))
-      answered.outputs.push({ output, report, findings })
-      answered.warnings.push(...claimWarnings(report, pass?.skill))
-      if (answered.coverage.passes === 0) answered.coverage.first = { pass, nonce }
-      answered.coverage.passes++
-      answered.coverage.declarations.push(...report.files)
-      answered.coverage.reads.push(...(recorded?.reads() ?? []))
-      answered.relatedReads.push(...(recorded?.relatedReads() ?? []))
-      if (recorded === undefined || output.withoutTools === true) {
-        answered.coverage.verified = false
-      }
-      answered.touched.push(...(tools?.touchedPaths() ?? []))
-      answered.durationMs += output.durationMs
-      if (pass !== undefined) {
-        answered.reports.push({
-          skill: pass.skill,
-          origin,
-          status: 'reviewed',
-          durationMs: output.durationMs,
-          ...(output.usage === undefined ? {} : { usage: output.usage }),
-          findings: findings.length,
-        })
-      }
+      const text =
+        plan === undefined
+          ? await answerWhole(request, deps, createNonce, pass, answered.passUsage)
+          : await answerInGroups(request, deps, createNonce, pass, plan, answered)
+      recordText(answered, pass, origin, text)
     } catch (error) {
       if (pass === undefined || planned.length === 1 || !isAnswerFailure(error)) throw error
       firstError ??= error
@@ -442,6 +455,214 @@ async function runPasses(
   }
   if (ran > 0 && answered.outputs.length === 0) throw firstError
   return answered
+}
+
+function recordText(
+  answered: AnsweredPasses,
+  pass: SkillPass | undefined,
+  origin: string,
+  text: TextAnswer,
+): void {
+  answered.outputs.push(text.answer)
+  answered.warnings.push(...text.warnings)
+  if (answered.coverage.passes === 0) answered.coverage.first = { pass, nonce: text.nonce }
+  answered.coverage.passes++
+  answered.coverage.declarations.push(...text.answer.report.files)
+  answered.coverage.reads.push(...text.reads)
+  answered.relatedReads.push(...text.relatedReads)
+  if (!text.verified) answered.coverage.verified = false
+  answered.touched.push(...text.touched)
+  answered.durationMs += text.durationMs
+  answered.outsideGroups += text.outsideGroups
+  if (pass !== undefined) {
+    answered.reports.push({
+      skill: pass.skill,
+      origin,
+      status: 'reviewed',
+      durationMs: text.durationMs,
+      ...(text.usage === undefined ? {} : { usage: text.usage }),
+      findings: text.answer.findings.length,
+    })
+  }
+}
+
+async function answerWhole(
+  request: ReviewRequest,
+  deps: RunReviewDeps,
+  createNonce: () => string,
+  pass: SkillPass | undefined,
+  usage: PassUsage[],
+): Promise<TextAnswer> {
+  const tools = deps.tools?.('review')
+  const recorded = tools === undefined ? undefined : recordingReads(tools)
+  const nonce = createNonce()
+  const output = await deps.provider.review(
+    buildReviewPrompt(request, nonce, recorded?.toolbox, pass),
+  )
+  usage.push(usageOf('review', output.usage, pass?.skill))
+  const report = parseReviewReport(output.text)
+  return {
+    answer: { output, report, findings: withSkill(report.findings, pass) },
+    nonce,
+    reads: recorded?.reads() ?? [],
+    relatedReads: recorded?.relatedReads() ?? [],
+    verified: recorded !== undefined && output.withoutTools !== true,
+    touched: [...(tools?.touchedPaths() ?? [])],
+    durationMs: output.durationMs,
+    ...(output.usage === undefined ? {} : { usage: output.usage }),
+    warnings: claimWarnings(report, pass?.skill),
+    outsideGroups: 0,
+  }
+}
+
+interface GroupAnswer {
+  output: ReviewOutput
+  report: ParsedReport
+  findings: Finding[]
+  nonce: string
+  reads: string[]
+  relatedReads: string[]
+  verified: boolean
+  touched: string[]
+}
+
+async function answerInGroups(
+  request: ReviewRequest,
+  deps: RunReviewDeps,
+  createNonce: () => string,
+  pass: SkillPass | undefined,
+  plan: GroupPlan,
+  answered: AnsweredPasses,
+): Promise<TextAnswer> {
+  const diff = request.pullRequest.diff
+  const changed = changedFiles(diff)
+  const total = plan.groups.length
+  const asked = await mapLimit(plan.groups, plan.concurrency, async (group, index) => {
+    deps.events?.groupStarted?.(group, index, total, pass)
+    const tools = deps.tools?.('review')
+    const recorded = tools === undefined ? undefined : recordingReads(tools)
+    const nonce = createNonce()
+    const part = groupDiff(diff, group.files)
+    try {
+      const output = await deps.provider.review(
+        buildReviewPrompt(
+          { ...request, pullRequest: { ...request.pullRequest, diff: part } },
+          nonce,
+          recorded?.toolbox,
+          pass,
+          { index, total, group, changed },
+        ),
+      )
+      return { output, nonce, part, tools, recorded }
+    } catch (error) {
+      if (!isAnswerFailure(error)) throw error
+      return { error }
+    }
+  })
+  answered.grouped = true
+  const answers: GroupAnswer[] = []
+  const warnings: string[] = []
+  let outsideGroups = 0
+  let firstError: unknown
+  for (const [index, result] of asked.entries()) {
+    const group = plan.groups[index]
+    const tally = answered.groups[index]
+    if (group === undefined || tally === undefined) continue
+    const fail = (error: unknown) => {
+      firstError ??= error
+      tally.failed = true
+      const message = error instanceof Error ? error.message : String(error)
+      const of = pass === undefined ? '' : ` of skill ${pass.skill}`
+      warnings.push(
+        `Group ${index + 1}/${total} (${group.label})${of} failed, so its files are left as gaps: ${message}`,
+      )
+    }
+    if ('error' in result) {
+      fail(result.error)
+      continue
+    }
+    const { output, nonce, part, tools, recorded } = result
+    answered.passUsage.push({ ...usageOf('review', output.usage, pass?.skill), group: group.label })
+    tally.durationMs += output.durationMs
+    const usage = sumUsage(tally.usage, output.usage)
+    if (usage !== undefined) tally.usage = usage
+    let report: ParsedReport
+    try {
+      report = parseReviewReport(output.text)
+    } catch (error) {
+      if (!isAnswerFailure(error)) throw error
+      fail(error)
+      continue
+    }
+    const files = parseDiffFiles(part)
+    const inGroup = report.findings.filter(
+      ({ file, line }) => findDiffFile(file, files)?.lines.has(line) === true,
+    )
+    outsideGroups += report.findings.length - inGroup.length
+    tally.findings += inGroup.length
+    warnings.push(...claimWarnings(report, pass?.skill))
+    answers.push({
+      output,
+      report: { ...report, findings: inGroup },
+      findings: withSkill(inGroup, pass),
+      nonce,
+      reads: recorded?.reads() ?? [],
+      relatedReads: recorded?.relatedReads() ?? [],
+      verified: recorded !== undefined && output.withoutTools !== true,
+      touched: [...(tools?.touchedPaths() ?? [])],
+    })
+  }
+  const first = answers[0]
+  if (first === undefined) throw firstError
+  const usage = answers.reduce<TokenUsage | undefined>(
+    (sum, { output }) => sumUsage(sum, output.usage),
+    undefined,
+  )
+  const durationMs = answers.reduce((sum, { output }) => sum + output.durationMs, 0)
+  const model = first.output.model
+  const additionalModels = otherModels(answers, model)
+  const externalCalls = answers.flatMap(({ output }) => output.externalCalls ?? [])
+  const outputWarnings = answers.flatMap(({ output }) => output.warnings ?? [])
+  const output: ReviewOutput = {
+    text: '',
+    durationMs,
+    ...(model === undefined ? {} : { model }),
+    ...(additionalModels === undefined ? {} : { additionalModels }),
+    ...(usage === undefined ? {} : { usage }),
+    ...(externalCalls.length === 0 ? {} : { externalCalls }),
+    ...(outputWarnings.length === 0 ? {} : { warnings: outputWarnings }),
+  }
+  const report: ParsedReport = {
+    summary: answers
+      .map(({ report: part }) => part.summary.trim())
+      .filter((summary) => summary !== '')
+      .join(' '),
+    files: answers.flatMap(({ report: part }) => part.files),
+    findings: answers.flatMap(({ report: part }) => part.findings),
+    invalid: answers.reduce((sum, { report: part }) => sum + part.invalid, 0),
+    claims: mergeClaims(
+      answers.map(({ report: part }) => ({ claims: part.claims ?? [], onlySettled: false })),
+    ),
+    invalidClaims: answers.reduce((sum, { report: part }) => sum + part.invalidClaims, 0),
+  }
+  return {
+    answer: { output, report, findings: answers.flatMap(({ findings }) => findings) },
+    nonce: first.nonce,
+    reads: answers.flatMap(({ reads }) => reads),
+    relatedReads: answers.flatMap(({ relatedReads }) => relatedReads),
+    verified: answers.every(({ verified }) => verified),
+    touched: answers.flatMap(({ touched }) => touched),
+    durationMs,
+    ...(usage === undefined ? {} : { usage }),
+    warnings,
+    outsideGroups,
+  }
+}
+
+function withSkill(findings: readonly Finding[], pass: SkillPass | undefined): Finding[] {
+  return pass === undefined
+    ? [...findings]
+    : findings.map((finding) => ({ ...finding, skill: pass.skill }))
 }
 
 const EMPTY_REPORT: ParsedReport = {
@@ -557,7 +778,7 @@ function isAnswerFailure(error: unknown): boolean {
 }
 
 function otherModels(
-  outputs: readonly AnsweredPass[],
+  outputs: readonly { output: ReviewOutput }[],
   model: string | undefined,
 ): string[] | undefined {
   const others = [
