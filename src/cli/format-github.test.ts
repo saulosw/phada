@@ -95,6 +95,36 @@ describe('formatGitHubReview body', () => {
     )
   })
 
+  it('publishes the same review whether it was reviewed in diff groups or whole', () => {
+    const grouped = result({
+      passUsage: [
+        { pass: 'review', group: 'src', usage: { inputTokens: 900, outputTokens: 40 } },
+        { pass: 'review', group: 'web' },
+      ],
+      groups: [
+        {
+          label: 'src',
+          files: ['src/shop.ts'],
+          bytes: 21_000,
+          link: 'directory',
+          findings: 3,
+          durationMs: 500,
+        },
+        {
+          label: 'web',
+          files: ['web/app.ts'],
+          bytes: 12_000,
+          link: 'directory',
+          findings: 0,
+          durationMs: 400,
+          failed: true,
+        },
+      ],
+    })
+
+    expect(formatGitHubReview(grouped, PLAN)).toEqual(formatGitHubReview(RESULT, PLAN))
+  })
+
   it('never publishes the candidates the verification rejected', () => {
     const rejected = [{ ...P2, title: 'Rejected candidate', reason: 'Only an example.' }]
     const verification = { candidates: 4, confirmed: 3, unverified: 0, rejected, durationMs: 1 }

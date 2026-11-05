@@ -157,11 +157,21 @@ const Command = z
   .min(1)
   .regex(/^[^\n*,]+$/, 'write the command without line breaks, commas or *')
 
+export const MAX_GROUP_CONCURRENCY = 4
+
 export const DEBT_MODES = ['summary', 'comments', 'off'] as const
 
 const ReviewSchema = z.strictObject({
   debt: z.enum(DEBT_MODES, { error: 'use summary, comments or off' }).optional(),
   continuation: z.boolean().optional(),
+  groups: z
+    .union(
+      [z.boolean(), z.strictObject({ concurrency: z.int().min(1).max(MAX_GROUP_CONCURRENCY) })],
+      {
+        error: 'use true, false or { concurrency: 1 to 4 }',
+      },
+    )
+    .optional(),
   prompt: z
     .strictObject({
       file: z.string().trim().min(1),

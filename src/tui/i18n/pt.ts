@@ -299,6 +299,13 @@ export const portuguese: UiMessages = {
     detail: {
       score: 'Nota',
       coverage: 'Cobertura',
+      groups: 'Grupos',
+      groupLinks: {
+        directory: (count) => `${number(count)} por diretório`,
+        single: (count) =>
+          `${number(count)} ${count === 1 ? 'arquivo sozinho' : 'arquivos sozinhos'}`,
+      },
+      groupsFailed: (count) => `${number(count)} ${count === 1 ? 'falhou' : 'falharam'}`,
       coverageLevels: { partial: 'parcial', low: 'baixa' },
       declared: 'declarada',
       coverageFiles: (covered, total) =>
@@ -1016,6 +1023,8 @@ export const portuguese: UiMessages = {
       impact: (symbols) =>
         `Impacto: ${number(symbols)} ${symbols === 1 ? 'símbolo alterado' : 'símbolos alterados'}`,
       pass: (skill, index, total) => `Skill ${skill} (${index} de ${total})`,
+      group: (label, index, total, files, kb) =>
+        `Grupo ${index}/${total}: ${label} (${number(files)} ${files === 1 ? 'arquivo' : 'arquivos'}, ${number(kb)} KB)`,
       ai: (provider, run, elapsed) => `${provider}: ${run} · ${elapsed}`,
       noAnswer: 'sem resposta',
       publishing: 'Publicando no GitHub…',

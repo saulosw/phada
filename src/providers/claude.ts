@@ -98,6 +98,7 @@ function mcpServerKey(server: string): string {
 
 export class ClaudeCliProvider implements ReviewProvider {
   readonly id = PROVIDER_ID
+  readonly concurrency = 2
   readonly #command: string
   readonly #model: string | undefined
   readonly #timeoutMs: number

@@ -303,7 +303,9 @@ prints:
 - **Summary** of what the pull request changes and a **table of the changed files**.
 - **Findings grouped by severity**, each with file, line, confidence (0–100), why it matters and
   a suggested fix (with the exact code change when the fix is a local edit, see
-  [Suggested changes](#suggested-changes)). Confidence is how sure the AI is that the problem is real and happens as
+  [Suggested changes](#suggested-changes)). A finding sits at the changed line where the fix
+  goes, such as the function that copies existing code or the request without a `catch`, not at
+  a line that only calls it or shows its effect. Confidence is how sure the AI is that the problem is real and happens as
   described; how often it happens and how much it costs go into the severity, so a real but rare
   bug is a sure finding with a lower severity (a P0 stays P0 however rarely it happens). Only
   findings at the confidence cut or above are shown here (60 by default, see `--min-confidence`):
@@ -339,6 +341,34 @@ A provider that does not report them shows `not reported` (Ollama reports no cac
 counts are in a "Tokens" section of `--dry-run`, in `usage` of `--format json` and the history
 (`passes` with `pass`, `skill` and `usage`, and the `total`), in the review's detail in the app
 and next to each AI step while the app runs a review.
+
+### Large pull requests
+
+With `review.groups: true` or `--groups` (off by default), when the diff has 30 KB or more of code,
+Phada splits it into **diff groups** of about 20 KB each, by directory (a directory too large is
+split by its subfolders, a single file larger than that is a group of its own, and there are at most
+6 groups), and each review pass runs once per group: the AI sees the diff of its group, the list of
+every changed file with the ones of the group marked, the same context and the same tools to read
+the rest. Findings outside the lines of a group are left out. The answers are joined into **one
+review**: the summary is made from the part of each group, the claims are merged, the coverage
+counts every group, and the continuation pass and the verification run once over the whole diff. A
+pull request below 30 KB of code, or whose code fits in one group, is reviewed as before. Grouping
+spreads the attention over every part of a large pull request, at about twice the tokens.
+
+Data files (`.json`, `.lock`, `.csv`, `.tsv`, `.svg`, `.snap`, `.txt`, `.md`, `.map`) and generated
+files (marked `linguist-generated` in the `.gitattributes` at the root of the base branch, or
+starting with `@generated` or `Code generated … DO NOT EDIT`) do not count toward those sizes and
+never make a group of their own: they are reviewed with the group of the nearest directory.
+
+Groups run as many at a time as the provider takes: one with Ollama, two with Claude Code and
+Codex; `review.groups: { concurrency: 1 }` to `4` sets it. A group whose answer is not a valid
+review becomes a warning and its files are left as coverage gaps; a provider failure, such as a
+usage limit, fails the review. `phada review` prints `Group 2/4: api/src/services (6 files, 21 KB)`
+as each one starts; the groups, with their files, size, findings, time and tokens, are in a
+"Groups" section of `--dry-run` and of `phada history <id>`, in `groups` of `--format json` and
+the history, in `phada prompt` and in the review's detail in the app. The body posted on the pull
+request does not change. Native skills are never grouped. `--no-groups` turns grouping off for one
+review when the config turns it on.
 
 By default (turn it off with `--no-verify` or `verify: false`), the first pass asks the AI for every
 candidate from confidence 25 instead of 50, and Phada makes a second call to the same AI before
@@ -399,20 +429,21 @@ review; the app marks a finding of the repository and shows the debt in the revi
 ### Reimplementations
 
 The built-in reviewer also looks for code the pull request writes again although the repository
-already has code that does the same (a helper, a function, a module): a P2 finding, or P1 when
-the copy diverges from the existing code and causes a bug. Such a finding gives the place of the
-existing code in `existing` (`path:line`, or `owner/repo:path:line` in a
-[related repository](#related-repositories)), and Phada keeps it only when the AI read that file
-with `read_file` during the review and the line is not one the diff adds; the place then comes
-first in the finding's sources. Otherwise a P2 finding is dropped and counted in the footer, e.g.
-`1 dropped (1 reimplementation finding without the existing code read)`, in the terminal and in
-the body posted on the pull request (in the review language; `unbacked` in `dropped` of the
-JSON); a P0 or P1 finding is a problem on its own, so it stays without `existing`. Without the
-[investigation tools](#repository-investigation) nothing can be read, so these P2 findings are
-always dropped. The verifier reads the cited code and rejects the finding when that code does not
-do the same thing. Findings of a [skill that runs natively](#skills-that-run-natively) have no
-`existing` and stay ordinary findings. `--format json` and the history give `existing` on every
-finding (`null` when it has none).
+already has code that does the same (a helper, a function, a module): a P2 finding, or P1 when the
+copy diverges from the existing code and causes a bug. Such a finding gives the place of the
+existing code in `existing` (`path:line`, or `owner/repo:path:line` in a [related
+repository](#related-repositories)), and Phada keeps it only when the AI read that file during the
+review, with `read_file` or in the results of a `grep`, and the line is not one the diff adds; the
+place then comes first in the finding's sources. Otherwise a P2 finding is dropped and counted in
+the footer, e.g. `1 dropped (1 reimplementation finding without the existing code read)`, in the
+terminal and in the body posted on the pull request (in the review language; `unbacked` in `dropped`
+of the JSON, and the dropped findings themselves in `unbacked`); a P0 or P1 finding is a problem on
+its own, so it stays without `existing`. Without the [investigation
+tools](#repository-investigation) nothing can be read, so these P2 findings are always dropped. The
+verifier reads the cited code and rejects the finding when that code does not do the same thing.
+Findings of a [skill that runs natively](#skills-that-run-natively) have no `existing` and stay
+ordinary findings. `--format json` and the history give `existing` on every finding (`null` when it
+has none).
 
 ### Suggested changes
 
@@ -1594,6 +1625,7 @@ ci:
 | `rules`                   | Rules with `rule`, and optionally `id`, `scope` (globs), `severity` (`P0`, `P1` or `P2`) and `from`                                          | both                    |
 | `review.debt`             | `summary` (default), `comments` or `off`: what to do with the [repository debt](#repository-debt)                                            | both (root)             |
 | `review.continuation`     | `true` (default) or `false`: one more pass over the files a review with low [coverage](#what-a-review-looks-like) left out                   | both (root)             |
+| `review.groups`           | `false` (default), `true` or `{ concurrency: 1–4 }`: review a [large pull request](#large-pull-requests) in diff groups                      | both (root)             |
 | `review.prompt`           | `file` and `mode` (`append` or `replace`) of the reviewer's focus (see [Review focus and skills](#review-focus-and-skills))                  | both (root)             |
 | `review.skills`           | Skills to review with, one pass each, as names or `{ name, paths, mode }`; `phada` is the built-in reviewer                                  | both (root)             |
 | `review.commands`         | Commands a [native skill](#skills-that-run-natively) may run: `read-only` (default), a list like `["npm test"]`, or `all`                    | your config             |
@@ -1630,6 +1662,7 @@ your own stops Phada with an error that names the file and the key.
 | `--no-investigate`     | Reviews without letting the AI read the rest of the repository (see [Repository investigation](#repository-investigation)); `--investigate` turns it back on when the config turns it off                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | `--verify`             | Checks every finding with a second call to the AI before scoring (see above). On by default; `--no-verify` (or `verify: false`) turns it off, `--verify` turns it back on when the config turns it off                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `--no-continuation`    | Skips the continuation pass of a review with low coverage (see [What a review looks like](#what-a-review-looks-like)); same as `review.continuation: false`; `--continuation` runs it when the config turns it off                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `--groups`             | Reviews a [large pull request](#large-pull-requests) in diff groups; same as `review.groups: true`; `--no-groups` reviews it in one piece when the config turns grouping on                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `--no-resolve`         | Neither rechecks Phada's comments from earlier commits nor resolves the fixed ones (see [Comments fixed in a new commit](#comments-fixed-in-a-new-commit)); same as `resolveThreads: false`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `--no-conversation`    | Does not send the comments, reviews and threads of the pull request to the AI (see [The conversation](#the-conversation)); same as `conversation: false`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `--no-ci`              | Does not read the checks of the head: no CI for the AI and no CI line in the review (see [The checks](#the-checks)); same as `ci.read: false`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |

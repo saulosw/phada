@@ -4,7 +4,9 @@ import type { PullRequest } from '../github/pull-request.js'
 import type { Conversation } from '../publish/types.js'
 import { reviewDataBlocks, reviewInstructionParts } from '../review/prompt.js'
 import type { PromptPart } from '../review/prompt.js'
-import type { SkillPass } from '../review/types.js'
+import { changedFiles, planDiffGroups } from '../review/diff-groups.js'
+import { groupText } from '../review/group-prompt.js'
+import type { DiffGroup, SkillPass } from '../review/types.js'
 import type { CommandPolicy } from '../providers/types.js'
 import { buildConvertPrompt } from '../review/convert-prompt.js'
 import { nativeSkillContext } from '../review/native-context.js'
@@ -32,6 +34,7 @@ export interface PromptPassView {
 export interface PromptView {
   pullRequest: { repo: string; number: number; baseSha: string; headSha: string } | null
   passes: PromptPassView[]
+  groups?: DiffGroup[]
   notes: string[]
   warnings: string[]
 }
@@ -98,6 +101,9 @@ export async function inspectPrompt(input: {
     diff: loaded.diff,
   }
   const passes = planned.passes ?? [{ skill: BUILT_IN_SKILL, lens: { kind: 'default' } }]
+  const groups = textPassPlanned(passes) ? groupsOf(loaded) : undefined
+  const textData =
+    groups === undefined ? data : withGroupBlock(data, groups, changedFiles(loaded.diff))
   const plans: PassPlan[] =
     planned.passes === undefined
       ? [{ skill: BUILT_IN_SKILL, origin: BUILT_IN_SKILL, status: 'planned', mode: 'text' }]
@@ -116,9 +122,12 @@ export async function inspectPrompt(input: {
         pass.skip === undefined
           ? pass.mode === 'native'
             ? nativeParts(request, pass, loaded.options.language)
-            : reviewInstructionParts(options, pass)
+            : reviewInstructionParts(
+                { ...options, ...(groups === undefined ? {} : { grouped: true }) },
+                pass,
+              )
           : [],
-        pass.skip === undefined ? data : [],
+        pass.skip === undefined ? (pass.mode === 'native' ? data : textData) : [],
       )
       if (pass.mode !== 'native') return view
       const policy = skillPolicy(pullRequest, loaded.options.review ?? {})
@@ -131,6 +140,7 @@ export async function inspectPrompt(input: {
         },
       }
     }),
+    ...(groups === undefined ? {} : { groups }),
     notes: [...(input.investigate ? [TOOLS_NOTE] : []), COMPUTED_NOTE],
     warnings: [...loaded.report.warnings, ...planned.warnings, ...(input.warnings ?? [])],
   }
@@ -152,6 +162,33 @@ export function defaultPromptView(): PromptView {
     notes: [TOOLS_NOTE],
     warnings: [],
   }
+}
+
+function textPassPlanned(passes: readonly SkillPass[]): boolean {
+  return passes.some((pass) => pass.skip === undefined && pass.mode !== 'native')
+}
+
+function groupsOf(loaded: LoadedContext): DiffGroup[] | undefined {
+  return loaded.options.groups === undefined || loaded.options.groups === false
+    ? undefined
+    : planDiffGroups(loaded.diff, loaded.context.generated)
+}
+
+function withGroupBlock(
+  data: PromptPassView['data'],
+  groups: readonly DiffGroup[],
+  changed: ReturnType<typeof changedFiles>,
+): PromptPassView['data'] {
+  const [first] = groups
+  if (first === undefined) return data
+  const block = {
+    name: 'PHADA_GROUP',
+    bytes: new TextEncoder().encode(
+      groupText({ index: 0, total: groups.length, group: first, changed }),
+    ).length,
+  }
+  const diffAt = data.findIndex(({ name }) => name === 'PHADA_DIFF')
+  return diffAt < 0 ? [...data, block] : data.toSpliced(diffAt, 0, block)
 }
 
 function nativeParts(

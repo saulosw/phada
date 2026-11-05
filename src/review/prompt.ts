@@ -29,6 +29,8 @@ import {
   mcpServersOf,
   toolNamesOf,
 } from './prompt-parts.js'
+import { GROUPS, groupText } from './group-prompt.js'
+import type { GroupView } from './group-prompt.js'
 import { REVIEW_REPORT_JSON_SCHEMA } from './report-schema.js'
 import { CONFIDENCE_FLOOR, VERIFY_CANDIDATE_FLOOR } from './select-findings.js'
 import type { ReviewerLens, ReviewRequest, SkillPass } from './types.js'
@@ -68,7 +70,11 @@ export const OUTPUT_FORMAT = `The review is a single JSON object shaped like thi
   is empty when the file is not worth mentioning.
 - findings: one entry per problem. file is the path shown in the diff;
   line is the number shown at the start of that diff line; title is one line;
-  why explains the impact; fix is a concrete fix, or null;
+  why explains the impact; fix is a concrete fix, or null.
+  Place a finding at the changed line where the fix goes: the definition or the
+  line that causes the problem (a function that copies existing code, a request
+  without a catch), not a line that only calls that code or shows its effect,
+  when both are changed lines;
   rule is the key of the repository rule the finding breaks, or null;
   existing is set only on a finding whose problem is the reimplementation
   itself: the path:line of the existing code that already does what this change
@@ -133,7 +139,12 @@ export interface PromptPart {
 export type InstructionOptions = Pick<
   ReviewRequest,
   'language' | 'verify' | 'context' | 'impact' | 'related' | 'conversation' | 'ci'
-> & { toolNames?: readonly string[]; mcpServers?: readonly McpServerInfo[]; diff?: string }
+> & {
+  toolNames?: readonly string[]
+  mcpServers?: readonly McpServerInfo[]
+  diff?: string
+  grouped?: boolean
+}
 
 const PHADA = 'phada'
 
@@ -150,6 +161,7 @@ export function buildReviewPrompt(
   nonce: string,
   tools?: Toolbox,
   pass?: SkillPass,
+  group?: GroupView,
 ): ReviewPrompt {
   const toolNames = toolNamesOf(tools)
   const parts = reviewInstructionParts(
@@ -158,6 +170,7 @@ export function buildReviewPrompt(
       ...(toolNames === undefined ? {} : { toolNames }),
       mcpServers: mcpServersOf(tools),
       diff: request.pullRequest.diff,
+      ...(group === undefined ? {} : { grouped: true }),
     },
     pass,
   )
@@ -167,6 +180,7 @@ export function buildReviewPrompt(
       ...reviewDataBlocks(request).map(({ name, content }) => block(name, nonce, content)),
       ...relatedBlocks(request.related, nonce),
       ...impactBlocks(request.impact, nonce),
+      ...(group === undefined ? [] : [block('PHADA_GROUP', nonce, groupText(group))]),
     ]
       .sort(byBlockOrder)
       .join('\n\n'),
@@ -205,6 +219,7 @@ const BLOCK_ORDER = [
   'PHADA_CI',
   'PHADA_RELATED',
   'PHADA_IMPACT',
+  'PHADA_GROUP',
   'PHADA_DIFF',
 ]
 
@@ -225,6 +240,7 @@ export function reviewInstructionParts(
     toolNames,
     mcpServers,
     diff,
+    grouped,
   }: InstructionOptions,
   pass?: SkillPass,
 ): PromptPart[] {
@@ -262,6 +278,7 @@ export function reviewInstructionParts(
         diff === undefined || toolNames === undefined ? '' : investigationAsks(diff, toolNames),
       ),
     ),
+    phada('context', grouped === true ? GROUPS : ''),
     phada('contract', LINE_NUMBERS),
     phada('contract', OUTPUT_FORMAT),
     phada('contract', [UNTRUSTED_DATA, ...languageLine].join('\n')),

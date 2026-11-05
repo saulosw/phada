@@ -126,6 +126,9 @@ describe('config templates with review focus and skills', () => {
     expect(template).toContain(
       '#   continuation: true         # one more pass over the files a low-coverage review left out',
     )
+    expect(template).toContain(
+      '#   groups: false              # true reviews a large diff in groups of files; { concurrency: 2 } runs 2 at a time',
+    )
   })
 })
 

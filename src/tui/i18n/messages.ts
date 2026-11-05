@@ -159,6 +159,7 @@ export interface ReviewFlowMessages {
     related(count: number): string
     impact(symbols: number): string
     pass(skill: string, index: number, total: number): string
+    group(label: string, index: number, total: number, files: number, kb: number): string
     ai(provider: string, run: string, elapsed: string): string
     noAnswer: string
     publishing: string
@@ -568,6 +569,9 @@ export interface ReviewsMessages {
   detail: {
     score: string
     coverage: string
+    groups: string
+    groupLinks: { directory(count: number): string; single(count: number): string }
+    groupsFailed(count: number): string
     coverageLevels: Readonly<Record<Exclude<StoredCoverage['level'], 'full'>, string>>
     declared: string
     coverageFiles(covered: number, total: number): string

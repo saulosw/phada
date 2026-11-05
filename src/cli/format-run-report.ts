@@ -96,6 +96,7 @@ function sectionsOf(report: RunReport): RunSections {
             fixFor: (blocked) => fixes?.get(blocked) ?? '',
           },
         }),
+    ...(report.groups === undefined ? {} : { groups: report.groups }),
     ...(report.investigation === undefined || report.investigation === null
       ? {}
       : { investigation: report.investigation }),

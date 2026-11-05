@@ -21,6 +21,7 @@ export interface ReviewContext {
   rules: ContextRule[]
   docs: ContextDoc[]
   ignored: string[]
+  generated?: string[]
 }
 
 export interface ImpactSite {
@@ -187,6 +188,7 @@ export interface ReviewRequest {
   conversation?: ConversationItem[]
   ci?: CiCheck[]
   passes?: SkillPass[]
+  groups?: { concurrency: number }
 }
 
 export interface ReviewTarget {
@@ -351,12 +353,29 @@ export interface Coverage {
   continuation?: { before: Pick<Coverage, 'level' | 'covered' | 'total'> }
 }
 
+export type DiffGroupLink = 'directory' | 'single'
+
+export interface DiffGroup {
+  label: string
+  files: string[]
+  bytes: number
+  link: DiffGroupLink
+}
+
 export type UsagePass = 'review' | 'continuation' | 'verify' | 'recheck'
 
 export interface PassUsage {
   pass: UsagePass
   skill?: string
+  group?: string
   usage?: TokenUsage
+}
+
+export interface DiffGroupReport extends DiffGroup {
+  findings: number
+  durationMs: number
+  usage?: TokenUsage
+  failed?: true
 }
 
 export interface ReviewResult {
@@ -384,6 +403,8 @@ export interface ReviewResult {
   externalCalls?: ExternalToolCall[]
   warnings?: string[]
   passes?: PassReport[]
+  groups?: DiffGroupReport[]
+  unbacked?: Finding[]
   skillBodies?: SkillBody[]
 }
 

@@ -85,7 +85,14 @@ export interface StoredTokens {
 export interface StoredPassUsage {
   pass: string
   skill: string | null
+  group: string | null
   tokens: StoredTokens | null
+}
+
+export interface StoredGroups {
+  directory: number
+  single: number
+  failed: number
 }
 
 export interface StoredUsage {
@@ -114,6 +121,7 @@ export interface ReviewDetail {
   worthChecking: StoredFinding[]
   publication: StoredPublication | null
   ci: StoredCi | null
+  groups: StoredGroups | null
   usage: StoredUsage | null
   published: FeedbackFinding[]
 }
@@ -193,6 +201,7 @@ export function reviewDetailOf(stored: RunRecord, published: FeedbackFinding[]):
     worthChecking: storedFindings(review?.worthChecking),
     publication: storedPublication(result?.publication),
     ci: storedCi(result?.ci),
+    groups: storedGroups(review?.groups),
     usage: storedUsage(result?.usage, review?.usage),
     published,
   }
@@ -337,9 +346,30 @@ function storedUsage(value: unknown, reviewTotal: unknown): StoredUsage | null {
       const entry = objectOf(item)
       const pass = stringOf(entry?.pass)
       if (entry === undefined || pass === undefined) return []
-      return [{ pass, skill: stringOf(entry.skill) ?? null, tokens: storedTokens(entry.usage) }]
+      return [
+        {
+          pass,
+          skill: stringOf(entry.skill) ?? null,
+          group: stringOf(entry.group) ?? null,
+          tokens: storedTokens(entry.usage),
+        },
+      ]
     }),
     total: storedTokens(usage.total),
+  }
+}
+
+function storedGroups(value: unknown): StoredGroups | null {
+  if (!Array.isArray(value)) return null
+  const groups = value.flatMap((item) => {
+    const group = objectOf(item)
+    return group === undefined || stringOf(group.label) === undefined ? [] : [group]
+  })
+  if (groups.length === 0) return null
+  return {
+    directory: groups.filter(({ link }) => link !== 'single').length,
+    single: groups.filter(({ link }) => link === 'single').length,
+    failed: groups.filter(({ failed }) => failed === true).length,
   }
 }
 

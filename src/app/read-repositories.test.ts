@@ -3,7 +3,7 @@ import { ConfigError } from '../config/errors.js'
 import { parseConfigText } from '../config/parse-config.js'
 import type { ConfigLayer } from '../config/types.js'
 import type { HistoryStatus, ListedRun, RunRecord } from '../store/history-store.js'
-import { readRepositories, readRepository } from './read-repositories.js'
+import { readRepositories, readRepository, userSettings } from './read-repositories.js'
 import type { RepositoryHistory, RepositoryReaders } from './read-repositories.js'
 
 const CONFIG_FILE = '/cfg/config.yml'
@@ -190,6 +190,7 @@ describe('readRepository', () => {
     'minConfidence: 70',
     'review:',
     '  debt: comments',
+    '  groups: { concurrency: 3 }',
     'ci:',
     '  wait: 5m',
     'ignore: ["dist/**"]',
@@ -212,6 +213,8 @@ describe('readRepository', () => {
   const repoYaml = [
     'model: gpt-y',
     'verify: false',
+    'review:',
+    '  groups: false',
     'ci:',
     '  onFailure: skip',
     '  checks: [build]',
@@ -222,6 +225,22 @@ describe('readRepository', () => {
     '      description: The API it calls',
     '',
   ].join('\n')
+
+  it('shows the diff groups setting off by default, on, or with its concurrency', () => {
+    const groups = (layers: ConfigLayer[]) =>
+      userSettings(layers).find((setting) => setting.key === 'review.groups')
+
+    expect(groups([])).toEqual({
+      key: 'review.groups',
+      value: { kind: 'flag', on: false },
+      origin: 'default',
+    })
+    expect(groups([layer('user', globalYaml)])).toEqual({
+      key: 'review.groups',
+      value: { kind: 'text', text: 'concurrency 3' },
+      origin: 'global',
+    })
+  })
 
   it('shows the effective user config with where each value comes from', async () => {
     const detail = await readRepository(
@@ -251,6 +270,7 @@ describe('readRepository', () => {
     expect(byKey.get('ci.checks@repository')).toEqual({ kind: 'list', items: ['build'] })
     expect(byKey.get('review.debt@global')).toEqual({ kind: 'text', text: 'comments' })
     expect(byKey.get('review.continuation@default')).toEqual({ kind: 'flag', on: true })
+    expect(byKey.get('review.groups@repository')).toEqual({ kind: 'flag', on: false })
     expect(byKey.get('ignore@global')).toEqual({ kind: 'list', items: ['dist/**'] })
     expect(byKey.get('ignore@repository')).toEqual({ kind: 'list', items: ['fixtures/**'] })
     expect(detail.config.rules).toEqual([

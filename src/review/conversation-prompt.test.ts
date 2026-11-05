@@ -61,11 +61,11 @@ function digest({ instructions, data, outputSchema }: ReviewPrompt): string {
 
 describe('prompts of a pull request without conversation', () => {
   it.each([
-    ['bare', BARE, '547da9c391811473e2746434a40c7581540387e825b6304003472d8f1b5bf3ca'],
+    ['bare', BARE, '908d67c32aff5b56dadcf28f5441b9195c13777f7bb3e4f6edf81d58427f660a'],
     [
       'with context, impact and related repositories',
       RICH,
-      'cd8a7df4e10f12088094e1ed23d4b6f8331da557ec01e405ca91c1449e39f0e0',
+      'e32333684beb7a36785ec5bedce01a149c923d28ebc4d6a8aa12fa759a4df06d',
     ],
   ])('keeps the review prompt byte for byte (%s)', (_case, request, expected) => {
     expect(digest(buildReviewPrompt(request, NONCE))).toBe(expected)

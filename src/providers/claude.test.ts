@@ -88,6 +88,10 @@ describe('ClaudeCliProvider', () => {
     expect(new ClaudeCliProvider().id).toBe('claude-cli')
   })
 
+  it('runs two group passes at a time', () => {
+    expect(new ClaudeCliProvider().concurrency).toBe(2)
+  })
+
   it('returns the review text, the model that answered, the duration and the token usage', async () => {
     const output = await provider('success').review(PROMPT)
 

@@ -120,6 +120,23 @@ describe('parseCliArgs', () => {
     expect(REVIEW_USAGE).toContain('--no-continuation')
   })
 
+  it('turns the diff groups off with --no-groups and back on with --groups, refusing both', () => {
+    expect(parseCliArgs(['review', 'acme/shop#12', '--no-groups'])).toMatchObject({
+      kind: 'review',
+      groups: false,
+    })
+    expect(parseCliArgs(['review', 'acme/shop#12', '--groups'])).toMatchObject({
+      kind: 'review',
+      groups: true,
+    })
+    expect(parseCliArgs(['review', 'acme/shop#12'])).not.toHaveProperty('groups')
+    expect(REVIEW_USAGE).toContain('--no-groups')
+    expect(REVIEW_USAGE).toContain('--groups ')
+    expect(() => parseCliArgs(['review', 'acme/shop#12', '--groups', '--no-groups'])).toThrow(
+      'Use either --groups or --no-groups.',
+    )
+  })
+
   it('turns the continuation pass back on with --continuation, and refuses both', () => {
     expect(parseCliArgs(['review', 'acme/shop#12', '--continuation'])).toMatchObject({
       kind: 'review',

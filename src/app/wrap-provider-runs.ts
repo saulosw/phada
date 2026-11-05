@@ -11,6 +11,7 @@ export function wrapProviderRuns(provider: ReviewProvider, wrap: RunWrapper): Re
   const runSkill = provider.runSkill?.bind(provider)
   return {
     id: provider.id,
+    ...(provider.concurrency === undefined ? {} : { concurrency: provider.concurrency }),
     review: (prompt) => wrap('review', () => provider.review(prompt)),
     ...(runSkill === undefined
       ? {}

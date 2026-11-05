@@ -146,6 +146,7 @@ function detail(): ReviewDetail {
       reason: null,
     },
     ci: { state: 'failing', failing: ['lint'], pending: ['e2e'], checks: [] },
+    groups: null,
     usage: null,
     published: [
       published({ destination: 'fixed', marks: ['fixed'] }),
@@ -430,14 +431,16 @@ describe('the Reviews screen', () => {
             {
               pass: 'review',
               skill: 'code-review\u0007',
+              group: null,
               tokens: { input: 812_000, cached: 640_000, output: 9_000 },
             },
             {
               pass: 'verify',
               skill: null,
+              group: null,
               tokens: { input: 120_000, cached: null, output: 2_000 },
             },
-            { pass: 'recheck', skill: null, tokens: null },
+            { pass: 'recheck', skill: null, group: null, tokens: null },
           ],
           total: { input: 932_000, cached: 640_000, output: 11_000 },
         },
@@ -494,6 +497,47 @@ describe('the Reviews screen', () => {
     )
   })
 
+  it('shows how many diff groups a review had and the tokens of each group in 80×24', async () => {
+    const tokens = { input: 9_000, cached: null, output: 400 }
+    const grouped = (groups: ReviewDetail['groups']) => ({
+      ...detail(),
+      findings: [],
+      worthChecking: [],
+      published: [],
+      groups,
+      usage: {
+        passes: [
+          { pass: 'review', skill: null, group: 'api/src\u0007', tokens },
+          { pass: 'review', skill: 'sec', group: 'web', tokens },
+        ],
+        total: null,
+      },
+    })
+    const byDirectory = openReviews({
+      detail: () => grouped({ directory: 4, single: 0, failed: 0 }),
+    })
+    await byDirectory.showing('Enter open')
+    await byDirectory.press(KEYS.enter)
+    await byDirectory.showing('Groups')
+    expectFits(byDirectory.frame(), { columns: 80, rows: 24 })
+    expect(byDirectory.frame()).toMatch(/Groups\s+4 by directory\n/)
+    expect(byDirectory.frame()).toMatch(/review \(api\/src\)\s+9\.0k in · 400 out\n/)
+    expect(byDirectory.frame()).toMatch(/sec \(web\)\s+9\.0k in · 400 out\n/)
+    expect(byDirectory.frame()).not.toContain('\u0007')
+
+    const mixed = openReviews({ detail: () => grouped({ directory: 3, single: 1, failed: 1 }) })
+    await mixed.showing('Enter open')
+    await mixed.press(KEYS.enter)
+    await mixed.showing('Groups')
+    expect(mixed.frame()).toMatch(/Groups\s+3 by directory, 1 file alone · 1 failed\n/)
+
+    const whole = openReviews({ detail: () => grouped(null) })
+    await whole.showing('Enter open')
+    await whole.press(KEYS.enter)
+    await whole.showing('Score')
+    expect(whole.frame()).not.toContain('Groups')
+  })
+
   it('shows no coverage line when the review covered every file or has no coverage', async () => {
     for (const coverage of [
       {
@@ -542,8 +586,18 @@ describe('the Reviews screen', () => {
         published: [],
         usage: {
           passes: [
-            { pass: 'review', skill: null, tokens: { input: 900, cached: null, output: 40 } },
-            { pass: 'continuation', skill: null, tokens: { input: 300, cached: null, output: 20 } },
+            {
+              pass: 'review',
+              skill: null,
+              group: null,
+              tokens: { input: 900, cached: null, output: 40 },
+            },
+            {
+              pass: 'continuation',
+              skill: null,
+              group: null,
+              tokens: { input: 300, cached: null, output: 20 },
+            },
           ],
           total: null,
         },

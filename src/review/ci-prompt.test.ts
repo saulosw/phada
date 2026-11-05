@@ -49,7 +49,7 @@ function blockOf(data: string, name: string): string {
 describe('prompts of a pull request without checks', () => {
   it('keep the review prompt byte for byte', () => {
     expect(digest(buildReviewPrompt({ ...BARE, ci: [] }, NONCE))).toBe(
-      '547da9c391811473e2746434a40c7581540387e825b6304003472d8f1b5bf3ca',
+      '908d67c32aff5b56dadcf28f5441b9195c13777f7bb3e4f6edf81d58427f660a',
     )
   })
 

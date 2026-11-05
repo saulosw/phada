@@ -61,6 +61,7 @@ export interface OllamaProviderOptions {
 
 export class OllamaProvider implements ReviewProvider {
   readonly id = PROVIDER_ID
+  readonly concurrency = 1
   readonly #model: string
   readonly #baseUrl: string
   readonly #fetch: typeof globalThis.fetch

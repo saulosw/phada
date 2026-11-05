@@ -2,6 +2,7 @@ import type {
   CiSettings,
   DebtSetting,
   DeclaredRepository,
+  GroupsSetting,
   ReviewSettings,
 } from '../config/merge-config.js'
 import type { RepositoryTree } from '../github/repository-files.js'
@@ -60,6 +61,7 @@ export interface ContextOptions {
   minConfidence?: number
   verify?: boolean
   continuation?: boolean
+  groups?: GroupsSetting
   investigate?: boolean
   resolveThreads?: boolean
   conversation?: boolean

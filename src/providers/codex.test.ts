@@ -90,6 +90,10 @@ describe('CodexCliProvider', () => {
     expect(new CodexCliProvider().id).toBe('codex-cli')
   })
 
+  it('runs two group passes at a time', () => {
+    expect(new CodexCliProvider().concurrency).toBe(2)
+  })
+
   it('returns the final message, the model it asked for, the duration and the token usage', async () => {
     const output = await provider('success', { model: 'gpt-test-model' }).review(PROMPT)
 
