@@ -7,6 +7,8 @@ output can change between minor versions.
 
 ## Unreleased
 
+## 0.15.0 - 2026-11-05
+
 ### Added
 
 - `phada lessons --refresh [owner/repo]` sends the open misses of team people (owner, member or
