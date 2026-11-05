@@ -7,6 +7,8 @@ output can change between minor versions.
 
 ## Unreleased
 
+## 0.16.0 - 2026-11-05
+
 ### Added
 
 - With `review.groups: true` or `--groups`, a pull request with 30 KB or more of code is reviewed in
