@@ -128,8 +128,10 @@ export async function runReview(
     reads: [
       ...answered.coverage.reads,
       ...answered.relatedReads,
+      ...answered.grepped,
       ...(continued?.reads ?? []),
       ...(continued?.relatedReads ?? []),
+      ...(continued?.grepped ?? []),
     ],
     diffFiles,
   })
@@ -252,6 +254,7 @@ interface AnsweredPasses {
   reports: PassReport[]
   touched: string[]
   relatedReads: string[]
+  grepped: string[]
   durationMs: number
   passUsage: PassUsage[]
   warnings: string[]
@@ -271,6 +274,7 @@ interface TextAnswer {
   nonce: string
   reads: string[]
   relatedReads: string[]
+  grepped: string[]
   verified: boolean
   touched: string[]
   durationMs: number
@@ -294,6 +298,7 @@ interface ContinuedPass {
   declarations: FileDeclaration[]
   reads: string[]
   relatedReads: string[]
+  grepped: string[]
   verified: boolean
   touched: string[]
 }
@@ -354,6 +359,7 @@ async function continueReview(
         declarations: report.files,
         reads: recorded?.reads() ?? [],
         relatedReads: recorded?.relatedReads() ?? [],
+        grepped: recorded?.grepped() ?? [],
         verified: recorded !== undefined && output.withoutTools !== true,
         touched: [...(tools?.touchedPaths() ?? [])],
       },
@@ -380,6 +386,7 @@ async function runPasses(
     reports: [],
     touched: [],
     relatedReads: [],
+    grepped: [],
     durationMs: 0,
     passUsage: [],
     warnings: [],
@@ -470,6 +477,7 @@ function recordText(
   answered.coverage.declarations.push(...text.answer.report.files)
   answered.coverage.reads.push(...text.reads)
   answered.relatedReads.push(...text.relatedReads)
+  answered.grepped.push(...text.grepped)
   if (!text.verified) answered.coverage.verified = false
   answered.touched.push(...text.touched)
   answered.durationMs += text.durationMs
@@ -506,6 +514,7 @@ async function answerWhole(
     nonce,
     reads: recorded?.reads() ?? [],
     relatedReads: recorded?.relatedReads() ?? [],
+    grepped: recorded?.grepped() ?? [],
     verified: recorded !== undefined && output.withoutTools !== true,
     touched: [...(tools?.touchedPaths() ?? [])],
     durationMs: output.durationMs,
@@ -522,6 +531,7 @@ interface GroupAnswer {
   nonce: string
   reads: string[]
   relatedReads: string[]
+  grepped: string[]
   verified: boolean
   touched: string[]
 }
@@ -608,6 +618,7 @@ async function answerInGroups(
       nonce,
       reads: recorded?.reads() ?? [],
       relatedReads: recorded?.relatedReads() ?? [],
+      grepped: recorded?.grepped() ?? [],
       verified: recorded !== undefined && output.withoutTools !== true,
       touched: [...(tools?.touchedPaths() ?? [])],
     })
@@ -650,6 +661,7 @@ async function answerInGroups(
     nonce: first.nonce,
     reads: answers.flatMap(({ reads }) => reads),
     relatedReads: answers.flatMap(({ relatedReads }) => relatedReads),
+    grepped: answers.flatMap(({ grepped }) => grepped),
     verified: answers.every(({ verified }) => verified),
     touched: answers.flatMap(({ touched }) => touched),
     durationMs,

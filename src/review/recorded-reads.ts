@@ -4,11 +4,15 @@ export interface RecordedReads {
   toolbox: Toolbox
   reads(): string[]
   relatedReads(): string[]
+  grepped(): string[]
 }
+
+const GREP_MATCH = /^(.+?):\d+: /
 
 export function recordingReads(toolbox: Toolbox): RecordedReads {
   const reads: string[] = []
   const relatedReads: string[] = []
+  const grepped: string[] = []
   return {
     toolbox: {
       ...toolbox,
@@ -20,12 +24,21 @@ export function recordingReads(toolbox: Toolbox): RecordedReads {
           if (read.repo === undefined) reads.push(read.path)
           else relatedReads.push(`${read.repo}:${read.path}`)
         }
+        if (name === 'grep' && !result.isError) grepped.push(...grepFiles(result.text))
         return result
       },
     },
     reads: () => [...reads],
     relatedReads: () => [...relatedReads],
+    grepped: () => [...new Set(grepped)],
   }
+}
+
+function grepFiles(text: string): string[] {
+  return text.split('\n').flatMap((line) => {
+    const file = GREP_MATCH.exec(line)?.[1]
+    return file === undefined ? [] : [file]
+  })
 }
 
 function readOf(name: string, args: unknown): { path: string; repo?: string } | undefined {

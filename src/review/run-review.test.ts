@@ -915,8 +915,8 @@ describe('runReview coverage', () => {
   const diff = [modified('src/a.ts'), modified('src/b.ts'), created('src/new.ts', 60)].join('\n')
   const toolbox: Toolbox = {
     definitions: [{ name: 'read_file', description: 'r', inputSchema: { type: 'object' } }],
-    call: async (_name, args) => ({
-      text: 'content',
+    call: async (name, args) => ({
+      text: name === 'grep' ? 'src/b.ts:2: added' : 'content',
       isError:
         (args as { path?: string }).path === 'src/gone.ts' ||
         (args as { from?: number }).from === 999,
@@ -1276,10 +1276,10 @@ describe('runReview coverage', () => {
 describe('runReview with findings of code the change reimplements', () => {
   const toolbox: Toolbox = {
     definitions: [{ name: 'read_file', description: 'r', inputSchema: { type: 'object' } }],
-    call: async (_name, args) => ({
-      text: 'content',
-      isError: (args as { path?: string }).path === 'src/gone.ts',
-    }),
+    call: async (name, args) =>
+      name === 'grep'
+        ? { text: (args as { hits?: string }).hits ?? 'no matches', isError: false }
+        : { text: 'content', isError: (args as { path?: string }).path === 'src/gone.ts' },
     touchedPaths: () => [],
   }
   const copy = (existing: string, title = `Reimplements ${existing}`) => ({
@@ -1335,6 +1335,39 @@ describe('runReview with findings of code the change reimplements', () => {
       { existing: 'src/shop.ts:10', sources: ['src/shop.ts:10'] },
     ])
     expect(result.dropped).not.toHaveProperty('unbacked')
+  })
+
+  it('keeps a finding whose existing code a grep showed, in this or a related repository', async () => {
+    const result = await reviewedWith(
+      answering({
+        calls: [
+          ['grep', { pattern: 'find', hits: 'src/db.ts:12: export function find(id) {' }],
+          ['grep', { pattern: 'x', hits: 'acme/lib:src/money.ts:3: export const x = 1' }],
+        ],
+        findings: [copy('src/db.ts:12'), copy('acme/lib:src/money.ts:3')],
+      }),
+    )
+
+    expect(result.findings.map(({ existing }) => existing)).toEqual([
+      'src/db.ts:12',
+      'acme/lib:src/money.ts:3',
+    ])
+    expect(result.dropped).not.toHaveProperty('unbacked')
+  })
+
+  it('drops a finding whose existing file no grep result showed', async () => {
+    const result = await reviewedWith(
+      answering({
+        calls: [
+          ['grep', { pattern: 'find', hits: 'src/other.ts:4: find()' }],
+          ['grep', { pattern: 'none' }],
+        ],
+        findings: [copy('src/db.ts:12')],
+      }),
+    )
+
+    expect(result.findings).toEqual([])
+    expect(result.dropped.unbacked).toBe(1)
   })
 
   it('drops a finding whose existing code was not read, failed to read or is added by the change', async () => {
