@@ -303,7 +303,9 @@ prints:
 - **Summary** of what the pull request changes and a **table of the changed files**.
 - **Findings grouped by severity**, each with file, line, confidence (0–100), why it matters and
   a suggested fix (with the exact code change when the fix is a local edit, see
-  [Suggested changes](#suggested-changes)). Confidence is how sure the AI is that the problem is real and happens as
+  [Suggested changes](#suggested-changes)). A finding sits at the changed line where the fix
+  goes, such as the function that copies existing code or the request without a `catch`, not at
+  a line that only calls it or shows its effect. Confidence is how sure the AI is that the problem is real and happens as
   described; how often it happens and how much it costs go into the severity, so a real but rare
   bug is a sure finding with a lower severity (a P0 stays P0 however rarely it happens). Only
   findings at the confidence cut or above are shown here (60 by default, see `--min-confidence`):
@@ -427,20 +429,21 @@ review; the app marks a finding of the repository and shows the debt in the revi
 ### Reimplementations
 
 The built-in reviewer also looks for code the pull request writes again although the repository
-already has code that does the same (a helper, a function, a module): a P2 finding, or P1 when
-the copy diverges from the existing code and causes a bug. Such a finding gives the place of the
-existing code in `existing` (`path:line`, or `owner/repo:path:line` in a
-[related repository](#related-repositories)), and Phada keeps it only when the AI read that file
-with `read_file` during the review and the line is not one the diff adds; the place then comes
-first in the finding's sources. Otherwise a P2 finding is dropped and counted in the footer, e.g.
-`1 dropped (1 reimplementation finding without the existing code read)`, in the terminal and in
-the body posted on the pull request (in the review language; `unbacked` in `dropped` of the
-JSON); a P0 or P1 finding is a problem on its own, so it stays without `existing`. Without the
-[investigation tools](#repository-investigation) nothing can be read, so these P2 findings are
-always dropped. The verifier reads the cited code and rejects the finding when that code does not
-do the same thing. Findings of a [skill that runs natively](#skills-that-run-natively) have no
-`existing` and stay ordinary findings. `--format json` and the history give `existing` on every
-finding (`null` when it has none).
+already has code that does the same (a helper, a function, a module): a P2 finding, or P1 when the
+copy diverges from the existing code and causes a bug. Such a finding gives the place of the
+existing code in `existing` (`path:line`, or `owner/repo:path:line` in a [related
+repository](#related-repositories)), and Phada keeps it only when the AI read that file during the
+review, with `read_file` or in the results of a `grep`, and the line is not one the diff adds; the
+place then comes first in the finding's sources. Otherwise a P2 finding is dropped and counted in
+the footer, e.g. `1 dropped (1 reimplementation finding without the existing code read)`, in the
+terminal and in the body posted on the pull request (in the review language; `unbacked` in `dropped`
+of the JSON, and the dropped findings themselves in `unbacked`); a P0 or P1 finding is a problem on
+its own, so it stays without `existing`. Without the [investigation
+tools](#repository-investigation) nothing can be read, so these P2 findings are always dropped. The
+verifier reads the cited code and rejects the finding when that code does not do the same thing.
+Findings of a [skill that runs natively](#skills-that-run-natively) have no `existing` and stay
+ordinary findings. `--format json` and the history give `existing` on every finding (`null` when it
+has none).
 
 ### Suggested changes
 

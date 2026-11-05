@@ -92,6 +92,7 @@ describe('formatReviewJson', () => {
           },
         ],
         debt: [],
+        unbacked: [],
         worthChecking: [
           {
             ...findingFixture({ severity: 'P2', confidence: 60, line: 5, fix: null }),
@@ -213,13 +214,21 @@ describe('formatReviewJson', () => {
       result: {
         ...RESULT,
         findings: [findingFixture({ line: 3, existing: 'src/db.ts:12' })],
-        dropped: { ...RESULT.dropped, unbacked: 2 },
+        unbacked: [findingFixture({ line: 9, title: 'Copies find', existing: 'src/find.ts:4' })],
+        dropped: { ...RESULT.dropped, unbacked: 1 },
       },
     })
 
     expect(parse(output)).toMatchObject({
-      review: { findings: [{ line: 3, existing: 'src/db.ts:12' }], dropped: { unbacked: 2 } },
+      review: {
+        findings: [{ line: 3, existing: 'src/db.ts:12' }],
+        unbacked: [{ line: 9, title: 'Copies find', existing: 'src/find.ts:4' }],
+        dropped: { unbacked: 1 },
+      },
     })
+    expect(
+      parse(formatReviewJson(pullRequestFixture(), { status: 'reviewed', result: RESULT })),
+    ).toMatchObject({ review: { unbacked: [] } })
   })
 
   it('says which findings are close to the confidence cut', () => {

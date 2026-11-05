@@ -10,7 +10,7 @@ export interface ReadEvidence {
 
 export interface BackedFindings {
   findings: Finding[]
-  unbacked: number
+  unbacked: Finding[]
 }
 
 interface ExistingCode {
@@ -29,7 +29,7 @@ export function withBackedReimplementations(
 ): BackedFindings {
   const read = new Set([...reads].map(readKey))
   const kept: Finding[] = []
-  let unbacked = 0
+  const unbacked: Finding[] = []
   for (const finding of findings) {
     if (finding.existing === undefined) {
       kept.push(finding)
@@ -38,7 +38,7 @@ export function withBackedReimplementations(
     const code = existingCode(finding.existing, repo)
     if (code === undefined || !isBacked(code, read, diffFiles)) {
       if (STANDS_ON_ITS_OWN.has(finding.severity)) kept.push(withoutExisting(finding))
-      else unbacked++
+      else unbacked.push(finding)
       continue
     }
     kept.push(withExistingSource(finding, finding.existing))

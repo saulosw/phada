@@ -352,6 +352,7 @@ function reviewJson(
     files: result.files.map(({ path, change, findings }) => ({ path, change, findings })),
     findings: result.findings.map(findingJson),
     debt: (result.debt ?? []).map(findingJson),
+    unbacked: (result.unbacked ?? []).map(findingJson),
     worthChecking: result.worthChecking.map(findingJson),
     worthCheckingOmitted: result.worthCheckingOmitted,
     minConfidence: result.minConfidence,

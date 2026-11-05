@@ -205,6 +205,7 @@ export async function runReview(
       files: summarizeFiles(first.report.files, findings, diffFiles),
       findings,
       ...(debt.length === 0 ? {} : { debt }),
+      ...(backed.unbacked.length === 0 ? {} : { unbacked: backed.unbacked }),
       worthChecking: selection.worthChecking,
       worthCheckingOmitted: selection.worthCheckingOmitted,
       minConfidence,
@@ -219,7 +220,7 @@ export async function runReview(
         duplicate: prepared.duplicate,
         rejected: checked?.verification.rejected.length ?? 0,
         ...(kept.dropped === 0 ? {} : { debt: kept.dropped }),
-        ...(backed.unbacked === 0 ? {} : { unbacked: backed.unbacked }),
+        ...(backed.unbacked.length === 0 ? {} : { unbacked: backed.unbacked.length }),
       },
       ...(checked === undefined ? {} : { verification: checked.verification }),
       ...(suggested.counts === undefined

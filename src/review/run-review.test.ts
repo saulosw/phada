@@ -1368,6 +1368,7 @@ describe('runReview with findings of code the change reimplements', () => {
 
     expect(result.findings).toEqual([])
     expect(result.dropped.unbacked).toBe(1)
+    expect(result.unbacked?.map(({ existing }) => existing)).toEqual(['src/db.ts:12'])
   })
 
   it('drops a finding whose existing code was not read, failed to read or is added by the change', async () => {

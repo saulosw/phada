@@ -23,6 +23,15 @@ output can change between minor versions.
   `--dry-run`, `phada history <id>` and `phada prompt`, in `groups` of `--format json` and the
   history, in the tokens of each group, and in the app (progress and review detail). The body
   posted on the pull request does not change.
+- `--format json` and the history list the reimplementation findings dropped without the existing
+  code read in `unbacked`, next to their count in `dropped`.
+
+### Changed
+
+- A finding is placed at the changed line where the fix goes (the definition or the cause), not at
+  a line that only calls that code or shows its effect.
+- A reimplementation finding counts its existing code as read when the AI saw that file in the
+  results of a `grep`, not only with `read_file`.
 
 ## 0.15.0 - 2026-11-05
 

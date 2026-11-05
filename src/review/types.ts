@@ -404,6 +404,7 @@ export interface ReviewResult {
   warnings?: string[]
   passes?: PassReport[]
   groups?: DiffGroupReport[]
+  unbacked?: Finding[]
   skillBodies?: SkillBody[]
 }
 
