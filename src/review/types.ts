@@ -32,6 +32,19 @@ export interface ImpactSite {
   how: 'resolved' | 'inferred' | 'observed'
   pullRequest?: number
   text: string
+  repeated?: ImpactRepeated
+}
+
+export interface ImpactRepeated {
+  uses: number
+  files: number
+  also: ImpactPlace[]
+}
+
+export interface ImpactPlace {
+  repo?: string
+  path: string
+  line: number
 }
 
 export interface ImpactDependency {
@@ -51,6 +64,7 @@ export interface ImpactedSymbol {
   exported: boolean
   callers: number
   files: number
+  unresolved?: number
   capped?: boolean
   sites: ImpactSite[]
   dependencies: ImpactDependency[]
@@ -67,6 +81,25 @@ export interface DiffImpact {
   symbols: ImpactedSymbol[]
   omittedSymbols: number
   callerFiles: number
+  similar?: ImpactSimilar[]
+}
+
+export interface ImpactSimilar {
+  symbol: ImpactCode
+  like: ImpactLike[]
+}
+
+export interface ImpactCode {
+  kind: string
+  name: string
+  path: string
+  startLine: number
+  endLine: number
+}
+
+export interface ImpactLike extends ImpactCode {
+  score: number
+  shared: string[]
 }
 
 export type RelatedState = 'consumers' | 'uses' | 'linked' | 'unlinked'
@@ -178,6 +211,7 @@ export interface Finding {
   why: string
   fix: string | null
   rule?: string
+  existing?: string
   sources?: string[]
   reason?: string
   suggestion?: Suggestion
@@ -240,6 +274,7 @@ export interface DroppedFindings {
   duplicate: number
   rejected: number
   debt?: number
+  unbacked?: number
 }
 
 export interface PassReport {

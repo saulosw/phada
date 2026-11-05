@@ -37,6 +37,7 @@ export type ConversationEntry =
 export interface ConversationBlock {
   count: number
   omitted: number
+  omittedBots: number
   resolved: number
   bots: number
   truncated: number
@@ -255,6 +256,7 @@ const ContextSchema = z.object({
 const ConversationSchema = z.object({
   count,
   omitted: count,
+  omittedBots: count,
   resolved: count,
   bots: count,
   truncated: count,

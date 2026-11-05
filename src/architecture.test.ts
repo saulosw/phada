@@ -276,6 +276,7 @@ const APP: Boundary = {
     '../repo-map/languages.js',
     '../repository/git-checkout.js',
     '../review/diff-fingerprint.js',
+    '../review/diff-lines.js',
     '../review/impact-text.js',
     '../review/prompt.js',
     '../review/recheck-threads.js',

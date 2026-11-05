@@ -76,6 +76,7 @@ export function buildConversation({ state, comments, author }: ConversationInput
     report: {
       items: kept.length,
       omitted: items.length - kept.length,
+      omittedBots: items.filter(isBotOnly).length - kept.filter(isBotOnly).length,
       resolved: kept.filter((item) => item.kind === 'thread' && item.resolved).length,
       bots: kept.filter((item) => item.role === 'bot').length,
       truncated: cuts.truncated,
@@ -148,8 +149,14 @@ function chronological(items: readonly ConversationItem[]): ConversationItem[] {
   return [...items].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0))
 }
 
+function isBotOnly(item: ConversationItem): boolean {
+  if (item.role !== 'bot') return false
+  return item.kind !== 'thread' || (item.replies ?? []).every((reply) => reply.role === 'bot')
+}
+
 function withinBudget(items: readonly ConversationItem[]): ConversationItem[] {
   const dropOrder = [
+    ...items.filter(isBotOnly),
     ...items.filter((item) => item.kind === 'thread' && item.resolved),
     ...items.filter((item) => item.kind === 'thread' && !item.resolved && item.outdated),
     ...items,

@@ -422,7 +422,15 @@ describe('runHistoryShow', () => {
     items: [
       { kind: 'comment', at: '2026-10-20T10:00:00Z', author: 'alice', role: 'member', body: 'Hi' },
     ],
-    report: { items: 1, omitted: 0, resolved: 0, bots: 0, truncated: 0, bytes: 120 },
+    report: {
+      items: 1,
+      omitted: 0,
+      omittedBots: 0,
+      resolved: 0,
+      bots: 0,
+      truncated: 0,
+      bytes: 120,
+    },
   }
   const CI: Ci = {
     entries: [],

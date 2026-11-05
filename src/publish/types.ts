@@ -22,6 +22,7 @@ export type RunDecision =
 export interface ConversationReport {
   items: number
   omitted: number
+  omittedBots: number
   resolved: number
   bots: number
   truncated: number

@@ -8,6 +8,7 @@ import { findDiffFile, parseDiffFiles } from './diff-lines.js'
 import type { DiffFile } from './diff-lines.js'
 import { measureCoverage } from './coverage.js'
 import { recordingReads } from './recorded-reads.js'
+import { withBackedReimplementations } from './reimplementation.js'
 import { newNonce } from './nonce.js'
 import { InvalidReviewReportError } from './errors.js'
 import { parseReviewReport } from './parse-report.js'
@@ -106,8 +107,18 @@ export async function runReview(
     },
     (request.ci ?? []).filter(({ state }) => state === 'failing').map(({ name }) => name),
   )
+  const backed = withBackedReimplementations(reported, {
+    repo: pullRequest.repo,
+    reads: [
+      ...answered.coverage.reads,
+      ...answered.relatedReads,
+      ...(continued?.reads ?? []),
+      ...(continued?.relatedReads ?? []),
+    ],
+    diffFiles,
+  })
   const prepared = prepareCandidates(
-    reported,
+    backed.findings,
     diffFiles,
     minConfidence,
     verify ? VERIFY_CANDIDATE_FLOOR : CONFIDENCE_FLOOR,
@@ -190,6 +201,7 @@ export async function runReview(
         duplicate: prepared.duplicate,
         rejected: checked?.verification.rejected.length ?? 0,
         ...(kept.dropped === 0 ? {} : { debt: kept.dropped }),
+        ...(backed.unbacked === 0 ? {} : { unbacked: backed.unbacked }),
       },
       ...(checked === undefined ? {} : { verification: checked.verification }),
       ...(suggested.counts === undefined
@@ -222,6 +234,7 @@ interface AnsweredPasses {
   outputs: AnsweredPass[]
   reports: PassReport[]
   touched: string[]
+  relatedReads: string[]
   durationMs: number
   passUsage: PassUsage[]
   warnings: string[]
@@ -242,6 +255,7 @@ interface ContinuedPass {
   invalid: number
   declarations: FileDeclaration[]
   reads: string[]
+  relatedReads: string[]
   verified: boolean
   touched: string[]
 }
@@ -301,6 +315,7 @@ async function continueReview(
         invalid: report.invalid,
         declarations: report.files,
         reads: recorded?.reads() ?? [],
+        relatedReads: recorded?.relatedReads() ?? [],
         verified: recorded !== undefined && output.withoutTools !== true,
         touched: [...(tools?.touchedPaths() ?? [])],
       },
@@ -325,6 +340,7 @@ async function runPasses(
     outputs: [],
     reports: [],
     touched: [],
+    relatedReads: [],
     durationMs: 0,
     passUsage: [],
     warnings: [],
@@ -393,6 +409,7 @@ async function runPasses(
       answered.coverage.passes++
       answered.coverage.declarations.push(...report.files)
       answered.coverage.reads.push(...(recorded?.reads() ?? []))
+      answered.relatedReads.push(...(recorded?.relatedReads() ?? []))
       if (recorded === undefined || output.withoutTools === true) {
         answered.coverage.verified = false
       }
@@ -462,7 +479,10 @@ async function runNativePass(
       `Skill ${pass.skill}: Phada could not read the converted review; the skill output is used as the review body.`,
     )
   }
-  const findings = report.findings.map((finding) => ({ ...finding, skill: pass.skill }))
+  const findings = report.findings.map(({ existing: _existing, ...finding }) => ({
+    ...finding,
+    skill: pass.skill,
+  }))
   const durationMs = run.durationMs + (converted?.durationMs ?? 0)
   const usage = sumUsage(run.usage, converted?.usage)
   const model = run.model ?? converted?.model

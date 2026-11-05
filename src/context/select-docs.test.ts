@@ -53,6 +53,39 @@ describe('repositoryDocCandidates', () => {
     })
   })
 
+  it('puts the docs the pull request changes first, in the same order among themselves', () => {
+    const { candidates } = repositoryDocCandidates({
+      entries: TREE,
+      complete: true,
+      changedFiles: [
+        'src/api/users.ts',
+        'NOTES.md',
+        'README.md',
+        'src/api/Agents.md',
+        'docs/guide/setup.md',
+        'CHANGELOG.md',
+      ],
+      declared: [
+        { pattern: 'docs/architecture.md', origin: '.phada/config.yml' },
+        { pattern: 'docs/guide/setup.md', origin: '.phada/config.yml' },
+      ],
+      defaults: true,
+    })
+
+    expect(candidates.map((candidate) => [candidate.path, candidate.category])).toEqual([
+      ['docs/guide/setup.md', 'declared'],
+      ['src/api/Agents.md', 'module'],
+      ['README.md', 'contributing'],
+      ['NOTES.md', 'other'],
+      ['docs/architecture.md', 'declared'],
+      ['src/README.md', 'module'],
+      ['AGENTS.md', 'agents'],
+      ['CLAUDE.md', 'agents'],
+      ['.claude/CLAUDE.md', 'agents'],
+      ['.github/CONTRIBUTING.md', 'contributing'],
+    ])
+  })
+
   it('keeps only declared files without defaults and expands globs', () => {
     const { candidates } = repositoryDocCandidates({
       entries: TREE,
@@ -252,13 +285,19 @@ describe('repositoryDocCandidates', () => {
 
 describe('fitDoc', () => {
   it.each([
-    [100, 60_000, 'whole'],
-    [20_000, 20_000, 'whole'],
-    [20_001, 20_000, 'truncated'],
-    [20_001, 19_999, 'omitted'],
-    [500, 499, 'omitted'],
-  ] as const)('fits %i bytes into %i as %s', (size, remaining, fit) => {
-    expect(fitDoc(size, remaining)).toBe(fit)
+    [100, 60_000, 'whole', 100],
+    [3_000, 3_000, 'whole', 3_000],
+    [20_000, 20_000, 'whole', 20_000],
+    [20_001, 20_000, 'truncated', 20_000],
+    [33_000, 60_000, 'truncated', 20_000],
+    [33_000, 20_000, 'truncated', 20_000],
+    [20_001, 19_999, 'truncated', 19_999],
+    [15_000, 10_000, 'truncated', 10_000],
+    [15_000, 4_000, 'truncated', 4_000],
+    [15_000, 3_999, 'omitted', 0],
+    [500, 499, 'omitted', 0],
+  ] as const)('fits %i bytes into %i as %s, taking %i', (size, remaining, fit, bytes) => {
+    expect(fitDoc(size, remaining)).toEqual({ fit, bytes })
   })
 })
 
@@ -266,7 +305,7 @@ describe('truncateDoc', () => {
   it('cuts at a line end inside the limit, with valid UTF-8 and the marker', () => {
     const content = `${'é'.repeat(99)}\n`.repeat(150)
 
-    const cut = truncateDoc(content)
+    const cut = truncateDoc(content, DOC_LIMIT_BYTES)
     const kept = cut.slice(0, cut.lastIndexOf('\n['))
 
     expect(byteLength(kept)).toBeLessThanOrEqual(DOC_LIMIT_BYTES)
@@ -280,9 +319,17 @@ describe('truncateDoc', () => {
   it('cuts inside a multibyte character without breaking it when there is no line end', () => {
     const content = '€'.repeat(10_000)
 
-    const cut = truncateDoc(content)
+    const cut = truncateDoc(content, DOC_LIMIT_BYTES)
 
     expect(cut).not.toContain('�')
     expect(cut.startsWith('€'.repeat(6_666))).toBe(true)
+  })
+
+  it('cuts at the limit it is given', () => {
+    const content = `${'x'.repeat(99)}\n`.repeat(150)
+
+    const cut = truncateDoc(content, 4_000)
+
+    expect(cut).toBe(`${content.slice(0, 3_999)}\n[truncated by Phada: 3999 of 15000 bytes]`)
   })
 })

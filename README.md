@@ -325,8 +325,9 @@ prints:
   place and why. See [Repository debt](#repository-debt).
 - A footer with how many findings there are, how many are worth checking, how many were dropped
   (rejected by verification, outside the diff, duplicates, below confidence 50, not in the
-  expected shape, or repository debt with `review.debt: off`) and the provider, model, time and
-  tokens.
+  expected shape, repository debt with `review.debt: off`, or
+  [reimplementations](#reimplementations) without the existing code read) and the provider,
+  model, time and tokens.
 
 At the end, `phada review` prints on stderr the tokens of each call to the AI (each review pass,
 one per skill, the continuation pass, the verification and the recheck of earlier comments; a native skill counts its run
@@ -393,6 +394,24 @@ to the ones of the repository:
 
 `--format json` and the history give the `scope` of every finding and the `debt` list of the
 review; the app marks a finding of the repository and shows the debt in the review's detail.
+
+### Reimplementations
+
+The built-in reviewer also looks for code the pull request writes again although the repository
+already has code that does the same (a helper, a function, a module): a P2 finding, or P1 when
+the copy diverges from the existing code and causes a bug. Such a finding gives the place of the
+existing code in `existing` (`path:line`, or `owner/repo:path:line` in a
+[related repository](#related-repositories)), and Phada keeps it only when the AI read that file
+with `read_file` during the review and the line is not one the diff adds; the place then comes
+first in the finding's sources. Otherwise a P2 finding is dropped and counted in the footer, e.g.
+`1 dropped (1 reimplementation finding without the existing code read)`, in the terminal and in
+the body posted on the pull request (in the review language; `unbacked` in `dropped` of the
+JSON); a P0 or P1 finding is a problem on its own, so it stays without `existing`. Without the
+[investigation tools](#repository-investigation) nothing can be read, so these P2 findings are
+always dropped. The verifier reads the cited code and rejects the finding when that code does not
+do the same thing. Findings of a [skill that runs natively](#skills-that-run-natively) have no
+`existing` and stay ordinary findings. `--format json` and the history give `existing` on every
+finding (`null` when it has none).
 
 ### Suggested changes
 
@@ -942,7 +961,8 @@ rules that review it.
 
 - **Rules** from `.phada/` in the repository and from your own config (see
   [Configuration](#configuration)). They reach the AI as instructions: a change that breaks one
-  is a finding that names the rule, and a rule can set the lowest severity of those findings.
+  is a finding that names the rule, even when nearby existing code breaks it too, and a rule can
+  set the lowest severity of those findings.
 - **Claude Code rules**: each `.claude/rules/**/*.md` file at the root is a rule too, named by its
   path (`.claude/rules/sql.md`). Its `paths:` front matter (one glob or a list, relative to the
   root) sets the files it applies to: it is sent when a changed file matches, and left out
@@ -956,8 +976,12 @@ rules that review it.
   `.github/copilot-instructions.md`, `.github/instructions/*.instructions.md`,
   `.cursor/rules/*.mdc`, `.cursorrules`, `.windsurfrules` and `GEMINI.md`; `CONTRIBUTING.md` and
   `README.md`; then the other Markdown files at the root and in `docs/` (changelogs, licenses and
-  codes of conduct are left out). Docs share a 60 KB budget; a doc over 20 KB is cut at a line
-  with a visible note, and what does not fit is left out. Nothing is cut or left out silently.
+  codes of conduct are left out). The docs the pull request changes come first, then the files
+  your config lists, then the rest in that order. A change that breaks a convention written in
+  them is a finding (P2 unless it also causes a bug or a security problem), even when nearby code
+  does the same. Docs share a 60 KB budget; a doc over 20 KB is cut at a line with a visible
+  note, a doc that does not fit in what is left of the budget is cut the same way to what is left
+  when at least 4 KB are left, and left out otherwise. Nothing is cut or left out silently.
 - **Instruction files with a scope**: a `.instructions.md` file is sent only when a changed file
   matches its `applyTo`, and left out without one or with `excludeAgent: code-review`. A `.mdc`
   file is sent when it has `alwaysApply: true`, when a changed file matches its `globs`, or when
@@ -1014,10 +1038,13 @@ report again a problem raised in a thread that is still open or dismissed in a r
 the author explains about a choice (a P0 or P1 problem is still reported however it was
 explained), and reports an instruction aimed at reviewers or AI tools in a comment as a finding.
 
-Each body is cut at 2 KB and the whole conversation fits in 16 KB; when it does not, resolved
-threads are left out first, then outdated ones, then the oldest items. Phada prints
-`Conversation: 6 comments (2 resolved, 1 bot)`, with `3 left out over 16 KB` and `1 cut at 2 KB`
-when it had to. `conversation: false` or `--no-conversation` turns it off.
+Each body is cut at 2 KB and the whole conversation fits in 16 KB; when it does not, the comments
+of bots are left out first (a bot's thread that a person replied to counts with the people's),
+then resolved threads, then outdated ones, then the oldest items. Phada prints
+`Conversation: 6 comments (2 resolved, 1 bot)`, with `2 bot comments and 1 other left out over 16 KB`
+and `1 cut at 2 KB` when it had to; the `--dry-run` section says how many of the items left out
+came from bots (`omittedBots` in the `conversation` block of the JSON). `conversation: false` or
+`--no-conversation` turns it off.
 
 ### The checks
 
@@ -1053,8 +1080,11 @@ error. [`phada watch`](#watch-mode) waits on its own, and can also skip commits 
 ## Review focus and skills
 
 By default the AI reviews as Phada's built-in reviewer: a senior engineer looking for bugs,
-security issues, data loss, performance problems and risky design, leaving out style nitpicks and
-what a linter or a test run would catch. You can change what it looks for, or have the review
+security issues, data loss, performance problems and risky design, for code that
+[reimplements](#reimplementations) what the repository already has and for changes that break a
+convention written in the rules or docs. It leaves out style nitpicks, suggestions to add tests or
+docs without a concrete risk, and what a linter or a test run would catch; test code is reviewed
+like any other code. You can change what it looks for, or have the review
 follow review skills you already use with your AI CLI. Whatever the focus, the output format,
 the line numbers, the confidence and severity scales and the rules about untrusted data stay
 Phada's, so every finding is still checked against the diff, verified and scored the same way.
@@ -1225,11 +1255,9 @@ gives the AI tools of its own:
 
 The tools only read that commit: no path outside the repository, no symbolic link, no binary or file
 over 1 MB. Each review pass gets up to 40 calls and 512 KB of results; the verifier investigates
-too, with its own budget. When the diff after ignored files is 30 KB or more, or changes CI
-workflows, container files, infrastructure code (Terraform, deploy and Kubernetes configs) or package
-manifests, the review pass is also asked for a minimum number of calls that grows with the diff: one
-for every 10 KB, at least 3 and at most 15; for those CI and infrastructure files the AI is told to
-check what each of them affects. Smaller diffs get no minimum. What the tools return comes from the pull request head, written by its
+too, with its own budget. When the diff changes CI workflows, container files, infrastructure
+code (Terraform, deploy and Kubernetes configs) or package manifests, the AI is told to check what
+each of them affects. What the tools return comes from the pull request head, written by its
 author, so it is data for the AI, never instructions. Findings still point to a line of the diff,
 and the files the AI read to support them show up in their sources. The mirror stays for the
 next review of the repository, which then fetches only what changed.
@@ -1242,6 +1270,17 @@ After the review Phada prints what the AI read, e.g. `Investigated: 6 reads, 3 s
 What counts is not the number of calls but the [coverage](#what-a-review-looks-like): the AI
 accounts for every changed file and compares the new files of 50 or more lines with the existing
 code closest to them.
+
+When more than half of the added lines are in new files, the pull request mostly creates code, and
+the prompt says so next to the size of the change, with the folders of the new files, e.g.
+`New code: 82% of the added lines are in new files (src/billing/ 4 files, test/billing/ 2 files)`.
+With the tools, the AI is then asked to find the existing code closest to the new code (a sibling
+module, the same kind of handler, test or step) with `list`, `find_symbol` and `similar`, read it,
+and compare the structure, the helpers it reuses and the conventions it follows, reporting what the
+new code [reimplements](#reimplementations) or does differently in a way that breaks a convention
+or causes a bug. The [impact](#repository-graph) then also lists the existing code similar to the
+new functions.
+
 With `--dry-run` the preview lists every call and, when the coverage is not full, each file left
 out and why, and the JSON has an `investigation` block with each call, its size and whether a
 finding used it. `--no-investigate` (or `investigate: false`)
@@ -1254,8 +1293,9 @@ Before the AI starts, Phada builds the [map](#repository-map) of the pull reques
 files it has not read before), resolves names to their definitions and works out the **impact of
 the diff**: the functions, classes and types the pull request changes, the code that calls or uses
 them and what they depend on. The AI gets that list, with the text of each calling line, as the
-starting point of its investigation (only when a changed symbol has callers outside the diff; up to 4 KB, 20 changed symbols and 3 lines per file), and
-Phada prints a summary:
+starting point of its investigation (only when a changed symbol has callers outside the diff, or
+there is similar existing code; up to 4 KB, 20 changed symbols and 3 lines per file), and Phada
+prints a summary:
 
 ```text
 Impact: 3 changed symbols · 12 callers in 7 files
@@ -1266,7 +1306,18 @@ of the same repository (by the `name`, `exports` and `main` of their `package.js
 packages (relative imports, `src/` layouts, folders with a `pyproject.toml`, `setup.py` or
 `setup.cfg`) and Go modules (`go.mod`). A method called on an object whose type Phada cannot see
 is matched by name when one to three definitions have that name, and marked `inferred`; calls it
-cannot resolve count as external. The AI can query the graph itself:
+cannot resolve count as external. In the impact, such a caller is kept only when the object it is
+called on names the class of the changed method (`orderService.save()` for `OrderService.save`)
+or when only one function or method has that name; the others may reach another symbol of the
+same name, so they are counted in the symbol's line (`+2 matched by name only (unresolved, not
+listed)`) and not listed. The symbols that already existed and changed come before the ones the
+pull request adds, and the same line of code in several files is one line with the count and
+the first three places, e.g. `logger.info(msg) — 14 calls in 9 files: src/a.ts:3, src/b.ts:7, src/c.ts:12, +11 more`.
+When the pull request mostly creates code (see
+[Repository investigation](#repository-investigation)), a `Similar existing code` section lists,
+for up to 5 new exported functions and methods, up to 3 existing functions built like each one,
+with the calls they share, for the AI to read before it judges the new code. The AI can query
+the graph itself:
 
 - `find_symbol`: where a function, class, method, type or variable is defined;
 - `callers`: the code that calls, uses or inherits from a symbol, with each line;
@@ -1508,7 +1559,7 @@ ci:
 | `slack`                   | Slack channels the watch listens to (see [Slack](#slack))                                                                                    | your config (top level) |
 | `history`                 | `false` keeps reviews out of the [history](#history)                                                                                         | your config (top level) |
 | `misses.bots`             | Logins of the bots whose threads count as [misses](#misses)                                                                                  | your config             |
-| `disabledRules`           | Ids of rules from other config files to turn off; from a subfolder's `.phada/`, only inside that folder                                      | both                    |
+| `disabledRules`           | Ids of rules from other config files, or paths of `.claude/rules` files, to turn off; from a subfolder's `.phada/`, only inside that folder  | both                    |
 
 Globs follow the usual `*`/`**` rules and are relative to the folder of the `.phada/` that
 declares them (the repository root for your own config): `*.snap` only matches at that level, so

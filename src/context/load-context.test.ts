@@ -51,6 +51,11 @@ function fakeSources(
   }
 }
 
+const declaring = (paths: readonly string[]): string =>
+  ['context:', '  defaults: false', '  files:', ...paths.map((path) => `    - path: ${path}`)].join(
+    '\n',
+  )
+
 const userLayer = (config: ConfigLayer['config']): ConfigLayer => ({
   kind: 'user',
   dir: '',
@@ -319,22 +324,15 @@ describe('loadContext', () => {
     expect(loaded.diff).toBe(modifiedFile('src/api/users.ts'))
   })
 
-  it('fills the budget in priority order, cutting large docs and omitting what does not fit', async () => {
+  it('fills the budget in priority order, cutting a doc to what is left', async () => {
     const doc = (kilobytes: number) => `${'x'.repeat(999)}\n`.repeat(kilobytes)
     const sources = fakeSources({
-      '.phada/config.yml': [
-        'context:',
-        '  defaults: false',
-        '  files:',
-        '    - path: a.md',
-        '    - path: b.md',
-        '    - path: c.md',
-        '    - path: d.md',
-      ].join('\n'),
-      'a.md': doc(30),
-      'b.md': doc(25),
+      '.phada/config.yml': declaring(['a.md', 'b.md', 'c.md', 'd.md', 'e.md']),
+      'a.md': doc(33),
+      'b.md': doc(30),
       'c.md': doc(10),
-      'd.md': doc(25),
+      'd.md': doc(15),
+      'e.md': doc(1),
     })
 
     const loaded = await loadContext({ diff: DIFF, baseSha: SHA, userLayers: [], sources })
@@ -343,12 +341,75 @@ describe('loadContext', () => {
       ['a.md', 'truncated', undefined],
       ['b.md', 'truncated', undefined],
       ['c.md', 'included', undefined],
-      ['d.md', 'omitted', 'budget'],
+      ['d.md', 'truncated', undefined],
+      ['e.md', 'omitted', 'budget'],
     ])
-    expect(loaded.context.docs.map((entry) => entry.path)).toEqual(['a.md', 'b.md', 'c.md'])
-    expect(loaded.context.docs[0]?.content).toMatch(/\[truncated by Phada: 19999 of 30000 bytes\]$/)
-    expect(loaded.report.budget).toEqual({ limit: 60_000, used: 49_998 })
-    expect(sources.repoReads).not.toContain('d.md')
+    expect(loaded.context.docs.map((entry) => entry.path)).toEqual(['a.md', 'b.md', 'c.md', 'd.md'])
+    expect(loaded.context.docs[0]?.content).toMatch(/\[truncated by Phada: 19999 of 33000 bytes\]$/)
+    expect(loaded.context.docs[3]?.content).toMatch(/\[truncated by Phada: 9999 of 15000 bytes\]$/)
+    expect(loaded.report.budget).toEqual({ limit: 60_000, used: 59_997 })
+    expect(sources.repoReads).not.toContain('e.md')
+  })
+
+  it('leaves a doc out when less than 4 KB is left, and still sends a smaller one whole', async () => {
+    const doc = (kilobytes: number) => `${'x'.repeat(999)}\n`.repeat(kilobytes)
+    const sources = fakeSources({
+      '.phada/config.yml': declaring(['a.md', 'b.md', 'c.md', 'd.md', 'e.md']),
+      'a.md': doc(20),
+      'b.md': doc(20),
+      'c.md': doc(17),
+      'd.md': doc(15),
+      'e.md': doc(2),
+    })
+
+    const loaded = await loadContext({ diff: DIFF, baseSha: SHA, userLayers: [], sources })
+
+    expect(loaded.report.docs.map(({ path, status, reason }) => [path, status, reason])).toEqual([
+      ['a.md', 'included', undefined],
+      ['b.md', 'included', undefined],
+      ['c.md', 'included', undefined],
+      ['d.md', 'omitted', 'budget'],
+      ['e.md', 'included', undefined],
+    ])
+    expect(loaded.report.budget.used).toBe(59_000)
+  })
+
+  it('sends the docs the pull request changes first, then declared, local and module docs, without the ones it adds', async () => {
+    const doc = (kilobytes: number) => `${'x'.repeat(999)}\n`.repeat(kilobytes)
+    const sources = fakeSources(
+      {
+        '.phada/config.yml': 'context:\n  files:\n    - path: a.md\n    - path: b.md',
+        'a.md': doc(20),
+        'b.md': doc(20),
+        'docs/guide.md': doc(10),
+        'src/api/README.md': doc(5),
+        'AGENTS.md': doc(10),
+      },
+      {
+        local: { '~/notes': [{ path: '/home/u/notes/rules.md', size: 5 }] },
+        localText: { '/home/u/notes/rules.md': 'Rules' },
+      },
+    )
+
+    const loaded = await loadContext({
+      diff:
+        modifiedFile('src/api/users.ts') +
+        modifiedFile('docs/guide.md') +
+        modifiedFile('docs/added.md'),
+      baseSha: SHA,
+      userLayers: [userLayer({ localFiles: ['~/notes'] })],
+      sources,
+    })
+
+    expect(loaded.report.docs.map(({ path, status }) => [path, status])).toEqual([
+      ['docs/guide.md', 'included'],
+      ['a.md', 'included'],
+      ['b.md', 'included'],
+      ['local:/home/u/notes/rules.md', 'included'],
+      ['src/api/README.md', 'included'],
+      ['AGENTS.md', 'truncated'],
+    ])
+    expect(loaded.report.warnings).toEqual([])
   })
 
   it('gives back the budget of docs that turn out binary or unreadable', async () => {

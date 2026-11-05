@@ -22,8 +22,8 @@ function verifyPrompt(language?: string) {
 
 describe('buildVerifyPrompt', () => {
   it.each([
-    [undefined, 'c111b45f6649d105edf41f5fa36e8c583d83b25398640db8f4af80b99c2672d5'],
-    ['pt-BR', 'a35454d6d7baa0ccb59cf23062d60630011277d22397454012a6baeceb925f34'],
+    [undefined, '7307d67394b35863996b0ce073163462db701b44413832c4249351a4568d36da'],
+    ['pt-BR', '3bf53d562b62db688884d9d7dbcfa650b456a1cf6ed0d467bbaa6427496f0db6'],
   ])('keeps the verifier instructions word for word (language %s)', (language, digest) => {
     const { instructions } = verifyPrompt(language)
 
@@ -189,6 +189,22 @@ describe('buildVerifyPrompt with repository context', () => {
     )
   })
 
+  it('asks to confirm a reimplementation only when the existing code does the same', () => {
+    const copied = [findingFixture({ line: 3, title: 'copies findUser', existing: 'src/db.ts:12' })]
+    const { data, instructions } = buildVerifyPrompt(
+      { pullRequest: pullRequestFixture() },
+      copied,
+      NONCE,
+    )
+
+    expect(data).toContain(
+      '{"id":1,"file":"src/shop.ts","line":3,"title":"copies findUser","why":"Anyone can spend crystals for any user.","existing":"src/db.ts:12"}',
+    )
+    expect(instructions).toContain(
+      'A candidate with existing says the change reimplements the code at that place:\nread it and confirm the candidate only when that code does the same thing, so\nthe change could reuse it; otherwise reject it.',
+    )
+  })
+
   it('shows the suggestion of a candidate that has one', () => {
     const suggested = [
       findingFixture({
@@ -231,7 +247,7 @@ describe('buildVerifyPrompt with repository context', () => {
 })
 
 describe('buildVerifyPrompt with the review focus the user chose', () => {
-  const DEFAULT_DIGEST = 'c111b45f6649d105edf41f5fa36e8c583d83b25398640db8f4af80b99c2672d5'
+  const DEFAULT_DIGEST = '7307d67394b35863996b0ce073163462db701b44413832c4249351a4568d36da'
   const digest = (text: string) => createHash('sha256').update(text).digest('hex')
   const skillPass: SkillPass = {
     skill: 'code-review',

@@ -82,6 +82,7 @@ describe('formatReviewJson', () => {
           {
             ...findingFixture({ severity: 'P0', confidence: 95, line: 3 }),
             rule: null,
+            existing: null,
             sources: [],
             reason: null,
             suggestion: null,
@@ -95,6 +96,7 @@ describe('formatReviewJson', () => {
           {
             ...findingFixture({ severity: 'P2', confidence: 60, line: 5, fix: null }),
             rule: null,
+            existing: null,
             sources: [],
             reason: null,
             suggestion: null,
@@ -105,7 +107,15 @@ describe('formatReviewJson', () => {
         ],
         worthCheckingOmitted: 2,
         minConfidence: 75,
-        dropped: { invalid: 0, belowFloor: 1, outsideDiff: 2, duplicate: 0, rejected: 0, debt: 0 },
+        dropped: {
+          invalid: 0,
+          belowFloor: 1,
+          outsideDiff: 2,
+          duplicate: 0,
+          rejected: 0,
+          debt: 0,
+          unbacked: 0,
+        },
         suggestions: null,
         verification: null,
         provider: { id: 'codex-cli', model: 'gpt-6-astra', additionalModels: ['gpt-6-mini'] },
@@ -191,6 +201,21 @@ describe('formatReviewJson', () => {
         debt: [{ line: 12, title: 'balance has no caller', scope: 'repository', skill: 'phada' }],
         dropped: { debt: 2 },
       },
+    })
+  })
+
+  it('prints the existing code a finding says the change reimplements and the findings dropped without it', () => {
+    const output = formatReviewJson(pullRequestFixture(), {
+      status: 'reviewed',
+      result: {
+        ...RESULT,
+        findings: [findingFixture({ line: 3, existing: 'src/db.ts:12' })],
+        dropped: { ...RESULT.dropped, unbacked: 2 },
+      },
+    })
+
+    expect(parse(output)).toMatchObject({
+      review: { findings: [{ line: 3, existing: 'src/db.ts:12' }], dropped: { unbacked: 2 } },
     })
   })
 
@@ -905,7 +930,15 @@ describe('publication', () => {
           omittedReplies: 1,
         },
       ],
-      report: { items: 3, omitted: 2, resolved: 1, bots: 0, truncated: 1, bytes: 900 },
+      report: {
+        items: 3,
+        omitted: 2,
+        omittedBots: 1,
+        resolved: 1,
+        bots: 0,
+        truncated: 1,
+        bytes: 900,
+      },
     }
     const ci: Ci = {
       entries: [],
@@ -951,6 +984,7 @@ describe('publication', () => {
       conversation: {
         count: 3,
         omitted: 2,
+        omittedBots: 1,
         resolved: 1,
         bots: 0,
         truncated: 1,

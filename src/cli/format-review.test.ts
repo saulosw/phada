@@ -371,6 +371,8 @@ describe('formatReview', () => {
     [{ invalid: 3 }, '3 dropped (3 invalid)'],
     [{ outsideDiff: 1, invalid: 1 }, '2 dropped (1 outside the diff, 1 invalid)'],
     [{ rejected: 2, outsideDiff: 1 }, '3 dropped (2 rejected by verification, 1 outside the diff)'],
+    [{ unbacked: 1 }, '1 dropped (1 reimplementation finding without the existing code read)'],
+    [{ unbacked: 2 }, '2 dropped (2 reimplementation findings without the existing code read)'],
   ])('lists only the reasons that dropped something: %j', (counts, text) => {
     const dropped = { invalid: 0, belowFloor: 0, outsideDiff: 0, duplicate: 0, rejected: 0 }
 

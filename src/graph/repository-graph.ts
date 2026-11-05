@@ -377,6 +377,7 @@ class IndexGraph implements RepositoryGraph {
         ...(owner === undefined ? {} : { in: this.#resolver.graphSymbol(path, owner, context) }),
         kind,
         how: resolution.how === 'inferred' ? 'inferred' : 'resolved',
+        ...(row.qualifier === undefined ? {} : { receiver: row.qualifier }),
       })
     }
     return found
@@ -400,6 +401,7 @@ class IndexGraph implements RepositoryGraph {
         name: row.name,
         ...(owner === undefined ? {} : { in: this.#resolver.graphSymbol(path, owner, context) }),
         kind,
+        ...(row.qualifier === undefined ? {} : { receiver: row.qualifier }),
         ...(resolution.module === undefined ? {} : { module: resolution.module }),
         ...(resolution.imported === undefined ? {} : { imported: resolution.imported }),
         ...(resolution.member === undefined ? {} : { member: resolution.member }),

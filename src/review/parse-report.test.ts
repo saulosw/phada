@@ -184,10 +184,26 @@ describe('parseReviewReport', () => {
     ])
   })
 
-  it('leaves out a null rule and empty sources, and accepts findings without them', () => {
+  it('reads the existing code a finding says the change reimplements', () => {
     const text = reviewReportJson({
       findings: [
-        { ...findingFixture(), rule: null, sources: [] },
+        { ...findingFixture(), existing: ' acme/wallet:src/money.ts:8 ' },
+        { ...findingFixture({ title: 'blank' }), existing: ' ' },
+        { ...findingFixture({ title: 'number' }), existing: 8 },
+      ],
+    })
+
+    expect(parseReviewReport(text).findings).toEqual([
+      findingFixture({ existing: 'acme/wallet:src/money.ts:8' }),
+      findingFixture({ title: 'blank' }),
+      findingFixture({ title: 'number' }),
+    ])
+  })
+
+  it('leaves out a null rule, a null existing and empty sources, and accepts findings without them', () => {
+    const text = reviewReportJson({
+      findings: [
+        { ...findingFixture(), rule: null, existing: null, sources: [] },
         findingFixture({ title: 'old' }),
       ],
     })

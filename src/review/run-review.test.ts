@@ -1273,6 +1273,172 @@ describe('runReview coverage', () => {
   })
 })
 
+describe('runReview with findings of code the change reimplements', () => {
+  const toolbox: Toolbox = {
+    definitions: [{ name: 'read_file', description: 'r', inputSchema: { type: 'object' } }],
+    call: async (_name, args) => ({
+      text: 'content',
+      isError: (args as { path?: string }).path === 'src/gone.ts',
+    }),
+    touchedPaths: () => [],
+  }
+  const copy = (existing: string, title = `Reimplements ${existing}`) => ({
+    ...findingFixture({ line: 4, severity: 'P2', title }),
+    existing,
+  })
+
+  function answering(
+    ...turns: { calls?: [string, unknown][]; files?: unknown[]; findings: unknown[] }[]
+  ): ReviewProvider {
+    let next = 0
+    return {
+      id: 'fake-cli',
+      review: async (prompt) => {
+        const turn = turns[next++] ?? { findings: [] }
+        for (const [name, args] of turn.calls ?? []) await prompt.tools?.call(name, args)
+        return {
+          ...OUTPUT,
+          text: reviewReportJson({
+            findings: turn.findings,
+            ...(turn.files === undefined ? {} : { files: turn.files }),
+          }),
+        }
+      },
+    }
+  }
+
+  async function reviewedWith(
+    provider: ReviewProvider,
+    tools: (() => Toolbox) | null = () => toolbox,
+  ) {
+    const outcome = await runReview(
+      { pullRequest: pullRequestFixture() },
+      { provider, ...(tools === null ? {} : { tools }) },
+    )
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    return outcome.result
+  }
+
+  it('keeps a finding whose existing code was read outside the added lines, with it in sources', async () => {
+    const result = await reviewedWith(
+      answering({
+        calls: [
+          ['read_file', { path: 'src/db.ts', from: 1, to: 40 }],
+          ['read_file', { path: 'src/shop.ts' }],
+        ],
+        findings: [copy('src/db.ts:12'), copy('src/shop.ts:10')],
+      }),
+    )
+
+    expect(result.findings.map(({ existing, sources }) => ({ existing, sources }))).toEqual([
+      { existing: 'src/db.ts:12', sources: ['src/db.ts:12'] },
+      { existing: 'src/shop.ts:10', sources: ['src/shop.ts:10'] },
+    ])
+    expect(result.dropped).not.toHaveProperty('unbacked')
+  })
+
+  it('drops a finding whose existing code was not read, failed to read or is added by the change', async () => {
+    const result = await reviewedWith(
+      answering({
+        calls: [
+          ['read_file', { path: 'src/gone.ts' }],
+          ['read_file', { path: 'src/shop.ts' }],
+          ['grep', { pattern: 'spend', path: 'src/wallet.ts' }],
+        ],
+        findings: [
+          copy('src/wallet.ts:3'),
+          copy('src/gone.ts:3'),
+          copy('src/shop.ts:4'),
+          copy('the db helper'),
+          findingFixture(),
+        ],
+      }),
+    )
+
+    expect(result.findings).toEqual([findingFixture()])
+    expect(result.dropped.unbacked).toBe(4)
+  })
+
+  it('keeps a P0 or P1 finding whose existing code was not read, without the existing code', async () => {
+    const bug = (severity: 'P0' | 'P1', title: string) => ({
+      ...findingFixture({ line: 4, severity, title }),
+      existing: 'src/owned.ts:3',
+    })
+    const result = await reviewedWith(
+      answering({ findings: [bug('P0', 'Anyone can edit the goal'), bug('P1', 'Loses a cent')] }),
+    )
+
+    expect(result.findings.map(({ title, existing }) => ({ title, existing }))).toEqual([
+      { title: 'Anyone can edit the goal', existing: undefined },
+      { title: 'Loses a cent', existing: undefined },
+    ])
+    expect(result.dropped).not.toHaveProperty('unbacked')
+  })
+
+  it('drops every finding with existing code when the pass had no tools', async () => {
+    const result = await reviewedWith(answering({ findings: [copy('src/db.ts:12')] }), null)
+
+    expect(result.findings).toEqual([])
+    expect(result.dropped.unbacked).toBe(1)
+  })
+
+  it('keeps a finding whose existing code is in a related repository it read', async () => {
+    const result = await reviewedWith(
+      answering({
+        calls: [
+          ['read_file', { path: 'src/money.ts', repo: 'acme/wallet' }],
+          ['read_file', { path: 'src/db.ts' }],
+        ],
+        findings: [
+          copy('acme/wallet:src/money.ts:8'),
+          copy('acme/wallet:src/db.ts:8'),
+          copy('acme/other:src/money.ts:8'),
+        ],
+      }),
+    )
+
+    expect(result.findings.map(({ existing, sources }) => ({ existing, sources }))).toEqual([
+      { existing: 'acme/wallet:src/money.ts:8', sources: ['acme/wallet:src/money.ts:8'] },
+    ])
+    expect(result.dropped.unbacked).toBe(2)
+  })
+
+  it('verifies a finding with existing code and keeps it when confirmed', async () => {
+    const prompts: ReviewPrompt[] = []
+    const provider: ReviewProvider = {
+      id: 'fake-cli',
+      review: async (prompt) => {
+        prompts.push(prompt)
+        if (prompts.length > 1) {
+          return { ...OUTPUT, text: verificationJson([verdictFixture({ id: 1 })]) }
+        }
+        await prompt.tools?.call('read_file', { path: 'src/db.ts' })
+        return { ...OUTPUT, text: reviewReportJson({ findings: [copy('src/db.ts:12')] }) }
+      },
+    }
+    const outcome = await runReview(
+      { pullRequest: pullRequestFixture(), verify: true },
+      { provider, tools: () => toolbox },
+    )
+
+    expect(prompts[1]?.data).toContain('"existing":"src/db.ts:12"')
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(outcome.result.findings.map(({ existing }) => existing)).toEqual(['src/db.ts:12'])
+  })
+
+  it('counts what the continuation pass read', async () => {
+    const result = await reviewedWith(
+      answering(
+        { files: [], findings: [] },
+        { calls: [['read_file', { path: 'src/db.ts' }]], findings: [copy('src/db.ts:12')] },
+      ),
+    )
+
+    expect(result.coverage?.continuation).toBeDefined()
+    expect(result.findings.map(({ existing }) => existing)).toEqual(['src/db.ts:12'])
+  })
+})
+
 describe('runReview with several skill passes', () => {
   it('does not show the verifier the guide of a pass that failed', async () => {
     const provider = new FakeProvider(
@@ -1733,6 +1899,19 @@ describe('runReview with a native skill pass', () => {
     if (outcome.status !== 'reviewed') throw new Error('expected a review')
     expect(outcome.result.claims).toEqual([settled])
     expect(outcome.result.warnings).toBeUndefined()
+  })
+
+  it('keeps a finding of the skill output as an ordinary one, without existing code', async () => {
+    const converted = reviewReportJson({
+      findings: [{ ...findingFixture({ severity: 'P2' }), existing: 'src/db.ts:12' }],
+    })
+    const { outcome } = await nativeReview([NATIVE], [{ ...OUTPUT, text: converted }])
+
+    if (outcome.status !== 'reviewed') throw new Error('expected a review')
+    expect(outcome.result.findings).toEqual([
+      { ...findingFixture({ severity: 'P2' }), skill: 'code-review:code-review' },
+    ])
+    expect(outcome.result.dropped).not.toHaveProperty('unbacked')
   })
 
   it('lists each claim once when a native skill out of its scope reviewed nothing', async () => {

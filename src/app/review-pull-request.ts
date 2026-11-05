@@ -5,7 +5,7 @@ import { splitDiff } from '../context/split-diff.js'
 import type { Ci, ContextReport, ContextSources, LoadedContext } from '../context/types.js'
 import type { PullRequest } from '../github/pull-request.js'
 import { changedLines, computeImpact } from '../graph/impact.js'
-import type { ChangedLines } from '../graph/impact.js'
+import type { ChangedLines, ImpactOptions } from '../graph/impact.js'
 import { linkGraphs } from '../graph/linked-graph.js'
 import { learnObservedEdges } from '../graph/observe.js'
 import { buildImpactReport } from '../graph/report.js'
@@ -23,6 +23,7 @@ import type { Extractor } from '../repo-map/extract.js'
 import type { Checkout } from '../repository/checkout.js'
 import { CheckoutUnavailableError } from '../repository/git-checkout.js'
 import type { GitMirror } from '../repository/git-mirror.js'
+import { newCodeShare } from '../review/diff-lines.js'
 import { renderImpact } from '../review/impact-text.js'
 import { runReview } from '../review/run-review.js'
 import { recheckThreads } from '../review/recheck-threads.js'
@@ -240,7 +241,9 @@ export async function reviewPullRequest(
         let graph: RepositoryGraph | undefined
         if (head.graph !== undefined) {
           try {
-            const linked = await linkAndRank(head.graph, opened, changed)
+            const linked = await linkAndRank(head.graph, opened, changed, {
+              createsCode: newCodeShare(loaded.diff).createsCode,
+            })
             graph = linked.graph
             impact = linked.impact
             kept = linked.kept
@@ -453,14 +456,15 @@ async function linkAndRank(
   reviewed: RepositoryGraph,
   opened: readonly OpenedRelated[],
   changed: readonly ChangedLines[],
+  options: ImpactOptions,
 ): Promise<{ graph: RepositoryGraph; impact: DiffImpact; kept: RankedRelated[] }> {
   let graph = linkGraphs(reviewed, linkedOf(opened))
-  let impact = await computeImpact(graph, changed)
+  let impact = await computeImpact(graph, changed, options)
   let kept = rankOpened(opened, impact)
   if (kept.length < opened.length && reachesDropped(opened, kept, impact)) {
     const items = kept.map(({ item }) => item)
     graph = linkGraphs(reviewed, linkedOf(items))
-    impact = await computeImpact(graph, changed)
+    impact = await computeImpact(graph, changed, options)
     kept = rankOpened(items, impact)
   }
   return { graph, impact, kept }

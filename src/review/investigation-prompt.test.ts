@@ -5,6 +5,7 @@ import { pullRequestFixture } from '../../test/support/pull-request.js'
 import { reviewContextFixture } from '../../test/support/review-context.js'
 import type { Toolbox } from '../investigation/toolbox.js'
 import { DIFF_ONLY, DIFF_WITH_CONTEXT } from './prompt-parts.js'
+import { buildContinuationPrompt } from './continuation-prompt.js'
 import { buildReviewPrompt } from './prompt.js'
 import { buildVerifyPrompt } from './verify-prompt.js'
 
@@ -127,7 +128,7 @@ describe('review prompt with the repository tools', () => {
     const request = { pullRequest: pullRequestFixture() }
 
     expect(digest(buildReviewPrompt(request, NONCE).instructions)).toBe(
-      'f0450350367b71b137830929d250d273af5824d81a27c38d7df417ca2ffea273',
+      '017a5ff26fd6a81c45d7c604a76a775b732a20556bc1e6e3a75bb624f07a3278',
     )
     expect(buildReviewPrompt(request, NONCE)).not.toHaveProperty('tools')
   })
@@ -306,5 +307,88 @@ shrinks is compared with that file, which the diff shows.`
 
     expect(instructions).not.toContain('account for every file')
     expect(instructions).not.toContain('This diff changes')
+  })
+})
+
+describe('review prompt of a pull request that creates code', () => {
+  const newFile = (path: string, added: number) =>
+    [
+      `diff --git a/${path} b/${path}`,
+      'new file mode 100644',
+      'index 0000000..3333333',
+      '--- /dev/null',
+      `+++ b/${path}`,
+      `@@ -0,0 +1,${added} @@`,
+      ...Array.from({ length: added }, (_, index) => `+export const line${index} = ${index}`),
+    ].join('\n')
+  const newModule = pullRequestFixture({
+    diff: `${newFile('src/payments/charge.ts', 30)}\n${newFile('test/payments/charge.test.ts', 12)}`,
+  })
+  const withGraph: Toolbox = {
+    ...toolbox,
+    definitions: ['read_file', 'grep', 'list', 'find_symbol', 'callers', 'similar'].map((name) => ({
+      name,
+      description: name,
+      inputSchema: { type: 'object' },
+    })),
+  }
+  const COMPARE = `This pull request mostly adds new code. Before you judge it, find the existing
+code closest to it (a sibling module, the same kind of handler, test or step)
+with list, find_symbol and similar, read it and compare the new code with it: the
+structure, the helpers it reuses and the conventions it follows. Report what the
+new code reimplements (with existing set) or does differently in a way that
+breaks a convention or causes a bug.`
+
+  it('asks to compare the new code with the closest existing code, after the files to account for', () => {
+    const { instructions } = buildReviewPrompt({ pullRequest: newModule }, NONCE, withGraph)
+
+    expect(instructions).toContain(
+      `give its path in against. Code moved out of a file this diff deletes or\nshrinks is compared with that file, which the diff shows.\n${COMPARE}\n`,
+    )
+  })
+
+  it('names only the search tools there are', () => {
+    const { instructions } = buildReviewPrompt({ pullRequest: newModule }, NONCE, toolbox)
+
+    expect(instructions).toContain(
+      'the same kind of handler, test or step)\nwith list, read it and compare the new code with it: the\nstructure',
+    )
+    expect(instructions).not.toContain('find_symbol')
+  })
+
+  it('asks for no comparison without tools', () => {
+    const { instructions } = buildReviewPrompt({ pullRequest: newModule }, NONCE)
+
+    expect(instructions).not.toContain('mostly adds new code')
+  })
+
+  it('asks for no comparison when the pull request mostly changes existing files', () => {
+    const fix = pullRequestFixture({
+      diff: `${pullRequestFixture().diff}${newFile('src/fee.ts', 3)}`,
+    })
+
+    const { instructions } = buildReviewPrompt({ pullRequest: fix }, NONCE, withGraph)
+
+    expect(instructions).not.toContain('mostly adds new code')
+  })
+
+  it('keeps the comparison in a continuation pass and out of the verification', () => {
+    const continuation = buildContinuationPrompt(
+      { pullRequest: newModule },
+      NONCE,
+      withGraph,
+      undefined,
+      { gaps: [{ path: 'src/payments/charge.ts', kind: 'missing' }], findings: [] },
+    )
+    const verify = buildVerifyPrompt(
+      { pullRequest: newModule },
+      [findingFixture()],
+      NONCE,
+      withGraph,
+    )
+
+    expect(continuation.instructions).toContain(COMPARE)
+    expect(verify.instructions).not.toContain('mostly adds new code')
+    expect(verify.data).toContain('New code: 100% of the added lines are in new files')
   })
 })

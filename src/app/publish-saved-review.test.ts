@@ -302,6 +302,42 @@ describe('publishSavedReview', () => {
     expect(await refusal(storedRun({ source: 'replay' }))).toEqual({ kind: 'replay' })
   })
 
+  it('posts a run saved before findings carried the existing code they reimplement', async () => {
+    const saved = storedRun(
+      {},
+      formatReviewJson(
+        PR,
+        {
+          status: 'reviewed',
+          result: {
+            ...RESULT,
+            findings: [{ ...FINDING, existing: 'src/db.ts:12' }],
+            dropped: { ...RESULT.dropped, unbacked: 1 },
+          },
+        },
+        DRY_RUN,
+        null,
+        null,
+        null,
+        null,
+        null,
+        undefined,
+        { language: 'pt-BR' },
+      ),
+    )
+    const json = JSON.parse(saved.resultJson ?? '{}') as {
+      review: { dropped: Record<string, unknown>; findings: Record<string, unknown>[] }
+    }
+    delete json.review.dropped.unbacked
+    for (const finding of json.review.findings) delete finding.existing
+    const { deps, posted } = fakes({ run: storedRun({}, JSON.stringify(json)) })
+
+    const outcome = await publishSavedReview({ id: 7, force: false }, deps)
+
+    expect(outcome.status).toBe('published')
+    expect(posted).toHaveLength(1)
+  })
+
   it('refuses a run saved without what publishing needs rather than post something else', async () => {
     const json = JSON.parse(storedRun().resultJson ?? '{}') as { review: Record<string, unknown> }
     delete json.review.language

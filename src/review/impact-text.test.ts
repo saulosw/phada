@@ -185,4 +185,127 @@ describe('renderImpact', () => {
       }).text,
     ).toContain('— 1 caller in 1 file')
   })
+
+  it('counts in the header the uses matched by name only that it did not list', () => {
+    const { text } = renderImpact({
+      symbols: [
+        symbol({
+          callers: 2,
+          files: 1,
+          unresolved: 5,
+          sites: [site(4), site(9)],
+          dependencies: [],
+        }),
+      ],
+      omittedSymbols: 0,
+      callerFiles: 1,
+    })
+
+    expect(text.split('\n')[0]).toBe(
+      'function getUser (src/users.ts:10-30, exported) — 2 callers in 1 file, +5 matched by name only (unresolved, not listed)',
+    )
+  })
+
+  it('writes the same use in several files as one line with the count and the first places', () => {
+    const { text, shown } = renderImpact({
+      symbols: [
+        symbol({
+          kind: 'variable',
+          name: 'test',
+          callers: 12,
+          files: 12,
+          sites: [
+            site(2, {
+              path: 'features/a.steps.ts',
+              in: undefined,
+              kind: 'uses',
+              text: 'createBdd(test)',
+              repeated: {
+                uses: 11,
+                files: 11,
+                also: [
+                  { path: 'features/b.steps.ts', line: 4 },
+                  { path: 'features/c.steps.ts', line: 2 },
+                ],
+              },
+            }),
+            site(7, { path: 'src/other.ts', in: undefined, kind: 'uses', text: 'wrap(test)' }),
+          ],
+          dependencies: [],
+        }),
+      ],
+      omittedSymbols: 0,
+      callerFiles: 12,
+    })
+
+    expect(text).toBe(
+      [
+        'variable test (src/users.ts:10-30, exported) — 12 callers in 12 files',
+        '  createBdd(test) — 11 uses in 11 files: features/a.steps.ts:2, features/b.steps.ts:4, features/c.steps.ts:2, +8 more',
+        '  src/other.ts:7 (uses): wrap(test)',
+      ].join('\n'),
+    )
+    expect(shown).toEqual([12])
+  })
+
+  const SIMILAR: DiffImpact['similar'] = [
+    {
+      symbol: {
+        kind: 'function',
+        name: 'chargeCard',
+        path: 'src/new/pay.ts',
+        startLine: 2,
+        endLine: 5,
+      },
+      like: [
+        {
+          kind: 'function',
+          name: 'charge',
+          path: 'src/billing/pay.ts',
+          startLine: 2,
+          endLine: 4,
+          score: 0.8,
+          shared: ['fetchJson', 'retry'],
+        },
+      ],
+    },
+  ]
+
+  it('lists the existing code similar to the new code, even when nothing else reaches outside', () => {
+    const impact: DiffImpact = {
+      symbols: [symbol({ callers: 0, files: 0, sites: [], dependencies: [] })],
+      omittedSymbols: 0,
+      callerFiles: 0,
+      similar: SIMILAR,
+    }
+
+    expect(renderImpact(impact).text).toBe(
+      [
+        'No callers or uses outside the diff: function getUser (src/users.ts:10-30)',
+        'Similar existing code (compare before you report a reimplementation):',
+        'function chargeCard (src/new/pay.ts:2-5):',
+        '  ~ function charge (src/billing/pay.ts:2-4), shared calls: fetchJson, retry',
+      ].join('\n'),
+    )
+    expect(hasImpact(impact)).toBe(true)
+  })
+
+  it('keeps room for the similar code when the callers fill the budget', () => {
+    const many = Array.from({ length: 200 }, (_, index) =>
+      site(index + 1, { text: `getUser(${'x'.repeat(60)})` }),
+    )
+
+    const { text } = renderImpact({
+      symbols: [symbol({ callers: 200, sites: many, dependencies: [] })],
+      omittedSymbols: 0,
+      callerFiles: 1,
+      similar: SIMILAR,
+    })
+
+    expect(Buffer.byteLength(text)).toBeLessThanOrEqual(IMPACT_BUDGET_BYTES)
+    expect(text).toContain('  +')
+    expect(
+      text.endsWith('  ~ function charge (src/billing/pay.ts:2-4), shared calls: fetchJson, retry'),
+    ).toBe(true)
+  })
 })

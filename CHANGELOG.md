@@ -7,6 +7,41 @@ output can change between minor versions.
 
 ## Unreleased
 
+### Added
+
+- The built-in reviewer also looks for code the pull request writes again although the
+  repository already has code that does the same (P2, or P1 when the copy diverges and causes a
+  bug). Such a finding gives the place of the existing code in `existing` (`path:line`, or
+  `owner/repo:path:line` in a related repository) and is kept only when the AI read that file
+  with `read_file` and the line is not one the diff adds; otherwise a P2 finding is dropped and
+  counted, e.g. `1 dropped (1 reimplementation finding without the existing code read)`, in the
+  terminal and the body posted on the pull request, and a P0 or P1 finding stays without
+  `existing`. The verifier rejects it when the cited code does not
+  do the same thing. Findings of a skill that runs natively have no `existing`.
+- `--format json` and the history give `existing` on every finding (`null` when it has none),
+  `unbacked` in `dropped`, and `omittedBots` in the `conversation` block.
+- A pull request with more than half of its added lines in new files gets a line in the prompt,
+  e.g. `New code: 82% of the added lines are in new files (src/billing/ 4 files)`, and, with the
+  investigation tools, the AI is asked to compare the new code with the closest existing code.
+- For such a pull request the impact of the diff lists, in a `Similar existing code` section, the
+  existing functions built like the new exported ones.
+
+### Changed
+
+- The built-in reviewer also reports a change that breaks a convention written in the rules or
+  docs even when nearby code does the same, and leaves out only suggestions to add tests or docs
+  without a concrete risk: test code is reviewed like any other code.
+- The docs the pull request changes are sent first. A doc that does not fit in what is left of
+  the 60 KB budget is cut to it when at least 4 KB are left, instead of being left out.
+- When the conversation is over 16 KB, the comments of bots are left out first (a bot's thread a
+  person replied to counts with the people's); the terminal line and the `--dry-run` section say
+  how many bot comments were left out, e.g. `2 bot comments and 1 other left out over 16 KB`.
+- In the impact of the diff, a caller matched by name only is kept when the object it is called
+  on names the class of the changed method or only one function or method has that name; the
+  others are counted (`+N matched by name only (unresolved, not listed)`) and not listed. The
+  same line of code in several files shows as one line with the count, and the changed symbols
+  that already existed come before the new ones.
+
 ## 0.13.0 - 2026-11-04
 
 ### Added

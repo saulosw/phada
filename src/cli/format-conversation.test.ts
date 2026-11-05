@@ -4,7 +4,16 @@ import { formatConversationLine, formatConversationSection } from './format-conv
 import { conversationJson } from './format-json.js'
 
 function report(overrides: Partial<ConversationReport> = {}): ConversationReport {
-  return { items: 6, omitted: 0, resolved: 2, bots: 1, truncated: 0, bytes: 4200, ...overrides }
+  return {
+    items: 6,
+    omitted: 0,
+    omittedBots: 0,
+    resolved: 2,
+    bots: 1,
+    truncated: 0,
+    bytes: 4200,
+    ...overrides,
+  }
 }
 
 function conversation(overrides: Partial<ConversationReport> = {}): Conversation {
@@ -24,6 +33,17 @@ describe('formatConversationLine', () => {
         conversation({ items: 1, resolved: 0, bots: 0, omitted: 3, truncated: 1 }),
       ),
     ).toBe('Conversation: 1 comment (3 left out over 16 KB, 1 cut at 2 KB)')
+  })
+
+  it('says how many bot comments were left out, alone or with the others', () => {
+    expect(
+      formatConversationLine(conversation({ items: 12, bots: 3, omitted: 8, omittedBots: 8 })),
+    ).toBe('Conversation: 12 comments (2 resolved, 3 bots, 8 bot comments left out over 16 KB)')
+    expect(
+      formatConversationLine(
+        conversation({ items: 12, resolved: 0, bots: 0, omitted: 3, omittedBots: 1 }),
+      ),
+    ).toBe('Conversation: 12 comments (1 bot comment and 2 others left out over 16 KB)')
   })
 
   it('prints no line for a pull request without conversation', () => {
@@ -80,7 +100,7 @@ describe('formatConversationSection', () => {
       formatConversationSection(
         conversationJson({
           items,
-          report: { items: 4, omitted: 3, resolved: 1, bots: 1, truncated: 1, bytes: 4200 },
+          report: report({ items: 4, omitted: 3, omittedBots: 2, resolved: 1, truncated: 1 }),
         }),
       ),
     ).toBe(
@@ -93,7 +113,7 @@ describe('formatConversationSection', () => {
         '- thread on src/b.ts by phada-owner (phada), 2026-10-22 09:05',
         '',
         'Sent: 4.1 KB of 16 KB',
-        'Left out: 3 items over 16 KB (resolved threads, then outdated ones, then the oldest)',
+        'Left out: 3 items over 16 KB, 2 of them from bots (bots first, then resolved threads, then outdated ones, then the oldest)',
         'Cut: 1 body at 2 KB',
         '',
       ].join('\n'),
