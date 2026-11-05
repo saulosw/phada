@@ -13,11 +13,20 @@ export type UserConfigChange =
   | { kind: 'watch'; repo: string }
   | { kind: 'unwatch'; repo: string }
   | { kind: 'publish'; repo: string; publish: boolean }
+  | { kind: 'rule'; rule: NewRule }
+
+export interface NewRule {
+  id: string
+  rule: string
+  scope: readonly string[]
+  from: readonly string[]
+}
 
 export type ValueChange =
   | { key: SettingKey; before: string | null; after: string | null }
   | { key: 'watch.repos'; added: string[]; removed: string[] }
   | { key: 'publish'; repo: string; before: boolean; after: boolean }
+  | { key: 'rules'; added: string[] }
 
 export interface UserConfigPlan {
   path: string
@@ -31,6 +40,7 @@ export interface UserConfigPlan {
 type ChangeRefusal =
   | { ok: false; reason: 'last-watched-repo'; repo: string; settings: string[] }
   | { ok: false; reason: 'not-watched'; repo: string }
+  | { ok: false; reason: 'rule-exists'; id: string }
 
 export type PlannedUserConfig =
   | { ok: true; plan: UserConfigPlan }
@@ -115,7 +125,27 @@ function applyChange(doc: Document, change: UserConfigChange): ChangeRefusal | u
       return unwatch(doc, change.repo)
     case 'publish':
       return setPublish(doc, change.repo, change.publish)
+    case 'rule':
+      return addRule(doc, change.rule)
   }
+}
+
+function addRule(doc: Document, rule: NewRule): ChangeRefusal | undefined {
+  const rules = doc.get('rules')
+  const written = {
+    id: rule.id,
+    rule: rule.rule,
+    scope: [...rule.scope],
+    ...(rule.from.length === 0 ? {} : { from: [...rule.from] }),
+  }
+  if (!isSeq(rules)) {
+    doc.set('rules', [written])
+    return undefined
+  }
+  const taken = rules.items.some((item) => isMap(item) && item.get('id') === rule.id)
+  if (taken) return { ok: false, reason: 'rule-exists', id: rule.id }
+  rules.add(doc.createNode(written))
+  return undefined
 }
 
 function watch(doc: Document, repo: string): undefined {
@@ -207,7 +237,18 @@ function touchesProviderOrModel(change: UserConfigChange): boolean {
 }
 
 function valueChanges(before: ConfigFile, after: ConfigFile): ValueChange[] {
-  return [...settingChanges(before, after), ...watchChanges(before, after)]
+  return [
+    ...settingChanges(before, after),
+    ...watchChanges(before, after),
+    ...ruleChanges(before, after),
+  ]
+}
+
+function ruleChanges(before: ConfigFile, after: ConfigFile): ValueChange[] {
+  const ids = (config: ConfigFile) => (config.rules ?? []).flatMap(({ id }) => id ?? [])
+  const was = new Set(ids(before))
+  const added = ids(after).filter((id) => !was.has(id))
+  return added.length === 0 ? [] : [{ key: 'rules', added }]
 }
 
 function settingChanges(before: ConfigFile, after: ConfigFile): ValueChange[] {

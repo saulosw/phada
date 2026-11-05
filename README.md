@@ -54,9 +54,10 @@ AI again (see [Look first, publish later](#look-first-publish-later)).
 
 `phada --help` lists the commands, and `phada review --help`, `phada publish --help`, `phada setup --help`,
 `phada init --help`, `phada index --help`, `phada rules --help`, `phada prompt --help`, `phada watch --help`,
-`phada history --help` and `phada misses --help` list their options. To have new pull requests and pushes reviewed without running anything, see
+`phada history --help`, `phada misses --help` and `phada lessons --help` list their options. To have new pull requests and pushes reviewed without running anything, see
 [Watch mode](#watch-mode); to see what happened to the comments Phada published, see
-[History](#history), and for what people pointed out that Phada did not, [Misses](#misses). To see all of it in one place, run `phada` alone (see
+[History](#history), and for what people pointed out that Phada did not, [Misses](#misses) and
+[Lessons](#lessons). To see all of it in one place, run `phada` alone (see
 [Terminal app](#terminal-app)).
 
 ### GitHub token
@@ -101,7 +102,7 @@ phada
 | Automation   | The watch, the CI wait, the request sources that are on (pull request comments, `phada enqueue`, `phada mcp`, Slack), the hooks and the `when` commands                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | Provider     | The provider and model you chose and where they come from, the language, each AI checked (installed, logged in, Ollama running and its models) with the command that fixes it, and your MCP servers; `c`, `L` and `l` change them                                                                                                                                                                                                                                                                                                                                                 |
 | Graph        | The [map](#repository-map) of each repository of the Repositories screen: whether it is indexed, its commit, files, symbols and size → its commit and branch, when it was indexed and how long it took, its files per language, its symbols by kind, its imports, exports, calls and uses, and the files left out and why, and its connections: each related repository it declares (`context.repos`) linked by the packages one publishes and the other uses, without a link, or not indexed and why; `i` indexes it and `I` the related ones not indexed; `s` explores a symbol |
-| Learnings    | Per repository, the relations learned from reviews, what happened to Phada's comments, per repository and per rule, and the open [misses](#misses) with how many the latest replay caught                                                                                                                                                                                                                                                                                                                                                                                         |
+| Learnings    | Per repository, the relations learned from reviews, what happened to Phada's comments, per repository and per rule, the open [misses](#misses) with how many the latest replay caught, and the pending [lessons](#lessons) to accept or discard                                                                                                                                                                                                                                                                                                                                   |
 
 Keys: `←`/`→` or `Tab` move between screens, `1`–`9` jump to one, `/` finds a screen by name (and
 `/setup` the setup, `/language` the language, `/index` the Graph, `/review` a review), `?` lists every key, `↑`/`↓` and `Enter` open an
@@ -953,6 +954,50 @@ phada misses --replay owner/repo      # the open misses of one repository
 phada misses --replay --format json   # outcomes and tallies as data (schemaVersion: 1)
 ```
 
+### Lessons
+
+The misses of people of the team — the owner, a member or a collaborator of the repository — can
+teach the review a rule. `phada lessons --refresh` sends the open misses of team people that no
+lesson holds yet (the 50 most recent of each repository) to your AI, once per repository, with the
+pending lessons and the rules of your own config for that repository. The AI proposes a lesson
+only when the comments show a rule that repeats there — a convention or a recurring risk, not a
+one-off bug — as one rule, the files it covers (globs from the files of its comments) and the
+misses it comes from; a miss can also join a pending lesson. Comments of bots, of people outside
+the team, of the pull request's author and of Phada never become lessons, and the comments reach
+the AI as data, never as instructions. It uses the provider and model of your config and does not
+read GitHub.
+
+A lesson never reaches a review on its own. `phada lessons` lists the pending ones in full, with
+their files, how many misses back them and the link of each thread; `accept` adds one as a rule of
+your own config for that repository, and from then on the review applies it like any other rule
+(`phada rules` shows it, and a finding can name it):
+
+```yaml
+# ~/.config/phada/repos/acme/shop/config.yml
+rules:
+  - id: lesson-7
+    rule: Validate request bodies at the edge of the API, before any call to the database.
+    scope:
+      - src/api/**
+    from:
+      - https://github.com/acme/shop/pull/12#discussion_r123
+```
+
+That file is the rule's only copy: edit or remove it there. `discard` drops a lesson and writes
+nothing. `accept --edit` first opens the rule and its files in `$VISUAL`, `$EDITOR` or `vi`;
+saving an empty file cancels. The Learnings screen of the [terminal app](#terminal-app) shows the
+pending lessons of each repository and accepts or discards them (`l`), showing the file and the
+rule before it writes; it never proposes them.
+
+```bash
+phada lessons --refresh               # propose lessons from the new misses
+phada lessons owner/repo --all        # one repository, accepted and discarded ones included
+phada lessons accept 7                # add lesson 7 as the rule lesson-7
+phada lessons accept 7 --edit         # edit it first
+phada lessons discard 7               # drop lesson 7
+phada lessons --format json           # as data (schemaVersion: 1)
+```
+
 ## Rules and repository context
 
 Besides the diff, every review gets context from the repository and from your own config. All
@@ -1546,7 +1591,7 @@ ci:
 | `ci.onFailure`            | `review` (default) or `skip`: the watch skips a commit whose checks fail until they pass (see [Watch mode](#watch-mode))                     | both (root)             |
 | `ci.checks`               | The checks that count, by name or glob (default: all)                                                                                        | both (root)             |
 | `ignore`                  | More files to leave out of the diff                                                                                                          | both                    |
-| `rules`                   | Rules with `rule`, and optionally `id`, `scope` (globs) and `severity` (`P0`, `P1` or `P2`)                                                  | both                    |
+| `rules`                   | Rules with `rule`, and optionally `id`, `scope` (globs), `severity` (`P0`, `P1` or `P2`) and `from`                                          | both                    |
 | `review.debt`             | `summary` (default), `comments` or `off`: what to do with the [repository debt](#repository-debt)                                            | both (root)             |
 | `review.continuation`     | `true` (default) or `false`: one more pass over the files a review with low [coverage](#what-a-review-looks-like) left out                   | both (root)             |
 | `review.prompt`           | `file` and `mode` (`append` or `replace`) of the reviewer's focus (see [Review focus and skills](#review-focus-and-skills))                  | both (root)             |

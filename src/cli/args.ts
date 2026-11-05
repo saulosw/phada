@@ -60,6 +60,16 @@ export type CliCommand =
     }
   | { kind: 'misses-dismiss'; id: number; debug: boolean }
   | { kind: 'misses-replay'; target?: RulesTarget; format: IndexFormat; debug: boolean }
+  | {
+      kind: 'lessons'
+      repo?: RepositoryName
+      all: boolean
+      refresh: boolean
+      format: IndexFormat
+      debug: boolean
+    }
+  | { kind: 'lessons-accept'; id: number; edit: boolean; debug: boolean }
+  | { kind: 'lessons-discard'; id: number; debug: boolean }
   | { kind: 'publish'; id: number; force: boolean; format: IndexFormat; debug: boolean }
   | { kind: 'mcp'; debug: boolean }
   | {
@@ -123,6 +133,7 @@ Commands:
   history                Show past reviews and what happened to Phada's comments
   misses                 Show what people pointed out on reviewed pull requests
                          and Phada did not
+  lessons                Show the lessons Phada proposes from the misses
 
 Options:
   -h, --help             Show this help
@@ -460,6 +471,48 @@ Environment:
                        uses the token of your gh login (gh auth login)
   PHADA_DATA_HOME      Folder of the history (default: ~/.local/share/phada)`
 
+export const LESSONS_USAGE = `Usage: phada lessons [<owner/repo>] [options]
+       phada lessons --refresh [<owner/repo>]
+       phada lessons accept <id> [--edit]
+       phada lessons discard <id>
+
+Shows the lessons kept in the local history: a rule for a repository that
+Phada proposes from the misses of people of the team (owner, member or
+collaborator of the repository), with the files it covers and the threads it
+comes from. A lesson never reaches a review on its own.
+
+--refresh sends the open misses of team people that no lesson holds yet (the
+50 most recent of each repository) to your AI, once per repository, with the
+pending lessons and the rules of your config for that repository, and keeps
+the lessons it proposes. It uses the provider and model of your config.
+Comments of bots, of people outside the team and of Phada are never sent.
+
+accept adds a pending lesson as the rule lesson-<id> (its rule, its files as
+scope and the links of its threads as from) to rules: of your own config for
+that repository, repos/<owner>/<repo>/config.yml, keeping the comments and the
+order of the file, and from then on the review applies it like any rule. That
+file is the rule's only copy: edit or remove it there. discard drops a pending
+lesson and writes nothing.
+
+accept --edit first opens the lesson's rule and scope in $VISUAL, $EDITOR or
+vi, with the links of its threads as comments; Phada sets id and from. Saving
+writes the rule as edited, after the same checks as any rule; saving an empty
+file, or an editor that ends with an error, cancels and leaves the lesson
+pending.
+
+Options:
+  --refresh            Propose lessons from the new misses first
+  --all                Also show the accepted and discarded lessons
+  --edit               With accept, edit the rule in your editor first
+  --format <name>      Output: text or json (default: text)
+  --debug              Show error details
+  -h, --help           Show this help
+
+Environment:
+  PHADA_CONFIG_HOME    Folder of your own config (default: ~/.config/phada)
+  PHADA_DATA_HOME      Folder of the history (default: ~/.local/share/phada)
+  VISUAL, EDITOR       Editor of accept --edit (default: vi)`
+
 const REPOSITORY_NAME = /^([\w.-]+)\/([\w.-]+)$/
 
 export function parseCliArgs(argv: readonly string[]): CliCommand {
@@ -474,6 +527,7 @@ export function parseCliArgs(argv: readonly string[]): CliCommand {
   if (command === 'watch') return parseWatchArgs(rest)
   if (command === 'history') return parseHistoryArgs(rest)
   if (command === 'misses') return parseMissesArgs(rest)
+  if (command === 'lessons') return parseLessonsArgs(rest)
   if (command === 'enqueue') return parseEnqueueArgs(rest)
   if (command === 'mcp') return parseMcpArgs(rest)
   if (command !== undefined && !command.startsWith('-')) throw unknownCommand(command)
@@ -495,7 +549,7 @@ function unknownCommand(command: string): UsageError {
     return new UsageError(`Unknown command "${command}". Did you mean "phada review ${command}"?`)
   }
   return new UsageError(
-    `Unknown command "${command}". Available: setup, review, publish, init, index, rules, prompt, watch, enqueue, mcp, history, misses.`,
+    `Unknown command "${command}". Available: setup, review, publish, init, index, rules, prompt, watch, enqueue, mcp, history, misses, lessons.`,
   )
 }
 
@@ -934,6 +988,49 @@ function parseMissesArgs(argv: readonly string[]): CliCommand {
     all: values.all,
     refresh: values.refresh,
     ...(since === undefined ? {} : { since }),
+    format,
+    debug: values.debug,
+  }
+}
+
+function parseLessonsArgs(argv: readonly string[]): CliCommand {
+  const { values, positionals } = parseOptions(argv, {
+    all: { type: 'boolean', default: false },
+    refresh: { type: 'boolean', default: false },
+    format: { type: 'string' },
+    edit: { type: 'boolean', default: false },
+    debug: { type: 'boolean', default: false },
+    help: { type: 'boolean', short: 'h', default: false },
+  })
+  if (values.help) return { kind: 'help', text: LESSONS_USAGE }
+  const [action] = positionals
+  if (values.edit && action !== 'accept') {
+    throw new UsageError('--edit only goes with phada lessons accept <id>.')
+  }
+  if (action === 'accept' || action === 'discard') {
+    const command = `phada lessons ${action}`
+    if (values.all || values.refresh || values.format !== undefined) {
+      throw new UsageError(`${command} takes only a lesson id.`)
+    }
+    const id = parseRunId(positionals.slice(1), command, 'lesson id')
+    return action === 'accept'
+      ? { kind: 'lessons-accept', id, edit: values.edit, debug: values.debug }
+      : { kind: 'lessons-discard', id, debug: values.debug }
+  }
+  if (positionals.length > 1) throw new UsageError('Give one repository at a time.')
+  const format = values.format ?? 'text'
+  if (format !== 'text' && format !== 'json') {
+    throw new UsageError(`Invalid --format "${format}". Use text or json.`)
+  }
+  const [input] = positionals
+  if (input !== undefined && isPullRequestRef(input)) {
+    throw new UsageError('phada lessons takes a repository, e.g. acme/shop, not a pull request.')
+  }
+  return {
+    kind: 'lessons',
+    ...(input === undefined ? {} : { repo: parseRepositoryName(input) }),
+    all: values.all,
+    refresh: values.refresh,
     format,
     debug: values.debug,
   }

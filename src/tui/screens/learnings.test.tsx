@@ -2,6 +2,8 @@ import { cleanup } from 'ink-testing-library'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { RepoStats, RuleStats } from '../../app/read-history.js'
 import type { Learnings, RepoLearnings } from '../../app/read-learnings.js'
+import type { AcceptedLesson } from '../../app/decide-lesson.js'
+import type { LessonRecord, MissRecord } from '../../store/history-store.js'
 import type { ObservedEdge } from '../../store/observed-store.js'
 import {
   frameLines,
@@ -73,6 +75,8 @@ function shop(changes: Partial<RepoLearnings> = {}): RepoLearnings {
       }),
     ],
     misses: null,
+    lessons: [],
+    lessonFile: '/home/ana/.config/phada/repos/acme/shop/config.yml',
     ...changes,
   }
 }
@@ -88,6 +92,8 @@ function full(): Learnings {
         feedback: null,
         rules: [],
         misses: { open: 3, latest: { version: '0.12.0', caught: 1, replayed: 2 } },
+        lessons: [],
+        lessonFile: '/home/ana/.config/phada/repos/acme/web/config.yml',
       },
       {
         repo: 'saulosw/verno',
@@ -106,18 +112,104 @@ function full(): Learnings {
         },
         rules: [],
         misses: null,
+        lessons: [],
+        lessonFile: '/home/ana/.config/phada/repos/saulosw/verno/config.yml',
       },
     ],
   }
 }
 
+function miss(id: number): MissRecord {
+  return {
+    id,
+    key: `T${id}`,
+    origin: 'person',
+    seen: 'missed-live',
+    repo: 'acme/shop',
+    number: 3,
+    reviewedSha: 'a'.repeat(40),
+    commitSha: 'a'.repeat(40),
+    threadId: `T${id}`,
+    threadUrl: `https://github.com/acme/shop/pull/3#discussion_r${id}`,
+    file: 'src/cart/total.ts',
+    line: 4,
+    author: 'alice',
+    role: 'member',
+    body: 'Missed.',
+    createdAt: '2026-11-02T10:00:00.000Z',
+    harvestedAt: '2026-11-02T11:00:00.000Z',
+    state: 'open',
+  }
+}
+
+const CENTS_RULE =
+  'Keep every price in integer cents from the cart to the invoice: a float total drifts by a cent once taxes and discounts are applied, and the invoice no longer matches what the payment provider charged.'
+
+function lesson(id: number, rule: string, scope: string[], misses: number): LessonRecord {
+  return {
+    id,
+    repo: 'acme/shop',
+    rule,
+    scope,
+    state: 'pending',
+    createdAt: '2026-11-03T10:00:00.000Z',
+    misses: Array.from({ length: misses }, (_, index) => miss(id * 10 + index)),
+  }
+}
+
+function lessonHistory(
+  options: { accept?: (id: number) => Promise<AcceptedLesson>; pending?: LessonRecord[] } = {},
+) {
+  let pending = options.pending ?? [
+    lesson(2, CENTS_RULE, ['src/cart/**', 'src/tax/**'], 2),
+    lesson(1, 'Never log the payment token.', ['src/payments/**'], 1),
+  ]
+  const accepted: number[] = []
+  const discarded: number[] = []
+  const decided = (id: number) => {
+    pending = pending.filter((candidate) => candidate.id !== id)
+  }
+  return {
+    accepted,
+    discarded,
+    deps: {
+      readLearnings: async (): Promise<Learnings> => ({
+        recorded: true,
+        repos: [shop({ misses: { open: 3 }, lessons: pending })],
+      }),
+      acceptLesson: async (id: number) => {
+        accepted.push(id)
+        const result = await (options.accept?.(id) ??
+          Promise.resolve({
+            lessonId: id,
+            repo: 'acme/shop',
+            ruleId: `lesson-${id}`,
+            path: '/home/ana/.config/phada/repos/acme/shop/config.yml',
+            created: false,
+          }))
+        decided(id)
+        return result
+      },
+      discardLesson: async (id: number) => {
+        discarded.push(id)
+        decided(id)
+      },
+    },
+  }
+}
+
 function openLearnings(
   read: () => Promise<Learnings>,
-  options: { size?: TerminalSize; language?: string } = {},
+  options: {
+    size?: TerminalSize
+    language?: string
+    deps?: Partial<Parameters<typeof renderApp>[0] & object>['deps']
+  } = {},
 ) {
   return renderApp({
     deps: {
       readLearnings: read,
+      ...options.deps,
       ...(options.language === undefined ? {} : { language: options.language }),
     },
     size: options.size ?? { columns: 80, rows: 24 },
@@ -130,6 +222,8 @@ function expectFits(frame: string, size: TerminalSize) {
   expect(lines).toHaveLength(size.rows)
   for (const line of lines) expect(visibleWidth(line)).toBeLessThanOrEqual(size.columns)
 }
+
+const flat = (frame: string) => frame.replace(/\s+/g, ' ')
 
 const row = (frame: string, repo: string) =>
   frameLines(frame).find((line) => line.includes(repo)) ?? ''
@@ -295,5 +389,168 @@ describe('the Learnings screen', () => {
     await press(KEYS.enter)
     await showing('Por regra (2)', 'Esc voltar')
     expect(frame()).toContain('Por regra (2)')
+  })
+
+  describe('lessons', () => {
+    const openShop = async (history: ReturnType<typeof lessonHistory>, language?: string) => {
+      const app = openLearnings(history.deps.readLearnings, {
+        deps: history.deps,
+        ...(language === undefined ? {} : { language }),
+      })
+      await app.showing('acme/shop', /Enter (open|abrir)/)
+      return app
+    }
+
+    it('shows the pending lessons of a repository with their full rule, files and misses', async () => {
+      const history = lessonHistory()
+      const { frame, press, showing } = await openShop(history)
+      expect(row(frame(), 'acme/shop')).toContain('3 misses · 2 lessons · 30 comments')
+      await press(KEYS.enter)
+      await showing('Lessons to decide (2)', 'l decide lessons')
+      const text = frame()
+      expectFits(text, { columns: 80, rows: 24 })
+      expect(flat(text)).toContain(CENTS_RULE)
+      expect(text).toContain('files: src/cart/**, src/tax/** · backed by 2 misses')
+      expect(text).toContain('Never log the payment token.')
+      expect(text).toContain('files: src/payments/** · backed by 1 miss')
+      expect(text.indexOf('Keep every price')).toBeLessThan(text.indexOf('Never log'))
+    })
+
+    it('says where lessons come from when there are misses but none was proposed', async () => {
+      const { frame, press, showing } = openLearnings(async () => ({
+        recorded: true,
+        repos: [shop({ misses: { open: 2 } })],
+      }))
+      await showing('acme/shop', 'Enter open')
+      await press(KEYS.enter)
+      await showing('phada lessons --refresh')
+      expect(frame()).toMatch(/No lessons proposed yet\..*\n?.*phada lessons --refresh/)
+      expect(frame()).not.toContain('l decide lessons')
+    })
+
+    it('accepts the selected lesson after asking, and lists it no more', async () => {
+      const history = lessonHistory()
+      const { frame, press, showing, until } = await openShop(history)
+      await press(KEYS.enter)
+      await showing('l decide lessons')
+      await press('l')
+      await showing('Lessons of acme/shop to decide (2)', 'a accept', 'd discard')
+      expectFits(frame(), { columns: 80, rows: 24 })
+      await press('a')
+      await showing('Accept lesson 2 as a rule of your config for acme/shop?')
+      await showing('Enter accept', 'Esc cancel')
+      await press(KEYS.escape)
+      await until(() => !frame().includes('Accept lesson 2'), 'the question to close')
+      expect(history.accepted).toEqual([])
+      expect(frame()).toContain('Lessons of acme/shop to decide (2)')
+      await press('a')
+      await showing('Accept lesson 2 as a rule')
+      await press(KEYS.enter)
+      await until(
+        () =>
+          frame().includes('Lessons of acme/shop to decide (1)') &&
+          flat(frame()).includes(
+            'Added the rule lesson-2 to ~/.config/phada/repos/acme/shop/config.yml; edit it from the Rules screen.',
+          ),
+        'the accepted lesson to leave the list',
+      )
+      expect(history.accepted).toEqual([2])
+      expect(frame()).not.toContain('Keep every price')
+      expectFits(frame(), { columns: 80, rows: 24 })
+    })
+
+    it('shows the file, the rule id and the whole rule before accepting it in 80×24', async () => {
+      const rule = `${CENTS_RULE} `.repeat(5).slice(0, 999).trimEnd() + '.'
+      expect(rule.length).toBeGreaterThan(990)
+      const history = lessonHistory({
+        pending: [
+          lesson(2, rule, ['src/cart/**', 'src/tax/**'], 2),
+          lesson(1, 'Never log the payment token.', ['src/payments/**'], 1),
+        ],
+      })
+      const { frame, press, showing, until } = await openShop(history)
+      await press(KEYS.enter)
+      await showing('l decide lessons')
+      await press('l', 'a')
+      await showing('Accept lesson 2 as a rule of your config for acme/shop?', 'Enter accept')
+      const text = frame()
+      expectFits(text, { columns: 80, rows: 24 })
+      expect(text).toContain(
+        'Adds the rule lesson-2 to ~/.config/phada/repos/acme/shop/config.yml:',
+      )
+      expect(flat(text)).toContain(flat(rule))
+      expect(text).toContain('files: src/cart/**, src/tax/** · from 2 threads')
+      expect(text).not.toContain('Never log the payment token.')
+      expect(text).not.toMatch(/\d+–\d+ of \d+/)
+      expect(history.accepted).toEqual([])
+      await press(KEYS.enter)
+      await until(() => frame().includes('to decide (1)'), 'the accepted lesson to leave the list')
+      expect(history.accepted).toEqual([2])
+    })
+
+    it('discards the selected lesson after asking, and says when none is left', async () => {
+      const history = lessonHistory()
+      const { frame, press, showing, until } = await openShop(history)
+      await press(KEYS.enter)
+      await showing('l decide lessons')
+      await press('l')
+      await showing('Lessons of acme/shop to decide (2)')
+      await press(KEYS.down, 'd')
+      await showing('Discard lesson 1?', 'Enter discard', 'Esc cancel')
+      await press(KEYS.escape)
+      await until(() => !frame().includes('Discard lesson 1?'), 'the question to close')
+      expect(history.discarded).toEqual([])
+      await press('d')
+      await showing('Discard lesson 1?')
+      await press(KEYS.enter)
+      await showing('Lessons of acme/shop to decide (1)', 'Discarded lesson 1.')
+      expect(history.discarded).toEqual([1])
+      expect(frame()).not.toContain('Never log the payment token.')
+      await press('d', KEYS.enter)
+      await showing('No lessons left to decide.', 'Discarded lesson 2.')
+      expect(history.discarded).toEqual([1, 2])
+      await press(KEYS.escape)
+      await showing('Misses of Phada', 'Esc back')
+      expect(frame()).not.toContain('Lessons to decide')
+    })
+
+    it('shows why an accept was refused and keeps the lesson', async () => {
+      const history = lessonHistory({
+        accept: () =>
+          Promise.reject(
+            new Error(
+              '/home/ana/.config/phada/repos/acme/shop/config.yml already has a rule lesson-2; rename or remove it, then accept again.',
+            ),
+          ),
+      })
+      const { frame, press, showing, until, exits } = await openShop(history)
+      await press(KEYS.enter)
+      await showing('l decide lessons')
+      await press('l', 'a')
+      await showing('Accept lesson 2')
+      await press(KEYS.enter)
+      await until(
+        () =>
+          flat(frame()).includes(
+            'Not accepted: /home/ana/.config/phada/repos/acme/shop/config.yml already has a rule lesson-2',
+          ),
+        'the refusal of the accept',
+      )
+      expect(history.accepted).toEqual([2])
+      expect(frame()).toContain('Lessons of acme/shop to decide (2)')
+      expect(exits).toEqual([])
+      expectFits(frame(), { columns: 80, rows: 24 })
+    })
+
+    it('is translated', async () => {
+      const history = lessonHistory()
+      const { frame, press, showing } = await openShop(history, 'pt')
+      expect(row(frame(), 'acme/shop')).toContain('2 lessons')
+      await press(KEYS.enter)
+      await showing('Lessons para decidir (2)', 'l decidir lessons')
+      await press('l', 'a')
+      await showing('Aceitar a lesson 2 como regra da sua config para acme/shop?')
+      expect(frame()).toContain('Enter aceitar')
+    })
   })
 })

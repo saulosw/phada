@@ -69,6 +69,7 @@ export interface UserRule {
   name: string
   text: string
   origin: SettingOrigin
+  from?: string[]
 }
 
 export interface RelatedRepository {
@@ -224,11 +225,12 @@ async function indexOf(
 }
 
 export function userRules(rules: readonly ResolvedRule[]): UserRule[] {
-  return rules.map(({ key, text, origin }) => ({
+  return rules.map(({ key, text, origin, from }) => ({
     key,
     name: layerOrigin(key).name,
     text,
     origin: settingOrigin(origin),
+    ...(from === undefined ? {} : { from: [...from] }),
   }))
 }
 

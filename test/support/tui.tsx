@@ -214,6 +214,12 @@ export function fakeAppDeps(scheduler: Scheduler, overrides: Partial<AppDeps> = 
     }),
     readProviderChecks: async () => ({ providers: [] }),
     readLearnings: async () => ({ recorded: false, repos: [] }),
+    acceptLesson: async () => {
+      throw new Error('no lessons in this test')
+    },
+    discardLesson: async () => {
+      throw new Error('no lessons in this test')
+    },
     readGitHub: async () => ({ source: null }),
     readUserRepositories: async () => ({ status: 'no-token', repositories: [] }),
     readLocalRules: async () => ({ lens: { kind: 'built-in' }, rules: [], warnings: [] }),

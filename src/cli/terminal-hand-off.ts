@@ -73,7 +73,7 @@ function handOffCommand(env: NodeJS.ProcessEnv, target: HandOffTarget): HandOffC
   }
 }
 
-function editorCommand(
+export function editorCommand(
   env: NodeJS.ProcessEnv,
   file: string,
 ): { command: string; args: readonly string[] } {

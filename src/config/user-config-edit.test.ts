@@ -388,3 +388,85 @@ watch:
     expect(result.text).toBe('watch:\n  repos:\n    - acme/api\n    - acme/new\n')
   })
 })
+
+describe('planUserConfigEdit with a rule', () => {
+  const lesson: UserConfigChange = {
+    kind: 'rule',
+    rule: {
+      id: 'lesson-4',
+      rule: 'Validate request bodies with zod at the edge.',
+      scope: ['src/api/**'],
+      from: [
+        'https://github.com/acme/shop/pull/3#discussion_r11',
+        'https://github.com/acme/shop/pull/9#discussion_r12',
+      ],
+    },
+  }
+  const WRITTEN = [
+    '  - id: lesson-4',
+    '    rule: Validate request bodies with zod at the edge.',
+    '    scope:',
+    '      - src/api/**',
+    '    from:',
+    '      - https://github.com/acme/shop/pull/3#discussion_r11',
+    '      - https://github.com/acme/shop/pull/9#discussion_r12',
+  ].join('\n')
+
+  it('appends rules: at the end of a file without rules, keeping its comments', () => {
+    const current = '# shop overrides\nmodel: opus # pinned\n\n# keep it short\nminConfidence: 70\n'
+
+    const result = planned(current, [lesson])
+
+    expect(result.text).toBe(`${current}rules:\n${WRITTEN}\n`)
+    expect(result.changes).toEqual([{ key: 'rules', added: ['lesson-4'] }])
+  })
+
+  it('appends after the rules already there, keeping them as written', () => {
+    const current = [
+      'rules:',
+      '  # money',
+      '  - id: cents',
+      '    rule: Keep money in cents.   # never floats',
+      '    scope: ["src/billing/**"]',
+      '  - rule: Prefer early returns.',
+      'disabledRules: [no-console]',
+      '',
+    ].join('\n')
+
+    const result = planned(current, [lesson])
+
+    expect(result.text).toBe(
+      [
+        'rules:',
+        '  # money',
+        '  - id: cents',
+        '    rule: Keep money in cents.   # never floats',
+        '    scope: ["src/billing/**"]',
+        '  - rule: Prefer early returns.',
+        WRITTEN,
+        'disabledRules: [no-console]',
+        '',
+      ].join('\n'),
+    )
+  })
+
+  it('writes below the header of a file that has only comments', () => {
+    const header = '# Your own Phada config for acme/shop.\n'
+
+    expect(planned(header, [lesson]).text).toBe(`${header}\nrules:\n${WRITTEN}\n`)
+  })
+
+  it('refuses a rule whose id the file already has', () => {
+    const current = 'rules:\n  - id: lesson-4\n    rule: Something else.\n'
+
+    expect(plan(current, [lesson])).toEqual({ ok: false, reason: 'rule-exists', id: 'lesson-4' })
+  })
+
+  it('refuses to add a rule to an invalid config, naming the key', () => {
+    expect(plan('rules:\n  - rule: x\n    level: high\n', [lesson])).toEqual({
+      ok: false,
+      reason: 'invalid-config',
+      message: expect.stringContaining('rules.0.level'),
+    })
+  })
+})

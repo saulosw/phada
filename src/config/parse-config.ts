@@ -18,7 +18,7 @@ export function parseConfigText(text: string): ParsedConfig {
   return { ok: false, message: issueText(parsed.error.issues[0]) }
 }
 
-function issueText(issue: z.core.$ZodIssue | undefined): string {
+export function issueText(issue: z.core.$ZodIssue | undefined): string {
   if (issue === undefined) return 'invalid config'
   const path = issue.code === 'unrecognized_keys' ? [...issue.path, ...issue.keys] : [...issue.path]
   const key = path.map(String).join('.')
@@ -26,6 +26,6 @@ function issueText(issue: z.core.$ZodIssue | undefined): string {
   return key === '' ? message : `${key}: ${message}`
 }
 
-function firstLine(text: string): string {
+export function firstLine(text: string): string {
   return text.split('\n', 1)[0]?.trim() ?? text
 }

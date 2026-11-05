@@ -23,7 +23,9 @@ rebuilding or pruning one as a side effect of reading. The app writes only the u
 the files of `repos/<owner>/<repo>/` it is asked to open), and, when the person asks for it, the
 index (through the same use case as `phada index`), the `.phada/` of a repository (as
 `phada init`) and the history, when it runs a review or the watch on request (through the same
-code as `phada review` and `phada watch`), like the index.
+code as `phada review` and `phada watch`), like the index, or decides a lesson (through the same
+use case as `phada lessons accept` and `discard`, which also writes the repository's file of the
+user config).
 
 ## Shared code lives in a module, never in a screen
 

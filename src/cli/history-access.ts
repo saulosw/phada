@@ -23,7 +23,7 @@ export interface HistoryCommandDeps extends GitHubTokenDeps, CodeElementDeps, Co
 
 export async function existingHistory(
   path: string,
-  deps: HistoryCommandDeps,
+  deps: Pick<HistoryCommandDeps, 'files' | 'openHistoryStore'>,
   open: (path: string) => Promise<HistoryStore> = deps.openHistoryStore,
 ): Promise<HistoryStore | undefined> {
   const opening = await openExistingHistoryStore(path, {

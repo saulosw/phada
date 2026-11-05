@@ -51,10 +51,11 @@ function isNotApplied(reason: DocReport['reason']): boolean {
   return reason === 'out-of-scope' || reason === 'manual' || reason === 'excluded'
 }
 
-export function ruleLine({ key, origin, scope, severity, status }: RuleReport): string {
+export function ruleLine({ key, origin, scope, severity, from, status }: RuleReport): string {
   const notes = [toTerminalText(origin)]
   if (severity !== undefined) notes.push(severity)
   if (scope.some((pattern) => pattern !== EVERYWHERE)) notes.push(patterns(scope))
+  if (from !== undefined && from.length > 0) notes.push(threads(from))
   if (status === 'disabled') notes.push('disabled')
   if (status === 'out-of-scope') notes.push('out of scope')
   return `${toTerminalText(key)} (${notes.join(', ')})`
@@ -77,4 +78,9 @@ export function docLine({ path, bytes, status, reason, scope }: DocReport): stri
 
 function patterns(scope: readonly string[]): string {
   return scope.map(toTerminalText).join(', ')
+}
+
+function threads([first, ...rest]: readonly string[]): string {
+  const more = rest.length === 0 ? '' : ` and ${rest.length} more`
+  return `from ${toTerminalText(first ?? '')}${more}`
 }

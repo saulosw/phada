@@ -196,6 +196,22 @@ export const MISS_REPLAY_TABLE: HistoryTable = {
   },
 }
 
+export const LESSON_TABLE: HistoryTable = {
+  name: 'lesson',
+  keys: ['id'],
+  columns: {
+    id: 'id',
+    repo: 'repo',
+    rule: 'rule',
+    scope: 'scope',
+    state: 'state',
+    provider: 'provider',
+    model: 'model',
+    createdAt: 'created_at',
+    decidedAt: 'decided_at',
+  },
+}
+
 const NUMBERS = new Set([
   'id',
   'number',
@@ -212,7 +228,7 @@ const NUMBERS = new Set([
   'commentsLastId',
 ])
 const BOOLEANS = new Set(['eligible', 'aiCalled', 'outdated'])
-const JSON_FIELDS = new Set(['data', 'ciPending', 'ciFailing'])
+const JSON_FIELDS = new Set(['data', 'ciPending', 'ciFailing', 'scope'])
 const LOWERCASE = new Set(['repo'])
 
 export class UnknownHistoryFieldError extends Error {

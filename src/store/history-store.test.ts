@@ -70,6 +70,8 @@ describe('openHistoryStore migrations', () => {
       'feedback_pull',
       'finding',
       'job',
+      'lesson',
+      'lesson_miss',
       'miss',
       'miss_replay',
       'review_request',

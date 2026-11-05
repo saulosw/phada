@@ -181,6 +181,26 @@ src/
                          #   group), kept per Phada version; a failed group is an event and the rest goes on; stops
                          #   between groups on the signal; the tally and the earlier version's
     miss-tally.ts        #   latestTally(): caught/replayed of the latest version replayed
+    propose-lessons.ts   #   proposeLessons(): per repository, the 50 most recent open misses of
+                         #   team people (owner, member, collaborator) no lesson holds → one AI
+                         #   call with the pending lessons and the user's rules → new lessons and
+                         #   misses added to pending ones, recorded together; none → no call
+    lesson-answers.ts    #   checkLessonAnswers(): misses not sent left out, a lesson with none
+                         #   dropped, a rule up to 1000 characters, 10 globs, a glob that matches
+                         #   none of its files → <folder>/** of one (a root file as itself),
+                         #   extends of an unknown lesson read as a new one
+    read-lessons.ts      #   readLessons(): the pending lessons (or all), most misses first, then
+                         #   newest, with the count of accepted and discarded ones
+    lesson-rule.ts       #   lessonRuleId() (lesson-<id>) and lessonThreads() (the thread links of
+                         #   its misses, once each): pure, also drawn by the app
+    decide-lesson.ts     #   acceptLesson(): a pending lesson → the rule lesson-<id> (rule, scope,
+                         #   its thread links as from) appended to rules: of the user's
+                         #   repos/<owner>/<repo>/config.yml (lessonConfigPath(); a missing file
+                         #   starts from the template), then marked accepted; with an editor, the draft of
+                         #   lesson-draft.ts edited first (empty or the editor failing →
+                         #   cancelled, nothing written; the edited rule and scope also kept on
+                         #   the lesson); discardLesson(): marked discarded; LessonNotFoundError,
+                         #   LessonDecidedError, LessonRuleRefusedError, InvalidLessonEditError
     stored-json.ts       #   parseJson(), objectOf(), stringOf(), numberOf(), stringsOf(): the
                          #   lenient reads of a stored JSON
     read-repositories.ts #   readRepositories(): watch.repos ∪ the user's repos/<owner>/<repo>/
@@ -256,8 +276,9 @@ src/
                          #   readers injected
     read-learnings.ts    #   readLearnings(): per repository, the observed relations (newest
                          #   first; none, read or unreadable), the feedback of Phada's comments
-                         #   per repository and per rule and the open misses with the latest
-                         #   replay's tally; readers injected
+                         #   per repository and per rule, the open misses with the latest
+                         #   replay's tally, the pending lessons (as readLessons() sorts
+                         #   them) and the file an accepted one goes to; readers injected
     read-home.ts         #   readHomeLocal(): the config, queue, repositories, last reviews and
                          #   chosen AI as facts (each read that fails is its own error), never a
                          #   slow reader; homeSnapshot(): + the last GitHub access and provider
@@ -278,11 +299,13 @@ src/
                          #   `prompt` (--default, --skill, --head, --format text|json), `watch` (--once,
                          #   --backfill, --status) and `history` (--since, --limit, --stats,
                          #   --refresh, prune --older-than, show <id> --format), `misses` (--all,
-                         #   --refresh, --replay, --format, dismiss <id>), `publish` (<id>, --force, --format text|json), `enqueue` (--publish, --format) and
+                         #   --refresh, --replay, --format, dismiss <id>), `lessons` (--all,
+                         #   --refresh, --format, accept <id> [--edit], discard <id>), `publish`
+                         #   (<id>, --force, --format text|json), `enqueue` (--publish, --format) and
                          #   `mcp` commands, --help, --version, no command (the app, --debug);
                          #   USAGE, SETUP_USAGE, REVIEW_USAGE, INIT_USAGE,
                          #   INDEX_USAGE, RULES_USAGE, PROMPT_USAGE, WATCH_USAGE, ENQUEUE_USAGE,
-                         #   MCP_USAGE, HISTORY_USAGE, MISSES_USAGE, PUBLISH_USAGE
+                         #   MCP_USAGE, HISTORY_USAGE, MISSES_USAGE, LESSONS_USAGE, PUBLISH_USAGE
     app-command.ts       #   runApp(): the app when stdin and stdout are TTYs (assertAppTerminal():
                          #   else the missing command error, or --debug alone refused as an
                          #   unknown option; phada setup without them a usage error), started
@@ -303,7 +326,10 @@ src/
                          #   file in the cache), readAutomation (the Slack tokens only as set or
                          #   missing), readProviderSetup (the user config read each time),
                          #   readProviders (the status checkers of src/providers/, injectable),
-                         #   readLearnings (the observed files of the cache, read only),
+                         #   readLearnings (the observed files of the cache, read only; the
+                         #   lesson file of lessonConfigPath()),
+                         #   acceptLesson and discardLesson (decide-lesson.ts through
+                         #   withLessonHistory(), as phada lessons does),
                          #   readIndexes (the repositories of readRepositories, each index of the
                          #   cache opened with openExistingIndexStore(), openIndexReader
                          #   injectable), readConnections (each local copy opened with
@@ -355,7 +381,12 @@ src/
                          #   the cursor back at the line start after it, where the app redraws;
                          #   runInteractive injectable) and the app's signals: SIGINT ignored
                          #   while the command runs (Ctrl-C is the command's), SIGTERM ends the
-                         #   command and the app
+                         #   command and the app; editorCommand()
+    text-editor.ts       #   textEditor(): a text in a file of a temporary folder (removed
+                         #   after) opened in $VISUAL › $EDITOR › vi with the terminal handed
+                         #   over and without the GitHub tokens → the saved text, or nothing when
+                         #   the editor ends with an error; EditorNotFoundError; runInteractive
+                         #   and the temporary folder and file (EditorFiles) injectable
     app-rules.ts         #   rulesReaders(): readLocalRules (the user config), readRepositoryRules
                          #   (the default branch) and readPullRequestRules (readRules at the base
                          #   and pullRequestPrompt(), the pull request and the repository files
@@ -436,6 +467,16 @@ src/
     history-access.ts    #   HistoryCommandDeps, existingHistory() (the history opened only when
                          #   its file exists), filterOf(): what the history and misses commands
                          #   share
+    lessons-command.ts   #   runLessons(): list, --all, --refresh (history on; the provider,
+                         #   model and rules of the user config of each repository; a line per
+                         #   repository); runLessonsAccept() (where the rule was written and its
+                         #   id; --edit through textEditor(), a cancel said on stderr),
+                         #   runLessonsDiscard()
+    lesson-history.ts    #   withLessonHistory(): the history opened for writing (missing →
+                         #   LessonNotFoundError) with the deps of decide-lesson.ts, closed after;
+                         #   what phada lessons accept/discard and the app share
+    format-lessons.ts    #   formatLessonsText/Json(): id, repository, state, miss count, the
+                         #   whole rule, the globs and each thread link (schemaVersion 1)
     format-history.ts    #   formatHistoryText/Json() (each run with its id), runJson(),
                          #   formatStatsText/Json() (schemaVersion 1)
     history-refresh.ts   #   refreshToken(), refreshHistory(): the due pull requests (or the one
@@ -525,7 +566,8 @@ src/
                          #   --dry-run
     format-publication.ts #  skip, "Published", recheck and "Resolved" messages
     format-context.ts    #   the "Context at base <sha>:" line and the context section of
-                         #   --dry-run
+                         #   --dry-run; ruleLine() (origin, severity, scope, the first thread of
+                         #   from and how many more)
     format-investigation.ts # the "Investigated:" line and the investigation section of --dry-run
                          #   (the coverage and its gaps when it is not full)
     coverage-label.ts    #   coverageLabel(): "low coverage: 11 of 63 files (…)" next to the score,
@@ -652,8 +694,14 @@ src/
                          #   ProviderPicker and L → the LanguagePicker in a SubView, back on save
                          #   or Esc with the AIs checked again; none while the config is
                          #   invalid, when the AIs are checked without it), learnings.tsx (each
-                         #   repository's relations, misses and feedback → its feedback per rule,
-                         #   its misses and its relations), rules.tsx (a repository → the lens and who set it, the
+                         #   repository's relations, misses, lessons and feedback → its pending
+                         #   lessons in full (rule, files, misses), its feedback per rule, its
+                         #   misses (phada lessons --refresh named when none was proposed) and
+                         #   its relations; l → the lessons, a/d asks to accept or discard the
+                         #   selected one (accept: the list hidden, the file under ~, the rule id,
+                         #   the whole rule, its files and threads, scrolling when long), Enter
+                         #   does it, the list read again and the result or
+                         #   the refusal shown; never proposes lessons), rules.tsx (a repository → the lens and who set it, the
                          #   user's rules at once, .phada/ and docs of the default branch on open
                          #   and on r; p and a number → the loaded rules of that pull request and
                          #   its prompt: each pass, its data blocks and instructions)
@@ -688,7 +736,7 @@ src/
                          #   line when the file is rewritten in a standard layout)
     setting-lines.tsx    #   settingLines(), settingValue(): config settings as key, value and
                          #   origin rows; ruleLines(): the user's rules as name, text and origin
-                         #   rows; indented()
+                         #   rows (with the count of the threads of from); indented()
     provider-names.ts    #   PROVIDER_NAMES: the name of each AI provider as the screens show it
     provider-lines.tsx   #   statusParts(), stateIcon(), modelsLine(), nextStepLine(): an AI
                          #   provider as checked
@@ -839,8 +887,14 @@ src/
                          #   English
   config/                # the config files: .phada/ in the repository and the user's own
     schema.ts            #   Zod schema of config.yml (ci: read, wait, onFailure, checks;
-                         #   review.debt: summary, comments or off); LANGUAGE_TAG, DEBT_MODES
-    parse-config.ts      #   parseConfigText(): YAML → config or an error naming the key
+                         #   review.debt: summary, comments or off; a rule's from: https thread
+                         #   links, shown, never sent); EditedLessonSchema (a rule's rule and
+                         #   at least one scope glob); LANGUAGE_TAG, DEBT_MODES
+    parse-config.ts      #   parseConfigText(): YAML → config or an error naming the key;
+                         #   issueText(), firstLine()
+    lesson-draft.ts      #   lessonDraftText(): a lesson as rule and scope in YAML, its thread
+                         #   links and how to cancel as comments; readLessonDraft(): the saved
+                         #   text → empty, edited (EditedLessonSchema) or an error naming the key
     merge-config.ts      #   mergeConfig(): layers → options, rules, files, ignore with origins (pure),
                          #   the ci settings with DEFAULT_CI (read, 15 min wait, onFailure: review)
                          #   for what no layer sets, review.debt with its origin;
@@ -852,7 +906,8 @@ src/
                          #   listUserRepoConfigs():
                          #   the repos/<owner>/<repo>/ folders with a config.yml or rules.md
     user-config-edit.ts  #   planUserConfigEdit(): changes (provider, model, language, watch.repos,
-                         #   publish of a watched repository) on the text of a user config with its
+                         #   publish of a watched repository, a rule appended to rules:, its id
+                         #   not taken) on the text of a user config with its
                          #   comments and order → the new text (a new file on top of the template)
                          #   and the changes by value, checked with the schema; the lines the
                          #   change leaves alone kept as written (keepLayout()), else the file
@@ -1149,10 +1204,15 @@ src/
                          #   asked),
                          #   recordMissReplays() (one per miss × version, the last wins),
                          #   missReplays()
+    history-lessons.ts   #   recordLessons() (new lessons and misses added to pending ones, in
+                         #   one transaction), lessons() with their misses (by id, repository,
+                         #   state), decideLesson() (only a pending one, with the rule and
+                         #   scope of an edited accept), linkedMissIds()
     history-columns.ts   #   the history tables (columns, keys) and their insert/upsert/update
     history-migrations.ts #  versioned migrations (PRAGMA user_version), a table rebuilt with the
                          #   foreign keys off; a newer file is refused; v5: replay runs, the
-                         #   misses (one per thread) and their replays (one per Phada version)
+                         #   misses (one per thread) and their replays (one per Phada version);
+                         #   v7: the lessons and their links to misses
   watch/                 # pure: what the watch does, data in, decision out
     filters.ts           #   eligibility(): draft, bot, outside author, authors, labels, base
     plan-cycle.ts        #   planCycle(): baseline, seen, enqueue, supersede, move (the requests
@@ -1230,6 +1290,11 @@ src/
     recheck-prompt.ts    #   buildRecheckPrompt(): earlier comments and what changed since them
     recheck-schema.ts    #   Zod schema of the recheck verdicts (fixed, still-valid, unsure)
     recheck-threads.ts   #   recheckThreads(): one call for the changed threads, verdicts per thread
+    lessons-prompt.ts    #   buildLessonsPrompt(): the misses (no links), the pending lessons and
+                         #   the user's rules as untrusted blocks; a lesson only for a rule that
+                         #   repeats
+    lessons-schema.ts    #   Zod schema of the lessons answer (rule, scope, misses, extends)
+    parse-lessons.ts     #   parseLessons(): the lessons list, items of the wrong shape left out
     json-objects.ts      #   top-level JSON objects found in a text
     parse-report.ts      #   parseReviewReport(): a missing claims list as undefined, claims of
                          #   the wrong shape left out and counted
@@ -1251,7 +1316,7 @@ src/
     debt.ts              #   withoutDroppedDebt() (review.debt: off), separateDebt() (summary):
                          #   the findings of the repository the change did not cause
     verdict.ts           #   reviewVerdict(): clean, comments or blocking, from the findings
-    errors.ts            #   InvalidReviewReportError
+    errors.ts            #   InvalidReviewReportError, InvalidLessonsAnswerError
     run-review.ts        #   runReview(): one pass per skill (prompt → provider → parse, or a
                          #   native run → conversion), merged → suggestions → [verify] → select →
                          #   score; skill bodies for native passes without findings in the diff;

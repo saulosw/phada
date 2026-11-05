@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import type { FindingRecord, MissRecord, MissReplayRecord } from '../store/history-store.js'
+import type {
+  FindingRecord,
+  LessonRecord,
+  MissRecord,
+  MissReplayRecord,
+} from '../store/history-store.js'
 import type { ObservedEdge } from '../store/observed-store.js'
 import { readLearnings } from './read-learnings.js'
 import type { LearningsReaders, ObservedRead } from './read-learnings.js'
@@ -63,6 +68,7 @@ function readers(
   findings: FindingRecord[] | undefined,
   observed: Record<string, ObservedRead> = {},
   misses: { open: MissRecord[]; replays: MissReplayRecord[] } = { open: [], replays: [] },
+  lessons: LessonRecord[] = [],
 ): LearningsReaders {
   return {
     history:
@@ -75,9 +81,16 @@ function readers(
               return { misses: misses.open, total: misses.open.length }
             },
             missReplays: (ids) => misses.replays.filter(({ missId }) => ids.includes(missId)),
+            lessons: (filter) =>
+              lessons.filter(
+                ({ repo, state }) =>
+                  (filter.repo === undefined || filter.repo === repo) &&
+                  (filter.states === undefined || filter.states.includes(state)),
+              ),
           },
     observedRepos: async () => Object.keys(observed),
     readObserved: async (repo) => observed[repo] ?? { state: 'unreadable' },
+    lessonFile: (repo) => `/cfg/repos/${repo}/config.yml`,
   }
 }
 
@@ -148,6 +161,8 @@ describe('readLearnings', () => {
       feedback: null,
       rules: [],
       misses: null,
+      lessons: [],
+      lessonFile: '/cfg/repos/acme/web/config.yml',
     })
   })
 
@@ -167,6 +182,7 @@ describe('readLearnings', () => {
       readObserved: async () => {
         throw new Error('disk I/O error')
       },
+      lessonFile: () => '/cfg/repos/acme/shop/config.yml',
     })
     expect(learnings.repos[0]?.observed).toEqual({ state: 'unreadable' })
   })
@@ -201,5 +217,38 @@ describe('readLearnings', () => {
       open: 2,
       latest: { version: '0.12.0', caught: 1, replayed: 2 },
     })
+  })
+
+  it('lists the pending lessons of each repository, the ones more misses back first', async () => {
+    const lesson = (
+      id: number,
+      repo: string,
+      state: LessonRecord['state'],
+      missIds: number[],
+    ): LessonRecord => ({
+      id,
+      repo,
+      rule: `Rule ${id}.`,
+      scope: ['src/**'],
+      state,
+      createdAt: '2026-11-03T10:00:00.000Z',
+      misses: missIds.map((missId) => openMiss(missId, repo)),
+    })
+    const learnings = await readLearnings(
+      readers([finding(1)], {}, { open: [], replays: [] }, [
+        lesson(1, 'acme/shop', 'pending', [1]),
+        lesson(2, 'acme/shop', 'pending', [2, 3]),
+        lesson(3, 'acme/shop', 'accepted', [4, 5, 6]),
+        lesson(4, 'acme/api', 'discarded', [7]),
+        lesson(5, 'acme/web', 'pending', [8]),
+      ]),
+    )
+
+    expect(learnings.repos.map(({ repo, lessons }) => [repo, lessons.map(({ id }) => id)])).toEqual(
+      [
+        ['acme/shop', [2, 1]],
+        ['acme/web', [5]],
+      ],
+    )
   })
 })

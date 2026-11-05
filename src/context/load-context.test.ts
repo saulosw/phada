@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { modifiedFile } from '../../test/support/diff-sections.js'
+import { memoryFiles } from '../../test/support/memory-files.js'
+import { pullRequestFixture } from '../../test/support/pull-request.js'
+import { loadUserLayers } from '../config/user-config.js'
 import type { ConfigLayer } from '../config/types.js'
 import type { RepositoryTree } from '../github/repository-files.js'
+import { buildReviewPrompt } from '../review/prompt.js'
+import type { ReviewContext } from '../review/types.js'
 import { loadContext } from './load-context.js'
 import type { ContextSources, LocalDocEntry } from './types.js'
 
@@ -872,5 +877,71 @@ describe('loadContext review options', () => {
     })
 
     expect(loaded.options).not.toHaveProperty('review')
+  })
+})
+
+describe('loadContext with a lesson rule', () => {
+  const env = { PHADA_CONFIG_HOME: '/config' }
+  const lessonConfig = (from: string) =>
+    [
+      'rules:',
+      '  - id: lesson-4',
+      '    rule: Validate request bodies with zod at the edge.',
+      '    scope: ["src/api/**"]',
+      from,
+    ].join('\n')
+  const FROM = [
+    '    from:',
+    '      - https://github.com/acme/shop/pull/3#discussion_r11',
+    '      - https://github.com/acme/shop/pull/9#discussion_r12',
+  ].join('\n')
+
+  async function loadWith(configText: string) {
+    const files = memoryFiles({ '/config/repos/acme/shop/config.yml': configText })
+    const userLayers = await loadUserLayers({
+      env,
+      home: '/home/me',
+      owner: 'acme',
+      repo: 'shop',
+      files,
+    })
+    return loadContext({ diff: DIFF, baseSha: SHA, userLayers, sources: fakeSources({}) })
+  }
+
+  it('applies it as a rule of your config for that repository, with its scope and threads', async () => {
+    const loaded = await loadWith(lessonConfig(FROM))
+
+    expect(loaded.report.rules).toEqual([
+      {
+        key: 'lesson-4',
+        origin: 'user:repos/acme/shop/config.yml',
+        scope: ['src/api/**'],
+        from: [
+          'https://github.com/acme/shop/pull/3#discussion_r11',
+          'https://github.com/acme/shop/pull/9#discussion_r12',
+        ],
+        status: 'applied',
+      },
+    ])
+    expect(loaded.context.rules).toEqual([
+      {
+        key: 'lesson-4',
+        text: 'Validate request bodies with zod at the edge.',
+        scope: ['src/api/**'],
+        origin: 'user:repos/acme/shop/config.yml',
+      },
+    ])
+  })
+
+  it('sends the same prompt with and without the threads it comes from', async () => {
+    const withFrom = await loadWith(lessonConfig(FROM))
+    const without = await loadWith(lessonConfig(''))
+    const prompt = (context: ReviewContext) =>
+      buildReviewPrompt({ pullRequest: pullRequestFixture(), context }, 'abcdef012345')
+
+    expect(prompt(withFrom.context)).toEqual(prompt(without.context))
+    expect(prompt(withFrom.context).instructions).toContain(
+      'Validate request bodies with zod at the edge.',
+    )
   })
 })

@@ -353,6 +353,7 @@ export const spanish: UiMessages = {
     notSet: '–',
     allChecks: 'todos los checks',
     cliDefault: 'el de la CLI de la IA',
+    threads: (count) => (count === 1 ? '1 hilo' : `${count} hilos`),
     noConfig: 'Todavía no hay configuración.',
     initHint: 'Crea tu configuración con',
     invalid: (message) => `Configuración no válida: ${message}`,
@@ -710,6 +711,7 @@ export const spanish: UiMessages = {
     comments: (count) => `${count} ${count === 1 ? 'comentario' : 'comentarios'}`,
     noComments: 'sin comentarios',
     misses: (count) => `${count} ${count === 1 ? 'miss' : 'misses'}`,
+    lessons: (count) => `${count} ${count === 1 ? 'lesson' : 'lessons'}`,
     outcome: {
       fixed: (count) => `${count} ${count === 1 ? 'corregido' : 'corregidos'}`,
       dismissed: (count) => `${count} ${count === 1 ? 'descartado' : 'descartados'}`,
@@ -734,6 +736,36 @@ export const spanish: UiMessages = {
       notReplayed: 'todavía sin replay',
       replayHint: 'Revísalos de nuevo con',
       gone: 'Este repositorio ya no tiene nada aprendido.',
+      lessons: (count) => `Lessons por decidir (${count})`,
+      lessonMeta: (files, misses) =>
+        `archivos: ${files} · respaldada por ${misses} ${misses === 1 ? 'miss' : 'misses'}`,
+      lessonsHint:
+        'Reglas que Phada propuso a partir de los misses. Aceptada, una lesson pasa a ser una regla de tu config para este repositorio.',
+      noLessons: 'Ninguna lesson propuesta todavía. Proponlas a partir de los misses con',
+    },
+    decide: {
+      title: (repo, count) => `Lessons de ${repo} por decidir (${count})`,
+      none: 'No quedan lessons por decidir.',
+      keys: {
+        lessons: 'decidir lessons',
+        accept: 'aceptar',
+        discard: 'descartar',
+        cancel: 'cancelar',
+      },
+      acceptQuestion: (id, repo) =>
+        `¿Aceptar la lesson ${id} como regla de tu config para ${repo}?`,
+      acceptTarget: (ruleId, path) => `Añade la regla ${ruleId} a ${path}:`,
+      acceptMeta: (files, threads) =>
+        `archivos: ${files} · de ${threads} ${threads === 1 ? 'hilo' : 'hilos'}`,
+      discardQuestion: (id) =>
+        `¿Descartar la lesson ${id}? Sale de esta lista y nunca llega a una revisión.`,
+      accepting: 'Aceptando…',
+      discarding: 'Descartando…',
+      accepted: (ruleId, path, created) =>
+        `${created ? `Creado ${path} con la regla ${ruleId}` : `Regla ${ruleId} añadida a ${path}`}; edítala en la pantalla de Reglas.`,
+      discarded: (id) => `Lesson ${id} descartada.`,
+      acceptFailed: (message) => `No aceptada: ${message}`,
+      discardFailed: (message) => `No descartada: ${message}`,
     },
   },
   rules: {
@@ -910,6 +942,7 @@ export const spanish: UiMessages = {
     lastWatchedRepo: (repo, settings) =>
       `${repo} es el último repositorio observado, y watch también define ${settings}: edita el archivo para quitarlo.`,
     notWatched: (repo) => `${repo} no está observado.`,
+    ruleExists: (id) => `La config ya tiene una regla ${id}.`,
     unreadable: (message) => `No se pudo leer el archivo de configuración: ${message}`,
     failed: (message) => `No se pudo guardar el archivo de configuración: ${message}`,
     changed: 'El archivo de configuración cambió desde entonces: Enter muestra el cambio de nuevo.',

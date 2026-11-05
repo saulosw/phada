@@ -110,6 +110,12 @@ describe('parseConfigText', () => {
     ['an empty rule', 'rules:\n  - rule: "  "', 'rules.0.rule'],
     ['a rule id with spaces', 'rules:\n  - id: no console\n    rule: x', 'rules.0.id'],
     ['an unknown key inside a rule', 'rules:\n  - rule: x\n    level: high', 'rules.0.level'],
+    ['a rule origin that is not a link', 'rules:\n  - rule: x\n    from: [PR 3]', 'rules.0.from.0'],
+    [
+      'a rule origin over plain http',
+      'rules:\n  - rule: x\n    from: ["http://github.com/acme/shop/pull/3"]',
+      'rules.0.from.0',
+    ],
     ['an exception in ignore', 'ignore: ["dist/**", "!dist/keep.js"]', 'ignore.1'],
     [
       'an exception in a rule scope',

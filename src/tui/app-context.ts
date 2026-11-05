@@ -1,6 +1,7 @@
 import { useInput } from 'ink'
 import type { Key } from 'ink'
 import { createContext, useContext, useEffect, useRef } from 'react'
+import type { AcceptedLesson } from '../app/decide-lesson.js'
 import type { AppliedUserConfig, UserConfigPlanResult } from '../app/edit-user-config.js'
 import type { HistoryFilter, ListedRun, ReviewDetail } from '../app/read-history.js'
 import type { GitHubAccess } from '../app/read-home.js'
@@ -85,6 +86,8 @@ export interface AppDeps {
   readProviders(): Promise<ProviderReport>
   readProviderChecks(): Promise<ProviderChecks>
   readLearnings(): Promise<Learnings>
+  acceptLesson(id: number): Promise<AcceptedLesson | undefined>
+  discardLesson(id: number): Promise<void>
   readGitHub(): Promise<GitHubAccess>
   readUserRepositories(): Promise<UserRepositories>
   readLocalRules(repo: string): Promise<LocalRules>

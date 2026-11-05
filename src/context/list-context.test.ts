@@ -166,6 +166,35 @@ describe('listContext', () => {
     expect(report.ignored).toEqual([])
   })
 
+  it('lists the threads a rule of your config comes from', async () => {
+    const from = ['https://github.com/acme/shop/pull/3#discussion_r11']
+
+    const { report } = await listContext({
+      ref: REF,
+      userLayers: [
+        {
+          kind: 'user-repo',
+          dir: '',
+          configLabel: 'user:repos/acme/shop/config.yml',
+          config: {
+            rules: [{ id: 'lesson-4', rule: 'Validate bodies.', scope: ['src/**'], from }],
+          },
+        },
+      ],
+      sources: sources({}),
+    })
+
+    expect(report.rules).toEqual([
+      {
+        key: 'lesson-4',
+        origin: 'user:repos/acme/shop/config.yml',
+        scope: ['src/**'],
+        from,
+        status: 'listed',
+      },
+    ])
+  })
+
   it('returns the review settings of the branch, the repository over the user', async () => {
     const user: ConfigLayer = {
       kind: 'user',
