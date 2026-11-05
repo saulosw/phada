@@ -707,6 +707,7 @@ export const portuguese: UiMessages = {
     comments: (count) => `${count} ${count === 1 ? 'comentário' : 'comentários'}`,
     noComments: 'sem comentários',
     misses: (count) => `${count} ${count === 1 ? 'miss' : 'misses'}`,
+    lessons: (count) => `${count} ${count === 1 ? 'lesson' : 'lessons'}`,
     outcome: {
       fixed: (count) => `${count} ${count === 1 ? 'corrigido' : 'corrigidos'}`,
       dismissed: (count) => `${count} ${count === 1 ? 'dispensado' : 'dispensados'}`,
@@ -731,6 +732,35 @@ export const portuguese: UiMessages = {
       notReplayed: 'ainda sem replay',
       replayHint: 'Revise-os de novo com',
       gone: 'Este repositório não tem mais nada aprendido.',
+      lessons: (count) => `Lessons para decidir (${count})`,
+      lessonMeta: (files, misses) =>
+        `arquivos: ${files} · com base em ${misses} ${misses === 1 ? 'miss' : 'misses'}`,
+      lessonsHint:
+        'Regras que o Phada propôs a partir dos misses. Aceita, uma lesson vira regra da sua config para este repositório.',
+      noLessons: 'Nenhuma lesson proposta ainda. Proponha a partir dos misses com',
+    },
+    decide: {
+      title: (repo, count) => `Lessons de ${repo} para decidir (${count})`,
+      none: 'Nenhuma lesson para decidir.',
+      keys: {
+        lessons: 'decidir lessons',
+        accept: 'aceitar',
+        discard: 'descartar',
+        cancel: 'cancelar',
+      },
+      acceptQuestion: (id, repo) => `Aceitar a lesson ${id} como regra da sua config para ${repo}?`,
+      acceptTarget: (ruleId, path) => `Adiciona a regra ${ruleId} a ${path}:`,
+      acceptMeta: (files, threads) =>
+        `arquivos: ${files} · de ${threads} ${threads === 1 ? 'thread' : 'threads'}`,
+      discardQuestion: (id) =>
+        `Descartar a lesson ${id}? Ela sai desta lista e nunca chega a um review.`,
+      accepting: 'Aceitando…',
+      discarding: 'Descartando…',
+      accepted: (ruleId, path, created) =>
+        `${created ? `Criado ${path} com a regra ${ruleId}` : `Regra ${ruleId} adicionada a ${path}`}; edite-a na tela de Regras.`,
+      discarded: (id) => `Lesson ${id} descartada.`,
+      acceptFailed: (message) => `Não aceita: ${message}`,
+      discardFailed: (message) => `Não descartada: ${message}`,
     },
   },
   rules: {

@@ -6,6 +6,7 @@ import { userRepoDir } from '../config/user-config.js'
 import { planUserConfigEdit } from '../config/user-config-edit.js'
 import type { PlannedUserConfig } from '../config/user-config-edit.js'
 import type { HistoryStore, LessonDecision, LessonRecord } from '../store/history-store.js'
+import { lessonRuleId, lessonThreads } from './lesson-rule.js'
 
 export type LessonDecider = Pick<HistoryStore, 'lessons' | 'decideLesson'>
 
@@ -61,6 +62,11 @@ export class InvalidLessonEditError extends Error {
   }
 }
 
+export function lessonConfigPath(env: NodeJS.ProcessEnv, home: string, repo: string): string {
+  const [owner = '', name = ''] = repo.split('/')
+  return join(userRepoDir(env, home, owner, name), 'config.yml')
+}
+
 export type LessonEditor = (draft: string) => Promise<string | undefined>
 
 export async function acceptLesson(
@@ -69,12 +75,11 @@ export async function acceptLesson(
   edit?: LessonEditor,
 ): Promise<AcceptedLesson | undefined> {
   const lesson = pendingLesson(id, deps.history)
-  const from = threadUrls(lesson)
+  const from = lessonThreads(lesson)
   const text = edit === undefined ? lesson : await editedText(lesson, from, edit)
   if (text === undefined) return undefined
-  const [owner = '', repo = ''] = lesson.repo.split('/')
-  const path = join(userRepoDir(deps.env, deps.home, owner, repo), 'config.yml')
-  const ruleId = `lesson-${lesson.id}`
+  const path = lessonConfigPath(deps.env, deps.home, lesson.repo)
+  const ruleId = lessonRuleId(lesson.id)
   const current = await deps.files.readText(path)
   const planned = planUserConfigEdit({
     path,
@@ -123,13 +128,6 @@ function pendingLesson(id: number, history: LessonDecider): LessonRecord {
   if (lesson === undefined) throw new LessonNotFoundError(id)
   if (lesson.state !== 'pending') throw new LessonDecidedError(id, lesson.state)
   return lesson
-}
-
-function threadUrls(lesson: LessonRecord): string[] {
-  const urls = lesson.misses.flatMap(({ threadUrl }) =>
-    threadUrl === undefined || threadUrl === '' ? [] : [threadUrl],
-  )
-  return [...new Set(urls)]
 }
 
 function refusalText(refusal: Exclude<PlannedUserConfig, { ok: true }>, path: string): string {

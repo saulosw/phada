@@ -191,10 +191,12 @@ src/
                          #   extends of an unknown lesson read as a new one
     read-lessons.ts      #   readLessons(): the pending lessons (or all), most misses first, then
                          #   newest, with the count of accepted and discarded ones
+    lesson-rule.ts       #   lessonRuleId() (lesson-<id>) and lessonThreads() (the thread links of
+                         #   its misses, once each): pure, also drawn by the app
     decide-lesson.ts     #   acceptLesson(): a pending lesson → the rule lesson-<id> (rule, scope,
                          #   its thread links as from) appended to rules: of the user's
-                         #   repos/<owner>/<repo>/config.yml (a missing file starts from the
-                         #   template), then marked accepted; with an editor, the draft of
+                         #   repos/<owner>/<repo>/config.yml (lessonConfigPath(); a missing file
+                         #   starts from the template), then marked accepted; with an editor, the draft of
                          #   lesson-draft.ts edited first (empty or the editor failing →
                          #   cancelled, nothing written; the edited rule and scope also kept on
                          #   the lesson); discardLesson(): marked discarded; LessonNotFoundError,
@@ -274,8 +276,9 @@ src/
                          #   readers injected
     read-learnings.ts    #   readLearnings(): per repository, the observed relations (newest
                          #   first; none, read or unreadable), the feedback of Phada's comments
-                         #   per repository and per rule and the open misses with the latest
-                         #   replay's tally; readers injected
+                         #   per repository and per rule, the open misses with the latest
+                         #   replay's tally, the pending lessons (as readLessons() sorts
+                         #   them) and the file an accepted one goes to; readers injected
     read-home.ts         #   readHomeLocal(): the config, queue, repositories, last reviews and
                          #   chosen AI as facts (each read that fails is its own error), never a
                          #   slow reader; homeSnapshot(): + the last GitHub access and provider
@@ -296,11 +299,13 @@ src/
                          #   `prompt` (--default, --skill, --head, --format text|json), `watch` (--once,
                          #   --backfill, --status) and `history` (--since, --limit, --stats,
                          #   --refresh, prune --older-than, show <id> --format), `misses` (--all,
-                         #   --refresh, --replay, --format, dismiss <id>), `publish` (<id>, --force, --format text|json), `enqueue` (--publish, --format) and
+                         #   --refresh, --replay, --format, dismiss <id>), `lessons` (--all,
+                         #   --refresh, --format, accept <id> [--edit], discard <id>), `publish`
+                         #   (<id>, --force, --format text|json), `enqueue` (--publish, --format) and
                          #   `mcp` commands, --help, --version, no command (the app, --debug);
                          #   USAGE, SETUP_USAGE, REVIEW_USAGE, INIT_USAGE,
                          #   INDEX_USAGE, RULES_USAGE, PROMPT_USAGE, WATCH_USAGE, ENQUEUE_USAGE,
-                         #   MCP_USAGE, HISTORY_USAGE, MISSES_USAGE, PUBLISH_USAGE
+                         #   MCP_USAGE, HISTORY_USAGE, MISSES_USAGE, LESSONS_USAGE, PUBLISH_USAGE
     app-command.ts       #   runApp(): the app when stdin and stdout are TTYs (assertAppTerminal():
                          #   else the missing command error, or --debug alone refused as an
                          #   unknown option; phada setup without them a usage error), started
@@ -321,7 +326,10 @@ src/
                          #   file in the cache), readAutomation (the Slack tokens only as set or
                          #   missing), readProviderSetup (the user config read each time),
                          #   readProviders (the status checkers of src/providers/, injectable),
-                         #   readLearnings (the observed files of the cache, read only),
+                         #   readLearnings (the observed files of the cache, read only; the
+                         #   lesson file of lessonConfigPath()),
+                         #   acceptLesson and discardLesson (decide-lesson.ts through
+                         #   withLessonHistory(), as phada lessons does),
                          #   readIndexes (the repositories of readRepositories, each index of the
                          #   cache opened with openExistingIndexStore(), openIndexReader
                          #   injectable), readConnections (each local copy opened with
@@ -464,6 +472,9 @@ src/
                          #   repository); runLessonsAccept() (where the rule was written and its
                          #   id; --edit through textEditor(), a cancel said on stderr),
                          #   runLessonsDiscard()
+    lesson-history.ts    #   withLessonHistory(): the history opened for writing (missing →
+                         #   LessonNotFoundError) with the deps of decide-lesson.ts, closed after;
+                         #   what phada lessons accept/discard and the app share
     format-lessons.ts    #   formatLessonsText/Json(): id, repository, state, miss count, the
                          #   whole rule, the globs and each thread link (schemaVersion 1)
     format-history.ts    #   formatHistoryText/Json() (each run with its id), runJson(),
@@ -683,8 +694,14 @@ src/
                          #   ProviderPicker and L → the LanguagePicker in a SubView, back on save
                          #   or Esc with the AIs checked again; none while the config is
                          #   invalid, when the AIs are checked without it), learnings.tsx (each
-                         #   repository's relations, misses and feedback → its feedback per rule,
-                         #   its misses and its relations), rules.tsx (a repository → the lens and who set it, the
+                         #   repository's relations, misses, lessons and feedback → its pending
+                         #   lessons in full (rule, files, misses), its feedback per rule, its
+                         #   misses (phada lessons --refresh named when none was proposed) and
+                         #   its relations; l → the lessons, a/d asks to accept or discard the
+                         #   selected one (accept: the list hidden, the file under ~, the rule id,
+                         #   the whole rule, its files and threads, scrolling when long), Enter
+                         #   does it, the list read again and the result or
+                         #   the refusal shown; never proposes lessons), rules.tsx (a repository → the lens and who set it, the
                          #   user's rules at once, .phada/ and docs of the default branch on open
                          #   and on r; p and a number → the loaded rules of that pull request and
                          #   its prompt: each pass, its data blocks and instructions)

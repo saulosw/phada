@@ -1,5 +1,6 @@
 import type { ProviderCheckers } from '../app/check-providers.js'
 import type { IndexingOptions } from '../app/index-repository.js'
+import { acceptLesson, discardLesson, lessonConfigPath } from '../app/decide-lesson.js'
 import { applyUserConfigPlan, planUserConfig } from '../app/edit-user-config.js'
 import { indexedCommit, openGraphExplorer } from '../app/explore-graph.js'
 import type { ExplorerReaders } from '../app/explore-graph.js'
@@ -67,6 +68,7 @@ import { UsageError } from './errors.js'
 import { formatError } from './format-error.js'
 import { readGitHubAccess } from './github-access.js'
 import { USER_CONFIG_TEMPLATE } from './init-templates.js'
+import { withLessonHistory } from './lesson-history.js'
 import { ghTokenReader, readGitHubToken } from './github-token.js'
 import type { GhTokenReader, RunGh } from './github-token.js'
 import type { TextOutput } from './progress.js'
@@ -264,7 +266,12 @@ async function appDeps(
         observedRepos: () =>
           (deps.observed?.list ?? observedRepositories)(phadaCacheDir(deps.env, deps.home)),
         readObserved: (repo) => observedOf(deps, repo),
+        lessonFile: (repo) => lessonConfigPath(deps.env, deps.home, repo),
       }),
+    acceptLesson: (id: number) =>
+      withLessonHistory(id, deps, (lessonDeps) => acceptLesson(id, lessonDeps)),
+    discardLesson: (id: number) =>
+      withLessonHistory(id, deps, (lessonDeps) => discardLesson(id, lessonDeps)),
     readGitHub: () =>
       readGitHubAccess({
         env: deps.env,

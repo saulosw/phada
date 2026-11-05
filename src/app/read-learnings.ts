@@ -1,16 +1,18 @@
-import type { HistoryStore, MissRecord } from '../store/history-store.js'
+import type { HistoryStore, LessonRecord, MissRecord } from '../store/history-store.js'
 import type { ObservedEdge } from '../store/observed-store.js'
 import { latestTally } from './miss-tally.js'
 import type { VersionTally } from './miss-tally.js'
 import { readFeedbackStats } from './read-history.js'
+import { readLessons } from './read-lessons.js'
 import type { RepoStats, RuleStats } from './read-history.js'
 
 export type ObservedRead = { state: 'read'; edges: ObservedEdge[] } | { state: 'unreadable' }
 
 export interface LearningsReaders {
-  history: Pick<HistoryStore, 'findings' | 'misses' | 'missReplays'> | undefined
+  history: Pick<HistoryStore, 'findings' | 'misses' | 'missReplays' | 'lessons'> | undefined
   observedRepos(): Promise<string[]>
   readObserved(repo: string): Promise<ObservedRead>
+  lessonFile(repo: string): string
 }
 
 export interface RepoLearnings {
@@ -19,6 +21,8 @@ export interface RepoLearnings {
   feedback: RepoStats | null
   rules: RuleStats[]
   misses: MissCounts | null
+  lessons: LessonRecord[]
+  lessonFile: string
 }
 
 export interface MissCounts {
@@ -48,6 +52,8 @@ export async function readLearnings(readers: LearningsReaders): Promise<Learning
       feedback: null,
       rules: [],
       misses: null,
+      lessons: [],
+      lessonFile: readers.lessonFile(repo),
     }
     repos.set(key, found)
     return found
@@ -56,6 +62,9 @@ export async function readLearnings(readers: LearningsReaders): Promise<Learning
   for (const rule of stats.rules) entry(rule.repo).rules.push(rule)
   for (const { repo, read } of observed) entry(repo).observed = newestFirst(read)
   for (const [repo, misses] of openMisses(readers.history)) entry(repo).misses = misses
+  for (const lesson of readLessons(readers.history, {}, false).lessons) {
+    entry(lesson.repo).lessons.push(lesson)
+  }
   return {
     recorded: readers.history !== undefined,
     repos: [...repos.values()].sort((a, b) => a.repo.localeCompare(b.repo)),

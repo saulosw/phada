@@ -1,4 +1,4 @@
-import { acceptLesson, discardLesson, LessonNotFoundError } from '../app/decide-lesson.js'
+import { acceptLesson, discardLesson } from '../app/decide-lesson.js'
 import { proposeLessons } from '../app/propose-lessons.js'
 import type { LessonSetup, ProposeLessonsDeps } from '../app/propose-lessons.js'
 import { readLessons } from '../app/read-lessons.js'
@@ -15,7 +15,7 @@ import type { IndexFormat, RepositoryName } from './args.js'
 import { UsageError } from './errors.js'
 import { formatLessonsJson, formatLessonsText } from './format-lessons.js'
 import { existingHistory } from './history-access.js'
-import { userRepoConfigTemplate } from './init-templates.js'
+import { withLessonHistory } from './lesson-history.js'
 import type { TextOutput } from './progress.js'
 import { assertProviderChoice } from './provider-choice.js'
 import type { ProviderOptions } from './provider-choice.js'
@@ -77,50 +77,28 @@ export async function runLessonsAccept(
   command: LessonAcceptCommand,
   deps: LessonsCommandDeps,
 ): Promise<void> {
-  const history = await existingHistory(dataFiles(deps.env, deps.home).history, deps)
-  if (history === undefined) throw new LessonNotFoundError(command.id)
-  try {
-    const accepted = await acceptLesson(
-      command.id,
-      {
-        history,
-        files: deps.files,
-        env: deps.env,
-        home: deps.home,
-        template: userRepoConfigTemplate,
-        now: () => deps.clock().toISOString(),
-      },
-      command.edit ? textEditor(deps, `lesson-${command.id}.yml`) : undefined,
-    )
-    if (accepted === undefined) {
-      deps.stderr.write(
-        `Accept cancelled; nothing written, lesson ${command.id} is still pending.\n`,
-      )
-      return
-    }
-    const written = accepted.created
-      ? `Created ${accepted.path} with the rule ${accepted.ruleId}`
-      : `Added the rule ${accepted.ruleId} to ${accepted.path}`
-    deps.stderr.write(
-      toTerminalText(`${written}; reviews of ${accepted.repo} apply it from now on.`) + '\n',
-    )
-  } finally {
-    history.close()
+  const editor = command.edit ? textEditor(deps, `lesson-${command.id}.yml`) : undefined
+  const accepted = await withLessonHistory(command.id, deps, (lessonDeps) =>
+    acceptLesson(command.id, lessonDeps, editor),
+  )
+  if (accepted === undefined) {
+    deps.stderr.write(`Accept cancelled; nothing written, lesson ${command.id} is still pending.\n`)
+    return
   }
+  const written = accepted.created
+    ? `Created ${accepted.path} with the rule ${accepted.ruleId}`
+    : `Added the rule ${accepted.ruleId} to ${accepted.path}`
+  deps.stderr.write(
+    toTerminalText(`${written}; reviews of ${accepted.repo} apply it from now on.`) + '\n',
+  )
 }
 
 export async function runLessonsDiscard(
   command: LessonDecisionCommand,
   deps: LessonsCommandDeps,
 ): Promise<void> {
-  const history = await existingHistory(dataFiles(deps.env, deps.home).history, deps)
-  if (history === undefined) throw new LessonNotFoundError(command.id)
-  try {
-    discardLesson(command.id, { history, now: () => deps.clock().toISOString() })
-    deps.stderr.write(`Discarded lesson ${command.id}; phada lessons no longer lists it.\n`)
-  } finally {
-    history.close()
-  }
+  await withLessonHistory(command.id, deps, (lessonDeps) => discardLesson(command.id, lessonDeps))
+  deps.stderr.write(`Discarded lesson ${command.id}; phada lessons no longer lists it.\n`)
 }
 
 async function lessonSetup(repo: string, deps: LessonsCommandDeps): Promise<LessonSetup> {

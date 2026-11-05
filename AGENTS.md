@@ -14,8 +14,9 @@ validates and scores the answer, formats the result and posts it.
 Phada has set up, running and reviewed, over the same use cases the commands use. `phada setup`
 opens it on a step-by-step setup. The app writes only the user's own config (and the
 `repos/<owner>/<repo>/` files it opens in the editor), and, when asked, the index and a
-repository's `.phada/` (as `phada index` and `phada init` do), and the history of a review or the
-watch it runs (as `phada review` and `phada watch` do).
+repository's `.phada/` (as `phada index` and `phada init` do), the history of a review or the
+watch it runs (as `phada review` and `phada watch` do), and the history and the repository's file
+of the user config when it decides a lesson (as `phada lessons accept` and `discard` do).
 
 ## One engine, many callers
 
@@ -126,10 +127,10 @@ streams and environment. The limits of each folder:
 - `src/tui/` draws the app with `ink` and `react` and imports, from outside the folder, only types
   of `src/app/` and `src/config/` and the pure helpers it names (`src/app/error-message.ts`,
   `src/app/terminal-text.ts`, `src/app/read-home.ts`, `src/app/home-recommendation.ts`,
-  `src/app/read-provider.ts`); it never imports `src/github/`, a concrete provider or `src/cli/`,
-  never touches `process` or `console` and never starts a timer: the streams, the signals, the
-  environment and the scheduler come in through `openApp()`, which `src/cli/app-command.ts` loads
-  with `import()` so the other commands never load React.
+  `src/app/read-provider.ts`, `src/app/lesson-rule.ts`); it never imports `src/github/`, a concrete
+  provider or `src/cli/`, never touches `process` or `console` and never starts a timer: the
+  streams, the signals, the environment and the scheduler come in through `openApp()`, which
+  `src/cli/app-command.ts` loads with `import()` so the other commands never load React.
 - `src/cli/review-wiring.ts` and `src/cli/watch-command.ts` declare the deps they need
   (`ReviewWiringDeps`, `WatchCommandDeps`); `MainDeps` extends them.
 

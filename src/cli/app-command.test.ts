@@ -1545,6 +1545,76 @@ describe('the provider and learnings readers', () => {
   })
 })
 
+describe('the lessons of the app', () => {
+  it('accepts a lesson into the user config of its repository and discards another, in the history', async () => {
+    const dataHome = mkdtempSync(join(tmpdir(), 'phada-app-lessons-'))
+    const path = join(dataHome, 'history.sqlite')
+    try {
+      const seeding = await openHistoryStore(path)
+      const [kept = 0, dropped = 0] = seeding.recordLessons(
+        {
+          repo: 'acme/shop',
+          created: [
+            { rule: 'Keep every price in integer cents.', scope: ['src/cart/**'], missIds: [] },
+            { rule: 'Never log the payment token.', scope: ['src/**'], missIds: [] },
+          ],
+          attached: [],
+        },
+        '2026-10-24T10:00:00.000Z',
+      )
+      seeding.close()
+      const seen: unknown[] = []
+      const pending = async (appDeps: AppDeps) =>
+        (await appDeps.readLearnings()).repos.map(({ repo, lessons, lessonFile }) => [
+          repo,
+          lessons.map(({ id }) => id),
+          lessonFile,
+        ])
+      const { app, files } = deps({
+        dataHome,
+        files: { [path]: '' },
+        observed: { list: async () => [], read: async () => [] },
+        during: async (appDeps) => {
+          seen.push(await pending(appDeps))
+          seen.push(await appDeps.acceptLesson(kept))
+          await appDeps.discardLesson(dropped)
+          seen.push(await pending(appDeps))
+          seen.push(await appDeps.acceptLesson(kept).catch((error: unknown) => error))
+        },
+      })
+      app.openHistoryStore = (file) => openHistoryStore(file)
+
+      await runApp(app)
+
+      expect(seen.slice(0, 3)).toEqual([
+        [['acme/shop', [dropped, kept], '/cfg/repos/acme/shop/config.yml']],
+        {
+          lessonId: kept,
+          repo: 'acme/shop',
+          ruleId: `lesson-${kept}`,
+          path: '/cfg/repos/acme/shop/config.yml',
+          created: true,
+        },
+        [],
+      ])
+      expect((seen[3] as Error).name).toBe('LessonDecidedError')
+      const config = files.files.get('/cfg/repos/acme/shop/config.yml') ?? ''
+      expect(config).toMatch(/^# Your own Phada config for acme\/shop/)
+      expect(config).toContain('Keep every price in integer cents.')
+      const history = await openHistoryStore(path, { readOnly: true })
+      expect(history.lessons({}).map(({ id, state, decidedAt }) => [id, state, decidedAt])).toEqual(
+        expect.arrayContaining([
+          [kept, 'accepted', '2026-10-25T12:00:00.000Z'],
+          [dropped, 'discarded', '2026-10-25T12:00:00.000Z'],
+        ]),
+      )
+      history.close()
+    } finally {
+      rmSync(dataHome, { recursive: true, force: true })
+    }
+  })
+})
+
 const RUN: RunRecord = {
   source: 'watch',
   repo: 'acme/shop',

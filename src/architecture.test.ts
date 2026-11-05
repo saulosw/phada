@@ -369,6 +369,7 @@ const TUI: Boundary = {
     '../app/read-home.js',
     '../app/home-recommendation.js',
     '../app/read-provider.js',
+    '../app/lesson-rule.js',
   ]),
   types: new Set(),
   typeDirs: ['../app/', '../config/'],

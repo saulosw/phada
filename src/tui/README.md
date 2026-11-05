@@ -104,6 +104,10 @@ plan again when the file changed since the plan); the screen wires `Esc` with
 language is read again at once and `onSaved(plan)` runs; a proposal that changes nothing calls
 `onSaved` without writing. `valueChangeLines()` draws a list of written values.
 
+Accepting a lesson (`learnings.tsx`) asks its own question instead of `useConfigChange`, because
+the use case (`AppDeps.acceptLesson`) also decides the lesson in the history: before `Enter` it
+shows the file under `~` (`RepoLearnings.lessonFile`) and the rule it adds, whole.
+
 ## Indexing from a screen (`repository-indexing.tsx`)
 
 **`useRepositoryIndexing(onEnded)`** indexes repositories one after the other through

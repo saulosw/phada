@@ -699,6 +699,7 @@ export const english: UiMessages = {
     comments: (count) => `${count} ${count === 1 ? 'comment' : 'comments'}`,
     noComments: 'no comments',
     misses: (count) => `${count} ${count === 1 ? 'miss' : 'misses'}`,
+    lessons: (count) => `${count} ${count === 1 ? 'lesson' : 'lessons'}`,
     outcome: {
       fixed: (count) => `${count} fixed`,
       dismissed: (count) => `${count} dismissed`,
@@ -723,6 +724,30 @@ export const english: UiMessages = {
       notReplayed: 'not replayed yet',
       replayHint: 'Review them again with',
       gone: 'This repository has nothing learned any more.',
+      lessons: (count) => `Lessons to decide (${count})`,
+      lessonMeta: (files, misses) =>
+        `files: ${files} · backed by ${misses} ${misses === 1 ? 'miss' : 'misses'}`,
+      lessonsHint:
+        'Rules Phada proposed from the misses. Accepted, one becomes a rule of your config for this repository.',
+      noLessons: 'No lessons proposed yet. Propose them from the misses with',
+    },
+    decide: {
+      title: (repo, count) => `Lessons of ${repo} to decide (${count})`,
+      none: 'No lessons left to decide.',
+      keys: { lessons: 'decide lessons', accept: 'accept', discard: 'discard', cancel: 'cancel' },
+      acceptQuestion: (id, repo) => `Accept lesson ${id} as a rule of your config for ${repo}?`,
+      acceptTarget: (ruleId, path) => `Adds the rule ${ruleId} to ${path}:`,
+      acceptMeta: (files, threads) =>
+        `files: ${files} · from ${threads} ${threads === 1 ? 'thread' : 'threads'}`,
+      discardQuestion: (id) =>
+        `Discard lesson ${id}? It leaves this list and never reaches a review.`,
+      accepting: 'Accepting…',
+      discarding: 'Discarding…',
+      accepted: (ruleId, path, created) =>
+        `${created ? `Created ${path} with the rule ${ruleId}` : `Added the rule ${ruleId} to ${path}`}; edit it from the Rules screen.`,
+      discarded: (id) => `Discarded lesson ${id}.`,
+      acceptFailed: (message) => `Not accepted: ${message}`,
+      discardFailed: (message) => `Not discarded: ${message}`,
     },
   },
   rules: {
