@@ -94,6 +94,7 @@ export interface CodexCliProviderOptions {
 
 export class CodexCliProvider implements ReviewProvider {
   readonly id = PROVIDER_ID
+  readonly concurrency = 2
   readonly #command: string
   readonly #model: string | undefined
   readonly #timeoutMs: number

@@ -24,6 +24,14 @@ export type ReviewProgress =
   | { kind: 'impactReady'; report: ImpactReport }
   | { kind: 'passesPlanned'; plan: PassPlan[] }
   | { kind: 'passStarted'; skill: string; index: number; total: number }
+  | {
+      kind: 'groupStarted'
+      label: string
+      index: number
+      total: number
+      files: number
+      bytes: number
+    }
   | { kind: 'aiStarted'; provider: string; run: AiRun }
   | { kind: 'aiFinished'; provider: string; run: AiRun; answered: boolean; usage?: TokenUsage }
   | { kind: 'publishing' }

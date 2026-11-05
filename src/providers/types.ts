@@ -69,6 +69,7 @@ export interface SkillRunOutput {
 
 export interface ReviewProvider {
   readonly id: string
+  readonly concurrency?: number
   review(prompt: ReviewPrompt): Promise<ReviewOutput>
   runSkill?(request: SkillRunRequest): Promise<SkillRunOutput>
 }

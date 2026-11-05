@@ -657,6 +657,58 @@ describe('runHistoryShow', () => {
     )
   })
 
+  it('shows the diff groups of a run and the tokens of each group', async () => {
+    const h = harness()
+    const usage = { inputTokens: 9000, outputTokens: 400 }
+    const result: ReviewResult = {
+      ...RESULT,
+      passUsage: [
+        { pass: 'review', group: 'api/src', usage },
+        { pass: 'review', group: 'web/app\u001b.ts' },
+        { pass: 'verify', usage: { inputTokens: 700, outputTokens: 17 } },
+      ],
+      groups: [
+        {
+          label: 'api/src',
+          files: ['api/src/a.ts', 'api/src/b.ts'],
+          bytes: 21_400,
+          link: 'directory',
+          findings: 2,
+          durationMs: 41_000,
+          usage,
+        },
+        {
+          label: 'web/app\u001b.ts',
+          files: ['web/app\u001b.ts'],
+          bytes: 25_000,
+          link: 'single',
+          findings: 0,
+          durationMs: 1_200,
+          failed: true,
+        },
+      ],
+    }
+    const json = formatReviewJson(pullRequestFixture(), { status: 'reviewed', result }, DRY_RUN)
+    await h.seed((store) => store.addRun(storedRun(json)))
+
+    await runHistoryShow(SHOW, h.deps)
+
+    const out = h.stdout()
+    expect(out).toContain(
+      [
+        '## Groups',
+        '',
+        'Each text pass ran once per group.',
+        '1. api/src — 2 files, 21 KB, by directory · 2 findings · 41.0s',
+        '2. web/app.ts — 1 file, 25 KB, file alone · failed · 1.2s',
+        '',
+      ].join('\n'),
+    )
+    expect(out).toContain('- review (api/src): 9.0k in · 400 out\n')
+    expect(out).toContain('- review (web/app.ts): not reported\n')
+    expect(out).not.toContain('\u001b')
+  })
+
   it('shows what a run of an older version kept', async () => {
     const h = harness()
     const old = JSON.stringify({

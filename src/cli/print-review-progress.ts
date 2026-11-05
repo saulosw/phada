@@ -1,14 +1,15 @@
-import type { AiRun, ReviewProgressSink } from '../app/review-progress.js'
+import type { AiRun, ReviewProgress, ReviewProgressSink } from '../app/review-progress.js'
 import { toTerminalText } from '../app/terminal-text.js'
 import { ciWaitProgress } from './ci-wait-progress.js'
 import { formatCiLine } from './format-ci.js'
 import { formatContextLine } from './format-context.js'
 import { formatConversationLine } from './format-conversation.js'
+import { groupSize } from './format-groups.js'
 import { formatImpactLine } from './format-impact.js'
 import { formatPassesLine } from './format-passes.js'
 import { formatRelatedLine } from './format-related.js'
 import { formatPullRequestSummary } from './format-review.js'
-import { indexProgress, liveProgress } from './progress.js'
+import { CLEAR_LINE, indexProgress, liveProgress } from './progress.js'
 import type { TextOutput } from './progress.js'
 
 const AI_LABELS: Readonly<Record<AiRun, string>> = {
@@ -25,6 +26,7 @@ export function printReviewProgress(
   const index = indexProgress(output)
   const ciWait = ciWaitProgress(output, clock)
   let stopAi: (() => void) | undefined
+  let runningAi = 0
   const writeLine = (line: string | undefined) => {
     if (line !== undefined) output.write(`${line}\n`)
   }
@@ -59,11 +61,19 @@ export function printReviewProgress(
           writeLine(toTerminalText(`Skill ${event.index + 1}/${event.total}: ${event.skill}`))
         }
         return
+      case 'groupStarted':
+        return writeLine(
+          `${stopAi !== undefined && output.isTTY === true ? CLEAR_LINE : ''}${toTerminalText(startedGroupLine(event))}`,
+        )
       case 'aiStarted':
+        runningAi += 1
+        if (runningAi > 1 && stopAi !== undefined) return
         stopAi?.()
         stopAi = liveProgress(`${AI_LABELS[event.run]} with ${event.provider}…`, output)
         return
       case 'aiFinished':
+        runningAi = Math.max(0, runningAi - 1)
+        if (runningAi > 0) return
         stopAi?.()
         stopAi = undefined
         return
@@ -73,4 +83,8 @@ export function printReviewProgress(
         return warn(event.message)
     }
   }
+}
+
+function startedGroupLine(group: Extract<ReviewProgress, { kind: 'groupStarted' }>): string {
+  return `Group ${group.index + 1}/${group.total}: ${group.label} (${groupSize(group.files, group.bytes)})`
 }

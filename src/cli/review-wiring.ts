@@ -281,6 +281,8 @@ export function pullRequestReviewDeps(
       relatedReady: (report) => progress({ kind: 'relatedReady', report }),
       passesPlanned: (plan) => progress({ kind: 'passesPlanned', plan }),
       passStarted: (skill, index, total) => progress({ kind: 'passStarted', skill, index, total }),
+      groupStarted: (label, index, total, files, bytes) =>
+        progress({ kind: 'groupStarted', label, index, total, files, bytes }),
     },
   }
 }

@@ -1,6 +1,7 @@
 import type { PromptView } from '../app/inspect-prompt.js'
 import { shortSha } from './review-text.js'
 import { toTerminalText } from '../app/terminal-text.js'
+import { groupLine } from './format-groups.js'
 import { formatBytes } from './units.js'
 
 export function formatPromptText(view: PromptView): string {
@@ -13,6 +14,15 @@ export function formatPromptText(view: PromptView): string {
     ...view.warnings.map((warning) => `Warning: ${toTerminalText(warning)}`),
     '',
   ]
+  if (view.groups !== undefined) {
+    lines.push(
+      '## Groups',
+      '',
+      'Each text pass runs once per group, with only the diff of its group in PHADA_DIFF.',
+      ...view.groups.map(groupLine),
+      '',
+    )
+  }
   view.passes.forEach((pass, index) => {
     const where = pass.origin === 'phada' ? 'built-in' : pass.origin
     const heading = `## Pass ${index + 1}: ${pass.skill} (${pass.mode === 'native' ? 'native, ' : ''}${where})`

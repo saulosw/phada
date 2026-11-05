@@ -4,13 +4,14 @@ import type { ContextReport } from '../context/types.js'
 import type { ImpactReport } from '../graph/report.js'
 import type { InvestigationReport } from '../investigation/tools/report.js'
 import type { UsageReport } from '../review/token-usage.js'
-import type { Coverage, PassReport } from '../review/types.js'
+import type { Coverage, DiffGroupReport, PassReport } from '../review/types.js'
 import { formatCiSection } from './format-ci.js'
 import { formatClaimsSection } from './format-claims.js'
 import type { ClaimLine } from './format-claims.js'
 import { formatCloseToCutSection } from './format-close-to-cut.js'
 import type { CutFinding } from './format-close-to-cut.js'
 import { formatContextSection } from './format-context.js'
+import { formatGroupsSection } from './format-groups.js'
 import { formatConversationSection } from './format-conversation.js'
 import { formatImpactSection } from './format-impact.js'
 import { formatInvestigationSection } from './format-investigation.js'
@@ -28,6 +29,7 @@ export interface RunSections {
   impact?: { report: ImpactReport; text?: string }
   related?: RelatedReport
   passes?: { reports: readonly PassReport[]; fixFor?: BlockedFix }
+  groups?: readonly DiffGroupReport[]
   investigation?: InvestigationReport
   coverage?: Coverage
   usage?: UsageReport
@@ -35,7 +37,7 @@ export interface RunSections {
 
 export function formatRunSections(sections: RunSections): string[] {
   const { closeToCut, claims, context, conversation, ci, impact, related, passes } = sections
-  const { investigation, coverage, usage } = sections
+  const { groups, investigation, coverage, usage } = sections
   return [
     closeToCut && formatCloseToCutSection(closeToCut.findings, closeToCut.minConfidence),
     claims && formatClaimsSection(claims),
@@ -45,6 +47,7 @@ export function formatRunSections(sections: RunSections): string[] {
     impact && formatImpactSection(impact.report, impact.text),
     related !== undefined && related.status !== 'none' && formatRelatedSection(related),
     passes && formatPassesSection(passes.reports, passes.fixFor),
+    groups && groups.length > 0 && formatGroupsSection(groups),
     investigation && formatInvestigationSection(investigation, coverage),
     usage && formatUsageSection(usage),
   ].filter((section): section is string => typeof section === 'string')

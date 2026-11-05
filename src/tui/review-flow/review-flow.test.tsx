@@ -88,6 +88,7 @@ function detail(changes: Partial<ReviewDetail> = {}): ReviewDetail {
       reason: null,
     },
     ci: null,
+    groups: null,
     usage: null,
     published: [],
     ...changes,
@@ -296,6 +297,14 @@ describe('reviewing a pull request from the app', () => {
     })
     progress({ kind: 'indexing', total: 40 })
     progress({ kind: 'indexed', done: 10, total: 40 })
+    progress({
+      kind: 'groupStarted',
+      label: 'api/src/\u001b[2Jservices',
+      index: 1,
+      total: 4,
+      files: 6,
+      bytes: 21_400,
+    })
     progress({ kind: 'aiStarted', provider: 'claude-cli', run: 'review' })
     progress({ kind: 'warning', message: 'The CI logs are gone.' })
     await showing('claude-cli: review · 0s')
@@ -304,6 +313,7 @@ describe('reviewing a pull request from the app', () => {
     expect(frame()).toContain('✓ Conversation: 1 item')
     expect(frame()).toContain('✓ Impact: 1 changed symbol')
     expect(frame()).toContain('Indexing: 10 of 40 files')
+    expect(frame()).toContain('✓ Group 2/4: api/src/[2Jservices (6 files, 21 KB)')
     expect(frame()).toContain('› claude-cli: review · 0s')
     expect(frame()).toContain('The CI logs are gone.')
     later(12_000)

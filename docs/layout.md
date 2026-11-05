@@ -422,6 +422,8 @@ src/
                          #   command or read
     read-dirs.ts         #   readDirResolver(): review.readDirs → existing folders (~ expanded)
     format-passes.ts     #   the "Skills:" line and the skills section of --dry-run
+    format-groups.ts     #   the groups section of --dry-run and of phada prompt (each diff group
+                         #   with its files, size and link), groupSize() for the stderr line
     watch-command.ts     #   runWatch(): --status, or the watch through startWatch() with its
                          #   events as lines, Ctrl-C once (stop) or twice (abort, exit 130)
     watch-session.ts     #   startWatch(): settings, providers checked on start, lock, history,
@@ -949,8 +951,11 @@ src/
                          #   front matter), the body cut at 20 KB; CLAUDE_RULES_GLOB
     doc-scope.ts         #   docScope(): always, globs, manual or excluded, from applyTo, globs,
                          #   alwaysApply, description and excludeAgent
+    generated-files.ts   #   generatedFiles(): the changed files a .gitattributes marks
+                         #   linguist-generated (unset by -, ! or =false; the later line wins)
     load-context.ts      #   loadContext(): config files, rules (with the .claude/rules) in scope,
-                         #   ignore, docs in scope → ReviewContext + report; readClaudeRules()
+                         #   ignore, docs in scope, the generated files of the root .gitattributes
+                         #   → ReviewContext + report; readClaudeRules()
     list-context.ts      #   listContext(): every .phada/ folder, rule (.claude/rules included)
                          #   and candidate doc of a branch, and its review settings
     ci-state.ts          #   ciEntries(): check runs (the latest run of each name) and commit
@@ -1279,6 +1284,12 @@ src/
                          #   each new-side line; newCodeShare(): the share of added lines in new
                          #   files and their folders (creates code above 50%)
     diff-fingerprint.ts  #   diffFingerprint(): paths and +/- lines of the filtered diff, hashed
+    diff-groups.ts       #   planDiffGroups(): the diff groups of a diff with 30 KB or more of code
+                         #   (by directory, about 20 KB each, at most 6; data files and generated
+                         #   files go with the nearest group); groupDiff(), changedFiles()
+    group-prompt.ts      #   GROUPS and groupText(): the PHADA_GROUP block of a group pass (group i
+                         #   of n, every changed file, the ones of the group marked)
+    map-limit.ts         #   mapLimit(): at most n calls at a time, no new ones after a failure
     suggestions.ts       #   checkSuggestion(), checkSuggestions(): a code suggestion against the diff
     convert-prompt.ts    #   buildConvertPrompt(): a native skill's output → Phada's report (the
                          #   verdict of each claim of the description from that output alone)
@@ -1325,7 +1336,9 @@ src/
                          #   (review.continuation);
                          #   the repository debt split by review.debt (DEFAULT_DEBT_MODE: summary),
                          #   out of the score; the tokens of each pass (a native skill with its
-                         #   conversion, an answer that did not parse included) and the verify
+                         #   conversion, an answer that did not parse included) and the verify;
+                         #   with review.groups, each text pass as one group pass per diff group
+                         #   (provider concurrency), joined into one review
 scripts/smoke.ts         # packs the package, installs the tarball, runs the installed `phada`
 scripts/copy-grammars.ts # build step: the tree-sitter grammars into dist/grammars/
 test/fixtures/bin/       # fake AI CLIs used by the provider and status tests

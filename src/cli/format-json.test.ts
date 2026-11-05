@@ -122,6 +122,7 @@ describe('formatReviewJson', () => {
         durationMs: 16_400,
         usage: { inputTokens: 9700, cachedInputTokens: null, outputTokens: 417 },
         passes: null,
+        groups: null,
         skillBodies: null,
         language: null,
         diffFingerprint: null,
@@ -140,11 +141,13 @@ describe('formatReviewJson', () => {
           {
             pass: 'review',
             skill: null,
+            group: null,
             usage: { inputTokens: 9000, cachedInputTokens: null, outputTokens: 400 },
           },
           {
             pass: 'verify',
             skill: null,
+            group: null,
             usage: { inputTokens: 700, cachedInputTokens: null, outputTokens: 17 },
           },
         ],
@@ -516,6 +519,74 @@ describe('formatReviewJson', () => {
 
     expect(output).toMatchObject({
       review: { provider: { id: 'codex-cli', model: null, additionalModels: [] }, usage: null },
+    })
+  })
+
+  it('prints each diff group with its files, size, link, findings, time and tokens, and the group of each pass', () => {
+    const usage = { inputTokens: 900, outputTokens: 40 }
+    const result: ReviewResult = {
+      ...RESULT,
+      passUsage: [
+        { pass: 'review', group: 'api/src', usage },
+        { pass: 'review', group: 'web/app.ts' },
+        { pass: 'verify', usage },
+      ],
+      groups: [
+        {
+          label: 'api/src',
+          files: ['api/src/a.ts', 'api/src/b.ts'],
+          bytes: 21_000,
+          link: 'directory',
+          findings: 2,
+          durationMs: 4_000,
+          usage,
+        },
+        {
+          label: 'web/app.ts',
+          files: ['web/app.ts'],
+          bytes: 25_000,
+          link: 'single',
+          findings: 0,
+          durationMs: 1_000,
+          failed: true,
+        },
+      ],
+    }
+
+    const output = parse(formatReviewJson(pullRequestFixture(), { status: 'reviewed', result }))
+
+    expect(output).toMatchObject({
+      review: {
+        groups: [
+          {
+            label: 'api/src',
+            files: ['api/src/a.ts', 'api/src/b.ts'],
+            bytes: 21_000,
+            link: 'directory',
+            findings: 2,
+            durationMs: 4_000,
+            usage: { inputTokens: 900, cachedInputTokens: null, outputTokens: 40 },
+            failed: false,
+          },
+          {
+            label: 'web/app.ts',
+            files: ['web/app.ts'],
+            bytes: 25_000,
+            link: 'single',
+            findings: 0,
+            durationMs: 1_000,
+            usage: null,
+            failed: true,
+          },
+        ],
+      },
+      usage: {
+        passes: [
+          { pass: 'review', skill: null, group: 'api/src' },
+          { pass: 'review', skill: null, group: 'web/app.ts', usage: null },
+          { pass: 'verify', skill: null, group: null },
+        ],
+      },
     })
   })
 

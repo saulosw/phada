@@ -7,6 +7,7 @@ import type { ContextDoc, ContextRule } from '../review/types.js'
 import { CLAUDE_RULES_GLOB, claudeRule } from './claude-rules.js'
 import { docScope, scopeMatcher } from './doc-scope.js'
 import type { DocFormat } from './doc-scope.js'
+import { GITATTRIBUTES, generatedFiles } from './generated-files.js'
 import { applyIgnore, DEFAULT_IGNORE, matcher } from './ignore.js'
 import { phadaDirs, phadaFiles } from './phada-paths.js'
 import { byteLength } from './byte-cut.js'
@@ -59,6 +60,7 @@ export async function loadContext(input: {
       : await readClaudeRules(tree, sources, sha, warnings)
   const rules = selectRules(merged, [...merged.rules, ...claudeRules], files)
   const docs = await collectDocs(merged, tree, files, sources, sha, warnings)
+  const generated = await readGenerated(tree, files, sources, sha, warnings)
   return {
     diff,
     options: {
@@ -66,6 +68,7 @@ export async function loadContext(input: {
       ...(merged.minConfidence === undefined ? {} : { minConfidence: merged.minConfidence }),
       ...(merged.verify === undefined ? {} : { verify: merged.verify }),
       ...(merged.continuation === undefined ? {} : { continuation: merged.continuation }),
+      ...(merged.groups === undefined ? {} : { groups: merged.groups }),
       ...(merged.investigate === undefined ? {} : { investigate: merged.investigate }),
       ...(merged.resolveThreads === undefined ? {} : { resolveThreads: merged.resolveThreads }),
       ...(merged.conversation === undefined ? {} : { conversation: merged.conversation }),
@@ -75,7 +78,12 @@ export async function loadContext(input: {
         ? {}
         : { review: merged.review }),
     },
-    context: { rules: rules.applied, docs: docs.docs, ignored },
+    context: {
+      rules: rules.applied,
+      docs: docs.docs,
+      ignored,
+      ...(generated.length === 0 ? {} : { generated }),
+    },
     ignore: [...merged.ignore],
     repos: merged.repos,
     privateOnPublic: merged.privateOnPublic,
@@ -169,6 +177,19 @@ export async function readRepositoryLayers(
     })
   }
   return result
+}
+
+async function readGenerated(
+  tree: RepositoryTree | undefined,
+  files: readonly string[],
+  sources: ContextSources,
+  sha: string,
+  warnings: string[],
+): Promise<string[]> {
+  if (tree === undefined || files.length === 0) return []
+  if (!tree.truncated && !tree.entries.some((entry) => entry.path === GITATTRIBUTES)) return []
+  const text = await readRepositoryText(sources, GITATTRIBUTES, sha, warnings)
+  return text === null ? [] : generatedFiles(text, files)
 }
 
 async function readRepositoryText(

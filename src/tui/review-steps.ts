@@ -13,6 +13,7 @@ export type ReviewStep =
   | { kind: 'related'; count: number }
   | { kind: 'impact'; symbols: number }
   | { kind: 'pass'; skill: string; index: number; total: number }
+  | { kind: 'group'; label: string; index: number; total: number; files: number; bytes: number }
   | {
       kind: 'ai'
       provider: string
@@ -103,6 +104,15 @@ export function stepsAfter(state: ReviewSteps, event: ReviewProgress, now: numbe
       return add({ kind: 'publish' })
     case 'warning':
       return { ...state, warnings: [...state.warnings, event.message] }
+    case 'groupStarted':
+      return add({
+        kind: 'group',
+        label: event.label,
+        index: event.index,
+        total: event.total,
+        files: event.files,
+        bytes: event.bytes,
+      })
     case 'passesPlanned':
       return state
   }
@@ -176,6 +186,14 @@ export function stepText(
       return s.impact(step.symbols)
     case 'pass':
       return s.pass(oneLine(step.skill), step.index, step.total)
+    case 'group':
+      return s.group(
+        oneLine(step.label),
+        step.index + 1,
+        step.total,
+        step.files,
+        Math.max(1, Math.round(step.bytes / 1000)),
+      )
     case 'ai': {
       const text = s.ai(
         oneLine(step.provider),

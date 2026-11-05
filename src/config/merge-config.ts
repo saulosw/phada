@@ -71,11 +71,14 @@ export interface CiSettings {
 
 export const DEFAULT_CI: Readonly<CiSettings> = { read: true, waitMs: 900_000, onFailure: 'review' }
 
+export type GroupsSetting = boolean | { concurrency: number }
+
 export interface EffectiveConfig {
   language?: string
   minConfidence?: number
   verify?: boolean
   continuation?: boolean
+  groups?: GroupsSetting
   investigate?: boolean
   resolveThreads?: boolean
   conversation?: boolean
@@ -141,6 +144,7 @@ export function mergeConfig(layers: readonly ConfigLayer[]): EffectiveConfig {
   const minConfidence = firstSet((config) => config.minConfidence)
   const verify = firstSet((config) => config.verify)
   const continuation = firstSet((config) => config.review?.continuation)
+  const groups = firstSet((config) => config.review?.groups)
   const investigate = firstSet((config) => config.investigate)
   const resolveThreads = firstSet((config) => config.resolveThreads)
   const conversation = firstSet((config) => config.conversation)
@@ -153,6 +157,7 @@ export function mergeConfig(layers: readonly ConfigLayer[]): EffectiveConfig {
     ...(minConfidence === undefined ? {} : { minConfidence }),
     ...(verify === undefined ? {} : { verify }),
     ...(continuation === undefined ? {} : { continuation }),
+    ...(groups === undefined ? {} : { groups }),
     ...(investigate === undefined ? {} : { investigate }),
     ...(resolveThreads === undefined ? {} : { resolveThreads }),
     ...(conversation === undefined ? {} : { conversation }),

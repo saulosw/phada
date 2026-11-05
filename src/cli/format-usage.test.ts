@@ -46,6 +46,27 @@ describe('formatUsageLine', () => {
     )
   })
 
+  it('names each group pass by its group, so the cost of each group shows', () => {
+    const usage = { inputTokens: 900, outputTokens: 40 }
+
+    expect(
+      formatUsageLine({
+        passes: [
+          { pass: 'review', group: 'api/src/services', usage },
+          { pass: 'review', skill: 'security', group: 'web/app.ts', usage },
+          { pass: 'verify', usage },
+        ],
+      }),
+    ).toBe(
+      'Tokens: review (api/src/services) 900 in · 40 out; security (web/app.ts) 900 in · 40 out; verify 900 in · 40 out',
+    )
+    expect(
+      formatUsageSection({
+        passes: [{ pass: 'review', group: 'evil\u001b[2J', usage }],
+      }),
+    ).toBe('## Tokens\n\n- review (evil[2J): 900 in · 40 out\n')
+  })
+
   it('says when no pass reported its tokens, and prints nothing without an AI call', () => {
     expect(formatUsageLine({ passes: [{ pass: 'review' }] })).toBe('Tokens: review not reported')
     expect(formatUsageLine({ passes: [] })).toBeUndefined()

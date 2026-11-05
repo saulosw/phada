@@ -49,6 +49,23 @@ describe('parseConfigText', () => {
     expect(parseConfigText('review:\n  continuation: sometimes\n').ok).toBe(false)
   })
 
+  it('reads whether a large diff is reviewed in groups, and how many at a time', () => {
+    expect(parseConfigText('review:\n  groups: false\n')).toEqual({
+      ok: true,
+      config: { review: { groups: false } },
+    })
+    expect(parseConfigText('review:\n  groups:\n    concurrency: 3\n')).toEqual({
+      ok: true,
+      config: { review: { groups: { concurrency: 3 } } },
+    })
+    expect(parseConfigText('review:\n  groups: true\n').ok).toBe(true)
+    expect(parseConfigText('review:\n  groups:\n    concurrency: 0\n').ok).toBe(false)
+    expect(parseConfigText('review:\n  groups:\n    concurrency: 5\n').ok).toBe(false)
+    expect(parseConfigText('review:\n  groups:\n    concurrency: 1.5\n').ok).toBe(false)
+    expect(parseConfigText('review:\n  groups:\n    size: 2\n').ok).toBe(false)
+    expect(parseConfigText('review:\n  groups: sometimes\n').ok).toBe(false)
+  })
+
   it('reads every key', () => {
     const text = [
       'provider: codex',

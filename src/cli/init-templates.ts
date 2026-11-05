@@ -51,6 +51,7 @@ function reviewFocus(promptFile: string, own = false): string {
 #   skills: [phada, security-review]
 #   debt: summary              # problems the change did not cause: summary, comments or off
 #   continuation: true         # one more pass over the files a low-coverage review left out
+#   groups: false              # true reviews a large diff in groups of files; { concurrency: 2 } runs 2 at a time
 ${own ? OWN_REVIEW_OPTIONS : ''}`
 }
 

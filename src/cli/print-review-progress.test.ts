@@ -128,6 +128,61 @@ describe('the AI running a pass, printed', () => {
   })
 })
 
+describe('the group passes of a large diff, printed', () => {
+  it('names each group with its files and size, next to the skill', () => {
+    const output = recorder(false)
+    const print = printReviewProgress(output)
+
+    print({ kind: 'passStarted', skill: 'phada', index: 0, total: 2 })
+    print({
+      kind: 'groupStarted',
+      label: 'api/src/services',
+      index: 1,
+      total: 4,
+      files: 6,
+      bytes: 21_400,
+    })
+    print({
+      kind: 'groupStarted',
+      label: 'web/\u001bapp',
+      index: 3,
+      total: 4,
+      files: 1,
+      bytes: 120,
+    })
+
+    expect(output.written).toEqual([
+      'Skill 1/2: phada\n',
+      'Group 2/4: api/src/services (6 files, 21 KB)\n',
+      'Group 4/4: web/app (1 file, 1 KB)\n',
+    ])
+  })
+
+  it('keeps one AI line on a terminal while groups run at once, the group lines above it', async () => {
+    const output = recorder(true)
+    const print = printReviewProgress(output)
+
+    print({ kind: 'groupStarted', label: 'api', index: 0, total: 2, files: 1, bytes: 16_000 })
+    print({ kind: 'aiStarted', provider: 'fake-cli', run: 'review' })
+    print({ kind: 'groupStarted', label: 'web', index: 1, total: 2, files: 1, bytes: 16_000 })
+    print({ kind: 'aiStarted', provider: 'fake-cli', run: 'review' })
+    print({ kind: 'aiFinished', provider: 'fake-cli', run: 'review', answered: true })
+    await vi.advanceTimersByTimeAsync(1_000)
+    const live = vi.getTimerCount()
+    print({ kind: 'aiFinished', provider: 'fake-cli', run: 'review', answered: true })
+
+    expect(output.written).toEqual([
+      'Group 1/2: api (1 file, 16 KB)\n',
+      `${CLEAR_LINE}Reviewing with fake-cli… 0s`,
+      `${CLEAR_LINE}Group 2/2: web (1 file, 16 KB)\n`,
+      `${CLEAR_LINE}Reviewing with fake-cli… 1s`,
+      CLEAR_LINE,
+    ])
+    expect(live).toBe(1)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+})
+
 describe('a native skill run, printed', () => {
   it('passes a native skill run through with its own label', async () => {
     const output = recorder(false)

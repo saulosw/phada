@@ -20,8 +20,9 @@ export function formatUsageSection({ passes, total }: UsageReport): string {
   return `## Tokens\n\n${lines.join('\n')}\n`
 }
 
-function passLabel({ pass, skill }: PassUsage): string {
-  return skill === undefined ? pass : toTerminalText(skill)
+function passLabel({ pass, skill, group }: PassUsage): string {
+  const name = skill === undefined ? pass : toTerminalText(skill)
+  return group === undefined ? name : `${name} (${toTerminalText(group)})`
 }
 
 function tokensText(usage: TokenUsage | undefined): string {

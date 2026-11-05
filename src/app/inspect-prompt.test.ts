@@ -152,6 +152,60 @@ describe('defaultPromptView of a default review', () => {
   })
 })
 
+describe('inspectPrompt with a large diff', () => {
+  const created = (path: string): string =>
+    [
+      `diff --git a/${path} b/${path}`,
+      'new file mode 100644',
+      '--- /dev/null',
+      `+++ b/${path}`,
+      '@@ -0,0 +1,160 @@',
+      ...Array.from({ length: 160 }, () => `+${'x'.repeat(99)}`),
+      '',
+    ].join('\n')
+  const diff = created('api/a.ts') + created('api/b.ts') + created('web/c.ts')
+  const large = (options: Partial<LoadedContext['options']> = {}) =>
+    inspect({ loaded: loaded({ diff, options: { ci: DEFAULT_CI, ...options } }) })
+
+  it('lists the groups and shows the group part and block of each text pass', async () => {
+    const view = await large({ groups: true })
+
+    expect(view.groups?.map(({ label, files, link }) => ({ label, files, link }))).toEqual([
+      { label: 'api (part 1)', files: ['api/a.ts'], link: 'directory' },
+      { label: 'api (part 2)', files: ['api/b.ts'], link: 'directory' },
+      { label: 'web', files: ['web/c.ts'], link: 'directory' },
+    ])
+    const text = view.passes[0]?.parts.map((part) => part.text).join('\n') ?? ''
+    expect(text).toContain('Phada reviews it in groups of files')
+    expect(view.passes[0]?.data.map(({ name }) => name)).toEqual([
+      'PHADA_PR',
+      'PHADA_GROUP',
+      'PHADA_DIFF',
+    ])
+  })
+
+  it('reviews it whole by default and when the config turns groups off', async () => {
+    expect((await large()).groups).toBeUndefined()
+    const view = await large({ groups: false })
+
+    expect(view.groups).toBeUndefined()
+    const text = view.passes[0]?.parts.map((part) => part.text).join('\n') ?? ''
+    expect(text).not.toContain('Phada reviews it in groups of files')
+    expect(view.passes[0]?.data.map(({ name }) => name)).toEqual(['PHADA_PR', 'PHADA_DIFF'])
+  })
+
+  it('never groups a native skill', async () => {
+    const view = await inspect({
+      native: true,
+      cliSkills: ['sec'],
+      loaded: loaded({ diff, options: { ci: DEFAULT_CI, groups: true } }),
+    })
+
+    expect(view.groups).toBeUndefined()
+    expect(view.passes[0]?.data.map(({ name }) => name)).toEqual(['PHADA_PR', 'PHADA_DIFF'])
+  })
+})
+
 describe('inspectPrompt with a native skill', () => {
   const withSkill = (review: LoadedContext['options']['review']) =>
     inspect({

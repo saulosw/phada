@@ -96,6 +96,7 @@ export type CliCommand =
       format: OutputFormat
       verify?: boolean
       continuation?: boolean
+      groups?: boolean
       investigate?: boolean
       resolveThreads?: boolean
       conversation?: boolean
@@ -216,6 +217,9 @@ Options:
   --no-continuation     Skip the extra call to the AI over the files a review with
                         low coverage left out (on by default)
   --continuation        Run that call, even if your config turns it off
+  --groups              Review a large diff in groups of files, one call per group
+                        (off by default)
+  --no-groups           Review a large diff in one call, even if your config turns groups on
   --no-investigate      Review the diff and the context only, without letting the AI
                         read the rest of the repository
   --investigate         Let the AI read the repository, even if your config turns it off
@@ -591,6 +595,10 @@ function parseReviewArgs(argv: readonly string[]): CliCommand {
   }
   const continuation =
     values.continuation === true ? true : values['no-continuation'] === true ? false : undefined
+  if (values.groups === true && values['no-groups'] === true) {
+    throw new UsageError('Use either --groups or --no-groups.')
+  }
+  const groups = values.groups === true ? true : values['no-groups'] === true ? false : undefined
   const investigate =
     values.investigate === true ? true : values['no-investigate'] === true ? false : undefined
   if (values['wait-ci'] === true && values['no-ci'] === true) {
@@ -619,6 +627,7 @@ function parseReviewArgs(argv: readonly string[]): CliCommand {
     format: values.format,
     ...(verify === undefined ? {} : { verify }),
     ...(continuation === undefined ? {} : { continuation }),
+    ...(groups === undefined ? {} : { groups }),
     ...(investigate === undefined ? {} : { investigate }),
     ...(values['no-resolve'] === true ? { resolveThreads: false } : {}),
     ...(values['no-conversation'] === true ? { conversation: false } : {}),
@@ -652,6 +661,8 @@ const REVIEW_OPTIONS = {
   'no-verify': { type: 'boolean' },
   continuation: { type: 'boolean' },
   'no-continuation': { type: 'boolean' },
+  groups: { type: 'boolean' },
+  'no-groups': { type: 'boolean' },
   investigate: { type: 'boolean' },
   'no-investigate': { type: 'boolean' },
   'no-resolve': { type: 'boolean' },

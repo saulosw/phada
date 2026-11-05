@@ -1726,6 +1726,43 @@ describe('run with config and repository context', () => {
     expect(flagged.prompts).toHaveLength(1)
   })
 
+  it('reviews a large diff whole by default, and in groups with --groups, saying so on stderr', async () => {
+    const created = (path: string): string =>
+      [
+        `diff --git a/${path} b/${path}`,
+        'new file mode 100644',
+        '--- /dev/null',
+        `+++ b/${path}`,
+        '@@ -0,0 +1,160 @@',
+        ...Array.from({ length: 160 }, () => `+${'x'.repeat(99)}`),
+        '',
+      ].join('\n')
+    const pullRequest = () =>
+      Promise.resolve(pullRequestFixture({ diff: created('api/a.ts') + created('web/b.ts') }))
+    const answer = () =>
+      Promise.resolve({ text: reviewReportJson({ findings: [] }), durationMs: 10 })
+    const grouped = harness({ pullRequest, review: answer })
+    const whole = harness({ pullRequest, review: answer })
+    const review = ['review', 'acme/shop#12', '--dry-run', '--no-verify', '--no-continuation']
+
+    await run([...review, '--groups'], grouped.deps)
+    await run(review, whole.deps)
+
+    expect(grouped.prompts.map((prompt) => /Group \d of \d/.exec(prompt.data)?.[0])).toEqual([
+      'Group 1 of 2',
+      'Group 2 of 2',
+    ])
+    expect(grouped.stderr()).toContain('Group 1/2: api (1 file, 16 KB)\n')
+    expect(grouped.stderr()).toContain('Group 2/2: web (1 file, 16 KB)\n')
+    expect(grouped.stdout()).toContain(
+      '\n## Groups\n\nEach text pass ran once per group.\n1. api — 1 file, 16 KB, ',
+    )
+    expect(grouped.stdout()).toMatch(/- review \(web\): /)
+    expect(whole.prompts).toHaveLength(1)
+    expect(whole.stderr()).not.toContain('Group 1/2')
+    expect(whole.stdout()).not.toContain('## Groups')
+  })
+
   it('shows a low coverage next to the score, in the investigation and in the cost of each pass', async () => {
     const lowCoverage = () =>
       Promise.resolve({ text: reviewReportJson({ files: [], findings: [] }), durationMs: 10 })

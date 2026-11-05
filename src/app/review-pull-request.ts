@@ -1,4 +1,6 @@
 import type { ResolvedMcp } from '../config/mcp-servers.js'
+import type { GroupsSetting } from '../config/merge-config.js'
+import { MAX_GROUP_CONCURRENCY } from '../config/schema.js'
 import type { ConfigLayer } from '../config/types.js'
 import { loadContext } from '../context/load-context.js'
 import { splitDiff } from '../context/split-diff.js'
@@ -62,6 +64,7 @@ export interface ReviewOptions {
   minConfidence?: number
   verify?: boolean
   continuation?: boolean
+  groups?: boolean
   investigate?: boolean
   resolveThreads?: boolean
   conversation?: boolean
@@ -91,6 +94,7 @@ export interface PullRequestReviewEvents {
   relatedReady(report: RelatedReport): void
   passesPlanned?(plan: PassPlan[]): void
   passStarted?(skill: string, index: number, total: number): void
+  groupStarted?(label: string, index: number, total: number, files: number, bytes: number): void
 }
 
 export interface PullRequestReviewDeps {
@@ -373,6 +377,7 @@ export async function reviewPullRequest(
         ...(conversation === undefined ? {} : { conversation }),
         ...(ci === undefined ? {} : { ci }),
         ...(planned.passes === undefined ? {} : { passes: planned.passes }),
+        ...groupsOf(options.groups, loaded.options.groups, provider),
       },
       {
         provider: watch(provider, 'review'),
@@ -382,6 +387,8 @@ export async function reviewPullRequest(
         events: {
           passStarted: (pass, index) =>
             deps.events.passStarted?.(pass.skill, index, planned.passes?.length ?? 1),
+          groupStarted: (group, index, total) =>
+            deps.events.groupStarted?.(group.label, index, total, group.files.length, group.bytes),
         },
       },
     )
@@ -420,6 +427,18 @@ export async function reviewPullRequest(
     head.store?.close()
     head.observed?.close()
   }
+}
+
+function groupsOf(
+  option: boolean | undefined,
+  setting: GroupsSetting | undefined,
+  provider: ReviewProvider,
+): { groups?: { concurrency: number } } {
+  if (option === false || (option === undefined && (setting === undefined || setting === false))) {
+    return {}
+  }
+  const wanted = typeof setting === 'object' ? setting.concurrency : (provider.concurrency ?? 1)
+  return { groups: { concurrency: Math.min(MAX_GROUP_CONCURRENCY, Math.max(1, wanted)) } }
 }
 
 async function recheckEarlier(

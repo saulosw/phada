@@ -391,6 +391,17 @@ function reviewJson(
           fix: fixFor?.(item) ?? null,
         })),
       })) ?? null,
+    groups:
+      result.groups?.map((group) => ({
+        label: group.label,
+        files: group.files,
+        bytes: group.bytes,
+        link: group.link,
+        findings: group.findings,
+        durationMs: group.durationMs,
+        usage: usageJson(group.usage),
+        failed: group.failed === true,
+      })) ?? null,
     skillBodies: result.skillBodies ?? null,
     language: language ?? null,
     diffFingerprint: result.target.diffFingerprint ?? null,
@@ -438,9 +449,10 @@ function usageJson(usage: TokenUsage | undefined) {
 
 function usageReportJson({ passes, total }: UsageReport) {
   return {
-    passes: passes.map(({ pass, skill, usage }) => ({
+    passes: passes.map(({ pass, skill, group, usage }) => ({
       pass,
       skill: skill ?? null,
+      group: group ?? null,
       usage: usageJson(usage),
     })),
     total: usageJson(total),

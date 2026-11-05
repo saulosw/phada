@@ -80,6 +80,10 @@ describe('OllamaProvider', () => {
     expect(new OllamaProvider({ model: MODEL }).id).toBe('ollama')
   })
 
+  it('runs one group pass at a time, as the local model answers one prompt at a time', () => {
+    expect(new OllamaProvider({ model: MODEL }).concurrency).toBe(1)
+  })
+
   it('rejects an OLLAMA_HOST that is not an address as soon as it is created', () => {
     const create = () => new OllamaProvider({ model: MODEL, env: { OLLAMA_HOST: 'http://' } })
 

@@ -298,6 +298,13 @@ export function userSettings(layers: readonly ConfigLayer[]): ConfigSetting[] {
     first('review.debt', (config) => config.review?.debt, text, text(DEFAULT_DEBT_MODE)),
     first('review.continuation', (config) => config.review?.continuation, flag, flag(true)),
     first(
+      'review.groups',
+      (config) => config.review?.groups,
+      (groups) =>
+        typeof groups === 'boolean' ? flag(groups) : text(`concurrency ${groups.concurrency}`),
+      flag(false),
+    ),
+    first(
       'review.prompt',
       (config) => config.review?.prompt,
       (prompt) => text(`${prompt.file} (${prompt.mode ?? 'append'})`),

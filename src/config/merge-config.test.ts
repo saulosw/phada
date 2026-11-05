@@ -381,6 +381,25 @@ describe('investigation options', () => {
     ).toBe(true)
   })
 
+  it('takes review.groups whole from the most specific layer that sets it', () => {
+    expect(mergeConfig([]).groups).toBeUndefined()
+    expect(
+      mergeConfig([
+        user({ review: { groups: { concurrency: 3 } } }),
+        root({ review: { groups: false } }),
+      ]).groups,
+    ).toBe(false)
+    expect(
+      mergeConfig([
+        root({ review: { groups: false } }),
+        userRepo({ review: { groups: { concurrency: 1 } } }),
+      ]).groups,
+    ).toEqual({ concurrency: 1 })
+    expect(
+      mergeConfig([user({ review: { groups: { concurrency: 3 } } }), root({ review: {} })]).groups,
+    ).toEqual({ concurrency: 3 })
+  })
+
   it('takes investigate like verify, from the most specific layer', () => {
     expect(
       mergeConfig([user({ investigate: true }), root({ investigate: false })]).investigate,

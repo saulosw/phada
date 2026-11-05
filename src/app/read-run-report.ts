@@ -4,7 +4,7 @@ import type { ImpactReport } from '../graph/report.js'
 import type { InvestigationReport } from '../investigation/tools/report.js'
 import type { BlockedCommand } from '../providers/types.js'
 import type { UsageReport } from '../review/token-usage.js'
-import type { Coverage, PassReport } from '../review/types.js'
+import type { Coverage, DiffGroupReport, PassReport } from '../review/types.js'
 import type { RelatedReport } from './related-report.js'
 import { storedClaims, storedCi, storedFindings } from './read-history.js'
 import { numberOf, objectOf, parseJson, stringOf } from './stored-json.js'
@@ -91,6 +91,7 @@ export interface RunReport {
   impact?: { report: ImpactReport; text?: string } | null
   related?: RelatedReport | null
   passes?: StoredPasses
+  groups?: DiffGroupReport[]
   investigation?: InvestigationReport | null
   coverage?: Coverage
   usage?: UsageReport
@@ -126,6 +127,7 @@ function runReportOf(stored: RunRecord): RunReport {
     ...defined('impact', blockOf(json, 'impact', ImpactSchema)),
     ...defined('related', blockOf(json, 'related', RelatedSchema)),
     ...(passes?.success === true && passes.data !== null ? { passes: passesOf(passes.data) } : {}),
+    ...(Array.isArray(review?.groups) ? { groups: GroupsSchema.parse(review.groups) } : {}),
     ...defined('investigation', blockOf(json, 'investigation', InvestigationSchema)),
     ...defined('coverage', storedCoverage(review?.coverage)),
     ...defined('usage', UsageSchema.safeParse(json.usage).data),
@@ -397,6 +399,22 @@ type StoredPass = z.output<typeof PassSchema>
 
 const PassesSchema = z.array(PassSchema).nullable()
 
+const GroupsSchema = list(
+  z.object({
+    label: z.string(),
+    files: strings,
+    bytes: count,
+    link: z.enum(['directory', 'single']).catch('directory'),
+    findings: count,
+    durationMs: count,
+    usage: optional(TokensSchema),
+    failed: z
+      .boolean()
+      .catch(false)
+      .transform((failed) => (failed ? (true as const) : undefined)),
+  }),
+)
+
 const InvestigationSchema = z.object({
   status: z.enum(['used', 'off', 'unavailable']),
   reason: optional(z.string()),
@@ -432,6 +450,7 @@ const UsageSchema = z.object({
     z.object({
       pass: z.enum(['review', 'continuation', 'verify', 'recheck']),
       skill: optional(z.string()),
+      group: optional(z.string()),
       usage: optional(TokensSchema),
     }),
   ),

@@ -6,6 +6,7 @@ import type {
   StoredClaim,
   StoredCoverage,
   StoredFinding,
+  StoredGroups,
   StoredTokens,
 } from '../app/read-history.js'
 import type { DrawContext } from './frame-lines.js'
@@ -65,6 +66,7 @@ export function reviewDetailLines(
           d.coverage,
           detail.coverage === null ? undefined : coverageLine(detail.coverage, messages),
         ],
+        [d.groups, detail.groups === null ? undefined : groupsLine(detail.groups, messages)],
         [d.verdict, detail.verdict === null ? undefined : m.verdicts[detail.verdict]],
         [d.status, m.statuses[run.status]],
         [d.reviewed, reviewed],
@@ -152,10 +154,10 @@ function usageLines(
     continuation: d.continuationPass,
   }
   const rows: [string, StoredTokens | null][] = [
-    ...usage.passes.map(({ pass, skill, tokens }): [string, StoredTokens | null] => [
-      skill === null ? (runs[pass] ?? oneLine(pass)) : oneLine(skill),
-      tokens,
-    ]),
+    ...usage.passes.map(({ pass, skill, group, tokens }): [string, StoredTokens | null] => {
+      const name = skill === null ? (runs[pass] ?? oneLine(pass)) : oneLine(skill)
+      return [group === null ? name : `${name} (${oneLine(group)})`, tokens]
+    }),
     ...(usage.total === null ? [] : [[d.total, usage.total] as [string, StoredTokens]]),
   ]
   const width = Math.min(
@@ -235,6 +237,15 @@ function feedbackLines(
       </Text>
     )
   })
+}
+
+function groupsLine({ directory, single, failed }: StoredGroups, messages: UiMessages): string {
+  const d = messages.reviews.detail
+  const links = [
+    ...(directory === 0 ? [] : [d.groupLinks.directory(directory)]),
+    ...(single === 0 ? [] : [d.groupLinks.single(single)]),
+  ].join(', ')
+  return failed === 0 ? links : `${links} · ${d.groupsFailed(failed)}`
 }
 
 const COVERAGE_GAPS = ['missing', 'notCompared', 'skipped'] as const

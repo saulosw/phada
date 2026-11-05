@@ -289,6 +289,62 @@ describe('loadContext', () => {
     })
   })
 
+  it('takes whether a large diff is reviewed in groups from the config', async () => {
+    const sources = fakeSources({ '.phada/config.yml': 'review:\n  groups:\n    concurrency: 3' })
+
+    const loaded = await loadContext({ diff: DIFF, baseSha: SHA, userLayers: [], sources })
+
+    expect(loaded.options).toEqual({
+      groups: { concurrency: 3 },
+      ci: { read: true, waitMs: 900_000, onFailure: 'review' },
+    })
+  })
+
+  it('marks the changed files the root .gitattributes of the base calls generated', async () => {
+    const diff =
+      DIFF +
+      modifiedFile('src/api/schema.generated.ts') +
+      modifiedFile('gen/client.ts') +
+      modifiedFile('gen/keep.ts')
+    const sources = fakeSources({
+      '.gitattributes': [
+        '# generated code',
+        '*.generated.ts linguist-generated=true',
+        'gen/** linguist-generated',
+        'gen/keep.ts -linguist-generated',
+        '*.png binary',
+      ].join('\n'),
+    })
+
+    const loaded = await loadContext({ diff, baseSha: SHA, userLayers: [], sources })
+
+    expect(loaded.context.generated).toEqual(['src/api/schema.generated.ts', 'gen/client.ts'])
+  })
+
+  it('marks nothing generated without a .gitattributes, or when it cannot be read', async () => {
+    const without = await loadContext({
+      diff: DIFF,
+      baseSha: SHA,
+      userLayers: [],
+      sources: fakeSources({ 'src/api/users.ts': 'x' }),
+    })
+    const failing = await loadContext({
+      diff: DIFF,
+      baseSha: SHA,
+      userLayers: [],
+      sources: fakeSources(
+        { '.gitattributes': '** linguist-generated' },
+        { failing: ['.gitattributes'] },
+      ),
+    })
+
+    expect(without.context).not.toHaveProperty('generated')
+    expect(failing.context).not.toHaveProperty('generated')
+    expect(failing.report.warnings).toEqual([
+      'Could not read .gitattributes at b1b2c3d: GitHub did not respond within 30s',
+    ])
+  })
+
   it('takes what to do with the repository debt from the config', async () => {
     const sources = fakeSources({ '.phada/config.yml': 'review:\n  debt: comments' })
 

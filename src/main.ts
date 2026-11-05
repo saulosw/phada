@@ -190,6 +190,7 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
           minConfidence: command.minConfidence,
           verify: command.verify,
           ...(command.continuation === undefined ? {} : { continuation: command.continuation }),
+          ...(command.groups === undefined ? {} : { groups: command.groups }),
           investigate: command.investigate,
           ...(command.resolveThreads === undefined
             ? {}
@@ -360,6 +361,7 @@ function dryRunSections(
     },
     related: reviewed.related,
     ...(result?.passes === undefined ? {} : { passes: { reports: result.passes, fixFor } }),
+    ...(result?.groups === undefined ? {} : { groups: result.groups }),
     investigation: reviewed.investigation,
     ...(result?.coverage === undefined ? {} : { coverage: result.coverage }),
     usage: runUsage(run),

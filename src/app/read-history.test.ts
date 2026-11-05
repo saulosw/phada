@@ -476,12 +476,52 @@ describe('readReviewDetail', () => {
 
     expect(reviewDetailOf({ ...RUN, resultJson: withUsage }, []).usage).toEqual({
       passes: [
-        { pass: 'review', skill: 'code-review', tokens: { input: 900, cached: 600, output: 40 } },
-        { pass: 'verify', skill: null, tokens: null },
-        { pass: 'recheck', skill: null, tokens: null },
+        {
+          pass: 'review',
+          skill: 'code-review',
+          group: null,
+          tokens: { input: 900, cached: 600, output: 40 },
+        },
+        { pass: 'verify', skill: null, group: null, tokens: null },
+        { pass: 'recheck', skill: null, group: null, tokens: null },
       ],
       total: { input: 900, cached: null, output: 40 },
     })
+  })
+
+  it('reads the diff groups of a stored review and the group of each pass', () => {
+    const stored = JSON.parse(REVIEW_JSON) as { review: Record<string, unknown> }
+    const group = (link: string, failed: boolean) => ({
+      label: 'api',
+      files: ['api/a.ts'],
+      bytes: 21_000,
+      link,
+      findings: 1,
+      durationMs: 10,
+      usage: null,
+      failed,
+    })
+    const grouped = JSON.stringify({
+      ...stored,
+      review: {
+        ...stored.review,
+        groups: [
+          group('directory', false),
+          group('directory', true),
+          group('single', false),
+          'not a group',
+        ],
+      },
+      usage: { passes: [{ pass: 'review', skill: null, group: 'api', usage: null }], total: null },
+    })
+
+    const detail = reviewDetailOf({ ...RUN, resultJson: grouped }, [])
+
+    expect(detail.groups).toEqual({ directory: 2, single: 1, failed: 1 })
+    expect(detail.usage?.passes).toEqual([
+      { pass: 'review', skill: null, group: 'api', tokens: null },
+    ])
+    expect(reviewDetailOf({ ...RUN, resultJson: REVIEW_JSON }, []).groups).toBeNull()
   })
 
   it('reads the total tokens of a review stored before the passes were kept', () => {

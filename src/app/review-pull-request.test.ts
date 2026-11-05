@@ -234,6 +234,127 @@ describe('reviewPullRequest continuation pass', () => {
   })
 })
 
+describe('reviewPullRequest diff groups', () => {
+  const LINE = 'x'.repeat(99)
+  const created = (path: string): string => {
+    const lines = 160
+    return [
+      `diff --git a/${path} b/${path}`,
+      'new file mode 100644',
+      '--- /dev/null',
+      `+++ b/${path}`,
+      `@@ -0,0 +1,${lines} @@`,
+      ...Array.from({ length: lines }, () => `+${LINE}`),
+      '',
+    ].join('\n')
+  }
+  const large = pullRequestFixture({
+    diff: created('api/a.ts') + created('web/b.ts') + created('lib/c.ts'),
+  })
+
+  function groupSources(files: Record<string, string>): ContextSources {
+    return {
+      readTree: async () => ({
+        entries: Object.keys(files).map((path) => ({ path, size: 10 })),
+        truncated: false,
+      }),
+      readRepoFile: async (path) => files[path] ?? null,
+      readLocalFile: async () => null,
+      listLocalDocs: async () => null,
+    }
+  }
+
+  async function reviewLarge(
+    options: { groups?: boolean },
+    files: Record<string, string> = {},
+    concurrency?: number,
+  ) {
+    const prompts: ReviewPrompt[] = []
+    let running = 0
+    let most = 0
+    const provider: ReviewProvider = {
+      id: 'fake',
+      ...(concurrency === undefined ? {} : { concurrency }),
+      review: async (prompt) => {
+        prompts.push(prompt)
+        running += 1
+        most = Math.max(most, running)
+        await new Promise((resolve) => setImmediate(resolve))
+        running -= 1
+        return { text: reviewReportJson(), durationMs: 10 }
+      },
+    }
+    const h = setup({ contextSources: groupSources(files), createProvider: () => provider })
+    const started: string[] = []
+    h.deps.events.groupStarted = (label, index, total, count, bytes) =>
+      started.push(`${index + 1}/${total} ${label} ${count} ${bytes}`)
+    await reviewPullRequest(
+      {
+        ...input,
+        pullRequest: large,
+        options: { verify: false, continuation: false, investigate: false, ...options },
+      },
+      h.deps,
+    )
+    return {
+      groups: prompts.filter((prompt) => prompt.data.includes('PHADA_GROUP')).length,
+      prompts: prompts.length,
+      most,
+      started,
+    }
+  }
+
+  it('reviews a large diff whole by default', async () => {
+    expect(await reviewLarge({}, {}, 2)).toMatchObject({ groups: 0, prompts: 1, most: 1 })
+  })
+
+  it('reviews a large diff in groups when asked, as many at a time as the provider runs', async () => {
+    const on = { '.phada/config.yml': 'review:\n  groups: true\n' }
+
+    expect(await reviewLarge({ groups: true }, {}, 2)).toMatchObject({ groups: 3, most: 2 })
+    expect(await reviewLarge({}, on, 2)).toMatchObject({ groups: 3, prompts: 3, most: 2 })
+    expect(await reviewLarge({}, on)).toMatchObject({ groups: 3, prompts: 3, most: 1 })
+  })
+
+  it('says when each group starts, with its files and size', async () => {
+    const { started } = await reviewLarge({ groups: true }, {}, 2)
+
+    expect(started).toEqual(['1/3 api 1 16261', '2/3 lib 1 16261', '3/3 web 1 16261'])
+  })
+
+  it('runs as many groups at a time as the config says, whatever the provider runs', async () => {
+    const config = { '.phada/config.yml': 'review:\n  groups:\n    concurrency: 3\n' }
+
+    expect(await reviewLarge({}, config, 1)).toMatchObject({ groups: 3, prompts: 3, most: 3 })
+  })
+
+  it('reviews the diff whole when the config or the option turns groups off', async () => {
+    const off = { '.phada/config.yml': 'review:\n  groups: false\n' }
+
+    expect(await reviewLarge({}, off, 2)).toMatchObject({ groups: 0, prompts: 1, most: 1 })
+    expect(await reviewLarge({ groups: false }, {}, 2)).toMatchObject({
+      groups: 0,
+      prompts: 1,
+      most: 1,
+    })
+    expect(await reviewLarge({ groups: true }, off, 2)).toMatchObject({
+      groups: 3,
+      prompts: 3,
+      most: 2,
+    })
+  })
+
+  it('leaves the files .gitattributes calls generated out of the code that is grouped', async () => {
+    const generated = { '.gitattributes': 'api/** linguist-generated\nweb/** linguist-generated\n' }
+
+    expect(await reviewLarge({ groups: true }, generated, 2)).toMatchObject({
+      groups: 0,
+      prompts: 1,
+      most: 1,
+    })
+  })
+})
+
 describe('reviewPullRequest', () => {
   it('indexes the head, sends the impact of the diff and gives the AI the graph tools', async () => {
     const h = setup()

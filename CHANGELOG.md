@@ -7,6 +7,23 @@ output can change between minor versions.
 
 ## Unreleased
 
+### Added
+
+- With `review.groups: true` or `--groups`, a pull request with 30 KB or more of code is reviewed in
+  diff groups of about 20 KB, by directory, at most 6: each review pass runs once per group with the
+  diff of that group and the list of every changed file, and the answers are joined into one review
+  (summary, claims and coverage of every group; one continuation pass and one verification over the
+  whole diff). Smaller pull requests are reviewed as before. Data files and generated files
+  (`linguist-generated` in the root `.gitattributes`, `@generated`, `Code generated … DO NOT EDIT`)
+  do not count and go with the nearest group.
+- `review.groups` (`false` by default, `true`, or `{ concurrency: 1–4 }`) and `--groups` /
+  `--no-groups`; groups run as many at a time as the provider takes (Ollama 1, Claude Code and
+  Codex 2).
+- The groups show on stderr as each one starts (`Group 2/4: …`), in a "Groups" section of
+  `--dry-run`, `phada history <id>` and `phada prompt`, in `groups` of `--format json` and the
+  history, in the tokens of each group, and in the app (progress and review detail). The body
+  posted on the pull request does not change.
+
 ## 0.15.0 - 2026-11-05
 
 ### Added

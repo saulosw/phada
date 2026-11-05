@@ -66,6 +66,34 @@ describe('formatPromptText', () => {
     )
   })
 
+  it('lists the diff groups before the passes', () => {
+    const view: PromptView = {
+      ...VIEW,
+      warnings: [],
+      groups: [
+        {
+          label: 'api/src/services',
+          files: ['api/src/services/a.ts', 'api/src/services/b.ts'],
+          bytes: 21_400,
+          link: 'directory',
+        },
+        { label: 'web/\u001bapp.ts', files: ['web/\u001bapp.ts'], bytes: 25_000, link: 'single' },
+      ],
+    }
+
+    expect(formatPromptText(view).split('\n').slice(0, 9)).toEqual([
+      'Prompt for acme/shop#12 at a1b2c3d (base 1234567)',
+      'A note.',
+      '',
+      '## Groups',
+      '',
+      'Each text pass runs once per group, with only the diff of its group in PHADA_DIFF.',
+      '1. api/src/services — 2 files, 21 KB, by directory',
+      '2. web/app.ts — 1 file, 25 KB, file alone',
+      '',
+    ])
+  })
+
   it('names the built-in prompt without a pull request', () => {
     expect(formatPromptText({ ...VIEW, pullRequest: null }).split('\n')[0]).toBe(
       'Built-in prompt, without a pull request',
