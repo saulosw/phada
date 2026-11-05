@@ -70,7 +70,11 @@ export const OUTPUT_FORMAT = `The review is a single JSON object shaped like thi
   is empty when the file is not worth mentioning.
 - findings: one entry per problem. file is the path shown in the diff;
   line is the number shown at the start of that diff line; title is one line;
-  why explains the impact; fix is a concrete fix, or null;
+  why explains the impact; fix is a concrete fix, or null.
+  Place a finding at the changed line where the fix goes: the definition or the
+  line that causes the problem (a function that copies existing code, a request
+  without a catch), not a line that only calls that code or shows its effect,
+  when both are changed lines;
   rule is the key of the repository rule the finding breaks, or null;
   existing is set only on a finding whose problem is the reimplementation
   itself: the path:line of the existing code that already does what this change
