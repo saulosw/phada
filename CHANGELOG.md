@@ -7,6 +7,8 @@ output can change between minor versions.
 
 ## Unreleased
 
+## 0.14.0 - 2026-11-04
+
 ### Added
 
 - The built-in reviewer also looks for code the pull request writes again although the
