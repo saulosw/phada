@@ -7,6 +7,27 @@ output can change between minor versions.
 
 ## Unreleased
 
+### Added
+
+- `phada lessons --refresh [owner/repo]` sends the open misses of team people (owner, member or
+  collaborator) that no lesson holds yet to your AI, once per repository, and keeps the lessons it
+  proposes: a rule that repeats in the repository, the files it covers and the misses it comes
+  from. Misses of bots, of people outside the team and of Phada are never sent.
+- `phada lessons [owner/repo]` lists the pending lessons in full (`--all` adds the accepted and
+  discarded ones, `--format json` prints them as data); `phada lessons accept <id>` adds one as the
+  rule `lesson-<id>` of your own config for that repository, keeping the comments of the file, and
+  `phada lessons discard <id>` drops it. `accept --edit` opens the rule in your editor first.
+  A lesson reaches a review only once accepted.
+- A rule can list `from`, the links of the threads it comes from; `phada rules` and the context
+  report show it, and the prompt does not.
+- The Learnings screen of the terminal app shows the pending lessons of each repository and
+  accepts or discards them, showing the file and the rule before it writes.
+
+### Changed
+
+- The history moves to version 7 (lessons and the misses they come from); older Phada versions
+  refuse the file.
+
 ## 0.14.0 - 2026-11-04
 
 ### Added
