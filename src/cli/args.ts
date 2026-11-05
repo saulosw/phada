@@ -68,6 +68,8 @@ export type CliCommand =
       format: IndexFormat
       debug: boolean
     }
+  | { kind: 'lessons-accept'; id: number; edit: boolean; debug: boolean }
+  | { kind: 'lessons-discard'; id: number; debug: boolean }
   | { kind: 'publish'; id: number; force: boolean; format: IndexFormat; debug: boolean }
   | { kind: 'mcp'; debug: boolean }
   | {
@@ -471,6 +473,8 @@ Environment:
 
 export const LESSONS_USAGE = `Usage: phada lessons [<owner/repo>] [options]
        phada lessons --refresh [<owner/repo>]
+       phada lessons accept <id> [--edit]
+       phada lessons discard <id>
 
 Shows the lessons kept in the local history: a rule for a repository that
 Phada proposes from the misses of people of the team (owner, member or
@@ -483,16 +487,31 @@ pending lessons and the rules of your config for that repository, and keeps
 the lessons it proposes. It uses the provider and model of your config.
 Comments of bots, of people outside the team and of Phada are never sent.
 
+accept adds a pending lesson as the rule lesson-<id> (its rule, its files as
+scope and the links of its threads as from) to rules: of your own config for
+that repository, repos/<owner>/<repo>/config.yml, keeping the comments and the
+order of the file, and from then on the review applies it like any rule. That
+file is the rule's only copy: edit or remove it there. discard drops a pending
+lesson and writes nothing.
+
+accept --edit first opens the lesson's rule and scope in $VISUAL, $EDITOR or
+vi, with the links of its threads as comments; Phada sets id and from. Saving
+writes the rule as edited, after the same checks as any rule; saving an empty
+file, or an editor that ends with an error, cancels and leaves the lesson
+pending.
+
 Options:
   --refresh            Propose lessons from the new misses first
   --all                Also show the accepted and discarded lessons
+  --edit               With accept, edit the rule in your editor first
   --format <name>      Output: text or json (default: text)
   --debug              Show error details
   -h, --help           Show this help
 
 Environment:
   PHADA_CONFIG_HOME    Folder of your own config (default: ~/.config/phada)
-  PHADA_DATA_HOME      Folder of the history (default: ~/.local/share/phada)`
+  PHADA_DATA_HOME      Folder of the history (default: ~/.local/share/phada)
+  VISUAL, EDITOR       Editor of accept --edit (default: vi)`
 
 const REPOSITORY_NAME = /^([\w.-]+)\/([\w.-]+)$/
 
@@ -979,10 +998,25 @@ function parseLessonsArgs(argv: readonly string[]): CliCommand {
     all: { type: 'boolean', default: false },
     refresh: { type: 'boolean', default: false },
     format: { type: 'string' },
+    edit: { type: 'boolean', default: false },
     debug: { type: 'boolean', default: false },
     help: { type: 'boolean', short: 'h', default: false },
   })
   if (values.help) return { kind: 'help', text: LESSONS_USAGE }
+  const [action] = positionals
+  if (values.edit && action !== 'accept') {
+    throw new UsageError('--edit only goes with phada lessons accept <id>.')
+  }
+  if (action === 'accept' || action === 'discard') {
+    const command = `phada lessons ${action}`
+    if (values.all || values.refresh || values.format !== undefined) {
+      throw new UsageError(`${command} takes only a lesson id.`)
+    }
+    const id = parseRunId(positionals.slice(1), command, 'lesson id')
+    return action === 'accept'
+      ? { kind: 'lessons-accept', id, edit: values.edit, debug: values.debug }
+      : { kind: 'lessons-discard', id, debug: values.debug }
+  }
   if (positionals.length > 1) throw new UsageError('Give one repository at a time.')
   const format = values.format ?? 'text'
   if (format !== 'text' && format !== 'json') {

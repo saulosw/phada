@@ -352,6 +352,7 @@ export const portuguese: UiMessages = {
     notSet: '–',
     allChecks: 'todos os checks',
     cliDefault: 'o da CLI da IA',
+    threads: (count) => (count === 1 ? '1 conversa' : `${count} conversas`),
     noConfig: 'Nenhuma config ainda.',
     initHint: 'Crie a sua config com',
     invalid: (message) => `Config inválida: ${message}`,
@@ -905,6 +906,7 @@ export const portuguese: UiMessages = {
     lastWatchedRepo: (repo, settings) =>
       `${repo} é o último repositório observado, e o watch também define ${settings}: edite o arquivo para tirá-lo.`,
     notWatched: (repo) => `${repo} não é observado.`,
+    ruleExists: (id) => `A config já tem uma regra ${id}.`,
     unreadable: (message) => `Não foi possível ler o arquivo de config: ${message}`,
     failed: (message) => `Não foi possível gravar o arquivo de config: ${message}`,
     changed: 'O arquivo de config mudou desde então: Enter mostra a mudança de novo.',

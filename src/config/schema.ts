@@ -23,6 +23,12 @@ const RuleSchema = z.strictObject({
   rule: z.string().trim().min(1),
   scope: Globs.optional(),
   severity: z.enum(['P0', 'P1', 'P2']).optional(),
+  from: z.array(z.url({ protocol: /^https$/, error: 'use the https link of a thread' })).optional(),
+})
+
+export const EditedLessonSchema = z.strictObject({
+  rule: RuleSchema.shape.rule,
+  scope: Globs.min(1, 'list at least one file glob'),
 })
 
 const RepoName = z

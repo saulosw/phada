@@ -41,8 +41,14 @@ import {
   recordMissReplays,
 } from './history-misses.js'
 import type { AiRunFilter, MissFilter, MissRecord, MissReplayRecord } from './history-misses.js'
-import { lessons, linkedMissIds, recordLessons } from './history-lessons.js'
-import type { LessonChanges, LessonFilter, LessonRecord } from './history-lessons.js'
+import { decideLesson, lessons, linkedMissIds, recordLessons } from './history-lessons.js'
+import type {
+  LessonChanges,
+  LessonDecision,
+  LessonEdit,
+  LessonFilter,
+  LessonRecord,
+} from './history-lessons.js'
 import type { Miss } from '../publish/misses.js'
 import type {
   FailureKind,
@@ -64,7 +70,7 @@ export type {
   SignalSource,
 } from './history-feedback.js'
 export type { MissFilter, MissOutcome, MissRecord, MissReplayRecord } from './history-misses.js'
-export type { LessonChanges, LessonRecord } from './history-lessons.js'
+export type { LessonChanges, LessonDecision, LessonEdit, LessonRecord } from './history-lessons.js'
 
 export type RunStatus =
   'published' | 'dry-run' | 'not-published' | 'superseded' | 'skipped' | 'nothing' | 'failed'
@@ -173,6 +179,7 @@ export interface HistoryStore {
   missReplays(missIds: readonly number[]): MissReplayRecord[]
   recordLessons(changes: LessonChanges, createdAt: string): number[]
   lessons(filter: LessonFilter): LessonRecord[]
+  decideLesson(id: number, decision: LessonDecision, decidedAt: string, edit?: LessonEdit): boolean
   linkedMissIds(): Set<number>
   runs(filter: HistoryFilter): { runs: ListedRun[]; total: number }
   prune(before: string): PruneCounts
@@ -596,6 +603,15 @@ class SqliteHistoryStore implements HistoryStore {
 
   lessons(filter: LessonFilter): LessonRecord[] {
     return lessons(this.#db, filter)
+  }
+
+  decideLesson(
+    id: number,
+    decision: LessonDecision,
+    decidedAt: string,
+    edit?: LessonEdit,
+  ): boolean {
+    return decideLesson(this.#db, id, decision, decidedAt, edit)
   }
 
   linkedMissIds(): Set<number> {

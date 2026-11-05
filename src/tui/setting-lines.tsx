@@ -45,18 +45,26 @@ export function ruleLines(
 ): ReactNode[] {
   const keys = rules.map(({ name }) => oneLine(name))
   const keyWidth = Math.min(Math.max(0, ...keys.map(textWidth)), Math.floor(columns * KEY_SHARE))
-  const originWidth = Math.max(...Object.values(messages.settings.origins).map(textWidth))
+  const origins = rules.map(({ origin, from }) =>
+    from === undefined || from.length === 0
+      ? messages.settings.origins[origin]
+      : `${messages.settings.origins[origin]} · ${messages.settings.threads(from.length)}`,
+  )
+  const originWidth = Math.max(
+    ...Object.values(messages.settings.origins).map(textWidth),
+    ...origins.map(textWidth),
+  )
   const texts = rules.map(({ text }) => oneLine(text))
   const room = columns - INDENT.length - keyWidth - originWidth - GAP.length * 2
   const textColumn = Math.max(Math.min(room, Math.max(0, ...texts.map(textWidth))), 1)
-  return rules.map((rule, index) => (
+  return origins.map((origin, index) => (
     <Text>
       {INDENT}
       <Text color={colors.soft}>{fit(keys[index] ?? '', keyWidth)}</Text>
       {GAP}
       {fit(texts[index] ?? '', textColumn)}
       {GAP}
-      <Text color={colors.dim}>{messages.settings.origins[rule.origin]}</Text>
+      <Text color={colors.dim}>{origin}</Text>
     </Text>
   ))
 }

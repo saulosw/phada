@@ -259,6 +259,36 @@ describe('the Rules screen', () => {
     expect(rules.calls).toEqual(['branch acme/shop'])
   })
 
+  it('counts the threads a rule of your config comes from', async () => {
+    const rules = openRules({
+      deps: {
+        readLocalRules: async () =>
+          local({
+            rules: [
+              {
+                key: 'lesson-4',
+                name: 'lesson-4',
+                text: 'Validate request bodies with zod at the edge.',
+                origin: 'repository',
+                from: [
+                  'https://github.com/acme/shop/pull/3#r1',
+                  'https://github.com/acme/shop/pull/9#r2',
+                ],
+              },
+            ],
+          }),
+        readRepositoryRules: async () => ({ status: 'no-token' }),
+      },
+    })
+    await openShop(rules)
+    await rules.showing('No GitHub token', 'Your rules (1)')
+    const text = rules.frame()
+    expectFits(text, SMALL)
+    expect(text).toMatch(
+      /lesson-4\s+Validate request bodies with zod at the edge\.\s+this repo · 2 threads/,
+    )
+  })
+
   it('shows the own prompt of the user config with its mode and who set it', async () => {
     const rules = openRules({
       deps: {

@@ -1,6 +1,13 @@
 import { describe, expect, it, vi } from 'vitest'
+import {
+  InvalidLessonEditError,
+  LessonDecidedError,
+  LessonNotFoundError,
+  LessonRuleRefusedError,
+} from '../app/decide-lesson.js'
 import { ConfigError } from '../config/errors.js'
 import { SkillError } from '../skills/errors.js'
+import { EditorNotFoundError } from './text-editor.js'
 import {
   DiffTooLargeError,
   GitHubAuthError,
@@ -70,6 +77,23 @@ describe('formatError', () => {
     [
       new PullRequestNotFoundError('acme/shop#12'),
       'phada: Pull request acme/shop#12 was not found. If the repository is private, check that the token can access it.',
+      1,
+    ],
+    [new LessonNotFoundError(7), 'phada: No lesson 7 in the history.', 1],
+    [new LessonDecidedError(7, 'accepted'), 'phada: Lesson 7 is already accepted.', 1],
+    [
+      new InvalidLessonEditError(7, 'rule: Too small'),
+      'phada: The edited lesson is not valid (rule: Too small); nothing written, lesson 7 is still pending.',
+      1,
+    ],
+    [
+      new EditorNotFoundError('nano'),
+      'phada: The editor "nano" was not found; set $VISUAL or $EDITOR to the one you use.',
+      1,
+    ],
+    [
+      new LessonRuleRefusedError('/c/repos/a/b/config.yml already has a rule lesson-7.'),
+      'phada: /c/repos/a/b/config.yml already has a rule lesson-7.',
       1,
     ],
     [

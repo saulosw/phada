@@ -167,6 +167,9 @@ function valueChangeParts(
       ].join('  '),
     }
   }
+  if (change.key === 'rules') {
+    return { key: change.key, value: `+ ${change.added.map(oneLine).join(', ')}` }
+  }
   if (change.key === 'publish') {
     const publish = (on: boolean) => (on ? m.publish.on : m.publish.off)
     return {
@@ -191,6 +194,8 @@ function problemText(problem: ConfigProblem, messages: UiMessages): string {
       return m.lastWatchedRepo(oneLine(problem.repo), problem.settings.map(oneLine).join(', '))
     case 'not-watched':
       return m.notWatched(oneLine(problem.repo))
+    case 'rule-exists':
+      return m.ruleExists(oneLine(problem.id))
     case 'unreadable':
       return m.unreadable(oneLine(problem.message))
     case 'failed':

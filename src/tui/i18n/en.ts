@@ -349,6 +349,7 @@ export const english: UiMessages = {
     notSet: '–',
     allChecks: 'all checks',
     cliDefault: "the AI CLI's own",
+    threads: (count) => (count === 1 ? '1 thread' : `${count} threads`),
     noConfig: 'No config yet.',
     initHint: 'Create your own config with',
     invalid: (message) => `Invalid config: ${message}`,
@@ -889,6 +890,7 @@ export const english: UiMessages = {
     lastWatchedRepo: (repo, settings) =>
       `${repo} is the last watched repository, and watch also sets ${settings}: edit the file to remove it.`,
     notWatched: (repo) => `${repo} is not watched.`,
+    ruleExists: (id) => `The config already has a rule ${id}.`,
     unreadable: (message) => `Could not read the config file: ${message}`,
     failed: (message) => `Could not write the config file: ${message}`,
     changed: 'The config file changed since: Enter shows the change again.',

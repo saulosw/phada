@@ -15,7 +15,14 @@ import {
   WatchRunningError,
 } from './errors.js'
 import { HeadNotInPullRequestError, ReplayNeedsDryRunError } from '../app/replay.js'
+import {
+  InvalidLessonEditError,
+  LessonDecidedError,
+  LessonNotFoundError,
+  LessonRuleRefusedError,
+} from '../app/decide-lesson.js'
 import { toTerminalText } from '../app/terminal-text.js'
+import { EditorNotFoundError } from './text-editor.js'
 
 export interface FormattedError {
   message: string
@@ -71,6 +78,11 @@ function describe(error: unknown): { summary: string; exitCode: 1 | 2 } {
     error instanceof HistoryStoreError ||
     error instanceof RunNotFoundError ||
     error instanceof MissNotFoundError ||
+    error instanceof LessonNotFoundError ||
+    error instanceof LessonDecidedError ||
+    error instanceof LessonRuleRefusedError ||
+    error instanceof InvalidLessonEditError ||
+    error instanceof EditorNotFoundError ||
     error instanceof PublishRefusedError
   ) {
     return { summary: error.message, exitCode: 1 }

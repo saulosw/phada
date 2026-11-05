@@ -250,6 +250,7 @@ const APP: Boundary = {
     '../config/schema.js',
     '../config/user-config.js',
     '../config/user-config-edit.js',
+    '../config/lesson-draft.js',
     '../context/ignore.js',
     '../graph/impact.js',
     '../graph/linked-graph.js',

@@ -9,6 +9,7 @@ export interface ResolvedRule {
   scope: string[]
   severity?: 'P0' | 'P1' | 'P2'
   origin: string
+  from?: string[]
 }
 
 export interface DeclaredFile {
@@ -412,6 +413,7 @@ function rulesOf(layer: ConfigLayer, warnings: string[]): ResolvedRule[] {
         : rule.scope.flatMap((glob) => inLayer(layer, glob, warnings, true) ?? []),
     ...(rule.severity === undefined ? {} : { severity: rule.severity }),
     origin: layer.configLabel,
+    ...(rule.from === undefined ? {} : { from: rule.from }),
   }))
   const markdown = layer.rulesMarkdown
   const text = markdown?.text.replace(HTML_COMMENT, '').trim() ?? ''

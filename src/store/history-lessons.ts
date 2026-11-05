@@ -1,5 +1,11 @@
 import type { DatabaseSync, SQLInputValue } from 'node:sqlite'
-import { fromRow, insertStatement, LESSON_TABLE, MISS_TABLE } from './history-columns.js'
+import {
+  fromRow,
+  insertStatement,
+  LESSON_TABLE,
+  MISS_TABLE,
+  updateStatement,
+} from './history-columns.js'
 import { transaction } from './history-feedback.js'
 import type { MissRecord } from './history-misses.js'
 
@@ -37,7 +43,12 @@ export interface LessonRecord {
   misses: MissRecord[]
 }
 
+export type LessonDecision = Exclude<LessonState, 'pending'>
+
+export type LessonEdit = Pick<NewLesson, 'rule' | 'scope'>
+
 export interface LessonFilter {
+  id?: number
   repo?: string
   states?: readonly LessonState[]
 }
@@ -76,6 +87,10 @@ export function recordLessons(
 export function lessons(db: DatabaseSync, filter: LessonFilter): LessonRecord[] {
   const where: string[] = []
   const values: SQLInputValue[] = []
+  if (filter.id !== undefined) {
+    where.push('id = ?')
+    values.push(filter.id)
+  }
   if (filter.repo !== undefined) {
     where.push('repo = ?')
     values.push(filter.repo.toLowerCase())
@@ -93,6 +108,20 @@ export function lessons(db: DatabaseSync, filter: LessonFilter): LessonRecord[] 
     found.map(({ id }) => id),
   )
   return found.map((lesson) => ({ ...lesson, misses: missesOf.get(lesson.id) ?? [] }))
+}
+
+export function decideLesson(
+  db: DatabaseSync,
+  id: number,
+  decision: LessonDecision,
+  decidedAt: string,
+  edit?: LessonEdit,
+): boolean {
+  const changes = edit === undefined ? {} : { rule: edit.rule, scope: edit.scope }
+  const update = updateStatement(LESSON_TABLE, id, { state: decision, decidedAt, ...changes })
+  if (update === undefined) return false
+  const changed = db.prepare(`${update.sql} and state = 'pending'`).run(...update.values).changes
+  return Number(changed) > 0
 }
 
 export function linkedMissIds(db: DatabaseSync): Set<number> {

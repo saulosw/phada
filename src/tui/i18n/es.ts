@@ -353,6 +353,7 @@ export const spanish: UiMessages = {
     notSet: '–',
     allChecks: 'todos los checks',
     cliDefault: 'el de la CLI de la IA',
+    threads: (count) => (count === 1 ? '1 hilo' : `${count} hilos`),
     noConfig: 'Todavía no hay configuración.',
     initHint: 'Crea tu configuración con',
     invalid: (message) => `Configuración no válida: ${message}`,
@@ -910,6 +911,7 @@ export const spanish: UiMessages = {
     lastWatchedRepo: (repo, settings) =>
       `${repo} es el último repositorio observado, y watch también define ${settings}: edita el archivo para quitarlo.`,
     notWatched: (repo) => `${repo} no está observado.`,
+    ruleExists: (id) => `La config ya tiene una regla ${id}.`,
     unreadable: (message) => `No se pudo leer el archivo de configuración: ${message}`,
     failed: (message) => `No se pudo guardar el archivo de configuración: ${message}`,
     changed: 'El archivo de configuración cambió desde entonces: Enter muestra el cambio de nuevo.',

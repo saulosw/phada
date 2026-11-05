@@ -144,4 +144,54 @@ describe('HistoryStore lessons', () => {
       expect(store.lessons({ states: ['accepted', 'discarded'] })).toEqual([])
       expect(store.lessons({ states: ['pending'] })).toHaveLength(2)
     }))
+
+  it('decides a pending lesson once, keeping when', () =>
+    withStore((store) => {
+      store.recordMisses([miss('T1')], T1)
+      const [first] = missIds(store)
+      const [kept, dropped] = store.recordLessons(
+        {
+          repo: 'acme/shop',
+          created: [
+            { rule: 'Kept.', scope: ['src/**'], missIds: [first ?? 0] },
+            { rule: 'Dropped.', scope: ['src/**'], missIds: [] },
+          ],
+          attached: [],
+        },
+        T1,
+      )
+
+      expect(store.decideLesson(kept ?? 0, 'accepted', T2)).toBe(true)
+      expect(store.decideLesson(dropped ?? 0, 'discarded', T2)).toBe(true)
+      expect(store.decideLesson(kept ?? 0, 'discarded', T2)).toBe(false)
+      expect(store.decideLesson(999, 'accepted', T2)).toBe(false)
+
+      expect(store.lessons({ id: kept ?? 0 })).toEqual([
+        expect.objectContaining({ rule: 'Kept.', state: 'accepted', decidedAt: T2 }),
+      ])
+      expect(store.lessons({ id: dropped ?? 0 })).toEqual([
+        expect.objectContaining({ rule: 'Dropped.', state: 'discarded', decidedAt: T2 }),
+      ])
+      expect(store.lessons({ id: 999 })).toEqual([])
+    }))
+
+  it('keeps the rule and scope an accept edited', () =>
+    withStore((store) => {
+      const [id] = store.recordLessons(
+        {
+          repo: 'acme/shop',
+          created: [{ rule: 'Proposed.', scope: ['src/**'], missIds: [] }],
+          attached: [],
+        },
+        T1,
+      )
+
+      const edit = { rule: 'Edited.', scope: ['src/api/**', 'lib/**'] }
+      expect(store.decideLesson(id ?? 0, 'accepted', T2, edit)).toBe(true)
+      expect(store.decideLesson(id ?? 0, 'accepted', T2, { rule: 'Later.', scope: [] })).toBe(false)
+
+      expect(store.lessons({ id: id ?? 0 })).toEqual([
+        expect.objectContaining({ ...edit, state: 'accepted', decidedAt: T2 }),
+      ])
+    }))
 })

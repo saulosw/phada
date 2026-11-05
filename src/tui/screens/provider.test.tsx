@@ -527,7 +527,13 @@ describe('the Provider screen', () => {
           applyConfig: async (plan) => {
             writes.push(plan)
             for (const change of plan.changes) {
-              if (change.key === 'watch.repos' || change.key === 'publish') continue
+              if (
+                change.key === 'watch.repos' ||
+                change.key === 'publish' ||
+                change.key === 'rules'
+              ) {
+                continue
+              }
               if (change.after === null) delete current[change.key]
               else current[change.key] = change.after
             }

@@ -327,6 +327,7 @@ export interface ConfigMessages {
   ollamaWithoutModel: string
   lastWatchedRepo(repo: string, settings: string): string
   notWatched(repo: string): string
+  ruleExists(id: string): string
   unreadable(message: string): string
   failed(message: string): string
   changed: string
@@ -608,6 +609,7 @@ export interface SettingsMessages {
   notSet: string
   allChecks: string
   cliDefault: string
+  threads(count: number): string
   noConfig: string
   initHint: string
   invalid(message: string): string

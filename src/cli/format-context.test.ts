@@ -110,6 +110,26 @@ describe('ruleLine', () => {
     ).toBe('paginate (.phada/config.yml, P1, src/**)')
     expect(ruleLine({ key: 'a', origin: 'x', scope: ['**'], status: 'listed' })).toBe('a (x)')
   })
+
+  it('names the threads a rule comes from by the first one and how many more', () => {
+    const lesson = {
+      key: 'lesson-4',
+      origin: 'user:repos/acme/shop/config.yml',
+      scope: ['src/api/**'],
+      status: 'listed' as const,
+    }
+    const first = 'https://github.com/acme/shop/pull/3#discussion_r11'
+
+    expect(ruleLine({ ...lesson, from: [first] })).toBe(
+      `lesson-4 (user:repos/acme/shop/config.yml, src/api/**, from ${first})`,
+    )
+    expect(
+      ruleLine({
+        ...lesson,
+        from: [first, 'https://github.com/acme/shop/pull/9#r2', 'https://x.y/z'],
+      }),
+    ).toBe(`lesson-4 (user:repos/acme/shop/config.yml, src/api/**, from ${first} and 2 more)`)
+  })
 })
 
 describe('docLine', () => {

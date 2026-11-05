@@ -35,7 +35,7 @@ import { runHistory, runHistoryPrune, runHistoryShow } from './cli/history-comma
 import { runMisses, runMissesDismiss } from './cli/misses-command.js'
 import type { MissesCommandDeps } from './cli/misses-command.js'
 import { runMissesReplay } from './cli/misses-replay-command.js'
-import { runLessons } from './cli/lessons-command.js'
+import { runLessons, runLessonsAccept, runLessonsDiscard } from './cli/lessons-command.js'
 import { reviewReplayer } from './cli/miss-replayer.js'
 import { reviewRunJson } from './cli/review-wiring.js'
 import { prepareReview, runManualReview } from './cli/manual-review.js'
@@ -138,6 +138,14 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
       return await runMissesReplay(command, deps, reviewReplayer(deps))
     if (command.kind === 'lessons') {
       await runLessons(command, deps)
+      return 0
+    }
+    if (command.kind === 'lessons-accept') {
+      await runLessonsAccept(command, deps)
+      return 0
+    }
+    if (command.kind === 'lessons-discard') {
+      await runLessonsDiscard(command, deps)
       return 0
     }
     if (command.kind === 'misses-dismiss') {

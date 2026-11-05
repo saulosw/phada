@@ -191,6 +191,14 @@ src/
                          #   extends of an unknown lesson read as a new one
     read-lessons.ts      #   readLessons(): the pending lessons (or all), most misses first, then
                          #   newest, with the count of accepted and discarded ones
+    decide-lesson.ts     #   acceptLesson(): a pending lesson → the rule lesson-<id> (rule, scope,
+                         #   its thread links as from) appended to rules: of the user's
+                         #   repos/<owner>/<repo>/config.yml (a missing file starts from the
+                         #   template), then marked accepted; with an editor, the draft of
+                         #   lesson-draft.ts edited first (empty or the editor failing →
+                         #   cancelled, nothing written; the edited rule and scope also kept on
+                         #   the lesson); discardLesson(): marked discarded; LessonNotFoundError,
+                         #   LessonDecidedError, LessonRuleRefusedError, InvalidLessonEditError
     stored-json.ts       #   parseJson(), objectOf(), stringOf(), numberOf(), stringsOf(): the
                          #   lenient reads of a stored JSON
     read-repositories.ts #   readRepositories(): watch.repos ∪ the user's repos/<owner>/<repo>/
@@ -365,7 +373,12 @@ src/
                          #   the cursor back at the line start after it, where the app redraws;
                          #   runInteractive injectable) and the app's signals: SIGINT ignored
                          #   while the command runs (Ctrl-C is the command's), SIGTERM ends the
-                         #   command and the app
+                         #   command and the app; editorCommand()
+    text-editor.ts       #   textEditor(): a text in a file of a temporary folder (removed
+                         #   after) opened in $VISUAL › $EDITOR › vi with the terminal handed
+                         #   over and without the GitHub tokens → the saved text, or nothing when
+                         #   the editor ends with an error; EditorNotFoundError; runInteractive
+                         #   and the temporary folder and file (EditorFiles) injectable
     app-rules.ts         #   rulesReaders(): readLocalRules (the user config), readRepositoryRules
                          #   (the default branch) and readPullRequestRules (readRules at the base
                          #   and pullRequestPrompt(), the pull request and the repository files
@@ -448,7 +461,9 @@ src/
                          #   share
     lessons-command.ts   #   runLessons(): list, --all, --refresh (history on; the provider,
                          #   model and rules of the user config of each repository; a line per
-                         #   repository)
+                         #   repository); runLessonsAccept() (where the rule was written and its
+                         #   id; --edit through textEditor(), a cancel said on stderr),
+                         #   runLessonsDiscard()
     format-lessons.ts    #   formatLessonsText/Json(): id, repository, state, miss count, the
                          #   whole rule, the globs and each thread link (schemaVersion 1)
     format-history.ts    #   formatHistoryText/Json() (each run with its id), runJson(),
@@ -540,7 +555,8 @@ src/
                          #   --dry-run
     format-publication.ts #  skip, "Published", recheck and "Resolved" messages
     format-context.ts    #   the "Context at base <sha>:" line and the context section of
-                         #   --dry-run
+                         #   --dry-run; ruleLine() (origin, severity, scope, the first thread of
+                         #   from and how many more)
     format-investigation.ts # the "Investigated:" line and the investigation section of --dry-run
                          #   (the coverage and its gaps when it is not full)
     coverage-label.ts    #   coverageLabel(): "low coverage: 11 of 63 files (…)" next to the score,
@@ -703,7 +719,7 @@ src/
                          #   line when the file is rewritten in a standard layout)
     setting-lines.tsx    #   settingLines(), settingValue(): config settings as key, value and
                          #   origin rows; ruleLines(): the user's rules as name, text and origin
-                         #   rows; indented()
+                         #   rows (with the count of the threads of from); indented()
     provider-names.ts    #   PROVIDER_NAMES: the name of each AI provider as the screens show it
     provider-lines.tsx   #   statusParts(), stateIcon(), modelsLine(), nextStepLine(): an AI
                          #   provider as checked
@@ -854,8 +870,14 @@ src/
                          #   English
   config/                # the config files: .phada/ in the repository and the user's own
     schema.ts            #   Zod schema of config.yml (ci: read, wait, onFailure, checks;
-                         #   review.debt: summary, comments or off); LANGUAGE_TAG, DEBT_MODES
-    parse-config.ts      #   parseConfigText(): YAML → config or an error naming the key
+                         #   review.debt: summary, comments or off; a rule's from: https thread
+                         #   links, shown, never sent); EditedLessonSchema (a rule's rule and
+                         #   at least one scope glob); LANGUAGE_TAG, DEBT_MODES
+    parse-config.ts      #   parseConfigText(): YAML → config or an error naming the key;
+                         #   issueText(), firstLine()
+    lesson-draft.ts      #   lessonDraftText(): a lesson as rule and scope in YAML, its thread
+                         #   links and how to cancel as comments; readLessonDraft(): the saved
+                         #   text → empty, edited (EditedLessonSchema) or an error naming the key
     merge-config.ts      #   mergeConfig(): layers → options, rules, files, ignore with origins (pure),
                          #   the ci settings with DEFAULT_CI (read, 15 min wait, onFailure: review)
                          #   for what no layer sets, review.debt with its origin;
@@ -867,7 +889,8 @@ src/
                          #   listUserRepoConfigs():
                          #   the repos/<owner>/<repo>/ folders with a config.yml or rules.md
     user-config-edit.ts  #   planUserConfigEdit(): changes (provider, model, language, watch.repos,
-                         #   publish of a watched repository) on the text of a user config with its
+                         #   publish of a watched repository, a rule appended to rules:, its id
+                         #   not taken) on the text of a user config with its
                          #   comments and order → the new text (a new file on top of the template)
                          #   and the changes by value, checked with the schema; the lines the
                          #   change leaves alone kept as written (keepLayout()), else the file
@@ -1165,7 +1188,9 @@ src/
                          #   recordMissReplays() (one per miss × version, the last wins),
                          #   missReplays()
     history-lessons.ts   #   recordLessons() (new lessons and misses added to pending ones, in
-                         #   one transaction), lessons() with their misses, linkedMissIds()
+                         #   one transaction), lessons() with their misses (by id, repository,
+                         #   state), decideLesson() (only a pending one, with the rule and
+                         #   scope of an edited accept), linkedMissIds()
     history-columns.ts   #   the history tables (columns, keys) and their insert/upsert/update
     history-migrations.ts #  versioned migrations (PRAGMA user_version), a table rebuilt with the
                          #   foreign keys off; a newer file is refused; v5: replay runs, the

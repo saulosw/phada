@@ -384,6 +384,7 @@ describe('formatReviewJson', () => {
       rules: [
         { key: 'a', origin: 'x', scope: ['src/**'], severity: 'P1', status: 'applied' },
         { key: 'b', origin: 'x', scope: ['**'], status: 'applied' },
+        { key: 'c', origin: 'x', scope: ['**'], from: ['https://x.y/t/1'], status: 'listed' },
       ],
       docs: [
         {
@@ -412,6 +413,7 @@ describe('formatReviewJson', () => {
     expect(output.context.rules).toEqual([
       { key: 'a', origin: 'x', scope: ['src/**'], severity: 'P1', status: 'applied' },
       { key: 'b', origin: 'x', scope: ['**'], status: 'applied' },
+      { key: 'c', origin: 'x', scope: ['**'], from: ['https://x.y/t/1'], status: 'listed' },
     ])
     expect(output.context.docs).toEqual([
       {

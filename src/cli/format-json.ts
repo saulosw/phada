@@ -492,11 +492,12 @@ export function contextJson(context: ContextReport) {
       status,
       ...(message === undefined ? {} : { message }),
     })),
-    rules: context.rules.map(({ key, origin, scope, severity, status }) => ({
+    rules: context.rules.map(({ key, origin, scope, severity, from, status }) => ({
       key,
       origin,
       scope: [...scope],
       ...(severity === undefined ? {} : { severity }),
+      ...(from === undefined ? {} : { from: [...from] }),
       status,
     })),
     docs: context.docs.map(({ path, origin, category, bytes, status, reason, scope }) => ({

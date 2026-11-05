@@ -540,6 +540,51 @@ describe('parseCliArgs lessons', () => {
   ])('refuses %j', (argv, message) => {
     expect(() => parseCliArgs(argv)).toThrow(new UsageError(message))
   })
+
+  it.each([
+    ['accept', 'lessons-accept'],
+    ['discard', 'lessons-discard'],
+  ] as const)('reads %s with a lesson id', (action, kind) => {
+    const edit = action === 'accept' ? { edit: false } : {}
+    expect(parseCliArgs(['lessons', action, '7'])).toEqual({ kind, id: 7, ...edit, debug: false })
+    expect(parseCliArgs(['lessons', action, '7', '--debug'])).toEqual({
+      kind,
+      id: 7,
+      ...edit,
+      debug: true,
+    })
+    expect(LESSONS_USAGE).toContain(`phada lessons ${action} <id>`)
+  })
+
+  it('reads accept --edit', () => {
+    expect(parseCliArgs(['lessons', 'accept', '7', '--edit'])).toEqual({
+      kind: 'lessons-accept',
+      id: 7,
+      edit: true,
+      debug: false,
+    })
+    expect(LESSONS_USAGE).toContain('phada lessons accept <id> [--edit]')
+    expect(LESSONS_USAGE).toContain('$VISUAL')
+  })
+
+  it.each([
+    [
+      ['lessons', 'accept'],
+      'phada lessons accept needs a lesson id, e.g. phada lessons accept 12.',
+    ],
+    [['lessons', 'discard', 'x'], 'Invalid lesson id "x". Use a whole number from 1.'],
+    [['lessons', 'accept', '1', '2'], 'phada lessons accept takes one lesson id.'],
+    [['lessons', 'accept', '1', '--all'], 'phada lessons accept takes only a lesson id.'],
+    [['lessons', 'discard', '1', '--refresh'], 'phada lessons discard takes only a lesson id.'],
+    [
+      ['lessons', 'discard', '1', '--format', 'json'],
+      'phada lessons discard takes only a lesson id.',
+    ],
+    [['lessons', 'discard', '1', '--edit'], '--edit only goes with phada lessons accept <id>.'],
+    [['lessons', '--edit'], '--edit only goes with phada lessons accept <id>.'],
+  ])('refuses %j', (argv, message) => {
+    expect(() => parseCliArgs(argv)).toThrow(new UsageError(message))
+  })
 })
 
 describe('parseCliArgs misses', () => {

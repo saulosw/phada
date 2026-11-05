@@ -229,11 +229,23 @@ function selectRules(
       origin: rule.origin,
       scope: [...rule.scope],
       ...(rule.severity === undefined ? {} : { severity: rule.severity }),
+      ...(rule.from === undefined ? {} : { from: [...rule.from] }),
       status,
     })
-    if (status === 'applied') applied.push(except.length === 0 ? rule : { ...rule, except })
+    if (status === 'applied') applied.push(contextRule(rule, except))
   }
   return { applied, report }
+}
+
+function contextRule(rule: ResolvedRule, except: readonly string[]): ContextRule {
+  return {
+    key: rule.key,
+    text: rule.text,
+    scope: rule.scope,
+    ...(except.length === 0 ? {} : { except: [...except] }),
+    ...(rule.severity === undefined ? {} : { severity: rule.severity }),
+    origin: rule.origin,
+  }
 }
 
 async function collectDocs(
