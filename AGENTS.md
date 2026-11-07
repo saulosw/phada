@@ -63,7 +63,8 @@ it when looking for a module.
   work folders.
 - `src/providers/` — `ReviewProvider` and its implementations (Claude Code, Codex, Ollama).
 - `src/publish/` — pure: what to publish, data in, decision out.
-- `src/repository/` — the repository through git objects, in a persistent mirror.
+- `src/repository/` — the repository through git objects, in a persistent mirror, and the local
+  clone a local review reads.
 - `src/repo-map/` — the code elements of a file, with tree-sitter (WASM).
 - `src/store/` — SQLite: the index of each repository, the observed relations and the history.
 - `src/watch/` — pure: what the watch does, data in, decision out.
@@ -127,10 +128,11 @@ streams and environment. The limits of each folder:
 - `src/tui/` draws the app with `ink` and `react` and imports, from outside the folder, only types
   of `src/app/` and `src/config/` and the pure helpers it names (`src/app/error-message.ts`,
   `src/app/terminal-text.ts`, `src/app/read-home.ts`, `src/app/home-recommendation.ts`,
-  `src/app/read-provider.ts`, `src/app/lesson-rule.ts`); it never imports `src/github/`, a concrete
-  provider or `src/cli/`, never touches `process` or `console` and never starts a timer: the
-  streams, the signals, the environment and the scheduler come in through `openApp()`, which
-  `src/cli/app-command.ts` loads with `import()` so the other commands never load React.
+  `src/app/read-provider.ts`, `src/app/lesson-rule.ts`, `src/app/run-target.ts`); it never
+  imports `src/github/`, a concrete provider or `src/cli/`, never touches `process` or `console`
+  and never starts a timer: the streams, the signals, the environment and the scheduler come in
+  through `openApp()`, which `src/cli/app-command.ts` loads with `import()` so the other commands
+  never load React.
 - `src/cli/review-wiring.ts` and `src/cli/watch-command.ts` declare the deps they need
   (`ReviewWiringDeps`, `WatchCommandDeps`); `MainDeps` extends them.
 
