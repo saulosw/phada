@@ -1,4 +1,5 @@
-import type { PullRequestReview } from './app/review-pull-request.js'
+import type { ReviewedLocalChanges } from './app/local-review.js'
+import type { PullRequestReview, ReviewOptions } from './app/review-pull-request.js'
 import { assertAppTerminal, runApp } from './cli/app-command.js'
 import type { AppCommandDeps } from './cli/app-command.js'
 import { parseCliArgs } from './cli/args.js'
@@ -25,7 +26,7 @@ import {
   formatSkipMessage,
   formatWouldResolveMessage,
 } from './cli/format-publication.js'
-import { formatReview } from './cli/format-review.js'
+import { formatLocalReview, formatLocalReviewStart, formatReview } from './cli/format-review.js'
 import { messagesFor } from './cli/i18n/messages.js'
 import { runIndex } from './cli/index-command.js'
 import { runInit } from './cli/init.js'
@@ -37,7 +38,8 @@ import type { MissesCommandDeps } from './cli/misses-command.js'
 import { runMissesReplay } from './cli/misses-replay-command.js'
 import { runLessons, runLessonsAccept, runLessonsDiscard } from './cli/lessons-command.js'
 import { reviewReplayer } from './cli/miss-replayer.js'
-import { reviewRunJson } from './cli/review-wiring.js'
+import { localReviewJson, reviewRunJson } from './cli/review-wiring.js'
+import { runLocalReview } from './cli/local-review-command.js'
 import { prepareReview, runManualReview } from './cli/manual-review.js'
 import type { ReviewRun } from './app/review-and-publish.js'
 import { printHistorySave, savedAsLine } from './cli/print-history-save.js'
@@ -166,6 +168,33 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
     }
 
     const token = await requireGitHubToken(deps)
+    if (command.kind === 'review-local') {
+      deps.onSignal(() => deps.abort(130))
+      const { review, history } = await runLocalReview(
+        {
+          cwd: deps.cwd,
+          token,
+          ...(command.base === undefined ? {} : { base: command.base }),
+          uncommitted: command.uncommitted,
+          ...(command.provider === undefined ? {} : { provider: command.provider }),
+          ...(command.model === undefined ? {} : { model: command.model }),
+          options: reviewOptions(command),
+        },
+        deps,
+        {
+          progress: printReviewProgress(deps.stderr, deps.clock),
+          started: (local) => deps.stderr.write(`${formatLocalReviewStart(local)}\n`),
+        },
+      )
+      printHistorySave(deps.stderr, history)
+      try {
+        printLocalReview(deps, command, review)
+      } finally {
+        const saved = savedAsLine(history)
+        if (saved !== undefined) deps.stderr.write(`${saved}\n`)
+      }
+      return 0
+    }
     const prepared = await prepareReview(
       command.ref,
       token,
@@ -186,18 +215,12 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
         waitCi: command.waitCi === true,
         ...(command.head === undefined ? {} : { head: command.head }),
         options: {
-          language: command.language,
-          minConfidence: command.minConfidence,
-          verify: command.verify,
-          ...(command.continuation === undefined ? {} : { continuation: command.continuation }),
-          ...(command.groups === undefined ? {} : { groups: command.groups }),
-          investigate: command.investigate,
+          ...reviewOptions(command),
           ...(command.resolveThreads === undefined
             ? {}
             : { resolveThreads: command.resolveThreads }),
           ...(command.conversation === undefined ? {} : { conversation: command.conversation }),
           ...(command.ci === undefined ? {} : { ci: command.ci }),
-          ...(command.skills === undefined ? {} : { skills: command.skills }),
         },
       },
       deps,
@@ -224,21 +247,44 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
 }
 
 type ReviewCommand = Extract<CliCommand, { kind: 'review' }>
+type LocalReviewCommand = Extract<CliCommand, { kind: 'review-local' }>
 
-function printReviewed(
+function reviewOptions(command: ReviewCommand | LocalReviewCommand): ReviewOptions {
+  return {
+    language: command.language,
+    minConfidence: command.minConfidence,
+    verify: command.verify,
+    ...(command.continuation === undefined ? {} : { continuation: command.continuation }),
+    ...(command.groups === undefined ? {} : { groups: command.groups }),
+    investigate: command.investigate,
+    ...(command.skills === undefined ? {} : { skills: command.skills }),
+  }
+}
+
+function printLocalReview(
   deps: MainDeps,
-  command: ReviewCommand,
+  command: LocalReviewCommand,
+  review: ReviewedLocalChanges,
+): void {
+  const { local, pullRequest, reviewed } = review
+  const fixFor = printReviewNotes(deps, reviewed, pullRequest)
+  const { outcome } = reviewed
+  if (command.format === 'json') deps.stdout.write(localReviewJson(review, fixFor))
+  if (outcome.status === 'skipped') return
+  if (command.format === 'markdown') {
+    deps.stdout.write(
+      formatLocalReview(local, pullRequest.title, outcome.result, messagesFor(reviewed.language)),
+    )
+  }
+  const usageLine = formatUsageLine(usageReport(outcome.result.passUsage, undefined))
+  if (usageLine !== undefined) deps.stderr.write(`${usageLine}\n`)
+}
+
+function printReviewNotes(
+  deps: MainDeps,
   reviewed: PullRequestReview,
   pullRequest: PullRequest,
-): void {
-  const { outcome } = reviewed
-  if (outcome.status === 'skipped') {
-    deps.stderr.write(`${toTerminalText(skipLine(outcome))}\n`)
-    return
-  }
-  for (const warning of outcome.result.warnings ?? []) {
-    deps.stderr.write(`Warning: ${toTerminalText(warning)}\n`)
-  }
+): BlockedFix {
   const review = reviewed.context.options.review
   const fixFor = blockedFixer({
     pullRequest,
@@ -246,11 +292,31 @@ function printReviewed(
     home: deps.home,
     ...(review === undefined ? {} : { review }),
   })
+  const { outcome } = reviewed
+  if (outcome.status === 'skipped') {
+    deps.stderr.write(`${toTerminalText(skipLine(outcome))}\n`)
+    return fixFor
+  }
+  for (const warning of outcome.result.warnings ?? []) {
+    deps.stderr.write(`Warning: ${toTerminalText(warning)}\n`)
+  }
   for (const line of formatSkillRunLines(outcome.result.passes ?? [], fixFor)) {
     deps.stderr.write(`${line}\n`)
   }
   const investigationLine = formatInvestigationLine(reviewed.investigation)
   if (investigationLine !== undefined) deps.stderr.write(`${investigationLine}\n`)
+  return fixFor
+}
+
+function printReviewed(
+  deps: MainDeps,
+  command: ReviewCommand,
+  reviewed: PullRequestReview,
+  pullRequest: PullRequest,
+): void {
+  printReviewNotes(deps, reviewed, pullRequest)
+  const { outcome } = reviewed
+  if (outcome.status === 'skipped') return
   if (reviewed.recheck !== undefined) {
     deps.stderr.write(`${formatRecheckMessage(reviewed.recheck)}\n`)
   }

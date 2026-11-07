@@ -26,7 +26,7 @@ import type {
 } from '../github/pull-request-reviews.js'
 import type { FetchPullRequestOptions, PullRequest } from '../github/pull-request.js'
 import type { ReplyAndResolveOptions } from '../github/resolve-thread.js'
-import type { HistoryStore } from '../store/history-store.js'
+import type { HistoryStore, RunRecord } from '../store/history-store.js'
 import { historyRun } from './history-run.js'
 import type { RunMeta } from './history-run.js'
 import { assertProviderChoice } from './provider-choice.js'
@@ -53,12 +53,9 @@ export interface ManualReviewDeps extends ReviewWiringDeps, ReplayReaderDeps {
   clock: () => Date
 }
 
-export interface PreparedReview {
+export interface PreparedReview extends ProviderSetup {
   ref: PullRequestRef
   token: string
-  userLayers: readonly ConfigLayer[]
-  choice: Choice & { detached?: boolean }
-  mcp: ResolvedMcp
 }
 
 export interface ManualReviewInput {
@@ -81,17 +78,33 @@ export interface ManualReview {
   history: HistorySave
 }
 
+export interface ProviderSetup {
+  userLayers: readonly ConfigLayer[]
+  choice: Choice & { detached?: boolean }
+  mcp: ResolvedMcp
+}
+
+export type ProviderFlags = { provider?: string; model?: string; detached?: boolean }
+
 export async function prepareReview(
   ref: PullRequestRef,
   token: string,
-  flags: { provider?: string; model?: string; detached?: boolean },
-  deps: ManualReviewDeps,
+  flags: ProviderFlags,
+  deps: ReviewWiringDeps,
 ): Promise<PreparedReview> {
+  return { ref, token, ...(await prepareProvider(ref, flags, deps)) }
+}
+
+export async function prepareProvider(
+  repository: { owner: string; repo: string },
+  flags: ProviderFlags,
+  deps: ReviewWiringDeps,
+): Promise<ProviderSetup> {
   const userLayers = await loadUserLayers({
     env: deps.env,
     home: deps.home,
-    owner: ref.owner,
-    repo: ref.repo,
+    owner: repository.owner,
+    repo: repository.repo,
     files: deps.files,
   })
   const choice = resolveProvider(
@@ -108,8 +121,6 @@ export async function prepareReview(
   })
   const mcpNames = await mcpNameChecker(deps)(choice.provider, mcp.names)
   return {
-    ref,
-    token,
     userLayers,
     choice: {
       ...choice,
@@ -199,6 +210,25 @@ async function saveRun(
   run: ReviewRun,
   meta: RunMeta,
 ): Promise<HistorySave> {
+  return saveRunRecord(
+    deps,
+    userLayers,
+    () => historyRun(run, reviewRunJson(run), meta),
+    meta.source === 'replay'
+      ? undefined
+      : (history, runId) =>
+          recordReviewFeedback(history, run, { runId, source: 'manual', now: meta.finishedAt }),
+  )
+}
+
+export type HistorySaveDeps = Pick<ManualReviewDeps, 'openHistoryStore' | 'env' | 'home'>
+
+export async function saveRunRecord(
+  deps: HistorySaveDeps,
+  userLayers: readonly ConfigLayer[],
+  record: () => RunRecord,
+  feedback?: (history: HistoryStore, runId: number) => void,
+): Promise<HistorySave> {
   if (!historyEnabled(userLayers)) return { status: 'off' }
   let history: HistoryStore
   let runId: number
@@ -209,13 +239,13 @@ async function saveRun(
   }
   try {
     try {
-      runId = history.addRun(historyRun(run, reviewRunJson(run), meta))
+      runId = history.addRun(record())
     } catch (error) {
       return { status: 'not-saved', error: errorMessage(error) }
     }
-    if (meta.source === 'replay') return { status: 'saved', runId }
+    if (feedback === undefined) return { status: 'saved', runId }
     try {
-      recordReviewFeedback(history, run, { runId, source: 'manual', now: meta.finishedAt })
+      feedback(history, runId)
     } catch (error) {
       return { status: 'saved', runId, feedbackError: errorMessage(error) }
     }

@@ -1,3 +1,5 @@
+import type { LocalRun } from '../app/local-review.js'
+import { localRunName } from '../app/run-target.js'
 import type { PullRequest } from '../github/pull-request.js'
 import { scoreFocus } from '../review/score.js'
 import type { FileChange, Finding, ReviewResult, Severity, Suggestion } from '../review/types.js'
@@ -31,11 +33,39 @@ export function formatReview(
   messages: Messages = english,
 ): string {
   const { terminal } = messages
+  const header = [
+    `# ${terminal.reviewOf} ${pr.repo}#${pr.number}: ${singleLine(pr.title)}`,
+    `${pr.url} · ${terminal.head} ${shortSha(result.target.headSha)} · ${terminal.state(pr.state, pr.draft)}`,
+  ]
+  return reviewText(header, result, messages)
+}
+
+export type LocalHeader = Pick<LocalRun, 'repo' | 'branch' | 'base' | 'head' | 'dirty'>
+
+export function formatLocalReviewStart(local: LocalHeader & Pick<LocalRun, 'baseRef'>): string {
+  const name = `${local.repo}@${localRunName(local.branch, local.head)}${local.dirty ? ' + uncommitted' : ''}`
+  return toTerminalText(`Reviewing ${name} against ${local.baseRef} (${shortSha(local.base)})…`)
+}
+
+export function formatLocalReview(
+  local: LocalHeader,
+  title: string,
+  result: ReviewResult,
+  messages: Messages = english,
+): string {
+  const { terminal } = messages
+  const name = singleLine(localRunName(local.branch, local.head))
+  const head = `${terminal.head} ${shortSha(local.head)}${local.dirty ? ` + ${terminal.uncommitted}` : ''}`
+  const header = [
+    `# ${terminal.reviewOf} ${local.repo}@${name} (${terminal.local}): ${singleLine(title)}`,
+    `${terminal.base} ${shortSha(local.base)} · ${head}`,
+  ]
+  return reviewText(header, result, messages)
+}
+
+function reviewText(header: readonly string[], result: ReviewResult, messages: Messages): string {
   const sections = [
-    [
-      `# ${terminal.reviewOf} ${pr.repo}#${pr.number}: ${singleLine(pr.title)}`,
-      `${pr.url} · ${terminal.head} ${shortSha(result.target.headSha)} · ${terminal.state(pr.state, pr.draft)}`,
-    ].join('\n'),
+    header.join('\n'),
     scoreLine(result, messages),
     summarySection(result.summary, messages),
     filesSection(result.files, messages),

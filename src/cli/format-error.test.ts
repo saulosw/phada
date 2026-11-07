@@ -19,6 +19,8 @@ import {
 } from '../github/errors.js'
 import { ProviderError } from '../providers/types.js'
 import { InvalidLessonsAnswerError, InvalidReviewReportError } from '../review/errors.js'
+import { NoDefaultBranchError, NothingToReviewError } from '../app/local-review.js'
+import { LocalDiffTooLargeError, LocalGitError } from '../repository/local-git.js'
 import { MissingGitHubTokenError, UsageError } from './errors.js'
 import { errorSummary, formatError } from './format-error.js'
 
@@ -38,6 +40,70 @@ describe('errorSummary', () => {
 })
 
 describe('formatError', () => {
+  it.each([
+    [
+      new LocalGitError('not-a-repository', '/w is not inside a git repository'),
+      'phada: /w is not inside a git repository. Run phada review in a clone of the repository, or pass a pull request (owner/repo#N).',
+      2,
+    ],
+    [
+      new LocalGitError('unknown-base', 'The base nope is not a commit in this repository.'),
+      'phada: The base nope is not a commit in this repository. Pass a branch, tag or commit SHA to --base.',
+      2,
+    ],
+    [
+      new LocalGitError(
+        'no-origin',
+        "The repository at /w has no origin remote: error: No such remote 'origin'",
+      ),
+      "phada: The repository at /w has no origin remote: error: No such remote 'origin'. A local review takes its GitHub repository from origin: git remote add origin <URL of the repository on GitHub>.",
+      1,
+    ],
+    [
+      new LocalGitError(
+        'origin-not-github',
+        'The origin remote (https://gitlab.com/a/b.git) is not a GitHub repository.',
+      ),
+      'phada: The origin remote (https://gitlab.com/a/b.git) is not a GitHub repository. Phada reviews repositories on GitHub.',
+      1,
+    ],
+    [
+      new LocalGitError(
+        'no-default-base',
+        'origin/main is not in this repository; run git fetch origin, or pass --base.',
+      ),
+      'phada: origin/main is not in this repository; run git fetch origin, or pass --base.',
+      1,
+    ],
+    [
+      new LocalGitError('no-merge-base', 'abc and origin/main have no commit in common.'),
+      'phada: abc and origin/main have no commit in common. Pass the commit to compare with in --base.',
+      1,
+    ],
+    [
+      new LocalGitError('no-commits', 'The repository at /w has no commits yet.'),
+      'phada: The repository at /w has no commits yet.',
+      1,
+    ],
+    [
+      new LocalDiffTooLargeError('0f1e2d3..a1b2c3d', 1_000_000, 1_200_000),
+      'phada: The diff of 0f1e2d3..a1b2c3d has 1200000 bytes, above the limit of 1000000 bytes. Phada never truncates a diff: pass a closer --base.',
+      1,
+    ],
+    [
+      new NoDefaultBranchError('acme/shop'),
+      'phada: acme/shop has no default branch on GitHub; pass --base.',
+      1,
+    ],
+    [
+      new NothingToReviewError('feat/spend', '0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c'),
+      'phada: Nothing to review: feat/spend has no changes against 0f1e2d3.',
+      1,
+    ],
+  ])('explains the local review error %#', (error, message, exitCode) => {
+    expect(format(error)).toEqual({ message, exitCode })
+  })
+
   it.each([
     [
       new UsageError('Missing the pull request to review.'),

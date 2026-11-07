@@ -1,10 +1,12 @@
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { Readable } from 'node:stream'
 import { GitHubError } from './github/errors.js'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { findingFixture } from '../test/support/finding.js'
+import { createLocalRepository } from '../test/support/git-repo.js'
 import { memoryFiles } from '../test/support/memory-files.js'
 import type { MemoryFiles } from '../test/support/memory-files.js'
 import { pullRequestFixture } from '../test/support/pull-request.js'
@@ -30,6 +32,7 @@ import type { FetchPullRequestOptions, PullRequest } from './github/pull-request
 import type { RepositoryTree } from './github/repository-files.js'
 import type { Checkout } from './repository/checkout.js'
 import { CheckoutUnavailableError } from './repository/git-checkout.js'
+import { openGitMirror } from './repository/git-mirror.js'
 import type { GitMirror, GitMirrorOptions } from './repository/git-mirror.js'
 import { createExtractor } from './repo-map/extract.js'
 import { openIndexStore } from './store/index-store.js'
@@ -171,6 +174,7 @@ function harness(
     repoFiles?: Record<string, string>
     tree?: () => Promise<RepositoryTree>
     openMirror?: (options: GitMirrorOptions) => Promise<GitMirror>
+    cwd?: string
     fetchRepository?: MainDeps['fetchRepository']
     openHistoryStore?: MainDeps['openHistoryStore']
     listPulls?: MainDeps['listOpenPullRequests']
@@ -230,7 +234,7 @@ function harness(
     },
     version: '1.2.3',
     pid: 4321,
-    cwd: '/w/shop',
+    cwd: overrides.cwd ?? '/w/shop',
     home: '/home/u',
     files,
     get stdin() {
@@ -815,9 +819,9 @@ describe('run', () => {
   it('exits with 2 on a usage error', async () => {
     const h = harness()
 
-    expect(await run(['review'], h.deps)).toBe(2)
+    expect(await run(['review', 'acme/shop#12', 'acme/shop#13'], h.deps)).toBe(2)
     expect(h.stderr()).toBe(
-      'phada: Missing the pull request to review. Run with --help for usage.\n',
+      'phada: Review one pull request at a time. Run with --help for usage.\n',
     )
   })
 
@@ -2694,6 +2698,8 @@ describe('phada mcp', () => {
       'job_status',
       'wait_for_job',
       'list_queue',
+      'review_local_changes',
+      'wait_for_local_review',
     ])
     expect(review && toolJson(review)).toMatchObject({
       status: 'queued',
@@ -3843,5 +3849,341 @@ describe('run review --head', () => {
     expect(bytesOf(cut, 'PHADA_CONVERSATION')).toBeLessThan(bytesOf(now, 'PHADA_CONVERSATION'))
     expect(bytesOf(cut, 'PHADA_DIFF')).toBeLessThan(bytesOf(now, 'PHADA_DIFF'))
     expect(replay.prompts).toEqual([])
+  })
+})
+
+describe('run review with no pull request', { timeout: 20_000 }, () => {
+  const GIT_ENV = {
+    ...process.env,
+    GIT_AUTHOR_NAME: 'T',
+    GIT_AUTHOR_EMAIL: 't@example.com',
+    GIT_COMMITTER_NAME: 'T',
+    GIT_COMMITTER_EMAIL: 't@example.com',
+    GIT_CONFIG_NOSYSTEM: '1',
+    GIT_CONFIG_GLOBAL: '/dev/null',
+  }
+  const git = (dir: string, ...args: string[]) =>
+    execFileSync('git', ['-C', dir, ...args], { env: GIT_ENV, encoding: 'utf8' }).trim()
+  const scratch = mkdtempSync(join(tmpdir(), 'phada-main-local-'))
+  afterAll(() => rmSync(scratch, { recursive: true, force: true }))
+  let count = 0
+  const folder = (name: string) => {
+    count += 1
+    const dir = join(scratch, `${name}-${count}`)
+    mkdirSync(dir, { recursive: true })
+    return dir
+  }
+
+  function clone(): { dir: string; defaultBranch: string; base: string } {
+    const origin = createLocalRepository({
+      'src/shop.ts': 'export function total(prices: number[]) {\n  return 0\n}\n',
+    })
+    const dir = join(folder('clone'), 'shop')
+    execFileSync('git', ['clone', '-q', origin.dir, dir], { env: GIT_ENV })
+    origin.remove()
+    git(dir, 'remote', 'set-url', 'origin', 'git@github.com:acme/shop.git')
+    git(dir, 'checkout', '-q', '-b', 'feat/spend')
+    return {
+      dir,
+      defaultBranch: git(dir, 'rev-parse', '--abbrev-ref', 'origin/HEAD').replace('origin/', ''),
+      base: git(dir, 'rev-parse', 'HEAD'),
+    }
+  }
+
+  function commit(dir: string, text: string, message: string): string {
+    writeFileSync(join(dir, 'src/shop.ts'), text)
+    git(dir, 'commit', '-q', '-a', '--no-gpg-sign', '-m', message)
+    return git(dir, 'rev-parse', 'HEAD')
+  }
+
+  function localHarness(
+    cwd: string,
+    defaultBranch: string,
+    env: NodeJS.ProcessEnv = {},
+    stdin?: string[][],
+  ) {
+    return harness({
+      cwd,
+      ...(stdin === undefined ? {} : { stdin }),
+      env: {
+        ...process.env,
+        GITHUB_TOKEN: TOKEN,
+        PHADA_CONFIG_HOME: '/cfg',
+        PHADA_CACHE_HOME: folder('cache'),
+        ...env,
+      },
+      fetchRepository: async ({ owner, repo }) => ({
+        repo: `${owner}/${repo}`,
+        private: true,
+        defaultBranch,
+        empty: false,
+      }),
+      openMirror: (options) => openGitMirror(options),
+    })
+  }
+
+  it('reviews the commits of the branch and prints the review with a local header', async () => {
+    const { dir, defaultBranch, base } = clone()
+    const head = commit(
+      dir,
+      'export function total(p: number[]) {\n  return p.length\n}\n',
+      'Count',
+    )
+    const h = localHarness(dir, defaultBranch)
+
+    expect(await run(['review', '--dry-run', '--no-verify'], h.deps)).toBe(0)
+
+    expect(h.stdout().split('\n').slice(0, 2)).toEqual([
+      '# Review of acme/shop@feat/spend (local): Count',
+      `base ${base.slice(0, 7)} · head ${head.slice(0, 7)}`,
+    ])
+    expect(h.stdout()).not.toContain('#0')
+    expect(h.stderr().split('\n')[0]).toBe(
+      `Reviewing acme/shop@feat/spend against ${defaultBranch} (${base.slice(0, 7)})…`,
+    )
+    expect(h.prompts[0]?.data).toContain('+  return p.length')
+    expect(h.fetches).toHaveLength(0)
+    expect(h.posts).toHaveLength(0)
+    expect(h.mirrors).toEqual([
+      expect.objectContaining({ owner: 'acme', repo: 'shop', remoteUrl: dir }),
+    ])
+  })
+
+  it('prints the local block in place of the pull request in JSON', async () => {
+    const { dir, defaultBranch, base } = clone()
+    const head = commit(dir, 'export const total = 1\n', 'One')
+    const h = localHarness(dir, defaultBranch)
+
+    expect(await run(['review', '--format', 'json', '--no-verify'], h.deps)).toBe(0)
+
+    const output = JSON.parse(h.stdout()) as Record<string, unknown>
+    expect(output).toMatchObject({
+      status: 'reviewed',
+      local: { repo: 'acme/shop', branch: 'feat/spend', base, head, dirty: false },
+    })
+    expect(output).not.toHaveProperty('pullRequest')
+    expect(output).not.toHaveProperty('publication')
+  })
+
+  it('reviews the uncommitted changes with --uncommitted and marks them', async () => {
+    const { dir, defaultBranch, base } = clone()
+    writeFileSync(join(dir, 'src/coupon.ts'), 'export const coupon = 5\n')
+    const h = localHarness(dir, defaultBranch)
+
+    expect(await run(['review', '--uncommitted', '--no-verify'], h.deps)).toBe(0)
+
+    expect(h.stdout().split('\n')[1]).toBe(
+      `base ${base.slice(0, 7)} · head ${base.slice(0, 7)} + uncommitted`,
+    )
+    expect(h.stderr().split('\n')[0]).toBe(
+      `Reviewing acme/shop@feat/spend + uncommitted against ${defaultBranch} (${base.slice(0, 7)})…`,
+    )
+    expect(h.prompts[0]?.data).toContain('+export const coupon = 5')
+    expect(git(dir, 'status', '--porcelain')).toBe('?? src/coupon.ts')
+  })
+
+  it('compares with the base given in --base', async () => {
+    const { dir, defaultBranch } = clone()
+    const first = commit(dir, 'export const total = 1\n', 'One')
+    const head = commit(dir, 'export const total = 2\n', 'Two')
+    const h = localHarness(dir, defaultBranch)
+
+    expect(await run(['review', '--base', first, '--format', 'json', '--no-verify'], h.deps)).toBe(
+      0,
+    )
+
+    expect(JSON.parse(h.stdout())).toMatchObject({ local: { base: first, head } })
+    expect(h.prompts[0]?.data).toContain('-export const total = 1')
+  })
+
+  const rowsOf = (h: Harness, table: string): Record<string, unknown>[] => {
+    const file = h.historyFiles[0]?.split(' → ')[1]
+    if (file === undefined) return []
+    const db = new DatabaseSync(file)
+    const rows = db.prepare(`select * from ${table} order by rowid`).all()
+    db.close()
+    return rows
+  }
+
+  it('saves the local review in the history by its branch, with nothing to publish and no feedback', async () => {
+    const { dir, defaultBranch, base } = clone()
+    const head = commit(dir, 'export const total = 1\n', 'One')
+    const h = localHarness(dir, defaultBranch)
+
+    expect(await run(['review', '--no-verify'], h.deps)).toBe(0)
+
+    const [saved, ...others] = rowsOf(h, 'run')
+    expect(others).toEqual([])
+    expect(saved).toMatchObject({
+      source: 'local',
+      repo: 'acme/shop',
+      number: 0,
+      head_sha: head,
+      branch: 'feat/spend',
+      dirty: 0,
+      status: 'not-published',
+      ai_called: 1,
+      verdict: 'clean',
+      provider: 'claude',
+      url: null,
+    })
+    expect(JSON.parse(String(saved?.result_json))).toMatchObject({
+      local: { repo: 'acme/shop', branch: 'feat/spend', base, head, reviewed: head, title: 'One' },
+    })
+    expect(rowsOf(h, 'finding')).toEqual([])
+    expect(rowsOf(h, 'feedback_pull')).toEqual([])
+    expect(h.stderr()).toContain(
+      `Saved as run ${String(saved?.id)}: phada history show ${String(saved?.id)}`,
+    )
+  })
+
+  it('refuses to publish a local run with phada publish', async () => {
+    const { dir, defaultBranch } = clone()
+    commit(dir, 'export const total = 1\n', 'One')
+    const h = localHarness(dir, defaultBranch)
+    await run(['review', '--no-verify'], h.deps)
+    const errors: string[] = []
+    const deps: MainDeps = {
+      ...h.deps,
+      files: { ...h.deps.files, exists: async () => true },
+      stderr: { write: (text: string) => errors.push(text) },
+    }
+
+    expect(await run(['publish', '1'], deps)).toBe(1)
+    expect(errors.join('')).toBe(
+      'phada: Run 1 is a local review: it has no pull request to publish on. Open a pull request and review it with phada review owner/repo#N.\n',
+    )
+    expect(h.posts).toHaveLength(0)
+  })
+
+  it('saves the real head and marks the run when it reviewed uncommitted changes', async () => {
+    const { dir, defaultBranch, base } = clone()
+    writeFileSync(join(dir, 'src/coupon.ts'), 'export const coupon = 5\n')
+    const h = localHarness(dir, defaultBranch)
+
+    expect(await run(['review', '--uncommitted', '--no-verify'], h.deps)).toBe(0)
+
+    const [saved] = rowsOf(h, 'run')
+    expect(saved).toMatchObject({ head_sha: base, branch: 'feat/spend', dirty: 1 })
+    const json = JSON.parse(String(saved?.result_json)) as { local: { reviewed: string } }
+    expect(json.local.reviewed).not.toBe(base)
+  })
+
+  it('saves nothing when the user config turns the history off', async () => {
+    const { dir, defaultBranch } = clone()
+    commit(dir, 'export const total = 1\n', 'One')
+    const h = localHarness(dir, defaultBranch)
+    h.deps.files = memoryFiles({ '/cfg/config.yml': 'history: false' })
+
+    expect(await run(['review', '--no-verify'], h.deps)).toBe(0)
+    expect(h.historyFiles).toEqual([])
+    expect(h.stderr()).not.toContain('Saved as run')
+  })
+
+  it('needs a GitHub token', async () => {
+    const { dir, defaultBranch } = clone()
+    const h = localHarness(dir, defaultBranch, { GITHUB_TOKEN: '', GH_TOKEN: '' })
+
+    expect(await run(['review'], h.deps)).toBe(1)
+    expect(h.stderr()).toContain('phada: No GitHub token found.')
+  })
+
+  it('reviews the branch for review_local_changes of phada mcp, in the background, and saves it before closing', async () => {
+    const { dir, defaultBranch } = clone()
+    commit(dir, 'export function total(p: number[]) {\n  return p.length\n}\n', 'Count')
+    const start = JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'review_local_changes', arguments: {} },
+    })
+    const h = localHarness(dir, defaultBranch, {}, [[start]])
+
+    expect(await run(['mcp'], h.deps)).toBe(0)
+
+    const [answer, ...rest] = h.stdout().trim().split('\n')
+    expect(rest).toEqual([])
+    const result = (JSON.parse(answer ?? '') as { result: { content: { text: string }[] } }).result
+    expect(JSON.parse(result.content[0]?.text ?? '')).toEqual({ review: 1 })
+    expect(h.prompts[0]?.data).toContain('+  return p.length')
+    expect(h.providers[0]?.options).toMatchObject({ detached: true })
+    expect(rowsOf(h, 'run')).toEqual([expect.objectContaining({ branch: 'feat/spend' })])
+    expect(h.posts).toHaveLength(0)
+  })
+
+  it('tells the agent the warnings of the local review in the answer of wait_for_local_review', async () => {
+    const { dir, defaultBranch } = clone()
+    commit(dir, 'export const total = 1\n', 'One')
+    const call = (id: number, name: string, args: unknown) =>
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id,
+        method: 'tools/call',
+        params: { name, arguments: args },
+      })
+    const h = localHarness(dir, defaultBranch)
+    async function* agent() {
+      yield `${call(1, 'review_local_changes', { uncommitted: true })}\n`
+      while (!h.stdout().includes('"id":1')) await new Promise((done) => setImmediate(done))
+      yield `${call(2, 'wait_for_local_review', { review: 1 })}\n`
+    }
+    const deps: MainDeps = {
+      ...h.deps,
+      stdin: Readable.from(agent()),
+      sleep: () => new Promise((done) => setImmediate(done)),
+    }
+
+    expect(await run(['mcp'], deps)).toBe(0)
+
+    const waited = h
+      .stdout()
+      .trim()
+      .split('\n')
+      .map((text) => JSON.parse(text) as { id: number; result: { content: { text: string }[] } })
+      .find(({ id }) => id === 2)
+    expect(JSON.parse(waited?.result.content[0]?.text ?? '')).toMatchObject({
+      timedOut: false,
+      warnings: ['Nothing uncommitted: reviewing the commits of feat/spend.'],
+    })
+  })
+
+  it('says when there is nothing to review', async () => {
+    const { dir, defaultBranch, base } = clone()
+    const h = localHarness(dir, defaultBranch)
+
+    expect(await run(['review'], h.deps)).toBe(1)
+    expect(h.stderr()).toBe(
+      `phada: Nothing to review: feat/spend has no changes against ${base.slice(0, 7)}.\n`,
+    )
+    expect(h.prompts).toHaveLength(0)
+  })
+
+  it('says when the folder is not in a git repository', async () => {
+    const dir = folder('plain')
+    const h = localHarness(dir, 'main')
+
+    expect(await run(['review'], h.deps)).toBe(2)
+    expect(h.stderr()).toMatch(
+      new RegExp(
+        `^phada: ${dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} is not inside a git repository\\. Run phada review in a clone of the repository, or pass a pull request \\(owner/repo#N\\)\\.\\n$`,
+      ),
+    )
+  })
+
+  it('stops with 130 on Ctrl-C', async () => {
+    const { dir, defaultBranch } = clone()
+    commit(dir, 'export const total = 1\n', 'One')
+    const h = localHarness(dir, defaultBranch)
+    h.deps.createProvider = () => ({
+      id: 'fake-cli',
+      review: async () => {
+        h.signal()
+        return { text: reviewReportJson(), durationMs: 1 }
+      },
+    })
+
+    await run(['review', '--no-verify'], h.deps)
+
+    expect(h.aborts).toEqual([130])
   })
 })

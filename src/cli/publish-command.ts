@@ -114,6 +114,10 @@ function refusalError(id: number, refusal: PublishRefusal): Error {
       return new PublishRefusedError(
         `Run ${id} replayed an earlier commit of the pull request (phada review --head): a replay is never published.`,
       )
+    case 'local':
+      return new PublishRefusedError(
+        `Run ${id} is a local review: it has no pull request to publish on. Open a pull request and review it with phada review owner/repo#N.`,
+      )
     case 'outdated':
       return new PublishRefusedError(
         `Run ${id} was kept by an older Phada without everything needed to publish it as it was found: review the pull request again.`,

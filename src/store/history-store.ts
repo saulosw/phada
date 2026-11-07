@@ -75,6 +75,8 @@ export type { LessonChanges, LessonDecision, LessonEdit, LessonRecord } from './
 export type RunStatus =
   'published' | 'dry-run' | 'not-published' | 'superseded' | 'skipped' | 'nothing' | 'failed'
 
+export type RunSource = 'watch' | 'manual' | 'replay' | 'local'
+
 export interface RepoRecord {
   repo: string
   pullsEtag?: string
@@ -91,7 +93,7 @@ export interface RepoRecord {
 export interface RunRecord {
   id?: number
   jobId?: number
-  source: 'watch' | 'manual' | 'replay'
+  source: RunSource
   repo: string
   number: number
   headSha: string
@@ -110,6 +112,8 @@ export interface RunRecord {
   resultJson?: string
   verdict?: Verdict
   requestSource?: RequestSource
+  branch?: string
+  dirty?: boolean
 }
 
 export interface StatusJob extends JobRecord {
@@ -264,8 +268,12 @@ export interface OpenHistoryStoreOptions {
 }
 
 const RECENT_FAILURES = 20
-const RUN_TITLE =
-  "case when json_valid(run.result_json) then json_extract(run.result_json, '$.pullRequest.title') end"
+const RUN_TITLE = `case when json_valid(run.result_json) then coalesce(
+    json_extract(run.result_json, '$.pullRequest.title'),
+    json_extract(run.result_json, '$.local.title')) end`
+const RUN_REF = `case when source = 'local'
+    then repo || '@' || coalesce(branch, substr(head_sha, 1, 7))
+    else repo || '#' || number end`
 const LISTED_RUN_COLUMNS = Object.entries(RUN_TABLE.columns)
   .filter(([key]) => key !== 'resultJson')
   .map(([, column]) => column)
@@ -635,7 +643,7 @@ class SqliteHistoryStore implements HistoryStore {
     }
     if (filter.text !== undefined && filter.text !== '') {
       where.push(
-        `(instr(lower(repo || '#' || number), ?) > 0 or instr(lower(coalesce(${RUN_TITLE}, '')), ?) > 0)`,
+        `(instr(lower(${RUN_REF}), ?) > 0 or instr(lower(coalesce(${RUN_TITLE}, '')), ?) > 0)`,
       )
       values.push(filter.text.toLowerCase(), filter.text.toLowerCase())
     }

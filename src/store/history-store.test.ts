@@ -46,6 +46,22 @@ const RUN: RunRecord = {
   resultJson: '{"schemaVersion":1}',
 }
 
+const LOCAL_RUN: RunRecord = {
+  source: 'local',
+  repo: 'acme/shop',
+  number: 0,
+  headSha: 'b'.repeat(40),
+  startedAt: '2026-10-18T13:00:00.000Z',
+  finishedAt: '2026-10-18T13:02:00.000Z',
+  status: 'not-published',
+  aiCalled: true,
+  provider: 'claude',
+  findings: 1,
+  score: 4,
+  verdict: 'comments',
+  resultJson: '{"schemaVersion":1}',
+}
+
 function userVersion(path: string): number {
   const db = new DatabaseSync(path)
   const version = Number(db.prepare('pragma user_version').get()?.user_version)
@@ -217,13 +233,16 @@ describe('openHistoryStore migrations', () => {
         },
       ],
     })
-    const before = { runs: v4.runs({}), run: v4.run(runId), findings: v4.findings({}) }
+    const before = { run: v4.run(runId), findings: v4.findings({}) }
     v4.close()
 
     const store = await openHistoryStore(path)
-    expect({ runs: store.runs({}), run: store.run(runId), findings: store.findings({}) }).toEqual(
-      before,
-    )
+    const { resultJson: _json, ...listed } = { ...RUN, id: runId }
+    expect({ run: store.run(runId), findings: store.findings({}) }).toEqual(before)
+    expect(store.runs({})).toEqual({
+      runs: [{ ...listed, jobId: job, verdict: 'comments', requestSource: 'watch' }],
+      total: 1,
+    })
     expect(store.findings({})).toMatchObject([{ runId, signals: [{ kind: 'dismissed' }] }])
     expect(store.runOfJob(job)).toMatchObject({ id: runId, jobId: job })
     const replay = store.addRun({ ...RUN, source: 'replay', status: 'dry-run' })
@@ -399,6 +418,57 @@ describe('openHistoryStore migrations', () => {
     expect(badSeen).toThrow()
     expect(badRole).toThrow()
     expect(left).toBe(0)
+  })
+
+  it('migrates a version 7 file without losing its runs, and stores local runs with their branch', async () => {
+    const path = fresh()
+    const v7 = await openHistoryStore(path, { migrations: HISTORY_MIGRATIONS.slice(0, 7) })
+    const job = v7.addJob(JOB)
+    const watched = v7.addRun({ ...RUN, jobId: job, verdict: 'comments', requestSource: 'mcp' })
+    const manual = v7.addRun({ ...RUN, source: 'manual', status: 'dry-run', url: undefined })
+    v7.close()
+    const raw = new DatabaseSync(path)
+    raw
+      .prepare(
+        `insert into finding (repo, number, fingerprint, file, title, run_id, published_at)
+         values ('acme/shop', 3, 'a.ts:x', 'a.ts', 'X', ?, ?)`,
+      )
+      .run(watched, RUN.finishedAt)
+    raw.close()
+
+    const store = await openHistoryStore(path)
+    const local = store.addRun({ ...LOCAL_RUN, branch: 'feat/spend', dirty: true })
+    const detached = store.addRun(LOCAL_RUN)
+
+    expect(store.run(watched)).toEqual({
+      ...RUN,
+      id: watched,
+      jobId: job,
+      verdict: 'comments',
+      requestSource: 'mcp',
+    })
+    expect(store.run(manual)).toMatchObject({ source: 'manual', status: 'dry-run' })
+    expect(store.findings({}).map(({ runId }) => runId)).toEqual([watched])
+    expect(store.run(local)).toEqual({ ...LOCAL_RUN, id: local, branch: 'feat/spend', dirty: true })
+    expect(store.run(detached)).toEqual({ ...LOCAL_RUN, id: detached })
+    store.close()
+
+    const db = new DatabaseSync(path)
+    const indexes = db
+      .prepare("select name from sqlite_master where type = 'index' and tbl_name = 'run'")
+      .all()
+      .map((row) => row.name)
+    const badSource = () =>
+      db
+        .prepare(
+          `insert into run (source, repo, number, head_sha, started_at, finished_at, status, ai_called)
+           values ('robot', 'acme/shop', 0, 'a', 'x', 'y', 'nothing', 0)`,
+        )
+        .run()
+    db.close()
+    expect(userVersion(path)).toBe(HISTORY_MIGRATIONS.length)
+    expect(indexes).toEqual(expect.arrayContaining(['run_by_source', 'run_by_job']))
+    expect(badSource).toThrow()
   })
 
   it('refuses a file written by a newer version and leaves it as it is', async () => {
@@ -704,6 +774,28 @@ describe('HistoryStore queries', () => {
     store.close()
   })
 
+  it('runs carry the title of a local review and filter it by text over repo@branch, never #0', async () => {
+    const store = await openHistoryStore(fresh())
+    const local = JSON.stringify({ local: { branch: 'feat/spend', title: 'Cap the spend' } })
+    store.addRun({ ...RUN, startedAt: at(1), resultJson: JSON.stringify({ pullRequest: {} }) })
+    store.addRun({ ...LOCAL_RUN, branch: 'feat/spend', startedAt: at(2), resultJson: local })
+    store.addRun({ ...LOCAL_RUN, startedAt: at(3), resultJson: '{}' })
+
+    const sources = (text: string) =>
+      store.runs({ text }).runs.map((run) => run.branch ?? run.headSha.slice(0, 7))
+
+    expect(store.runs({}).runs.map((run) => run.title)).toEqual([
+      undefined,
+      'Cap the spend',
+      undefined,
+    ])
+    expect(sources('shop@FEAT/sp')).toEqual(['feat/spend'])
+    expect(sources('spend')).toEqual(['feat/spend'])
+    expect(sources('@bbbbbbb')).toEqual(['bbbbbbb'])
+    expect(sources('#0')).toEqual([])
+    store.close()
+  })
+
   it('keeps the titles with their runs, newest first, when the list is limited', async () => {
     const store = await openHistoryStore(fresh())
     const titled = (title: string) => JSON.stringify({ pullRequest: { title } })
@@ -772,6 +864,19 @@ describe('HistoryStore queries', () => {
     expect(store.feedbackDue({}, at(2), 1)).toEqual([{ repo: 'acme/shop', number: 7 }])
     expect(store.feedbackDue({ repos: ['acme/other'] }, at(2))).toEqual([])
     expect(store.feedbackDue({ repo: 'acme/shop', number: 3 }, at(1))).toEqual([])
+    store.close()
+  })
+})
+
+describe('HistoryStore local runs', () => {
+  it('stay out of the feedback, the misses and the hourly limit of the watch', async () => {
+    const store = await openHistoryStore(fresh())
+    const now = '2026-10-18T13:30:00.000Z'
+    store.addRun({ ...LOCAL_RUN, startedAt: '2026-10-18T13:00:00.000Z' })
+
+    expect(store.feedbackDue({}, now)).toEqual([])
+    expect(store.aiRuns({ repo: 'acme/shop', number: 0 }, { replays: true })).toEqual([])
+    expect(store.watchRunsSince('2026-10-18T12:30:00.000Z')).toEqual([])
     store.close()
   })
 })

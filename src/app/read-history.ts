@@ -110,7 +110,7 @@ export interface StoredCoverage {
 
 export interface ReviewDetail {
   run: RunRecord
-  pullRequest: { url: string; title: string | null }
+  pullRequest: { url: string | null; title: string | null }
   verdict: NonNullable<RunRecord['verdict']> | null
   score: { value: number; reason: string | null } | null
   coverage: StoredCoverage | null
@@ -180,6 +180,7 @@ export function reviewDetailOf(stored: RunRecord, published: FeedbackFinding[]):
   const { resultJson, ...run } = stored
   const result = objectOf(parseJson(resultJson))
   const pullRequest = objectOf(result?.pullRequest)
+  const local = objectOf(result?.local)
   const review = objectOf(result?.review)
   const score = objectOf(review?.score)
   const scoreValue = numberOf(score?.value) ?? run.score ?? null
@@ -187,8 +188,11 @@ export function reviewDetailOf(stored: RunRecord, published: FeedbackFinding[]):
     run,
     pullRequest: {
       url:
-        stringOf(pullRequest?.url) ?? `https://github.com/${run.repo}/pull/${String(run.number)}`,
-      title: stringOf(pullRequest?.title) ?? null,
+        run.source === 'local'
+          ? null
+          : (stringOf(pullRequest?.url) ??
+            `https://github.com/${run.repo}/pull/${String(run.number)}`),
+      title: stringOf(pullRequest?.title) ?? stringOf(local?.title) ?? null,
     },
     verdict: run.verdict ?? null,
     score:

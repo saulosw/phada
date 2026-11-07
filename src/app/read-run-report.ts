@@ -115,7 +115,7 @@ function runReportOf(stored: RunRecord): RunReport {
   return {
     run,
     result: result ?? null,
-    title: stringOf(objectOf(json.pullRequest)?.title) ?? null,
+    title: stringOf(objectOf(json.pullRequest ?? json.local)?.title) ?? null,
     ...defined('publishedFrom', numberOf(json.publishedFrom)),
     ...defined('posted', postedOf(json.publication)),
     ...defined('closeToCut', closeToCutOf(review)),

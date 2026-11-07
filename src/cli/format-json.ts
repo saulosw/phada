@@ -31,6 +31,7 @@ import { reviewVerdict } from '../review/verdict.js'
 import { usageReport } from '../review/token-usage.js'
 import type { UsageReport } from '../review/token-usage.js'
 import type { GitHubReview } from './format-github.js'
+import type { LocalHeader } from './format-review.js'
 
 const SCHEMA_VERSION = 1
 
@@ -123,6 +124,60 @@ export function formatReviewJson(
           related: relatedJson(related),
           recheck: recheckJson(recheck),
           usage: usageReportJson(usageReport(outcome.result.passUsage, recheck ?? undefined)),
+        }
+  return `${JSON.stringify(body, null, 2)}\n`
+}
+
+export interface LocalReviewReports {
+  outcome: ReviewOutcome
+  context: ContextReport | null
+  investigation: InvestigationReport | null
+  impact: ImpactReport | null
+  impactText?: string
+  related: RelatedReport | null
+  language?: string
+}
+
+export function formatLocalReviewJson(
+  local: LocalHeader & { reviewed: string; title: string },
+  reports: LocalReviewReports,
+  fixFor?: (blocked: BlockedCommand) => string,
+): string {
+  const { outcome, impact } = reports
+  const localBlock = {
+    repo: local.repo,
+    branch: local.branch ?? null,
+    base: local.base,
+    head: local.head,
+    dirty: local.dirty,
+    reviewed: local.reviewed,
+    title: local.title,
+  }
+  const blocks = {
+    context: reports.context === null ? null : contextJson(reports.context),
+    investigation: reports.investigation,
+    impact: impact === null ? null : { ...impact, text: reports.impactText ?? null },
+    related: relatedJson(reports.related),
+  }
+  const body =
+    outcome.status === 'skipped'
+      ? {
+          schemaVersion: SCHEMA_VERSION,
+          status: outcome.status,
+          reason: outcome.reason,
+          verdict: 'skipped',
+          local: localBlock,
+          ...blocks,
+          usage: usageReportJson(usageReport(undefined, undefined)),
+        }
+      : {
+          schemaVersion: SCHEMA_VERSION,
+          status: outcome.status,
+          verdict: reviewVerdict(outcome.result),
+          local: localBlock,
+          review: reviewJson(outcome.result, fixFor, reports.language),
+          ...blocks,
+          usage: usageReportJson(usageReport(outcome.result.passUsage, undefined)),
         }
   return `${JSON.stringify(body, null, 2)}\n`
 }

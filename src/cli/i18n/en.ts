@@ -73,6 +73,9 @@ export const english: Messages = {
   terminal: {
     reviewOf: 'Review of',
     head: 'head',
+    local: 'local',
+    base: 'base',
+    uncommitted: 'uncommitted',
     state: (state, draft) => (draft ? `${state}, draft` : state),
     score: 'Confidence score',
     findings: 'Findings',

@@ -134,7 +134,20 @@ function shopDetail(): RepositoryDetail {
     },
     index: busyList().repositories[1]?.index ?? emptyRepository('x').index,
     related: [{ repo: 'acme/api', description: 'The API it calls', origin: 'repository' }],
-    reviews: { runs: [review('acme/shop'), review('acme/shop', { id: 8, number: 41 })], total: 7 },
+    reviews: {
+      runs: [
+        review('acme/shop'),
+        review('acme/shop', {
+          id: 8,
+          source: 'local',
+          number: 0,
+          branch: 'feat/cart',
+          dirty: true,
+          title: 'Try the cart',
+        }),
+      ],
+      total: 7,
+    },
   }
 }
 
@@ -211,6 +224,8 @@ describe('RepositoriesScreen', () => {
     expect(end).toContain('acme/api — The API it calls')
     expect(end).toContain('Last reviews (2 of 7)')
     expect(end).toMatch(/#42\s+comments\s+3\/5\s+2h ago\s+Add the checkout flow/)
+    expect(end).toMatch(/@feat\/cart\* \(local\)\s+comments\s+3\/5\s+2h ago\s+Try the cart/)
+    expect(end).not.toContain('#0')
 
     await view.press(KEYS.escape)
     await waitFor(() => view.frame().includes('3 repositories'))

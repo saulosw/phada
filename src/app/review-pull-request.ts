@@ -82,6 +82,8 @@ export interface PullRequestReviewInput {
   viewer?: string
   conversation?: Conversation
   ci?: Ci
+  mirrorRef?: string
+  learnEdges?: boolean
   signal?: AbortSignal
 }
 
@@ -168,7 +170,7 @@ export async function reviewPullRequest(
   stop()
   const language = options.language ?? loaded.options.language
   const investigate = options.investigate ?? loaded.options.investigate ?? true
-  const keepAs = `refs/phada/pull/${pullRequest.number}`
+  const keepAs = input.mirrorRef ?? `refs/phada/pull/${pullRequest.number}`
   const planned = await buildPasses({
     ...(loaded.options.review === undefined ? {} : { review: loaded.options.review }),
     ...(options.skills === undefined ? {} : { cliSkills: options.skills }),
@@ -220,7 +222,7 @@ export async function reviewPullRequest(
       }
       stop()
       if (fetched !== undefined) {
-        head = await openHeadGraph(pullRequest, loaded, fetched, deps, signal)
+        head = await openHeadGraph(pullRequest, loaded, { ...fetched, keepAs }, deps, signal)
         stop()
         if (loaded.repos.length > 0 && deps.related !== undefined) {
           try {
@@ -394,7 +396,10 @@ export async function reviewPullRequest(
     )
 
     const reviewed = outcome.status === 'reviewed' ? outcome.result : undefined
-    const learned = learn(head, investigation, reviewed, pullRequest, deps.events, keptRepos)
+    const learned =
+      input.learnEdges === false
+        ? []
+        : learn(head, investigation, reviewed, pullRequest, deps.events, keptRepos)
     const report = buildInvestigationReport({
       status: investigation !== undefined ? 'used' : investigate ? 'unavailable' : 'off',
       ...(unavailable === undefined ? {} : { reason: unavailable }),
@@ -520,11 +525,11 @@ function linkedOf(opened: readonly OpenedRelated[]) {
 async function openHeadGraph(
   pullRequest: PullRequest,
   loaded: LoadedContext,
-  opened: { mirror: GitMirror; sha: string; checkout: Checkout },
+  opened: { mirror: GitMirror; sha: string; checkout: Checkout; keepAs: string },
   deps: PullRequestReviewDeps,
   signal: AbortSignal | undefined,
 ): Promise<HeadGraph> {
-  const { mirror, sha, checkout } = opened
+  const { mirror, sha, checkout, keepAs } = opened
   let store: IndexStore | undefined
   let observed: ObservedStore | undefined
   try {
@@ -534,7 +539,7 @@ async function openHeadGraph(
     const result = await indexForReview(
       {
         sha,
-        ref: `refs/phada/pull/${pullRequest.number}`,
+        ref: keepAs,
         files,
         ignore: loaded.ignore,
         deadline,

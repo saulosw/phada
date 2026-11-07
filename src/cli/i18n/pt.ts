@@ -82,6 +82,9 @@ export const portuguese: Messages = {
   terminal: {
     reviewOf: 'Revisão de',
     head: 'commit',
+    local: 'local',
+    base: 'base',
+    uncommitted: 'não commitado',
     state: (state, draft) => {
       const name = state === 'open' ? 'aberta' : 'fechada'
       return draft ? `${name}, rascunho` : name

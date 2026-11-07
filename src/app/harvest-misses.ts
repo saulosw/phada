@@ -90,7 +90,7 @@ function localReview(run: RunRecord): LocalReview {
 
 function findingRun(run: RunRecord): FindingRun[] {
   const findings = storedFindings(run.resultJson)
-  if (run.id === undefined || findings === undefined) return []
+  if (run.id === undefined || findings === undefined || run.source === 'local') return []
   const { id, headSha, source, finishedAt } = run
   return [{ id, headSha, source, finishedAt, findings }]
 }

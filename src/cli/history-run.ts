@@ -1,4 +1,6 @@
 import { errorMessage } from '../app/error-message.js'
+import type { LocalRun } from '../app/local-review.js'
+import type { PullRequestReview } from '../app/review-pull-request.js'
 import type { PublicationResult, ReviewRun } from '../app/review-and-publish.js'
 import type { PullCi, RunOutcome } from '../app/watch-repositories.js'
 import { ProviderError } from '../providers/types.js'
@@ -66,6 +68,43 @@ export function historyRun(run: ReviewRun, json: string, meta: RunMeta): RunReco
           ...(result.model === undefined ? {} : { model: result.model }),
         }),
     ...(meta.errorKind === undefined ? {} : { errorKind: meta.errorKind }),
+  }
+}
+
+export type LocalRunMeta = Pick<RunMeta, 'startedAt' | 'finishedAt' | 'provider' | 'model'>
+
+export interface LocalRunReview {
+  local: LocalRun
+  reviewed: Pick<PullRequestReview, 'outcome'>
+}
+
+export function localHistoryRun(
+  review: LocalRunReview,
+  json: string,
+  meta: LocalRunMeta,
+): RunRecord {
+  const { local, reviewed } = review
+  const { outcome } = reviewed
+  const result = outcome.status === 'reviewed' ? outcome.result : undefined
+  const model = result?.model ?? meta.model
+  return {
+    source: 'local',
+    repo: local.repo,
+    number: 0,
+    headSha: local.head,
+    ...(local.branch === undefined ? {} : { branch: local.branch }),
+    dirty: local.dirty,
+    startedAt: meta.startedAt,
+    finishedAt: meta.finishedAt,
+    status: result === undefined ? 'nothing' : 'not-published',
+    aiCalled: result !== undefined,
+    provider: meta.provider,
+    ...(model === undefined ? {} : { model }),
+    verdict: result === undefined ? 'skipped' : reviewVerdict(result),
+    ...(result === undefined
+      ? {}
+      : { findings: result.findings.length, score: result.score.value }),
+    resultJson: json,
   }
 }
 

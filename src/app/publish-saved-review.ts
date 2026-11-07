@@ -37,6 +37,7 @@ export type PublishRefusal =
   | { kind: 'not-a-dry-run'; status: RunStatus; url?: string }
   | { kind: 'nothing-to-publish' }
   | { kind: 'replay' }
+  | { kind: 'local' }
   | { kind: 'outdated' }
   | { kind: 'head-moved'; from: string; to: string }
 
@@ -121,6 +122,7 @@ function savedReview(id: number, deps: PublishSavedReviewDeps): SavedReview | Pu
   const run = deps.readRun(id)
   if (run === undefined) return { kind: 'not-found' }
   if (run.source === 'replay') return { kind: 'replay' }
+  if (run.source === 'local') return { kind: 'local' }
   if (run.status !== 'dry-run') {
     return {
       kind: 'not-a-dry-run',

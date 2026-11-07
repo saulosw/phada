@@ -95,6 +95,8 @@ export const RUN_TABLE: HistoryTable = {
     resultJson: 'result_json',
     verdict: 'verdict',
     requestSource: 'request_source',
+    branch: 'branch',
+    dirty: 'dirty',
   },
 }
 
@@ -227,7 +229,7 @@ const NUMBERS = new Set([
   'findingId',
   'commentsLastId',
 ])
-const BOOLEANS = new Set(['eligible', 'aiCalled', 'outdated'])
+const BOOLEANS = new Set(['eligible', 'aiCalled', 'outdated', 'dirty'])
 const JSON_FIELDS = new Set(['data', 'ciPending', 'ciFailing', 'scope'])
 const LOWERCASE = new Set(['repo'])
 

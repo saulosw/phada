@@ -318,6 +318,27 @@ describe('readReviewDetail', () => {
     })
   })
 
+  it('reads a local run with the title of its branch and no pull request link', () => {
+    const local: RunRecord = {
+      ...RUN,
+      source: 'local',
+      number: 0,
+      status: 'not-published',
+      url: undefined,
+      branch: 'feat/spend',
+      resultJson: JSON.stringify({
+        local: { repo: 'acme/shop', branch: 'feat/spend', title: 'Spend crystals' },
+        review: { summary: 'Adds spending.' },
+      }),
+    }
+
+    expect(readReviewDetail(fakeHistory([local]), 7)).toMatchObject({
+      pullRequest: { url: null, title: 'Spend crystals' },
+      summary: 'Adds spending.',
+      publication: null,
+    })
+  })
+
   it('reads a run without a stored result or with one it cannot read', () => {
     const failed: RunRecord = {
       ...RUN,

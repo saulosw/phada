@@ -1,3 +1,4 @@
+import { runTarget } from '../app/run-target.js'
 import type { ReviewRun } from '../app/review-and-publish.js'
 import type { WatchEvent } from '../app/watch-event.js'
 import { refusalText } from './format-request.js'
@@ -176,7 +177,7 @@ function section<T>(
 
 function runLine(run: RunRecord): string {
   const parts = [
-    `${run.repo}#${run.number}`,
+    runTarget(run),
     shortSha(run.headSha),
     `${run.status} ${when(run.finishedAt)}`,
     run.url ?? run.error ?? run.reason ?? '',

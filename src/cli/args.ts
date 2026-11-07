@@ -108,6 +108,22 @@ export type CliCommand =
       force: boolean
       debug: boolean
     }
+  | {
+      kind: 'review-local'
+      base?: string
+      uncommitted: boolean
+      provider?: string
+      model?: string
+      language?: string
+      minConfidence?: number
+      format: OutputFormat
+      verify?: boolean
+      continuation?: boolean
+      groups?: boolean
+      investigate?: boolean
+      skills?: string[]
+      debug: boolean
+    }
 
 export const DEFAULT_HISTORY_LIMIT = 50
 const COMMIT_SHA = /^[0-9a-f]{7,40}$/i
@@ -122,7 +138,8 @@ reviewed.
 
 Commands:
   setup                  Set up Phada step by step in the app
-  review <pull request>  Review a pull request and publish the review on it
+  review [pull request]  Review a pull request and publish the review on it, or,
+                         with none, review the changes of this branch locally
   publish <id>           Publish a dry run kept in the history, without the AI
   init                   Create config files for Phada
   index <owner/repo>     Build a map of a repository's code on this machine
@@ -184,23 +201,34 @@ export const MCP_USAGE = `Usage: phada mcp
 An MCP server over stdio for the AI you already use: it can ask for a review
 (review_pull_request), follow it (job_status, list_queue) and wait for its
 verdict and findings (wait_for_job). Requests go through the same checks as
-phada enqueue and wait in the queue of phada watch, which runs them. Add it to
-your AI CLI, e.g. claude mcp add phada -- phada mcp
+phada enqueue and wait in the queue of phada watch, which runs them. It can
+also review the local changes of the branch in the folder it runs in, before
+a pull request exists, and publish nothing (review_local_changes, then
+wait_for_local_review). Add it to your AI CLI, e.g.
+claude mcp add phada -- phada mcp
 
 Options:
   --debug              Show error details
   -h, --help           Show this help
 
 Environment:
-  GITHUB_TOKEN         GitHub token used to read the pull requests asked for
+  GITHUB_TOKEN         GitHub token used to read the pull requests and the
+                       repositories asked for
   GH_TOKEN             Used when GITHUB_TOKEN is not set; with neither, Phada
                        uses the token of your gh login (gh auth login)`
 
-export const REVIEW_USAGE = `Usage: phada review <owner/repo#N | pull request URL> [options]
+export const REVIEW_USAGE = `Usage: phada review [<owner/repo#N | pull request URL>] [options]
 
 Reviews a GitHub pull request with the AI provider you choose and publishes the
 review on it as the owner of the GitHub token: one review with a comment on the
 line of each finding. Use --dry-run to only print it.
+
+With no pull request, reviews the commits of the branch checked out in this
+clone against where it left the default branch of origin (origin/<default>, as
+your last git fetch left it), with the rules of that base, and prints the
+review: nothing is posted. --uncommitted also reviews what is staged, changed
+or untracked (outside .gitignore). The repository is the GitHub repository of
+origin.
 
 Options:
   --provider <name>     AI provider: claude, codex or ollama (default: claude)
@@ -241,6 +269,9 @@ Options:
                         and kept in the history as a replay, never published
   --dry-run             Print what would be published and post nothing
   --force               Review again even if Phada already reviewed this commit
+  --base <ref>          Local review: the branch, tag or commit to compare with
+                        (default: origin/<default branch>)
+  --uncommitted         Local review: also review the changes not committed yet
   --debug               Show error details
   -h, --help            Show this help
 
@@ -572,8 +603,83 @@ function parseReviewArgs(argv: readonly string[]): CliCommand {
   if (values.help) return { kind: 'help', text: REVIEW_USAGE }
 
   const [input, ...extra] = positionals
-  if (input === undefined) throw new UsageError('Missing the pull request to review.')
   if (extra.length > 0) throw new UsageError('Review one pull request at a time.')
+  if (input === undefined) return parseLocalReviewArgs(values)
+  for (const flag of LOCAL_FLAGS) {
+    if (values[flag] !== undefined && values[flag] !== false) {
+      throw new UsageError(
+        `--${flag} is for local reviews: run phada review with no pull request in the clone.`,
+      )
+    }
+  }
+  const common = reviewOptions(values)
+  const skills = parseSkills(values.skill)
+  if (values['wait-ci'] === true && values['no-ci'] === true) {
+    throw new UsageError(
+      '--wait-ci waits for the checks that --no-ci does not read; use one of them.',
+    )
+  }
+  const head = parseHead(values.head)
+  if (head !== undefined && !values['dry-run']) {
+    throw new UsageError('--head only runs with --dry-run: a replay never publishes.')
+  }
+  if (head !== undefined && values['wait-ci'] === true) {
+    throw new UsageError(
+      '--wait-ci waits for the checks of the current head; --head replays an earlier commit.',
+    )
+  }
+
+  return {
+    kind: 'review',
+    ref: parsePullRequestRef(input),
+    ...common,
+    ...(values['no-resolve'] === true ? { resolveThreads: false } : {}),
+    ...(values['no-conversation'] === true ? { conversation: false } : {}),
+    ...(values['no-ci'] === true ? { ci: false } : {}),
+    ...(values['wait-ci'] === true ? { waitCi: true } : {}),
+    ...(skills === undefined ? {} : { skills }),
+    ...(head === undefined ? {} : { head }),
+    dryRun: values['dry-run'],
+    force: values.force,
+    debug: values.debug,
+  }
+}
+
+type ReviewValues = ReturnType<typeof parseOptions<typeof REVIEW_OPTIONS>>['values']
+
+const LOCAL_FLAGS = ['base', 'uncommitted'] as const
+const PULL_REQUEST_FLAGS = [
+  'force',
+  'wait-ci',
+  'head',
+  'no-resolve',
+  'no-conversation',
+  'no-ci',
+] as const
+
+function parseLocalReviewArgs(values: ReviewValues): CliCommand {
+  for (const flag of PULL_REQUEST_FLAGS) {
+    if (values[flag] !== undefined && values[flag] !== false) {
+      throw new UsageError(
+        `--${flag} needs a pull request: pass one (owner/repo#N), or leave --${flag} out of a local review.`,
+      )
+    }
+  }
+  const base = values.base?.trim()
+  if (base === '') throw new UsageError('--base needs a branch, tag or commit SHA.')
+  const common = reviewOptions(values)
+  const skills = parseSkills(values.skill)
+  return {
+    kind: 'review-local',
+    ...(base === undefined ? {} : { base }),
+    uncommitted: values.uncommitted === true,
+    ...common,
+    ...(skills === undefined ? {} : { skills }),
+    debug: values.debug,
+  }
+}
+
+function reviewOptions(values: ReviewValues) {
   if (values.model?.trim() === '') throw new UsageError('--model needs a model name.')
   if (values.language !== undefined && !LANGUAGE_TAG.test(values.language)) {
     throw new UsageError(`Invalid --language "${values.language}". Use a tag like en or pt-BR.`)
@@ -601,43 +707,17 @@ function parseReviewArgs(argv: readonly string[]): CliCommand {
   const groups = values.groups === true ? true : values['no-groups'] === true ? false : undefined
   const investigate =
     values.investigate === true ? true : values['no-investigate'] === true ? false : undefined
-  if (values['wait-ci'] === true && values['no-ci'] === true) {
-    throw new UsageError(
-      '--wait-ci waits for the checks that --no-ci does not read; use one of them.',
-    )
-  }
-  const skills = parseSkills(values.skill)
-  const head = parseHead(values.head)
-  if (head !== undefined && !values['dry-run']) {
-    throw new UsageError('--head only runs with --dry-run: a replay never publishes.')
-  }
-  if (head !== undefined && values['wait-ci'] === true) {
-    throw new UsageError(
-      '--wait-ci waits for the checks of the current head; --head replays an earlier commit.',
-    )
-  }
-
+  const format: OutputFormat = values.format
   return {
-    kind: 'review',
-    ref: parsePullRequestRef(input),
     ...(values.provider === undefined ? {} : { provider: values.provider }),
     ...(values.model === undefined ? {} : { model: values.model.trim() }),
     ...(values.language === undefined ? {} : { language: values.language }),
     ...(minConfidence === undefined ? {} : { minConfidence }),
-    format: values.format,
+    format,
     ...(verify === undefined ? {} : { verify }),
     ...(continuation === undefined ? {} : { continuation }),
     ...(groups === undefined ? {} : { groups }),
     ...(investigate === undefined ? {} : { investigate }),
-    ...(values['no-resolve'] === true ? { resolveThreads: false } : {}),
-    ...(values['no-conversation'] === true ? { conversation: false } : {}),
-    ...(values['no-ci'] === true ? { ci: false } : {}),
-    ...(values['wait-ci'] === true ? { waitCi: true } : {}),
-    ...(skills === undefined ? {} : { skills }),
-    ...(head === undefined ? {} : { head }),
-    dryRun: values['dry-run'],
-    force: values.force,
-    debug: values.debug,
   }
 }
 
@@ -671,6 +751,8 @@ const REVIEW_OPTIONS = {
   'wait-ci': { type: 'boolean' },
   skill: { type: 'string', multiple: true },
   head: { type: 'string' },
+  base: { type: 'string' },
+  uncommitted: { type: 'boolean' },
   'dry-run': { type: 'boolean', default: false },
   force: { type: 'boolean', default: false },
   debug: { type: 'boolean', default: false },

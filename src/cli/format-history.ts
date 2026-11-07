@@ -1,4 +1,5 @@
 import type { RepoStats } from '../app/read-history.js'
+import { runTarget } from '../app/run-target.js'
 import { destinationOf } from '../publish/feedback.js'
 import type { Destination, SignalKind } from '../publish/feedback.js'
 import type { FindingRecord, RunRecord } from '../store/history-store.js'
@@ -70,7 +71,7 @@ function runLine(run: RunRecord): string {
   return [
     String(run.id ?? '').padStart(4),
     formatLocalTime(new Date(run.startedAt)),
-    `${run.repo}#${run.number}`,
+    runTarget(run),
     shortSha(run.headSha),
     (run.requestSource ?? run.source).padEnd(10),
     run.status.padEnd(9),
@@ -109,7 +110,7 @@ export function runJson(run: RunRecord) {
     source: run.source,
     requestSource: run.requestSource ?? null,
     repo: run.repo,
-    number: run.number,
+    number: run.source === 'local' ? null : run.number,
     headSha: run.headSha,
     startedAt: run.startedAt,
     finishedAt: run.finishedAt,
@@ -123,6 +124,8 @@ export function runJson(run: RunRecord) {
     reason: run.reason ?? null,
     errorKind: run.errorKind ?? null,
     error: run.error ?? null,
+    branch: run.branch ?? null,
+    dirty: run.dirty ?? null,
   }
 }
 
