@@ -237,6 +237,14 @@ export const english: UiMessages = {
       limited: (count, until) =>
         `${number(count)} ${count === 1 ? 'review' : 'reviews'} in the last hour: the next one starts at ${until}.`,
       refused: (source, ref, reason) => `Refused a request from ${source} for ${ref}: ${reason}.`,
+      replied: (ref, place, kind, outcome) => `Reply on ${ref} at ${place}: ${kind}, ${outcome}.`,
+      replyOutcomes: {
+        posted: 'posted',
+        resolved: 'posted and resolved',
+        noAnswer: 'no answer needed',
+        skipped: 'skipped (thread resolved)',
+        notPosted: 'not posted',
+      },
     },
   },
   reviews: {
@@ -295,6 +303,13 @@ export const english: UiMessages = {
       ignored: 'ignored',
       'negative-reaction': 'negative reaction',
       'human-reply': 'human reply',
+    },
+    replyKinds: {
+      ack: 'ack',
+      applied: 'applied',
+      question: 'question',
+      disagreed: 'disagreed',
+      refuted: 'refuted',
     },
     detail: {
       score: 'Score',
@@ -715,6 +730,7 @@ export const english: UiMessages = {
     },
     marks: (negative, replies) =>
       `${negative} with a negative reaction · ${replies} with a reply from a person`,
+    replies: (kinds) => `Replies: ${kinds}`,
     detail: {
       published: 'Comments Phada published',
       noComments: 'No comments published here yet.',
@@ -1008,7 +1024,14 @@ export const english: UiMessages = {
       noAnswer: 'no answer',
       publishing: 'Publishing on GitHub…',
     },
-    runs: { review: 'review', verify: 'verify', recheck: 'recheck', skill: 'skill', fix: 'fix' },
+    runs: {
+      review: 'review',
+      verify: 'verify',
+      recheck: 'recheck',
+      reply: 'reply',
+      skill: 'skill',
+      fix: 'fix',
+    },
     warnings: (count) => `Warnings (${count})`,
     moreWarnings: (count) => `+${number(count)} more`,
     done: (elapsed) => `Done in ${elapsed}.`,

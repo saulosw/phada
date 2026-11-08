@@ -73,6 +73,7 @@ const THREADS_QUERY = `query($owner: String!, $repo: String!, $number: Int!, $af
               id
               url
               body
+              diffHunk
               createdAt
               publishedAt
               authorAssociation
@@ -152,6 +153,7 @@ export interface ReviewThread {
   negativeReactions: number
   replies: ThreadComment[]
   commentId?: string
+  diffHunk?: string
   createdAt?: string
   association?: string
   bot?: boolean
@@ -314,6 +316,7 @@ function toThread(node: unknown): ReviewThread {
       ? {}
       : {
           commentId: stringField(comment, 'id'),
+          ...diffHunkOf(comment),
           createdAt: shownAt(comment, 'publishedAt'),
           association: stringField(comment, 'authorAssociation'),
           bot: authorOf(comment, 'author').bot,
@@ -323,6 +326,11 @@ function toThread(node: unknown): ReviewThread {
         }),
     comments: numberField(node, 'replies.totalCount'),
   }
+}
+
+function diffHunkOf(comment: unknown): Pick<ReviewThread, 'diffHunk'> {
+  const hunk = field(comment, 'diffHunk')
+  return typeof hunk === 'string' && hunk !== '' ? { diffHunk: hunk } : {}
 }
 
 function startLineOf(node: unknown): Pick<ReviewThread, 'startLine'> {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type {
+  ClassifiedReply,
   FindingRecord,
   LessonRecord,
   MissRecord,
@@ -69,6 +70,7 @@ function readers(
   observed: Record<string, ObservedRead> = {},
   misses: { open: MissRecord[]; replays: MissReplayRecord[] } = { open: [], replays: [] },
   lessons: LessonRecord[] = [],
+  replies: ClassifiedReply[] = [],
 ): LearningsReaders {
   return {
     history:
@@ -76,6 +78,7 @@ function readers(
         ? undefined
         : {
             findings: () => findings,
+            replies: () => replies,
             misses: (filter) => {
               expect(filter).toEqual({ state: 'open' })
               return { misses: misses.open, total: misses.open.length }
@@ -101,12 +104,35 @@ describe('readLearnings', () => {
 
   it('shows the feedback of each repository and of each rule, without relations', async () => {
     const learnings = await readLearnings(
-      readers([
-        finding(1, { rule: 'money', signals: [signal('fixed')] }),
-        finding(2, { rule: 'money', signals: [signal('dismissed'), signal('human-reply')] }),
-        finding(3, { signals: [signal('negative-reaction')] }),
-        finding(4, { repo: 'acme/api', rule: 'auth' }),
-      ]),
+      readers(
+        [
+          finding(1, { rule: 'money', signals: [signal('fixed')] }),
+          finding(2, {
+            rule: 'money',
+            threadId: 'PRRT_2',
+            signals: [signal('dismissed'), signal('human-reply')],
+          }),
+          finding(3, { signals: [signal('negative-reaction')] }),
+          finding(4, { repo: 'acme/api', rule: 'auth' }),
+        ],
+        {},
+        undefined,
+        [],
+        [
+          {
+            repo: 'acme/shop',
+            number: 3,
+            threadId: 'PRRT_2',
+            commentId: 'c1',
+            author: 'ana',
+            kind: 'refuted',
+            answered: true,
+            resolved: true,
+            source: 'watch',
+            observedAt: '2026-10-22T12:00:00.000Z',
+          },
+        ],
+      ),
     )
     expect(learnings.recorded).toBe(true)
     expect(learnings.repos.map(({ repo }) => repo)).toEqual(['acme/api', 'acme/shop'])
@@ -121,6 +147,7 @@ describe('readLearnings', () => {
       open: 1,
       negativeReaction: 1,
       humanReply: 1,
+      replies: { ack: 0, applied: 0, question: 0, disagreed: 0, refuted: 1 },
     })
     expect(shop?.rules).toEqual([
       {
@@ -133,6 +160,7 @@ describe('readLearnings', () => {
         open: 0,
         negativeReaction: 0,
         humanReply: 1,
+        replies: { ack: 0, applied: 0, question: 0, disagreed: 0, refuted: 1 },
       },
     ])
     expect(learnings.repos[0]?.rules.map(({ rule }) => rule)).toEqual(['auth'])

@@ -177,3 +177,17 @@ export class GitHubPermissionError extends GitHubError {
     this.apiMessage = apiMessage
   }
 }
+
+export class ThreadPermissionError extends GitHubError {
+  override readonly name = 'ThreadPermissionError'
+  readonly apiMessage?: string
+
+  constructor(apiMessage?: string) {
+    const summary =
+      'GitHub denied replying on or resolving a review thread: the token cannot write pull request review comments. ' +
+      'Use a fine-grained token with "Pull requests: Read and write" or a classic token with the repo scope ' +
+      '(public_repo for public repositories).'
+    super(apiMessage === undefined ? summary : `${summary} GitHub says: ${apiMessage}`)
+    this.apiMessage = apiMessage
+  }
+}

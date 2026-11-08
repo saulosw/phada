@@ -2,16 +2,13 @@ import { CiReadError, readCheckEntries } from '../app/read-ci.js'
 import type { PullCi } from '../app/watch-repositories.js'
 import type { LocalFileSystem } from '../config/local-files.js'
 import type { CiSettings } from '../config/merge-config.js'
-import { parseConfigText } from '../config/parse-config.js'
-import type { ConfigLayer } from '../config/types.js'
 import { loadUserLayers } from '../config/user-config.js'
-import { mergeLayers } from '../context/load-context.js'
-import { phadaFiles } from '../context/phada-paths.js'
 import { splitRepoName } from '../github/pull-request-ref.js'
 import type { FetchPullRequestOptions, PullRequestMetadata } from '../github/pull-request.js'
 import { ciSummary } from '../context/ci-state.js'
 import type { JobRecord } from '../watch/types.js'
 import type { ContextReaders } from './context-sources.js'
+import { effectiveConfigAt } from './repository-config.js'
 import { ciReaders } from './review-wiring.js'
 import type { CiReaderDeps } from './review-wiring.js'
 
@@ -66,12 +63,5 @@ async function pullCiSettings(
     loadUserLayers({ env: deps.env, home: deps.home, files: deps.files, ...target }),
     deps.fetchPullRequestMetadata({ ...target, number: job.number, token }),
   ])
-  const { config } = phadaFiles('')
-  const text = await deps.fetchRepositoryFile({ ...target, token, path: config, ref: pull.baseSha })
-  const parsed = text === null ? undefined : parseConfigText(text)
-  const repositoryLayers: ConfigLayer[] =
-    parsed?.ok === true
-      ? [{ kind: 'repo-root', dir: '', configLabel: config, config: parsed.config }]
-      : []
-  return mergeLayers(userLayers, repositoryLayers).ci
+  return (await effectiveConfigAt(deps, { ...target, token }, pull.baseSha, userLayers)).ci
 }

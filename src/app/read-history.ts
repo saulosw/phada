@@ -1,9 +1,12 @@
 import { destinationOf } from '../publish/feedback.js'
+import { noReplies, repliedKinds } from './reply-kinds.js'
+import type { ReplyCounts } from './reply-kinds.js'
 import { numberOf, objectOf, parseJson, stringOf, stringsOf } from './stored-json.js'
 import { storedCoverage, storedSuggestion } from './stored-review.js'
 import type { CoverageGapKind, CoverageLevel, Suggestion } from '../review/types.js'
 import type { Destination, SignalKind } from '../publish/feedback.js'
 import type {
+  ClassifiedReply,
   FindingFilter,
   FindingRecord,
   HistoryFilter,
@@ -14,11 +17,14 @@ import type {
 
 export type { HistoryFilter, ListedRun, RunRecord } from '../store/history-store.js'
 
-export type HistoryReader = Pick<HistoryStore, 'runs' | 'findings' | 'run'>
+export type HistoryReader = Pick<HistoryStore, 'runs' | 'findings' | 'run' | 'replies'>
+
+export type { ReplyCounts } from './reply-kinds.js'
 
 export interface FeedbackFinding extends FindingRecord {
   destination: Destination
   marks: SignalKind[]
+  replies: ReplyCounts
 }
 
 export interface FeedbackCounts {
@@ -29,6 +35,7 @@ export interface FeedbackCounts {
   open: number
   negativeReaction: number
   humanReply: number
+  replies: ReplyCounts
 }
 
 export interface RepoStats extends FeedbackCounts {
@@ -135,29 +142,40 @@ export function readReviews(
 }
 
 export function readFindings(
-  history: HistoryReader | undefined,
+  history: Pick<HistoryReader, 'findings' | 'replies'> | undefined,
   filter: FindingFilter,
 ): FeedbackFinding[] {
-  return (history?.findings(filter) ?? []).map(withFeedback)
+  if (history === undefined) return []
+  return feedbackOf(history.findings(filter), history.replies(replyFilterOf(filter)))
 }
 
 export function readFeedbackStats(
-  history: Pick<HistoryReader, 'findings'> | undefined,
+  history: Pick<HistoryReader, 'findings' | 'replies'> | undefined,
   filter: FindingFilter,
 ): { repos: RepoStats[]; rules: RuleStats[] } {
   const findings = history?.findings(filter) ?? []
-  return { repos: feedbackStats(findings), rules: ruleStats(findings) }
+  const replies = history?.replies(replyFilterOf(filter)) ?? []
+  return { repos: feedbackStats(findings, replies), rules: ruleStats(findings, replies) }
 }
 
-export function feedbackStats(findings: readonly FindingRecord[]): RepoStats[] {
-  return countBy(findings, (finding) => ({ repo: finding.repo })).sort((a, b) =>
-    a.repo.localeCompare(b.repo),
+export function feedbackStats(
+  findings: readonly FindingRecord[],
+  replies: readonly ClassifiedReply[] = [],
+): RepoStats[] {
+  return countBy(feedbackOf(findings, replies), (finding) => ({ repo: finding.repo })).sort(
+    (a, b) => a.repo.localeCompare(b.repo),
   )
 }
 
-export function ruleStats(findings: readonly FindingRecord[]): RuleStats[] {
+export function ruleStats(
+  findings: readonly FindingRecord[],
+  replies: readonly ClassifiedReply[] = [],
+): RuleStats[] {
   return countBy(
-    findings.filter((finding) => finding.rule !== undefined),
+    feedbackOf(
+      findings.filter((finding) => finding.rule !== undefined),
+      replies,
+    ),
     (finding) => ({ repo: finding.repo, rule: finding.rule ?? '' }),
   ).sort((a, b) => a.repo.localeCompare(b.repo) || a.rule.localeCompare(b.rule))
 }
@@ -168,12 +186,13 @@ export function readReviewDetail(
 ): ReviewDetail | undefined {
   const stored = history?.run(id)
   if (history === undefined || stored === undefined) return undefined
+  const pull = { repo: stored.repo, number: stored.number }
   return reviewDetailOf(
     stored,
-    history
-      .findings({ repo: stored.repo, number: stored.number })
-      .filter((finding) => finding.runId === id)
-      .map(withFeedback),
+    feedbackOf(
+      history.findings(pull).filter((finding) => finding.runId === id),
+      history.replies(pull),
+    ),
   )
 }
 
@@ -212,27 +231,47 @@ export function reviewDetailOf(stored: RunRecord, published: FeedbackFinding[]):
   }
 }
 
-function withFeedback(finding: FindingRecord): FeedbackFinding {
-  const marks = finding.signals
-    .filter((signal) => signal.clearedAt === undefined)
-    .map(({ kind }) => kind)
-  return { ...finding, destination: destinationOf(marks), marks }
+function feedbackOf(
+  findings: readonly FindingRecord[],
+  replies: readonly ClassifiedReply[],
+): FeedbackFinding[] {
+  const byThread = new Map<string, ReplyCounts>()
+  for (const { threadId, kind } of replies) {
+    const counts = byThread.get(threadId) ?? noReplies()
+    counts[kind]++
+    byThread.set(threadId, counts)
+  }
+  return findings.map((finding) => {
+    const marks = finding.signals
+      .filter((signal) => signal.clearedAt === undefined)
+      .map(({ kind }) => kind)
+    const replies = finding.threadId === undefined ? undefined : byThread.get(finding.threadId)
+    return { ...finding, destination: destinationOf(marks), marks, replies: replies ?? noReplies() }
+  })
+}
+
+function replyFilterOf({ repo, number }: FindingFilter): { repo?: string; number?: number } {
+  return {
+    ...(repo === undefined ? {} : { repo }),
+    ...(number === undefined ? {} : { number }),
+  }
 }
 
 function countBy<K extends { repo: string }>(
-  findings: readonly FindingRecord[],
-  keyOf: (finding: FindingRecord) => K,
+  findings: readonly FeedbackFinding[],
+  keyOf: (finding: FeedbackFinding) => K,
 ): (K & FeedbackCounts)[] {
   const groups = new Map<string, K & FeedbackCounts>()
   for (const finding of findings) {
     const key = keyOf(finding)
     const id = JSON.stringify(key)
     const counts = groups.get(id) ?? { ...key, ...emptyCounts() }
-    const { destination, marks } = withFeedback(finding)
+    const { destination, marks, replies } = finding
     counts.published++
     counts[destination]++
     if (marks.includes('negative-reaction')) counts.negativeReaction++
     if (marks.includes('human-reply')) counts.humanReply++
+    for (const { kind } of repliedKinds(replies)) counts.replies[kind]++
     groups.set(id, counts)
   }
   return [...groups.values()]
@@ -247,6 +286,7 @@ function emptyCounts(): FeedbackCounts {
     open: 0,
     negativeReaction: 0,
     humanReply: 0,
+    replies: noReplies(),
   }
 }
 

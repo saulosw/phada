@@ -189,6 +189,20 @@ describe('runHistory', () => {
           },
         ],
       })
+      store.recordReplies([
+        {
+          repo: 'acme/shop',
+          number: 3,
+          threadId: 'T1',
+          commentId: 'c1',
+          author: 'ana',
+          kind: 'refuted',
+          answered: true,
+          resolved: true,
+          source: 'watch',
+          observedAt: RUN.startedAt,
+        },
+      ])
     })
 
     await runHistory(
@@ -196,7 +210,9 @@ describe('runHistory', () => {
       h.deps,
     )
 
-    expect(h.stdout()).toContain('Findings:\n  P2  src/shop.ts:4  X  dismissed')
+    expect(h.stdout()).toContain(
+      'Findings:\n  P2  src/shop.ts:4  X  dismissed · replies: refuted 1',
+    )
   })
 
   it('a text list without a pull request does not read the findings', async () => {

@@ -345,4 +345,35 @@ create index run_by_source on run (source, started_at);
 create index run_by_job on run (job_id);
 `,
   },
+  {
+    version: 9,
+    sql: `
+create table thread_reply (
+  id integer primary key,
+  repo text not null,
+  number integer not null,
+  thread_id text not null,
+  comment_id text not null unique,
+  author text not null,
+  kind text not null check (kind in ('ack', 'applied', 'question', 'disagreed', 'refuted')),
+  answered integer not null,
+  answer_id text,
+  answer_url text,
+  resolved integer not null,
+  source text not null check (source in ('watch', 'manual')),
+  observed_at text not null
+);
+create index thread_reply_by_pull on thread_reply (repo, number, thread_id);
+alter table watched_repo add column review_comments_since text;
+alter table watched_repo add column review_comments_etag text;
+alter table watched_repo add column review_comments_last_id integer;
+create table reply_due (
+  repo text not null,
+  number integer not null,
+  since text not null,
+  tried_at text,
+  primary key (repo, number)
+);
+`,
+  },
 ]

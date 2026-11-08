@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { reviewState, reviewThread, threadReply } from '../../test/support/review-state.js'
 import type { ReviewThread } from '../github/pull-request-reviews.js'
 import { destinationOf, findingFingerprint, threadFeedback } from './feedback.js'
-import { FINDING_MARKER, resolvedMarker, reviewMarker } from './markers.js'
+import { FINDING_MARKER, replyMarker, resolvedMarker, reviewMarker } from './markers.js'
 
 const OLD = '0'.repeat(40)
 const HEAD = '1'.repeat(40)
@@ -105,6 +105,27 @@ describe('threadFeedback', () => {
     const replies = [FINDING_COMMENT, threadReply('me', 'Will fix in a follow-up.')]
 
     expect(feedbackOf(phadaThread({ replies }))?.signals).toEqual(['human-reply'])
+  })
+
+  it('a reply of Phada is not a human reply', () => {
+    const replies = [
+      FINDING_COMMENT,
+      threadReply('me', `It is checked.\n\n${replyMarker('question')}`),
+    ]
+
+    expect(feedbackOf(phadaThread({ replies }))?.signals).toEqual([])
+  })
+
+  it('resolved after Phada refuted its own finding is dismissed, even on outdated lines', () => {
+    const replies = [
+      FINDING_COMMENT,
+      threadReply('octocat', 'The caller checks it.'),
+      threadReply('me', `You are right.\n\n${replyMarker('refuted')}`),
+    ]
+    const feedback = feedbackOf(phadaThread({ isResolved: true, isOutdated: true, replies }))
+
+    expect(feedback?.destination).toBe('dismissed')
+    expect(feedback?.signals).toEqual(['dismissed', 'human-reply'])
   })
 
   it('lists the destination before the marks', () => {

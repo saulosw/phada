@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { FindingRecord, RunRecord } from '../store/history-store.js'
-import { feedbackStats } from '../app/read-history.js'
+import type { ReplyKind } from '../review/types.js'
+import type { ClassifiedReply, FindingRecord, RunRecord } from '../store/history-store.js'
+import { feedbackStats, readFindings } from '../app/read-history.js'
 import {
   formatHistoryJson,
   formatHistoryText,
@@ -56,6 +57,24 @@ const FINDING: FindingRecord = {
 }
 
 const finding = (overrides: Partial<FindingRecord>): FindingRecord => ({ ...FINDING, ...overrides })
+
+const reply = (threadId: string, commentId: string, kind: ReplyKind): ClassifiedReply => ({
+  repo: 'acme/shop',
+  number: 3,
+  threadId,
+  commentId,
+  author: 'ana',
+  kind,
+  answered: false,
+  resolved: false,
+  source: 'watch',
+  observedAt: STARTED,
+})
+
+const NO_REPLIES = { ack: 0, applied: 0, question: 0, disagreed: 0, refuted: 0 }
+
+const read = (findings: FindingRecord[], replies: ClassifiedReply[] = []) =>
+  readFindings({ findings: () => findings, replies: () => replies }, {})
 
 describe('formatHistoryText', () => {
   it('prints one line per run', () => {
@@ -116,22 +135,34 @@ describe('formatHistoryText', () => {
   })
 
   it('lists the findings of a pull request with destination and marks', () => {
-    const text = formatHistoryText([RUN], 1, [
-      FINDING,
-      finding({ id: 2, severity: undefined, line: undefined, outdated: false, signals: [] }),
-      finding({
-        id: 3,
-        outdated: false,
-        signals: [{ kind: 'human-reply', source: 'watch', observedAt: STARTED }],
-      }),
-    ])
+    const text = formatHistoryText(
+      [RUN],
+      1,
+      read(
+        [
+          FINDING,
+          finding({ id: 2, severity: undefined, line: undefined, outdated: false, signals: [] }),
+          finding({
+            id: 3,
+            threadId: 'T3',
+            outdated: false,
+            signals: [{ kind: 'human-reply', source: 'watch', observedAt: STARTED }],
+          }),
+        ],
+        [
+          reply('T3', 'c1', 'refuted'),
+          reply('T3', 'c2', 'question'),
+          reply('T3', 'c3', 'question'),
+        ],
+      ),
+    )
 
     expect(text).toContain(
       [
         'Findings:',
         '  P1  src/shop.ts:44  Spend has no auth  fixed · outdated · negative reaction',
         '  --  src/shop.ts  Spend has no auth  open',
-        '  P1  src/shop.ts:44  Spend has no auth  open · replied',
+        '  P1  src/shop.ts:44  Spend has no auth  open · replied · replies: question 2, refuted 1',
       ].join('\n'),
     )
   })
@@ -147,14 +178,18 @@ describe('formatHistoryText', () => {
       url: undefined,
       error: 'GitHub said no.\nDetails: 422',
     }
-    const text = formatHistoryText([failed], 1, [finding({ title: 'Two\nlines', signals: [] })])
+    const text = formatHistoryText(
+      [failed],
+      1,
+      read([finding({ title: 'Two\nlines', signals: [] })]),
+    )
 
     expect(text).toContain('GitHub said no. Details: 422')
     expect(text).toContain('  P1  src/shop.ts:44  Two lines  open · outdated')
   })
 
   it('strips control characters from titles', () => {
-    const text = formatHistoryText([], 0, [finding({ title: 'Bad\u001b[31m title‮' })])
+    const text = formatHistoryText([], 0, read([finding({ title: 'Bad\u001b[31m title‮' })]))
 
     expect(text).not.toContain('\u001b')
     expect(text).not.toContain('‮')
@@ -180,7 +215,9 @@ describe('formatHistoryJson', () => {
   })
 
   it('prints runs, findings and the total with schemaVersion 1', () => {
-    const json = JSON.parse(formatHistoryJson([RUN], 4, [FINDING])) as Record<string, unknown>
+    const json = JSON.parse(
+      formatHistoryJson([RUN], 4, read([FINDING], [reply('T1', 'c1', 'disagreed')])),
+    ) as Record<string, unknown>
 
     expect(json).toEqual({
       schemaVersion: 1,
@@ -225,6 +262,7 @@ describe('formatHistoryJson', () => {
           publishedAt: STARTED,
           destination: 'fixed',
           outdated: true,
+          replies: { ...NO_REPLIES, disagreed: 1 },
           signals: [
             { kind: 'dismissed', source: 'watch', observedAt: STARTED, clearedAt: STARTED },
             { kind: 'fixed', source: 'watch', observedAt: STARTED, clearedAt: null },
@@ -262,6 +300,7 @@ describe('feedbackStats', () => {
         open: 1,
         negativeReaction: 1,
         humanReply: 0,
+        replies: NO_REPLIES,
       },
       {
         repo: 'acme/web',
@@ -272,6 +311,7 @@ describe('feedbackStats', () => {
         open: 0,
         negativeReaction: 0,
         humanReply: 1,
+        replies: NO_REPLIES,
       },
     ])
   })
@@ -295,6 +335,17 @@ describe('formatStatsText', () => {
     )
   })
 
+  it('adds the findings that got each kind of reply, when any did', () => {
+    const replied = feedbackStats(
+      [FINDING, finding({ id: 2, threadId: 'T2', signals: [] })],
+      [reply('T1', 'c1', 'question'), reply('T1', 'c2', 'question'), reply('T2', 'c3', 'question')],
+    )
+
+    expect(formatStatsText(replied, undefined)).toContain(
+      'acme/shop: 2 comments · fixed 1 (50%) · dismissed 0 · ignored 0 · open 1 (50%) · negative reaction 1 · replied 0 · replies: question 2\n',
+    )
+  })
+
   it('names the period', () => {
     expect(formatStatsText(stats, STARTED)).toMatch(/^Since \d{4}-\d\d-\d\d\.\n/)
   })
@@ -308,7 +359,9 @@ describe('formatStatsText', () => {
 
 describe('formatStatsJson', () => {
   it('prints the stats with schemaVersion 1', () => {
-    expect(JSON.parse(formatStatsJson(feedbackStats([FINDING]), STARTED))).toEqual({
+    const stats = feedbackStats([FINDING], [reply('T1', 'c1', 'applied')])
+
+    expect(JSON.parse(formatStatsJson(stats, STARTED))).toEqual({
       schemaVersion: 1,
       since: STARTED,
       repos: [
@@ -321,6 +374,7 @@ describe('formatStatsJson', () => {
           open: 0,
           negativeReaction: 1,
           humanReply: 0,
+          replies: { ...NO_REPLIES, applied: 1 },
         },
       ],
     })

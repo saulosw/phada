@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { pullRequestFixture } from '../../test/support/pull-request.js'
 import type { ReviewRun } from '../app/review-and-publish.js'
+import type { ThreadReply } from '../app/reply-to-threads.js'
 import type { HistoryStatus } from '../store/history-store.js'
 import type { JobRecord } from '../watch/types.js'
 import { formatWatchEvent, formatWatchStatus, formatWatchStatusJson } from './format-watch.js'
@@ -8,6 +9,21 @@ import { formatWatchEvent, formatWatchStatus, formatWatchStatusJson } from './fo
 const local = (hours: number, minutes: number) => new Date(2026, 9, 18, hours, minutes)
 const AT = local(14, 3)
 const SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
+const ACK: ThreadReply = {
+  threadId: 'T1',
+  url: 'https://x/t1',
+  file: 'api/users.ts',
+  line: 63,
+  kind: 'ack',
+  posted: false,
+  resolved: false,
+}
+const REPLY: ThreadReply = {
+  ...ACK,
+  kind: 'question',
+  text: 'It comes from req.body.',
+  posted: true,
+}
 const JOB: JobRecord = {
   id: 1,
   repo: 'acme/shop',
@@ -165,6 +181,28 @@ describe('formatWatchEvent', () => {
         result: { status: 'refused', reason: 'closed' },
       },
       '[14:03] Refused a pr-command request for acme/shop#3: the pull request is closed.',
+    ],
+    [
+      { kind: 'replied', repo: 'acme/shop', number: 3, reply: REPLY },
+      '[14:03] Reply on acme/shop#3 at api/users.ts:63: question, posted.',
+    ],
+    [
+      {
+        kind: 'replied',
+        repo: 'acme/shop',
+        number: 3,
+        reply: { ...REPLY, kind: 'refuted', resolved: true },
+      },
+      '[14:03] Reply on acme/shop#3 at api/users.ts:63: refuted, posted and resolved.',
+    ],
+    [
+      {
+        kind: 'replied',
+        repo: 'acme/shop',
+        number: 3,
+        reply: { ...ACK, line: null },
+      },
+      '[14:03] Reply on acme/shop#3 at api/users.ts: ack, no answer needed.',
     ],
     [
       { kind: 'limited', count: 6, until: local(14, 40).toISOString() },

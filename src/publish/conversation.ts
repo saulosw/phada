@@ -12,7 +12,8 @@ import type {
   ConversationRole,
 } from '../review/types.js'
 import { byteLength, cutBytes } from '../context/byte-cut.js'
-import { findingTitle, hasFindingMarker, hasResolvedMarker, parseReviewMarker } from './markers.js'
+import { findingTitle, parseReviewMarker } from './markers.js'
+import { isPhadaComment } from './phada-state.js'
 import type { Conversation } from './types.js'
 
 export const CONVERSATION_BUDGET_BYTES = 16 * 1024
@@ -55,9 +56,8 @@ export function buildConversation({ state, comments, author }: ConversationInput
         : associationRole(who.association)
   const body = (text: string): string => cutBytes(text, CONVERSATION_BODY_BYTES, cuts)
   const own = (who: string, text: string): boolean =>
-    who !== '' &&
-    who === state.viewer &&
-    (parseReviewMarker(text) !== undefined || hasFindingMarker(text) || hasResolvedMarker(text))
+    isPhadaComment(state, { author: who, body: text }) ||
+    (who !== '' && who === state.viewer && parseReviewMarker(text) !== undefined)
 
   const items: ConversationItem[] = [
     ...comments.map((item): ConversationItem => ({

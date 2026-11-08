@@ -1,5 +1,15 @@
-import { describe, expect, it } from 'vitest'
-import type { FindingRecord, HistoryFilter, RunRecord } from '../store/history-store.js'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterAll, describe, expect, it } from 'vitest'
+import type { ReplyKind } from '../review/types.js'
+import { openHistoryStore } from '../store/history-store.js'
+import type {
+  ClassifiedReply,
+  FindingRecord,
+  HistoryFilter,
+  RunRecord,
+} from '../store/history-store.js'
 import {
   feedbackStats,
   readFeedbackStats,
@@ -54,7 +64,28 @@ const signal = (kind: FindingRecord['signals'][number]['kind'], clearedAt?: stri
   ...(clearedAt === undefined ? {} : { clearedAt }),
 })
 
-function fakeHistory(runs: RunRecord[], findings: FindingRecord[] = []): HistoryReader {
+const NO_REPLIES = { ack: 0, applied: 0, question: 0, disagreed: 0, refuted: 0 }
+
+function reply(threadId: string, commentId: string, kind: ReplyKind): ClassifiedReply {
+  return {
+    repo: 'acme/shop',
+    number: 3,
+    threadId,
+    commentId,
+    author: 'ana',
+    kind,
+    answered: kind === 'question' || kind === 'disagreed',
+    resolved: kind === 'refuted',
+    source: 'watch',
+    observedAt: '2026-10-22T12:00:00.000Z',
+  }
+}
+
+function fakeHistory(
+  runs: RunRecord[],
+  findings: FindingRecord[] = [],
+  replies: ClassifiedReply[] = [],
+): HistoryReader {
   return {
     runs: (filter: HistoryFilter) => {
       const matching = runs.filter(
@@ -75,6 +106,12 @@ function fakeHistory(runs: RunRecord[], findings: FindingRecord[] = []): History
           (filter.number === undefined || record.number === filter.number),
       ),
     run: (id) => runs.find((run) => run.id === id),
+    replies: (filter) =>
+      replies.filter(
+        (record) =>
+          (filter.repo === undefined || record.repo === filter.repo) &&
+          (filter.number === undefined || record.number === filter.number),
+      ),
   }
 }
 
@@ -181,6 +218,7 @@ describe('feedback stats', () => {
         open: 1,
         negativeReaction: 0,
         humanReply: 0,
+        replies: NO_REPLIES,
       },
       {
         repo: 'acme/shop',
@@ -191,6 +229,7 @@ describe('feedback stats', () => {
         open: 1,
         negativeReaction: 1,
         humanReply: 1,
+        replies: NO_REPLIES,
       },
     ])
   })
@@ -207,6 +246,7 @@ describe('feedback stats', () => {
         open: 1,
         negativeReaction: 0,
         humanReply: 0,
+        replies: NO_REPLIES,
       },
       {
         repo: 'acme/shop',
@@ -218,6 +258,7 @@ describe('feedback stats', () => {
         open: 0,
         negativeReaction: 1,
         humanReply: 0,
+        replies: NO_REPLIES,
       },
     ])
   })
@@ -228,6 +269,118 @@ describe('feedback stats', () => {
     expect(read.repos.map(({ repo }) => repo)).toEqual(['acme/shop'])
     expect(read.rules.map(({ rule, published }) => [rule, published])).toEqual([['cents', 2]])
     expect(readFeedbackStats(undefined, {})).toEqual({ repos: [], rules: [] })
+  })
+})
+
+describe('reply kinds', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'phada-read-history-'))
+  afterAll(() => rmSync(dir, { recursive: true, force: true }))
+  const SEEN = '2026-10-22T11:00:00.000Z'
+
+  async function storeWithReplies() {
+    const store = await openHistoryStore(join(dir, `${String(Math.random()).slice(2)}.sqlite`))
+    const published = (fingerprint: string, line: number, rule?: string) => ({
+      repo: 'acme/shop',
+      number: 3,
+      commitSha: SHA,
+      fingerprint,
+      file: 'src/a.ts',
+      line,
+      title: `Finding ${line}`,
+      severity: 'P1' as const,
+      confidence: 90,
+      ...(rule === undefined ? {} : { rule }),
+      publishedAt: '2026-10-22T10:01:00.000Z',
+    })
+    store.recordPublished([
+      published('f1', 1, 'cents'),
+      published('f2', 2, 'cents'),
+      published('f3', 3),
+    ])
+    const thread = (threadId: string, fingerprint: string, line: number) => ({
+      threadId,
+      fingerprint,
+      url: `https://github.com/acme/shop/pull/3#discussion_${threadId}`,
+      file: 'src/a.ts',
+      line,
+      title: `Finding ${line}`,
+      commitSha: SHA,
+      outdated: false,
+      destination: 'open' as const,
+      signals: [],
+    })
+    store.observeFeedback({
+      repo: 'acme/shop',
+      number: 3,
+      pullState: 'open',
+      observedAt: SEEN,
+      source: 'watch',
+      threads: [thread('PRRT_1', 'f1', 1), thread('PRRT_2', 'f2', 2), thread('PRRT_3', 'f3', 3)],
+    })
+    store.recordReplies([
+      reply('PRRT_1', 'c1', 'question'),
+      reply('PRRT_1', 'c2', 'question'),
+      reply('PRRT_1', 'c3', 'refuted'),
+      reply('PRRT_2', 'c4', 'applied'),
+      reply('PRRT_3', 'c5', 'question'),
+    ])
+    return store
+  }
+
+  it('gives each published finding the kinds of the replies in its thread', async () => {
+    const store = await storeWithReplies()
+    try {
+      const read = readFindings(store, { repo: 'acme/shop', number: 3 })
+
+      expect(read.map(({ line, replies }) => [line, replies])).toEqual([
+        [1, { ...NO_REPLIES, question: 2, refuted: 1 }],
+        [2, { ...NO_REPLIES, applied: 1 }],
+        [3, { ...NO_REPLIES, question: 1 }],
+      ])
+    } finally {
+      store.close()
+    }
+  })
+
+  it('counts the findings that got each kind per repository and per rule', async () => {
+    const store = await storeWithReplies()
+    try {
+      const { repos, rules } = readFeedbackStats(store, {})
+
+      expect(repos.map(({ repo, replies }) => [repo, replies])).toEqual([
+        ['acme/shop', { ...NO_REPLIES, question: 2, applied: 1, refuted: 1 }],
+      ])
+      expect(rules.map(({ rule, replies }) => [rule, replies])).toEqual([
+        ['cents', { ...NO_REPLIES, question: 1, applied: 1, refuted: 1 }],
+      ])
+    } finally {
+      store.close()
+    }
+  })
+
+  it('leaves the kinds at zero for a finding without a thread or replies', () => {
+    const history = fakeHistory(
+      [],
+      [finding(1, { threadId: 'PRRT_1' }), finding(2)],
+      [reply('PRRT_9', 'c1', 'ack')],
+    )
+
+    expect(readFindings(history, {}).map(({ replies }) => replies)).toEqual([
+      NO_REPLIES,
+      NO_REPLIES,
+    ])
+  })
+
+  it('gives the published findings of a review detail their reply kinds', () => {
+    const history = fakeHistory(
+      [{ ...RUN, resultJson: REVIEW_JSON }],
+      [finding(1, { runId: 7, threadId: 'PRRT_1' })],
+      [reply('PRRT_1', 'c1', 'disagreed')],
+    )
+
+    expect(readReviewDetail(history, 7)?.published.map(({ replies }) => replies)).toEqual([
+      { ...NO_REPLIES, disagreed: 1 },
+    ])
   })
 })
 

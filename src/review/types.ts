@@ -444,6 +444,32 @@ export interface RecheckReport {
   usage?: TokenUsage
 }
 
+export type ReplyRequest = Pick<ReviewRequest, 'pullRequest' | 'language'>
+
+export interface ReplyMessage {
+  author: string
+  role: 'phada' | 'person'
+  body: string
+  createdAt?: string
+}
+
+export interface ReplyThread {
+  file: string
+  line: number | null
+  comment: string
+  diffHunk?: string
+  conversation: ReplyMessage[]
+}
+
+export type ReplyKind = 'ack' | 'applied' | 'question' | 'disagreed' | 'refuted'
+
+export interface ReplyAnswer {
+  kind: ReplyKind
+  text?: string
+  durationMs: number
+  usage?: TokenUsage
+}
+
 export type SkipReviewReason = 'empty-diff' | 'all-ignored' | 'no-skill-applies'
 
 export type ReviewOutcome =

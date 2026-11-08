@@ -384,6 +384,21 @@ describe('parseConfigText', () => {
     })
   })
 
+  it('reads the replies of the watch and of a repository', () => {
+    const text = [
+      'watch:',
+      '  replies: mention',
+      '  repos:',
+      '    - repo: acme/web',
+      '      replies: off',
+    ].join('\n')
+
+    expect(parseConfigText(text)).toEqual({
+      ok: true,
+      config: { watch: { replies: 'mention', repos: [{ repo: 'acme/web', replies: 'off' }] } },
+    })
+  })
+
   it('reads the Slack channels and emojis', () => {
     const text = [
       'slack:',
@@ -517,6 +532,7 @@ describe('parseConfigText', () => {
       'watch:\n  repos: [A/b, a/B]',
       'watch.repos: a/b is listed twice',
     ],
+    ['an unknown replies mode', 'watch:\n  replies: always\n  repos: [a/b]', 'watch.replies'],
     [
       'zero reviews per hour',
       'watch:\n  maxReviewsPerHour: 0\n  repos: [a/b]',

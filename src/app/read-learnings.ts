@@ -9,7 +9,8 @@ import type { RepoStats, RuleStats } from './read-history.js'
 export type ObservedRead = { state: 'read'; edges: ObservedEdge[] } | { state: 'unreadable' }
 
 export interface LearningsReaders {
-  history: Pick<HistoryStore, 'findings' | 'misses' | 'missReplays' | 'lessons'> | undefined
+  history:
+    Pick<HistoryStore, 'findings' | 'replies' | 'misses' | 'missReplays' | 'lessons'> | undefined
   observedRepos(): Promise<string[]>
   readObserved(repo: string): Promise<ObservedRead>
   lessonFile(repo: string): string

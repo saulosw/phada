@@ -1,4 +1,12 @@
-import type { ConversationItem, Finding } from '../review/types.js'
+import type { ConversationItem, Finding, ReplyKind } from '../review/types.js'
+
+export const REPLY_KINDS = [
+  'ack',
+  'applied',
+  'question',
+  'disagreed',
+  'refuted',
+] as const satisfies readonly ReplyKind[]
 
 export interface PublicationPlan {
   comments: Finding[]

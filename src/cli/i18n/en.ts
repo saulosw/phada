@@ -109,6 +109,7 @@ export const english: Messages = {
         ? `1 comment from previous reviews is fixed in ${sha}.`
         : `${count} comments from previous reviews are fixed in ${sha}.`,
     resolvedReply: (sha, reason) => `Fixed in \`${sha}\`: ${reason}`,
+    automaticReply: '🦋 Automatic reply from Phada',
     ci: (state, total, failing, pending) => {
       const checks = formatCount(total, 'check')
       if (state === 'passing')

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import type { AcceptedLesson } from '../../app/decide-lesson.js'
 import { lessonRuleId, lessonThreads } from '../../app/lesson-rule.js'
 import type { FeedbackCounts } from '../../app/read-history.js'
+import { repliedKinds } from '../../app/reply-kinds.js'
 import type { Learnings, MissCounts, RepoLearnings } from '../../app/read-learnings.js'
 import {
   useAppDeps,
@@ -282,6 +283,14 @@ function RepoDetail({ repo }: { repo: RepoLearnings | undefined }) {
         {line}
       </Text>
     ))
+  const repliesLines = ({ replies }: FeedbackCounts, indent: number) => {
+    const kinds = repliedKinds(replies)
+    if (kinds.length === 0) return []
+    const text = kinds
+      .map(({ kind, count }) => `${messages.reviews.replyKinds[kind]} ${count}`)
+      .join(' · ')
+    return wrapped(m.replies(text), indent, colors.dim)
+  }
   const { feedback, observed } = repo
   const time = now()
   const lines: ReactNode[] = [<Text bold>{oneLine(repo.repo)}</Text>, <Text> </Text>]
@@ -305,6 +314,7 @@ function RepoDetail({ repo }: { repo: RepoLearnings | undefined }) {
       </Text>,
       ...wrapped(outcomesText(feedback, messages, 'all'), 2),
       ...wrapped(m.marks(feedback.negativeReaction, feedback.humanReply), 2, colors.dim),
+      ...repliesLines(feedback, 2),
       <Text> </Text>,
       <Text bold>{d.byRule(repo.rules.length)}</Text>,
     )
@@ -317,6 +327,7 @@ function RepoDetail({ repo }: { repo: RepoLearnings | undefined }) {
         </Text>,
         ...wrapped(commentsText(rule, messages, 'all'), 4),
         ...wrapped(m.marks(rule.negativeReaction, rule.humanReply), 4, colors.dim),
+        ...repliesLines(rule, 4),
       )
     }
   }

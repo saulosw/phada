@@ -6,6 +6,8 @@ import {
   withoutFindingMarker,
   hasResolvedMarker,
   parseReviewMarker,
+  replyKindOf,
+  replyMarker,
   resolvedMarker,
   reviewMarker,
 } from './markers.js'
@@ -110,5 +112,24 @@ describe('resolvedMarker', () => {
     expect(resolvedMarker(SHA)).toBe(`<!-- phada:resolved sha=${SHA} -->`)
     expect(hasResolvedMarker(`Fixed in \`a1b2c3d\`.\n\n${resolvedMarker(SHA)}\n`)).toBe(true)
     expect(hasResolvedMarker(`\`${resolvedMarker(SHA)}\` quoted`)).toBe(false)
+  })
+})
+
+describe('replyMarker', () => {
+  it('writes the reply kind, hidden from the reader', () => {
+    expect(replyMarker('question')).toBe('<!-- phada:reply kind=question -->')
+  })
+})
+
+describe('replyKindOf', () => {
+  it('reads the reply kind at the end of the body, even with trailing blank lines', () => {
+    expect(replyKindOf(`It is called twice.\n\n${replyMarker('disagreed')}\n`)).toBe('disagreed')
+    expect(replyKindOf(`You are right.\n\n${replyMarker('refuted')}`)).toBe('refuted')
+  })
+
+  it('ignores a marker followed by more text, an unknown kind and a body without one', () => {
+    expect(replyKindOf(`\`${replyMarker('ack')}\` quoted`)).toBeUndefined()
+    expect(replyKindOf('<!-- phada:reply kind=maybe -->')).toBeUndefined()
+    expect(replyKindOf('Thanks!')).toBeUndefined()
   })
 })

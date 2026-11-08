@@ -95,6 +95,8 @@ describe('fetchReviewState', () => {
           reviewId: REVIEW_ID,
           negativeReactions: 0,
           commentId: 'PRRC_kwDOQNCyRM6PqA01',
+          diffHunk:
+            "@@ -60,4 +60,4 @@ router.post('/spend', async (req, res) => {\n   const { userId, amount } = req.body\n-  await spend(req.user.id, amount)\n+  await spend(userId, amount)",
           createdAt: '2026-10-08T00:58:40Z',
           association: 'OWNER',
           bot: false,
@@ -222,6 +224,19 @@ describe('fetchReviewState', () => {
     expect(state.threads[0]).not.toHaveProperty('originalLine')
     expect(state.threads[0]).not.toHaveProperty('startLine')
     expect(state.threads[0]).not.toHaveProperty('originalCommit')
+  })
+
+  it('reads a thread whose first comment has no diff hunk', async () => {
+    const threads = withPage(fixture('graphql-threads.json'), 'reviewThreads', (root) => {
+      const [thread] = root.nodes as Json[]
+      const [comment] = (thread!.comments as Json).nodes as Json[]
+      comment!.diffHunk = null
+    })
+    const { fetch } = fakeGitHub([ok(fixture('graphql-reviews.json'))], [ok(threads)])
+
+    const [thread] = (await fetchWith(fetch)).threads
+
+    expect(thread).not.toHaveProperty('diffHunk')
   })
 
   it('reads a null reaction list as no reactions', async () => {

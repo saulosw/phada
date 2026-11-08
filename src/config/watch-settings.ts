@@ -1,4 +1,5 @@
 import { durationMs } from './duration.js'
+import type { RepliesMode } from '../publish/reply-candidates.js'
 import type { PublishTarget } from '../watch/types.js'
 import type { ReviewEventName } from './schema.js'
 import type { ConfigLayer } from './types.js'
@@ -12,6 +13,7 @@ export interface WatchedRepoSettings {
   repo: string
   publish: PublishTarget
   allowExternal: boolean
+  replies: RepliesMode
   authors?: string[]
   labels?: string[]
   baseBranches?: string[]
@@ -35,14 +37,22 @@ export function resolveWatchSettings(layers: readonly ConfigLayer[]): WatchSetti
     maxReviewsPerHour: watch.maxReviewsPerHour ?? DEFAULT_MAX_REVIEWS_PER_HOUR,
     repos: watch.repos.map((entry) => {
       const fallback = watch.when === undefined ? {} : { when: watch.when.command }
+      const replies = watch.replies ?? 'auto'
       if (typeof entry === 'string') {
-        return { repo: entry.toLowerCase(), publish: 'pr', allowExternal: false, ...fallback }
+        return {
+          repo: entry.toLowerCase(),
+          publish: 'pr',
+          allowExternal: false,
+          replies,
+          ...fallback,
+        }
       }
-      const { repo, publish, allowExternal, when, ...filters } = entry
+      const { repo, publish, allowExternal, when, replies: own, ...filters } = entry
       return {
         repo: repo.toLowerCase(),
         publish: publish === false ? 'none' : 'pr',
         allowExternal: allowExternal ?? false,
+        replies: own ?? (publish === false ? 'off' : replies),
         ...filters,
         ...(when === undefined ? fallback : { when: when.command }),
       }

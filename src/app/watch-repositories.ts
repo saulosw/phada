@@ -1,5 +1,7 @@
 import type { WatchedRepoSettings, WatchSettings } from '../config/watch-settings.js'
 import type { CommentListing } from '../github/issue-comments.js'
+import type { ReviewCommentListing } from '../github/review-comments.js'
+import type { RepliesMode } from '../publish/reply-candidates.js'
 import type { OpenPull, PullListing } from '../github/list-pull-requests.js'
 import type { BranchHead } from '../github/repository.js'
 import type { CiState } from '../context/types.js'
@@ -15,9 +17,11 @@ import { CI_FAILING, ciRevisits, requeueForCi, revisitsCi } from '../watch/ci-re
 import { NOT_STARTED, notStarted, pickNext, RATE_WINDOW_MS } from '../watch/next-job.js'
 import { planCycle } from '../watch/plan-cycle.js'
 import { prCommands } from '../watch/pr-commands.js'
+import { replyScan } from '../watch/reply-scan.js'
 import type { CycleAction } from '../watch/plan-cycle.js'
 import { errorMessage } from './error-message.js'
 import { CiReadError } from './read-ci.js'
+import type { ThreadReply } from './reply-to-threads.js'
 import type { ReviewRun } from './review-and-publish.js'
 import { submitRequest, whenInput } from './submit-request.js'
 import type { ReviewRequestInput, SubmitDeps, SubmitResult } from './submit-request.js'
@@ -25,6 +29,7 @@ import type { ReviewRequestInput, SubmitDeps, SubmitResult } from './submit-requ
 export const IDLE_INDEX_BUDGET_MS = 60_000
 export const FEEDBACK_INTERVAL_MS = 1_800_000
 export const FEEDBACK_PULLS_PER_CYCLE = 10
+export const REPLY_THREADS_PER_CYCLE = 10
 
 export interface Failure {
   kind: FailureKind
@@ -52,6 +57,18 @@ export interface JobCi {
   checks: readonly { name: string; state: CiCheckState }[]
 }
 
+export interface WatchReplies {
+  threads: readonly ThreadReply[]
+  limited: boolean
+  more?: true
+  unanswered?: number
+}
+
+export interface ReplyOptions {
+  mode: RepliesMode
+  maxThreads: number
+}
+
 export type RunOutcome =
   { run: ReviewRun } | { error: unknown; kind: FailureKind } | { skippedForCi: PullCi }
 
@@ -74,6 +91,7 @@ export interface WatchEvents {
   warning(message: string): void
   limited(count: number, until: string): void
   refused(request: ReviewRequestInput, result: SubmitResult & { status: 'refused' }): void
+  replied(repo: string, number: number, reply: ThreadReply): void
 }
 
 export interface JobEvent {
@@ -92,6 +110,13 @@ export interface WatchDeps {
   submit: SubmitDeps
   listComments?(repo: string, since: string, etag?: string): Promise<CommentListing>
   react?(repo: string, commentId: number): Promise<void>
+  listReviewComments?(repo: string, since: string, etag?: string): Promise<ReviewCommentListing>
+  replyTo?(
+    repo: string,
+    number: number,
+    options: ReplyOptions,
+    replied: (reply: ThreadReply) => void,
+  ): Promise<WatchReplies>
   readCi?(job: JobRecord): Promise<PullCi | undefined>
   runJob(job: JobRecord, requests: readonly RequestRecord[]): Promise<ReviewRun>
   recordRun(job: JobRecord, outcome: RunOutcome, startedAt: string): void
@@ -122,9 +147,10 @@ export async function watchRepositories(input: WatchInput, deps: WatchDeps): Pro
   }
   for (;;) {
     if (deps.stopRequested()) return { reason: 'stopped' }
+    const replies = { left: REPLY_THREADS_PER_CYCLE }
     for (const repo of settings.repos) {
       if (deps.stopRequested()) return { reason: 'stopped' }
-      const exit = await discover(repo, input, deps, input.once && firstPass)
+      const exit = await discover(repo, input, deps, input.once && firstPass, replies)
       if (exit !== undefined) return exit
     }
     firstPass = false
@@ -167,6 +193,7 @@ async function discover(
   input: WatchInput,
   deps: WatchDeps,
   always: boolean,
+  replies: ReplyBudget,
 ): Promise<WatchExit | undefined> {
   const checkedAt = deps.history.repo(repo.repo)?.checkedAt
   const due =
@@ -175,8 +202,118 @@ async function discover(
   const exit = await discoverPulls(repo, input, deps)
   if (exit !== undefined) return exit
   await scanCommands(repo, input.settings, deps)
+  await answerReplies(repo, input.settings, deps, replies)
   await revisitCi(repo.repo, deps)
   return undefined
+}
+
+interface ReplyBudget {
+  left: number
+}
+
+async function answerReplies(
+  repo: WatchedRepoSettings,
+  settings: WatchSettings,
+  deps: WatchDeps,
+  budget: ReplyBudget,
+): Promise<void> {
+  const { listReviewComments, replyTo } = deps
+  if (repo.replies === 'off' || listReviewComments === undefined || replyTo === undefined) return
+  const pause = deps.history.pause()
+  if (pause !== undefined && pause.until > iso(deps)) return
+  const open = new Set(
+    deps.history
+      .pulls(repo.repo)
+      .filter(({ state }) => state === 'open')
+      .map(({ number }) => number),
+  )
+  const published = new Set(deps.history.publishedPulls(repo.repo))
+  const withThreads = new Set([...open].filter((number) => published.has(number)))
+  await scanReplies(repo.repo, withThreads, listReviewComments, deps)
+  await replyToDue(repo, open, settings, deps, budget)
+}
+
+async function scanReplies(
+  repo: string,
+  open: ReadonlySet<number>,
+  list: NonNullable<WatchDeps['listReviewComments']>,
+  deps: WatchDeps,
+): Promise<void> {
+  const { history } = deps
+  const record = history.repo(repo)
+  if (record?.baselineAt === undefined) return
+  let listing: ReviewCommentListing
+  try {
+    listing = await list(
+      repo,
+      record.reviewCommentsSince ?? record.baselineAt,
+      record.reviewCommentsEtag,
+    )
+  } catch (error) {
+    deps.events.warning(`${repo}: could not read the review comments (${errorMessage(error)})`)
+    return
+  }
+  if (listing.status === 'not-modified') return
+  const scan = replyScan(listing.comments, {
+    baselineAt: record.baselineAt,
+    ...(record.reviewCommentsLastId === undefined ? {} : { lastId: record.reviewCommentsLastId }),
+    open,
+  })
+  history.markRepliesDue(repo, scan.numbers, iso(deps))
+  history.saveRepo({
+    ...record,
+    ...(listing.etag === undefined ? {} : { reviewCommentsEtag: listing.etag }),
+    ...(scan.lastId === undefined ? {} : { reviewCommentsLastId: scan.lastId }),
+    ...(scan.since === undefined ? {} : { reviewCommentsSince: scan.since }),
+  })
+}
+
+async function replyToDue(
+  repo: WatchedRepoSettings,
+  open: ReadonlySet<number>,
+  settings: WatchSettings,
+  deps: WatchDeps,
+  budget: ReplyBudget,
+): Promise<void> {
+  const { history, replyTo } = deps
+  if (replyTo === undefined) return
+  const now = iso(deps)
+  for (const due of history.repliesDue(repo.repo)) {
+    if (budget.left <= 0 || deps.stopRequested()) return
+    if (!open.has(due.number)) {
+      history.clearReplyDue(repo.repo, due.number)
+      continue
+    }
+    if (due.triedAt !== undefined && later(due.triedAt, settings.intervalMs) > now) continue
+    let run: WatchReplies
+    try {
+      run = await replyTo(
+        repo.repo,
+        due.number,
+        { mode: repo.replies, maxThreads: budget.left },
+        (reply) => deps.events.replied(repo.repo, due.number, reply),
+      )
+    } catch (error) {
+      history.triedReplyDue(repo.repo, due.number, now)
+      const { kind, resetAt } = deps.classify(error)
+      if (kind === 'rate-limit') {
+        pauseQueue(deps, rateLimitPause(now, resetAt))
+        budget.left = 0
+        return
+      }
+      deps.events.warning(
+        `${repo.repo}#${due.number}: could not answer the replies (${errorMessage(error)}); tried again in the next cycle.`,
+      )
+      continue
+    }
+    budget.left -= run.threads.length + (run.unanswered ?? 0)
+    if (run.limited) {
+      budget.left = 0
+      return
+    }
+    if (run.unanswered !== undefined) history.triedReplyDue(repo.repo, due.number, now)
+    else if (run.more === undefined) history.clearReplyDue(repo.repo, due.number)
+  }
 }
 
 async function revisitCi(repo: string, deps: WatchDeps): Promise<void> {

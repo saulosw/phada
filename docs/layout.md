@@ -30,6 +30,16 @@ src/
                          #   an aborted signal stops it between those stages (the fetch and the
                          #   index of the head take it; a cut index saves no commit);
                          #   loadPullRequestContext()
+    reply-to-threads.ts  #   replyToThreads(): the pull request (metadata, no diff) and its review
+                         #   state → threadsToReply() (the comments classified in the history
+                         #   left out; at most maxThreads, more when some are left)
+                         #   → one checkout of the head (repository and history tools only; a
+                         #   warning and no tools when it is unavailable) → replyToThread() per
+                         #   thread → ack/applied: nothing posted; question/disagreed: posted if
+                         #   the thread is still open; refuted: posted, then resolved → each new
+                         #   comment recorded with the kind (not in a dry run); an invalid
+                         #   answer is a warning (nothing posted nor recorded), the usage limit
+                         #   stops the rest (limited); the formatting of the reply is injected
     review-cancelled.ts  #   ReviewCancelledError; stopIfCancelled(): throws it once the signal
                          #   is aborted, wrapping what a stage threw after the abort
     review-and-publish.ts # reviewAndPublish(): fetch → decideRun → context → decideRun with the
@@ -82,10 +92,14 @@ src/
                          #   failures and pauses, requests moved to a new commit (from a
                          #   superseded job or a ci-failing one), job events (notify; the CI
                          #   the gate read on started), the idle index and feedback
-                         #   refresh (30 min per pull request, 10 per cycle); events
+                         #   refresh (30 min per pull request, 10 per cycle), the replies
+                         #   (review comments since the cursor on pull requests with published
+                         #   findings → replies due in the history →
+                         #   replyTo() oldest first, 10 threads a cycle, kept due on the usage
+                         #   limit or a failure, none while paused); events
     watch-event.ts       #   WatchEvent: each event of the watch as data (baseline, queued,
                          #   started, waiting for CI, finished, retry, paused, failed, index,
-                         #   feedback, warning, limited, refused), WatchEventSink;
+                         #   feedback, warning, limited, refused, replied), WatchEventSink;
                          #   watchEventsTo(): the WatchEvents of the loop → the sink; WatchEnd,
                          #   and for the app: WatchObserver (the events and each job's review
                          #   progress), WatchControl (done, stop(), abort()), WatchStarted
@@ -148,11 +162,12 @@ src/
                          #   queued, waiting for CI, running, skipped for failing CI and failed
                          #   jobs with their requests, pause, reviews of the last hour, whether
                          #   the watch is configured and the config file to set it up in
-    read-history.ts      #   readReviews(), readFindings() (destination and marks of each),
-                         #   readFeedbackStats() (feedbackStats() per repository, ruleStats() per
-                         #   rule), readReviewDetail(): one run with what its stored JSON keeps
-                         #   (score, coverage, summary, claims, findings with their scope and whether
-                         #   they were close to the cut, repository debt, the tokens of each
+    read-history.ts      #   readReviews(), readFindings() (destination, marks and the reply
+                         #   kinds of its thread for each), readFeedbackStats() (feedbackStats()
+                         #   per repository, ruleStats() per rule, with the findings that got
+                         #   each reply kind), readReviewDetail(): one run with what its stored
+                         #   JSON keeps (score, coverage, summary, claims, findings with their
+                         #   scope and whether they were close to the cut, repository debt, the tokens of each
                          #   AI pass and their total, publication with what a dry run
                          #   would resolve and why a publication was skipped, CI) and the
                          #   feedback of each published finding; reviewDetailOf(): the same from a run
@@ -196,6 +211,8 @@ src/
                          #   newest, with the count of accepted and discarded ones
     lesson-rule.ts       #   lessonRuleId() (lesson-<id>) and lessonThreads() (the thread links of
                          #   its misses, once each): pure, also drawn by the app
+    reply-kinds.ts       #   ReplyCounts, noReplies(), repliedKinds() (the kinds with replies, in
+                         #   the order of the kinds): pure, also drawn by the app
     run-target.ts        #   runTarget() (owner/repo#N, or owner/repo@branch (local) with * when
                          #   dirty), runPlace(), localRunName() (the branch, else the short head):
                          #   pure, also drawn by the app
@@ -480,12 +497,12 @@ src/
     watch-command.ts     #   runWatch(): --status, or the watch through startWatch() with its
                          #   events as lines, Ctrl-C once (stop) or twice (abort, exit 130)
     watch-session.ts     #   startWatch(): settings, providers checked on start, lock, history,
-                         #   hooks and Slack, the watch deps, one job's review → a WatchHandle
+                         #   hooks and Slack, the watch deps (the replies through
+                         #   replyOnWatchedPull()), one job's review → a WatchHandle
                          #   (done, stop(), abort(), the running job); the watch events, warnings
                          #   and each job's review progress as data, never printing
-    ci-gate-reader.ts    #   ciGateReader(): the ci settings of a job (user config and the root
-                         #   .phada/config.yml at the base merged with mergeLayers(), read once
-                         #   per job) and the checks
+    ci-gate-reader.ts    #   ciGateReader(): the ci settings of a job (effectiveConfigAt() at the
+                         #   base, read once per job) and the checks
                          #   that count of its head and onFailure, for the CI gate; none with
                          #   ci.read: false, or ci.wait: 0s with onFailure: review; CiReadError
                          #   when they were not read
@@ -538,8 +555,9 @@ src/
     format-lessons.ts    #   formatLessonsText/Json(): id, repository, state, miss count, the
                          #   whole rule, the globs and each thread link (schemaVersion 1)
     format-history.ts    #   formatHistoryText/Json() (each run with its id, a local run by its
-                         #   branch and number null), runJson(),
-                         #   formatStatsText/Json() (schemaVersion 1)
+                         #   branch and number null; each finding with its reply kinds), runJson(),
+                         #   formatStatsText/Json() (schemaVersion 1, the reply kinds any
+                         #   comment got)
     history-refresh.ts   #   refreshToken(), refreshHistory(): the due pull requests (or the one
                          #   named), with the closed ones listed, read on GitHub for phada history
                          #   and phada misses --refresh, with the count of new misses
@@ -567,7 +585,7 @@ src/
                          #   phada history show both have
     format-watch.ts      #   formatWatchEvent(), formatWatchStatus(), formatWatchStatusJson(); a
                          #   job waiting for CI with its deadline and pending checks, skipped
-                         #   for failing CI or back in the queue
+                         #   for failing CI or back in the queue, a reply the watch answered
     provider-choice.ts   #   loadProviderChoice(): the user layers of a repository and the
                          #   provider and model of the flags or of those layers; modelOption();
                          #   assertProviderChoice(): known provider, model for ollama, no MCP
@@ -630,6 +648,20 @@ src/
                          #   with --force to override, the head moved under --force as a
                          #   warning, "Published …", the resolved comments and "Saved as run N";
                          #   --format json prints the published run's JSON
+    reply-command.ts     #   runReply(): token, the pull request metadata (closed → UsageError
+                         #   before any AI call), threadReplySetup(), the history when on (only
+                         #   read on --dry-run), replyToThreads() in auto mode with
+                         #   threadReplyDeps(); the threads as text or JSON; the usage limit →
+                         #   exit 1
+    reply-wiring.ts      #   threadReplySetup() (the user layers, the provider of the config and
+                         #   the language at the base), threadReplyDeps() (the mirror and the
+                         #   GitHub thread readers and writers of the token),
+                         #   replyOnWatchedPull(): one pull request answered by the watch
+    format-reply.ts      #   formatReplyRun() (per thread place · kind · outcome and the answer,
+                         #   a summary, "Nothing to answer"), replyRunJson(), replyPlace(),
+                         #   replyOutcome()
+    repository-config.ts #   effectiveConfigAt(): the user layers merged with the root
+                         #   .phada/config.yml of the repository at a commit
     print-history-save.ts #  printHistorySave(), savedAsLine(): a history save that failed and
                          #   the "Saved as run N" line, for review and publish
     history-run.ts       #   historyRun(), watchRun(): a run, a failure or a ci-failing skip →
@@ -657,7 +689,9 @@ src/
     format-github.ts     #   the review as GitHub Markdown: body (the CI line under the score),
                          #   line comments, suggestion blocks, markers (the skill of a finding in
                          #   its hidden marker), the "Repository debt" section (20 lines at most),
-                         #   truncation; formatResolvedReply(); formatGitHubPreview() for
+                         #   truncation; formatResolvedReply(); formatThreadReply() (the AI's
+                         #   answer escaped, signed as an automatic reply, secrets redacted);
+                         #   formatGitHubPreview() for
                          #   --dry-run
     format-publication.ts #  skip, "Published", recheck and "Resolved" messages
     format-context.ts    #   the "Context at base <sha>:" line and the context section of
@@ -793,8 +827,8 @@ src/
                          #   or Esc with the AIs checked again; none while the config is
                          #   invalid, when the AIs are checked without it), learnings.tsx (each
                          #   repository's relations, misses, lessons and feedback → its pending
-                         #   lessons in full (rule, files, misses), its feedback per rule, its
-                         #   misses (phada lessons --refresh named when none was proposed) and
+                         #   lessons in full (rule, files, misses), its feedback and reply kinds
+                         #   per rule, its misses (phada lessons --refresh named when none was proposed) and
                          #   its relations; l → the lessons, a/d asks to accept or discard the
                          #   selected one (accept: the list hidden, the file under ~, the rule id,
                          #   the whole rule, its files and threads, scrolling when long), Enter
@@ -969,7 +1003,8 @@ src/
                          #   description with verdict and evidence, findings with their
                          #   body (a finding of the repository marked as debt, one close to the
                          #   cut marked), repository debt, worth checking, the tokens of each
-                         #   AI pass and their total, feedback (Reviews and the review flow)
+                         #   AI pass and their total, feedback with the reply kinds of each
+                         #   published comment (Reviews and the review flow)
     palette.tsx          #   Palette: screens, the setup, the language, review, index and watch
                          #   (/watch: the Queue, and the watch started or the stop question) filtered by name (the catalog's and
                          #   English, without accents), ↑/↓, Enter, Esc; matchEntries()
@@ -1028,7 +1063,8 @@ src/
                          #   file
     data-paths.ts        #   the data folder (PHADA_DATA_HOME › XDG › ~/.local/share/phada):
                          #   history.sqlite and watch.lock
-    watch-settings.ts    #   resolveWatchSettings() with the defaults, historyEnabled(),
+    watch-settings.ts    #   resolveWatchSettings() with the defaults (replies: auto where the
+                         #   repository publishes, off with publish: false), historyEnabled(),
                          #   missBots() (misses.bots of the user's layers, joined)
     duration.ts          #   durationMs(): 90s, 5m, 1h, 30d
     errors.ts            #   ConfigError
@@ -1091,7 +1127,8 @@ src/
                          #   last page of threads), reviews (state, date, author association,
                          #   bot) and threads (id, outdated, current and
                          #   original lines, first comment
-                         #   with its URL and negative reactions, last 20 replies and the count),
+                         #   with its URL, diff hunk and negative reactions, last 20 replies and
+                         #   the count),
                          #   paginated; fetchPullComments(): the general comments of the pull
                          #   request; fetchPullRequestPages(): a paginated pull request query.
                          #   A review is dated when it was submitted and a comment when it was
@@ -1100,7 +1137,10 @@ src/
                          #   several lines)
     compare-commits.ts   #   fetchComparison(): the files changed between two commits, with patches
                          #   (at most COMPARE_MAX_FILES)
-    resolve-thread.ts    #   replyAndResolve(): resolve a review thread, then reply on it
+    resolve-thread.ts    #   addThreadReply() (the new comment's id and URL), resolveThread(),
+                         #   replyAndResolve() (resolve, then reply), isThreadOpen() (a missing
+                         #   thread is closed); a write refused (FORBIDDEN, HTTP 403) is a
+                         #   ThreadPermissionError
     repository-files.ts  #   fetchRepositoryTree(), fetchRepositoryFile(): the repository at a commit
     repository.ts        #   fetchRepository(): visibility, default branch, empty, whether the
                          #   token can push; fetchBranchHead()
@@ -1110,7 +1150,10 @@ src/
                          #   closed or merged since a time (every page updated since then
                          #   read), the most recently closed first, at most 50
     issue-comments.ts    #   listIssueComments(): the comments of a repository since a time, ETag;
+                         #   listCommentPages() (pages capped, 304 → not-modified);
                          #   addCommentReaction()
+    review-comments.ts   #   listReviewComments(): the review comments of a repository since a
+                         #   time, ETag (in reply to, pull request number, author, bot)
     read-repository.ts   #   repositoryReader(): GET reads of one repository (and search/issues)
                          #   for the gh facade
     check-runs.ts        #   fetchCheckRuns(): the check runs of a commit with their times,
@@ -1226,17 +1269,19 @@ src/
                          #   signal), stopped or failed (Ollama's error line, HTTP status)
   publish/               # pure: what to publish, data in, decision out
     markers.ts           #   the review (with the diff fingerprint), finding (findingMarker():
-                         #   with the skill, older ones without it still read) and resolved
-                         #   markers, read only at the end of a body; findingTitle();
-                         #   withoutFindingMarker()
+                         #   with the skill, older ones without it still read), resolved and
+                         #   reply (replyMarker(), replyKindOf(): the reply kind) markers, read
+                         #   only at the end of a body; findingTitle(); withoutFindingMarker()
     phada-state.ts       #   Phada's own reviews and open threads (author = token owner + marker);
-                         #   resolvedByPhada(), reviewedShaOf()
+                         #   isPhadaComment(), resolvedByPhada() (never after a refuted reply),
+                         #   refutedByPhada(), reviewedShaOf()
     thread-findings.ts   #   threadFindings(): the open Phada threads numbered by file and line
                          #   as findings (severity and title of the first line, the rest of the
                          #   comment as why) with the suggestion block as a replacement of
                          #   the current lines, only when the thread is not outdated
-    feedback.ts          #   threadFeedback(): each Phada thread → outcome (fixed, dismissed,
-                         #   ignored, open) and marks (negative-reaction, human-reply);
+    feedback.ts          #   threadFeedback(): each Phada thread → outcome (fixed, dismissed —
+                         #   always when Phada refuted it —, ignored, open) and marks
+                         #   (negative-reaction, human-reply: never Phada's own replies);
                          #   findingFingerprint()
     misses.ts            #   decideMisses(): the outdated threads of people and of the bots the
                          #   user lists (not Phada or the author), missed live or not reviewed,
@@ -1252,10 +1297,15 @@ src/
     decide-run.ts        #   decideRun(): review, or skip a commit Phada already reviewed or whose
                          #   filtered diff did not change (same-diff)
     recheck-candidates.ts #  threadsToRecheck(), withChanges(): Phada's open threads of older commits
-                         #   and what changed in their files
+                         #   (not the ones it refuted) and what changed in their files
+    reply-candidates.ts  #   threadsToReply(): Phada's open threads on an open pull request with
+                         #   the comments to answer — after Phada's last comment, not classified
+                         #   yet, from the author, an owner, member or collaborator or the token
+                         #   owner, never a bot —, fewer than 3 Phada replies, and with replies
+                         #   mention only when one calls /phada (off: none)
     conversation.ts      #   buildConversation(): comments, reviews and threads → items oldest first
-                         #   with the role of each author, without Phada's own (people's replies
-                         #   to them kept), bodies cut at 2 KB, 16 KB in total (bots › resolved
+                         #   with the role of each author, without Phada's own (its replies too;
+                         #   people's replies to them kept), bodies cut at 2 KB, 16 KB in total (bots › resolved
                          #   › outdated › oldest left out first) and the report, with the bots
                          #   left out;
                          #   conversationItemBytes(); associationRole()
@@ -1267,7 +1317,8 @@ src/
     plan-publication.ts  #   planPublication(): new comments vs findings still open in a thread vs
                          #   findings whose thread a person resolved vs findings of a thread found
                          #   fixed in this run
-    types.ts             #   PublicationPlan, RunDecision, SkipReason, Conversation(Report)
+    types.ts             #   PublicationPlan, RunDecision, SkipReason, Conversation(Report),
+                         #   ReplyKind (ack, applied, question, disagreed, refuted)
   repository/            # the repository through git objects, in a persistent mirror, and the
                          #   local clone a local review reads
     checkout.ts          #   Checkout (read, grep, list, history), CheckoutError
@@ -1324,14 +1375,16 @@ src/
     history-store.ts     #   openHistoryStore(): the review history, never rebuilt; watched
                          #   repositories and pull requests, jobs and their review requests, runs
                          #   with their verdict, pause, runs() (with the title, by text), run(),
-                         #   lastLocalRun() (of owner/repo@branch), prune(); requestsWith(): the requests of a source whose data has
+                         #   lastLocalRun() (of owner/repo@branch), prune() (also the replies
+                         #   observed before the cut); requestsWith(): the requests of a source whose data has
                          #   some values (a Slack message);
                          #   readOnly: no folder, pragma or migration, an older file refused
                          #   (HistoryOutdatedError); openExistingHistoryStore(): missing, open,
                          #   newer, older or unreadable as data, never creating the file
     history-feedback.ts  #   published findings, observations and their signals (observed and
                          #   cleared), feedbackDue() (pull requests with findings or a run with
-                         #   the AI outside replays)
+                         #   the AI outside replays), publishedPulls() (the pull requests of a
+                         #   repository with published findings)
     history-misses.ts    #   recordMisses() (one per thread; data refreshed, state and first
                          #   harvest kept), misses(), dismissMiss(), aiRuns() (replays when
                          #   asked),
@@ -1341,12 +1394,18 @@ src/
                          #   one transaction), lessons() with their misses (by id, repository,
                          #   state), decideLesson() (only a pending one, with the rule and
                          #   scope of an edited accept), linkedMissIds()
+    history-replies.ts   #   recordReplies() (one per comment, the first classification kept),
+                         #   classifiedComments() of a pull request, replies() by repository,
+                         #   pull request and thread; the replies due (markRepliesDue(),
+                         #   repliesDue() oldest first, triedReplyDue(), clearReplyDue())
     history-columns.ts   #   the history tables (columns, keys) and their insert/upsert/update
     history-migrations.ts #  versioned migrations (PRAGMA user_version), a table rebuilt with the
                          #   foreign keys off; a newer file is refused; v5: replay runs, the
                          #   misses (one per thread) and their replays (one per Phada version);
                          #   v7: the lessons and their links to misses; v8: local runs (source
-                         #   local, branch, dirty)
+                         #   local, branch, dirty); v9: the classified replies in Phada's
+                         #   threads (thread_reply), the replies due (reply_due) and the cursor
+                         #   of the review comments on the watched repository
   watch/                 # pure: what the watch does, data in, decision out
     filters.ts           #   eligibility(): draft, bot, outside author, authors, labels, base
     plan-cycle.ts        #   planCycle(): baseline, seen, enqueue, supersede, move (the requests
@@ -1368,6 +1427,8 @@ src/
                          #   again; publishOf()
     pull-facts.ts        #   PullFacts of a listed or fetched pull request
     pr-commands.ts       #   prCommands(): /phada review comments → requests, and the cursor
+    reply-scan.ts        #   replyScan(): review comments → the open pull requests with a new
+                         #   reply of a person, and the cursor
     time.ts              #   later(): an ISO time plus a duration
     types.ts             #   JobRecord (ciDeadline, ciPending, ciFailing, ciCheckedAt, ciSince),
                          #   RequestRecord, RequestSource,
@@ -1439,6 +1500,12 @@ src/
     recheck-prompt.ts    #   buildRecheckPrompt(): earlier comments and what changed since them
     recheck-schema.ts    #   Zod schema of the recheck verdicts (fixed, still-valid, unsure)
     recheck-threads.ts   #   recheckThreads(): one call for the changed threads, verdicts per thread
+    reply-prompt.ts      #   buildReplyPrompt(): Phada's comment, its thread (people's replies as
+                         #   untrusted blocks) and the diff hunk → the reply kind and the answer,
+                         #   in the configured language or the person's
+    reply-schema.ts      #   Zod schema of a reply (ack, applied, question, disagreed, refuted)
+    reply-to-thread.ts   #   replyToThread(): one call per thread → the reply kind and the text
+                         #   (required for question, disagreed and refuted, dropped otherwise)
     lessons-prompt.ts    #   buildLessonsPrompt(): the misses (no links), the pending lessons and
                          #   the user's rules as untrusted blocks; a lesson only for a rule that
                          #   repeats
@@ -1479,7 +1546,7 @@ src/
                          #   (provider concurrency), joined into one review
 scripts/smoke.ts         # packs the package, installs the tarball, runs the installed `phada`
 scripts/copy-grammars.ts # build step: the tree-sitter grammars into dist/grammars/
-test/fixtures/bin/       # fake AI CLIs used by the provider and status tests
+test/fixtures/bin/       # fake AI CLIs used by the provider, status and phada reply tests
 test/fixtures/github/    # trimmed GitHub API responses (REST and GraphQL) and a synthetic diff
 test/support/            # shared test helpers (fake fetch, fixtures for pull requests, findings, …;
                          #   tui.tsx: the app rendered with fake deps, size, scheduler and keys;

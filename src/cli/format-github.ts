@@ -89,6 +89,10 @@ export function formatResolvedReply(
   return redactSecrets(messages.github.resolvedReply(shortSha(headSha), githubBlock(reason)))
 }
 
+export function formatThreadReply(text: string, messages: Messages = english): string {
+  return redactSecrets(`${githubBlock(text)}\n\n<sub>${messages.github.automaticReply}</sub>`)
+}
+
 export function formatGitHubPreview(
   { body, comments }: GitHubReview,
   messages: Messages = english,

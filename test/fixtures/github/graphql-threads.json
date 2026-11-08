@@ -23,6 +23,7 @@
                   {
                     "url": "https://github.com/saulosw/phada-dev-web/pull/11#discussion_r2410000001",
                     "body": "**P0** · Any user can spend another user's crystals · confidence 95\n\nThe user id comes from the request body.\n\n<!-- phada:finding -->",
+                    "diffHunk": "@@ -60,4 +60,4 @@ router.post('/spend', async (req, res) => {\n   const { userId, amount } = req.body\n-  await spend(req.user.id, amount)\n+  await spend(userId, amount)",
                     "author": {
                       "login": "saulosw",
                       "__typename": "User"

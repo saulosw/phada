@@ -11,6 +11,7 @@ import {
   INIT_USAGE,
   PROMPT_USAGE,
   PUBLISH_USAGE,
+  REPLY_USAGE,
   REVIEW_USAGE,
   RULES_USAGE,
   SETUP_USAGE,
@@ -58,7 +59,7 @@ describe('parseCliArgs', () => {
     ],
     [
       ['reveiw', 'acme/shop#12'],
-      'Unknown command "reveiw". Available: setup, review, publish, fix, init, index, rules, prompt, watch, enqueue, mcp, history, misses, lessons.',
+      'Unknown command "reveiw". Available: setup, review, publish, fix, init, index, rules, prompt, reply, watch, enqueue, mcp, history, misses, lessons.',
     ],
     [['--verify'], "Unknown option '--verify'."],
     [
@@ -439,6 +440,7 @@ describe('parseCliArgs', () => {
     ['misses', MISSES_USAGE],
     ['enqueue', ENQUEUE_USAGE],
     ['mcp', MCP_USAGE],
+    ['reply', REPLY_USAGE],
   ])('says the %s usage takes the token of the gh login without GITHUB_TOKEN', (_name, text) => {
     expect(text).toMatch(
       /GH_TOKEN +Used when GITHUB_TOKEN is not set; with neither, Phada\n +uses the token of your gh login \(gh auth login\)$/m,
@@ -964,6 +966,54 @@ describe('parseCliArgs publish', () => {
     expect(parseCliArgs(['publish', '--help'])).toEqual({ kind: 'help', text: PUBLISH_USAGE })
     expect(PUBLISH_USAGE.startsWith('Usage: phada publish <id> [options]')).toBe(true)
     expect(USAGE).toContain('publish <id>           Publish a dry run kept in the history')
+  })
+})
+
+describe('parseCliArgs reply', () => {
+  it('reads the pull request, --dry-run and the format', () => {
+    expect(parseCliArgs(['reply', 'acme/shop#12'])).toEqual({
+      kind: 'reply',
+      ref: REF,
+      dryRun: false,
+      format: 'text',
+      debug: false,
+    })
+    expect(
+      parseCliArgs([
+        'reply',
+        'https://github.com/acme/shop/pull/12',
+        '--dry-run',
+        '--format',
+        'json',
+        '--debug',
+      ]),
+    ).toEqual({ kind: 'reply', ref: REF, dryRun: true, format: 'json', debug: true })
+  })
+
+  it.each([
+    [['reply'], 'Missing the pull request, e.g. phada reply owner/repo#123.'],
+    [['reply', 'acme/shop#1', 'acme/shop#2'], 'Answer one pull request at a time.'],
+    [
+      ['reply', 'acme/shop#1', '--format', 'markdown'],
+      'Invalid --format "markdown". Use text or json.',
+    ],
+    [['reply', 'acme/shop#1', '--provider', 'codex'], "Unknown option '--provider'."],
+    [['reply', 'acme/shop#1', '--dry-run=yes'], "Option '--dry-run' does not take an argument."],
+  ])('refuses %j', (argv, message) => {
+    expect(() => parseCliArgs(argv)).toThrow(message)
+  })
+
+  it('refuses a repository without a pull request number', () => {
+    expect(() => parseCliArgs(['reply', 'acme/shop'])).toThrow(InvalidPullRequestRefError)
+  })
+
+  it('prints its help, listed in the commands', () => {
+    expect(parseCliArgs(['reply', '--help'])).toEqual({ kind: 'help', text: REPLY_USAGE })
+    expect(
+      REPLY_USAGE.startsWith('Usage: phada reply <owner/repo#N | pull request URL> [options]'),
+    ).toBe(true)
+    expect(REPLY_USAGE).toContain('Pull requests: Read and write')
+    expect(USAGE).toContain('reply <pull request>   Answer the replies in the threads of Phada')
   })
 })
 

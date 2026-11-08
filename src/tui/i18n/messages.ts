@@ -1,6 +1,7 @@
 import type {
   FeedbackFinding,
   ListedRun,
+  ReplyCounts,
   ReviewDetail,
   StoredCoverage,
 } from '../../app/read-history.js'
@@ -539,7 +540,11 @@ export interface WatchLogMessages {
   warning(message: string): string
   limited(count: number, until: string): string
   refused(source: string, ref: string, reason: string): string
+  replied(ref: string, place: string, kind: string, outcome: string): string
+  replyOutcomes: Record<ReplyOutcome, string>
 }
+
+export type ReplyOutcome = 'posted' | 'resolved' | 'noAnswer' | 'skipped' | 'notPosted'
 
 export type ReviewSource = ListedRun['source'] | NonNullable<ListedRun['requestSource']>
 
@@ -567,6 +572,7 @@ export interface ReviewsMessages {
   outcomes: Readonly<Record<FeedbackFinding['destination'], string>>
   claimVerdicts: Readonly<Record<string, string>>
   marks: Readonly<Record<FeedbackFinding['marks'][number], string>>
+  replyKinds: Readonly<Record<keyof ReplyCounts, string>>
   detail: {
     score: string
     coverage: string
@@ -791,6 +797,7 @@ export interface LearningsMessages {
   lessons(count: number): string
   outcome: Readonly<Record<FeedbackFinding['destination'], (count: number) => string>>
   marks(negative: number, replies: number): string
+  replies(kinds: string): string
   detail: {
     published: string
     noComments: string

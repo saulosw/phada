@@ -1,4 +1,5 @@
 import type { JobRecord, PauseState } from '../watch/types.js'
+import type { ThreadReply } from './reply-to-threads.js'
 import type { ReviewRun } from './review-and-publish.js'
 import type { ReviewProgress } from './review-progress.js'
 import type { ReviewRequestInput, SubmitResult } from './submit-request.js'
@@ -21,6 +22,7 @@ export type WatchEvent =
   | { kind: 'feedback'; repo: string; number: number; threads: number; misses: number }
   | { kind: 'warning'; message: string }
   | { kind: 'limited'; count: number; until: string }
+  | { kind: 'replied'; repo: string; number: number; reply: ThreadReply }
   | {
       kind: 'refused'
       request: ReviewRequestInput
@@ -66,5 +68,6 @@ export function watchEventsTo(sink: WatchEventSink): WatchEvents {
     warning: (message) => sink({ kind: 'warning', message }),
     limited: (count, until) => sink({ kind: 'limited', count, until }),
     refused: (request, result) => sink({ kind: 'refused', request, result }),
+    replied: (repo, number, reply) => sink({ kind: 'replied', repo, number, reply }),
   }
 }

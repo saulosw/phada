@@ -47,6 +47,8 @@ import { runPublish } from './cli/publish-command.js'
 import { runLocalFix } from './cli/local-fix-command.js'
 import { runPullRequestFix } from './cli/pull-request-fix-command.js'
 import type { PullRequestFixCommandDeps } from './cli/pull-request-fix-command.js'
+import { runReply } from './cli/reply-command.js'
+import type { ReplyCommandDeps } from './cli/reply-command.js'
 import { assertProviderChoice } from './cli/provider-choice.js'
 import type { ProviderOptions } from './cli/provider-choice.js'
 export { assertProviderChoice } from './cli/provider-choice.js'
@@ -70,7 +72,8 @@ export interface MainDeps
     McpCommandDeps,
     AppCommandDeps,
     MissesCommandDeps,
-    PullRequestFixCommandDeps {
+    PullRequestFixCommandDeps,
+    ReplyCommandDeps {
   cwd: string
   pathSize: (path: string) => Promise<number>
   killDetachedChildren: () => void
@@ -176,6 +179,7 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
       else await runPullRequestFix({ ...command, ref }, deps)
       return 0
     }
+    if (command.kind === 'reply') return await runReply(command, deps)
     if (command.kind === 'history-prune') {
       await runHistoryPrune(command, deps)
       return 0

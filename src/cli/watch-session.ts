@@ -35,6 +35,7 @@ import type {
 } from '../github/pull-request.js'
 import type { BranchHead } from '../github/repository.js'
 import type { RepositoryFilesOptions } from '../github/repository-files.js'
+import type { ReviewCommentListing } from '../github/review-comments.js'
 import type { ReplyAndResolveOptions } from '../github/resolve-thread.js'
 import { MirrorLockTimeoutError } from '../repository/mirror-lock.js'
 import type { HistoryStore } from '../store/history-store.js'
@@ -50,6 +51,8 @@ import { requestSourceOf, watchRun } from './history-run.js'
 import type { CheckedNames, NameCheck } from './mcp-names.js'
 import { assertProviderChoice, providerRunsSkills } from './provider-choice.js'
 import { sleepUntilNewJob } from './queue-wake.js'
+import { replyOnWatchedPull } from './reply-wiring.js'
+import type { ThreadReplyDeps } from './reply-wiring.js'
 import { requireWatchSettings, submitDeps } from './request-wiring.js'
 import { reviewEvent } from './review-event.js'
 import { openReviewEventSinks, reviewEventSinkSettings } from './review-event-sinks.js'
@@ -72,7 +75,7 @@ import { diskSkillCatalog } from './skill-catalog.js'
 import { createStopControl, trackRunningJob } from './watch-stop.js'
 import type { StopControl } from './watch-stop.js'
 
-export interface WatchSessionDeps extends ReviewWiringDeps, GitHubTokenDeps {
+export interface WatchSessionDeps extends ReviewWiringDeps, GitHubTokenDeps, ThreadReplyDeps {
   fetchPullRequest: (options: FetchPullRequestOptions) => Promise<PullRequest>
   fetchReviewState: (options: FetchReviewStateOptions) => Promise<PullRequestReviewState>
   fetchPullComments: (options: FetchReviewStateOptions) => Promise<PullComment[]>
@@ -88,6 +91,9 @@ export interface WatchSessionDeps extends ReviewWiringDeps, GitHubTokenDeps {
     options: RepositoryFilesOptions & { since: string; etag?: string },
   ) => Promise<CommentListing>
   addCommentReaction: (options: RepositoryFilesOptions & { commentId: number }) => Promise<void>
+  listReviewComments: (
+    options: RepositoryFilesOptions & { since: string; etag?: string },
+  ) => Promise<ReviewCommentListing>
   fetchPullRequestHead: (
     options: FetchPullRequestOptions,
   ) => Promise<{ state: 'open' | 'closed'; draft: boolean; headSha: string }>
@@ -259,6 +265,19 @@ function watchDeps(
       deps.listIssueComments({ ...splitRepoName(repo), token, since, ...withEtag(etag) }),
     react: (repo, commentId) =>
       deps.addCommentReaction({ ...splitRepoName(repo), token, commentId }),
+    listReviewComments: (repo, since, etag) =>
+      deps.listReviewComments({ ...splitRepoName(repo), token, since, ...withEtag(etag) }),
+    replyTo: (repo, number, options, replied) =>
+      replyOnWatchedPull(
+        {
+          ref: { ...splitRepoName(repo), number },
+          token,
+          history,
+          options,
+          events: { warning: (message) => events.warning(message), replied },
+        },
+        deps,
+      ),
     readCi: ciGateReader(deps, token),
     runJob: async (job, requests) => {
       const setup = await jobSetup(job.repo, deps, check)

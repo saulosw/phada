@@ -10,6 +10,7 @@ import type {
   StoredTokens,
 } from '../app/read-history.js'
 import type { DrawContext } from './frame-lines.js'
+import { repliedKinds } from '../app/reply-kinds.js'
 import type { UiMessages } from './i18n/messages.js'
 import { labeledLines } from './labeled-lines.js'
 import { absoluteTime, relativeTime } from './relative-time.js'
@@ -226,6 +227,10 @@ function feedbackLines(
     const marks = finding.marks
       .filter((mark) => mark === 'negative-reaction' || mark === 'human-reply')
       .map((mark) => messages.reviews.marks[mark])
+    const replies = repliedKinds(finding.replies).map(({ kind, count }) => {
+      const name = messages.reviews.replyKinds[kind]
+      return count === 1 ? name : `${name} ×${count}`
+    })
     return (
       <Text>
         {'  '}
@@ -235,7 +240,7 @@ function feedbackLines(
         {GAP}
         {fit(places[index] ?? '', width, 'start')}
         {GAP}
-        {[oneLine(finding.title), ...marks].join(' · ')}
+        {[oneLine(finding.title), ...marks, ...replies].join(' · ')}
       </Text>
     )
   })

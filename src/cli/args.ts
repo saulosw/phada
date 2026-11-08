@@ -72,6 +72,7 @@ export type CliCommand =
   | { kind: 'lessons-discard'; id: number; debug: boolean }
   | { kind: 'publish'; id: number; force: boolean; format: IndexFormat; debug: boolean }
   | { kind: 'mcp'; debug: boolean }
+  | { kind: 'reply'; ref: PullRequestRef; dryRun: boolean; format: IndexFormat; debug: boolean }
   | {
       kind: 'enqueue'
       ref: PullRequestRef
@@ -151,6 +152,8 @@ Commands:
   review [pull request]  Review a pull request and publish the review on it, or,
                          with none, review the changes of this branch locally
   publish <id>           Publish a dry run kept in the history, without the AI
+  reply <pull request>   Answer the replies in the threads of Phada on a pull
+                         request with the AI
   fix [pull request]     Fix the findings of the last local review of this
                          branch in its files, or the open comments of Phada on
                          a pull request, with their suggestions and the AI
@@ -404,10 +407,12 @@ Config (in ~/.config/phada/config.yml):
     interval: 5m           # how often to look for changes, 60s at least
     settle: 3m             # wait after the last push before reviewing
     maxReviewsPerHour: 6
+    replies: auto          # answer replies in Phada's threads: auto, mention or off
     repos:
       - owner/repo
       - repo: owner/other
-        publish: false     # keep the review in the history only
+        publish: false     # keep the review in the history only (replies: off)
+        replies: mention   # answer only replies that mention /phada
         allowExternal: true
         authors: [alice]
         labels: [phada]
@@ -489,6 +494,37 @@ Environment:
   GH_TOKEN             Used when GITHUB_TOKEN is not set; with neither, Phada
                        uses the token of your gh login (gh auth login)
   PHADA_DATA_HOME      Folder of the history (default: ~/.local/share/phada)`
+
+export const REPLY_USAGE = `Usage: phada reply <owner/repo#N | pull request URL> [options]
+
+Answers, with the AI, the replies people left in the open threads of Phada's
+comments on an open pull request. Only replies after Phada's last comment in a
+thread count, from the author of the pull request or a member, owner or
+collaborator of the repository (never a bot), and Phada answers a thread at
+most 3 times. Each reply is classified: ack (taken in) and applied (done) get
+no answer; question gets an answer; disagreed gets Phada's position with the
+evidence; refuted (the comment was wrong) gets an acknowledgement and the
+thread is resolved. The answers are posted as the owner of the GitHub token,
+with a visible line saying it is an automatic reply of Phada. The replies it
+classifies are kept in the history, so a reply is classified once. The AI
+provider and the language come from your config. Exits with 1 when the AI
+usage limit stops it.
+
+Options:
+  --dry-run            Show the kind and the answer of each thread; post and
+                       keep nothing
+  --format <name>      Output: text or json (default: text)
+  --debug              Show error details
+  -h, --help           Show this help
+
+Environment:
+  GITHUB_TOKEN         GitHub token that can read the pull request and write
+                       its review threads ("Pull requests: Read and write")
+  GH_TOKEN             Used when GITHUB_TOKEN is not set; with neither, Phada
+                       uses the token of your gh login (gh auth login)
+  PHADA_CONFIG_HOME    Folder of your own config (default: ~/.config/phada)
+  PHADA_DATA_HOME      Folder of the history (default: ~/.local/share/phada)
+  PHADA_CACHE_HOME     Folder of the mirrors (default: ~/.cache/phada)`
 
 export const HISTORY_USAGE = `Usage: phada history [<owner/repo[#N]>] [options]
        phada history show <id> [--format text|json]
@@ -610,6 +646,7 @@ export function parseCliArgs(argv: readonly string[]): CliCommand {
   if (command === 'setup') return parseSetupArgs(rest)
   if (command === 'review') return parseReviewArgs(rest)
   if (command === 'publish') return parsePublishArgs(rest)
+  if (command === 'reply') return parseReplyArgs(rest)
   if (command === 'fix') return parseFixArgs(rest)
   if (command === 'init') return parseInitArgs(rest)
   if (command === 'index') return parseIndexArgs(rest)
@@ -640,7 +677,7 @@ function unknownCommand(command: string): UsageError {
     return new UsageError(`Unknown command "${command}". Did you mean "phada review ${command}"?`)
   }
   return new UsageError(
-    `Unknown command "${command}". Available: setup, review, publish, fix, init, index, rules, prompt, watch, enqueue, mcp, history, misses, lessons.`,
+    `Unknown command "${command}". Available: setup, review, publish, fix, init, index, rules, prompt, reply, watch, enqueue, mcp, history, misses, lessons.`,
   )
 }
 
@@ -1254,6 +1291,32 @@ function parsePublishArgs(argv: readonly string[]): CliCommand {
     throw new UsageError(`Invalid --format "${format}". Use text or json.`)
   }
   return { kind: 'publish', id, force: values.force, format, debug: values.debug }
+}
+
+function parseReplyArgs(argv: readonly string[]): CliCommand {
+  const { values, positionals } = parseOptions(argv, {
+    'dry-run': { type: 'boolean', default: false },
+    format: { type: 'string', default: 'text' },
+    debug: { type: 'boolean', default: false },
+    help: { type: 'boolean', short: 'h', default: false },
+  })
+  if (values.help) return { kind: 'help', text: REPLY_USAGE }
+  const [input, ...extra] = positionals
+  if (input === undefined) {
+    throw new UsageError('Missing the pull request, e.g. phada reply owner/repo#123.')
+  }
+  if (extra.length > 0) throw new UsageError('Answer one pull request at a time.')
+  const { format } = values
+  if (format !== 'text' && format !== 'json') {
+    throw new UsageError(`Invalid --format "${format}". Use text or json.`)
+  }
+  return {
+    kind: 'reply',
+    ref: parsePullRequestRef(input),
+    dryRun: values['dry-run'],
+    format,
+    debug: values.debug,
+  }
 }
 
 function parseFixArgs(argv: readonly string[]): CliCommand {

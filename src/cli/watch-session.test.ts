@@ -3,10 +3,16 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { memoryFiles } from '../../test/support/memory-files.js'
+import { memoryMirror } from '../../test/support/memory-mirror.js'
 import { pullRequestFixture } from '../../test/support/pull-request.js'
+import { reviewState, reviewThread } from '../../test/support/review-state.js'
 import type { ReviewProgress } from '../app/review-progress.js'
 import type { WatchEvent } from '../app/watch-event.js'
+import type { PullRequestReviewState, ThreadComment } from '../github/pull-request-reviews.js'
 import type { PullRequest } from '../github/pull-request.js'
+import type { ReviewComment } from '../github/review-comments.js'
+import type { ReviewProvider } from '../providers/types.js'
+import { FINDING_MARKER } from '../publish/markers.js'
 import { MirrorLockTimeoutError } from '../repository/mirror-lock.js'
 import { openHistoryStore } from '../store/history-store.js'
 import type { JobRecord } from '../watch/types.js'
@@ -51,6 +57,9 @@ function session(
     fetchPullRequest?: () => Promise<PullRequest>
     withLock?: WatchSessionDeps['withLock']
     lockHolder?: number
+    reviewComments?: ReviewComment[]
+    reviewState?: PullRequestReviewState
+    provider?: ReviewProvider
   } = {},
 ): Session {
   historyCount += 1
@@ -74,13 +83,14 @@ function session(
       defaultBranch: 'main',
       empty: false,
     }),
-    openMirror: notUsed,
+    openMirror: async () => memoryMirror({ 'src/app.ts': 'spend(id)\n' }),
     openIndexStore: notUsed,
     openObservedStore: notUsed,
     createExtractor: () => {
       throw new Error('not used by the watch in this test')
     },
     createProvider: () => {
+      if (overrides.provider !== undefined) return overrides.provider
       throw new Error('not used by the watch in this test')
     },
     runsSkills: () => false,
@@ -90,15 +100,19 @@ function session(
     fetchCheckAnnotations: notUsed,
     fetchJobLog: notUsed,
     fetchPullRequest: overrides.fetchPullRequest ?? (async () => pullRequestFixture()),
-    fetchReviewState: notUsed,
+    fetchReviewState: async () => overrides.reviewState ?? reviewState(),
     fetchPullComments: notUsed,
     createReview: notUsed,
     fetchComparison: notUsed,
     replyAndResolve: notUsed,
     openHistoryStore: () => openHistoryStore(historyFile),
     listOpenPullRequests: async () => ({ status: 'ok', pulls: overrides.pulls ?? [] }),
-    fetchPullRequestMetadata: async () => pullRequestFixture(),
+    fetchPullRequestMetadata: async () => pullRequestFixture({ state: 'open' }),
     listIssueComments: async () => ({ status: 'ok', comments: [] }),
+    listReviewComments: async () => ({ status: 'ok', comments: overrides.reviewComments ?? [] }),
+    addThreadReply: notUsed,
+    resolveThread: notUsed,
+    isThreadOpen: notUsed,
     addCommentReaction: notUsed,
     fetchPullRequestHead: notUsed,
     fetchBranchHead: async () => ({ status: 'not-modified' }),
@@ -155,6 +169,84 @@ describe('startWatch', () => {
 
     expect(await handle.done).toEqual({ reason: 'once' })
     expect(s.events).toEqual([{ kind: 'baseline', repo: 'acme/shop', count: 1 }])
+  })
+
+  it('answers a new reply in a thread of Phada with the AI of the config and reports it', async () => {
+    const finding: ThreadComment = {
+      id: 'C1',
+      author: 'me',
+      body: `**P1** · No auth\n\n${FINDING_MARKER}`,
+      bot: false,
+      association: 'OWNER',
+    }
+    const thanks: ThreadComment = {
+      id: 'C2',
+      author: 'octocat',
+      body: 'Thanks, fixed.',
+      bot: false,
+      association: 'OWNER',
+    }
+    const s = session({
+      pulls: [OPEN_PULL],
+      reviewComments: [
+        {
+          id: 9,
+          inReplyTo: 1,
+          number: 12,
+          author: 'octocat',
+          authorIsBot: false,
+          association: 'OWNER',
+          createdAt: '2026-10-18T12:00:00.000Z',
+        },
+      ],
+      reviewState: reviewState({
+        author: 'octocat',
+        threads: [reviewThread({ author: 'me', body: finding.body, replies: [finding, thanks] })],
+      }),
+      provider: {
+        id: 'fake',
+        review: async () => ({
+          text: JSON.stringify({ kind: 'applied', reply: '' }),
+          durationMs: 1,
+        }),
+      },
+    })
+
+    const published = await openHistoryStore(s.historyFile)
+    published.recordPublished([
+      {
+        repo: 'acme/shop',
+        number: 12,
+        commitSha: 'a'.repeat(40),
+        fingerprint: 'src/a.ts:no auth',
+        file: 'src/a.ts',
+        line: 1,
+        title: 'No auth',
+        severity: 'P1',
+        confidence: 90,
+        publishedAt: '2026-10-18T11:00:00.000Z',
+      },
+    ])
+    published.close()
+
+    const handle = await startWatch({ once: true, backfill: false }, s.deps, s.listeners)
+
+    expect(await handle.done).toEqual({ reason: 'once' })
+    expect(s.events).toContainEqual({
+      kind: 'replied',
+      repo: 'acme/shop',
+      number: 12,
+      reply: expect.objectContaining({ kind: 'applied', posted: false }),
+    })
+    const history = await openHistoryStore(s.historyFile)
+    try {
+      expect(history.replies({ repo: 'acme/shop' })).toMatchObject([
+        { number: 12, commentId: 'C2', kind: 'applied', source: 'watch' },
+      ])
+      expect(history.repliesDue('acme/shop')).toEqual([])
+    } finally {
+      history.close()
+    }
   })
 
   it('finishes the running review on stop, then ends', async () => {

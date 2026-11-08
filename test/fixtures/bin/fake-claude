@@ -69,6 +69,20 @@ const usage = {
 }
 
 switch (env.FAKE_CLAUDE_MODE ?? 'success') {
+  case 'answers': {
+    const answers = JSON.parse(readFileSync(env.FAKE_CLAUDE_ANSWERS, 'utf8'))
+    const [next, ...rest] = answers
+    writeFileSync(env.FAKE_CLAUDE_ANSWERS, JSON.stringify(rest))
+    if (next === 'usage_limit') {
+      process.stderr.write('5-hour limit reached ∙ resets 3pm\n')
+      process.exitCode = 1
+      break
+    }
+    process.stdout.write(
+      result({ is_error: false, result: next, modelUsage: { 'claude-fake-1': {} }, usage }),
+    )
+    break
+  }
   case 'success':
     process.stdout.write(
       result({
