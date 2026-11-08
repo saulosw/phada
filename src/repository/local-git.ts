@@ -4,7 +4,12 @@ import { join, resolve } from 'node:path'
 import { CommandNotFoundError, CommandOutputTooLargeError } from '../process/errors.js'
 import { runCommand } from '../process/run-command.js'
 import type { RunCommandResult } from '../process/run-command.js'
-import { FETCH_TIMEOUT_MS, firstLine, GIT_READ_TIMEOUT_MS, gitEnvironment } from './git-checkout.js'
+import {
+  FETCH_TIMEOUT_MS,
+  firstLine,
+  GIT_READ_TIMEOUT_MS,
+  promptlessGitEnvironment,
+} from './git-checkout.js'
 import type { Run } from './git-checkout.js'
 
 export type LocalGitErrorReason =
@@ -121,7 +126,7 @@ export interface LocalGitOptions {
 
 export async function openLocalGit(options: LocalGitOptions): Promise<LocalGit> {
   const run = options.run ?? runCommand
-  const env = { ...gitEnvironment(options.env), GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0' }
+  const env = { ...promptlessGitEnvironment(options.env), GIT_OPTIONAL_LOCKS: '0' }
   const result = await runGit(run, options.dir, ['rev-parse', '--show-toplevel'], env)
   const root = result.stdout.trim()
   if (result.exitCode !== 0 || root === '') {
@@ -275,6 +280,18 @@ export class LocalGit {
 
   async commitWorkingTree(message: string): Promise<string | undefined> {
     const head = await this.head()
+    const tree = await this.workingTree()
+    const headTree = (await this.#must(['rev-parse', `${head}^{tree}`])).trim()
+    if (tree === headTree) return undefined
+    const date = (await this.#must(['show', '-s', '--format=%cI', head])).trim()
+    const commit = await this.#must(
+      ['commit-tree', '--no-gpg-sign', tree, '-p', head, '-m', message],
+      { env: { ...SYNTHETIC_IDENTITY, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date } },
+    )
+    return commit.trim()
+  }
+
+  async workingTree(): Promise<string> {
     const index = resolve(
       this.root,
       (await this.#must(['rev-parse', '--git-path', 'index'])).trim(),
@@ -287,18 +304,18 @@ export class LocalGit {
       })
       const withIndex = { env: { GIT_INDEX_FILE: scratchIndex } }
       await this.#must(['add', '-A', '--', '.'], { ...withIndex, timeoutMs: FETCH_TIMEOUT_MS })
-      const tree = (await this.#must(['write-tree'], withIndex)).trim()
-      const headTree = (await this.#must(['rev-parse', `${head}^{tree}`])).trim()
-      if (tree === headTree) return undefined
-      const date = (await this.#must(['show', '-s', '--format=%cI', head])).trim()
-      const commit = await this.#must(
-        ['commit-tree', '--no-gpg-sign', tree, '-p', head, '-m', message],
-        { env: { ...SYNTHETIC_IDENTITY, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date } },
-      )
-      return commit.trim()
+      return (await this.#must(['write-tree'], withIndex)).trim()
     } finally {
       await rm(scratch, { recursive: true, force: true })
     }
+  }
+
+  async changedFiles(fromTree: string, toTree: string): Promise<string[]> {
+    const names = await this.#must(
+      ['diff', '--name-only', '-z', '--no-renames', '--no-ext-diff', fromTree, toTree, '--'],
+      LIST_OPTIONS,
+    )
+    return names.split('\0').filter((name) => name !== '')
   }
 
   async #must(args: readonly string[], options: GitRunOptions = {}): Promise<string> {

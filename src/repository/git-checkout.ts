@@ -286,6 +286,10 @@ export function gitEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   )
 }
 
+export function promptlessGitEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return { ...gitEnvironment(env), GIT_TERMINAL_PROMPT: '0' }
+}
+
 export function firstLine(text: string): string {
   return (
     text

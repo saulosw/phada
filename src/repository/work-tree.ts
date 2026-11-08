@@ -6,7 +6,7 @@ import {
   FETCH_TIMEOUT_MS,
   firstLine,
   GIT_READ_TIMEOUT_MS,
-  gitEnvironment,
+  promptlessGitEnvironment,
 } from './git-checkout.js'
 import type { Run } from './git-checkout.js'
 import { HISTORY_DEPTH } from './git-mirror.js'
@@ -40,7 +40,7 @@ export async function materializeWorkTree(
   options: { env: NodeJS.ProcessEnv; run?: Run },
 ): Promise<WorkTree> {
   const run = options.run ?? runCommand
-  const env = { ...gitEnvironment(options.env), GIT_TERMINAL_PROMPT: '0', GIT_LFS_SKIP_SMUDGE: '1' }
+  const env = { ...promptlessGitEnvironment(options.env), GIT_LFS_SKIP_SMUDGE: '1' }
   const headKeep = `refs/phada/pull/${input.number}`
   const baseKeep = `refs/phada/base/${input.number}`
   await mirror.fetch(input.baseSha, baseKeep, { depth: 1 })

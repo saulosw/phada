@@ -67,11 +67,28 @@ export interface SkillRunOutput {
   warnings?: string[]
 }
 
+export interface FixRequest {
+  instructions: string
+  data: string
+  cwd: string
+  timeoutMs: number
+  maxTurns: number
+}
+
+export interface FixOutput {
+  text: string
+  durationMs: number
+  model?: string
+  usage?: TokenUsage
+  blocked: BlockedCommand[]
+}
+
 export interface ReviewProvider {
   readonly id: string
   readonly concurrency?: number
   review(prompt: ReviewPrompt): Promise<ReviewOutput>
   runSkill?(request: SkillRunRequest): Promise<SkillRunOutput>
+  fix?(request: FixRequest): Promise<FixOutput>
 }
 
 export type ProviderErrorReason =

@@ -21,9 +21,18 @@ import {
   LessonNotFoundError,
   LessonRuleRefusedError,
 } from '../app/decide-lesson.js'
+import { NoLocalBranchError, NoLocalReviewError } from '../app/local-fix.js'
+import {
+  ClosedPullRequestFixError,
+  ForkFixError,
+  NoPushPermissionError,
+} from '../app/pull-request-fix.js'
 import { NoDefaultBranchError, NothingToReviewError } from '../app/local-review.js'
-import { toTerminalText } from '../app/terminal-text.js'
+import { singleLine, toTerminalText } from '../app/terminal-text.js'
+import { MissingGitIdentityError } from '../repository/git-identity.js'
 import { LocalDiffTooLargeError, LocalGitError } from '../repository/local-git.js'
+import { BranchMovedError } from '../repository/branch-moved.js'
+import { CommitFailedError, PushFailedError } from '../repository/push-fix.js'
 import type { LocalGitErrorReason } from '../repository/local-git.js'
 import { EditorNotFoundError } from './text-editor.js'
 
@@ -40,7 +49,7 @@ interface ProviderHints {
 
 const LOCAL_GIT_HINTS: Readonly<Partial<Record<LocalGitErrorReason, string>>> = {
   'not-a-repository':
-    'Run phada review in a clone of the repository, or pass a pull request (owner/repo#N).',
+    'Run phada in a clone of the repository, or pass a pull request (owner/repo#N).',
   'unknown-base': 'Pass a branch, tag or commit SHA to --base.',
   'no-origin':
     'A local review takes its GitHub repository from origin: git remote add origin <URL of the repository on GitHub>.',
@@ -107,7 +116,19 @@ function describe(error: unknown): { summary: string; exitCode: 1 | 2 } {
       exitCode: 1,
     }
   }
-  if (error instanceof NoDefaultBranchError || error instanceof NothingToReviewError) {
+  if (
+    error instanceof NoDefaultBranchError ||
+    error instanceof NothingToReviewError ||
+    error instanceof NoLocalReviewError ||
+    error instanceof NoLocalBranchError ||
+    error instanceof ForkFixError ||
+    error instanceof ClosedPullRequestFixError ||
+    error instanceof NoPushPermissionError ||
+    error instanceof MissingGitIdentityError ||
+    error instanceof BranchMovedError ||
+    error instanceof CommitFailedError ||
+    error instanceof PushFailedError
+  ) {
     return { summary: error.message, exitCode: 1 }
   }
   if (error instanceof DiffTooLargeError) {
@@ -161,10 +182,4 @@ function details(error: unknown): string {
   if (error instanceof InvalidReviewReportError || error instanceof InvalidLessonsAnswerError)
     lines.push(`AI answer (start):\n${error.preview}`)
   return toTerminalText(lines.join('\n'))
-}
-
-function singleLine(text: string): string {
-  return toTerminalText(text)
-    .replace(/\s*\n\s*/g, ' ')
-    .trim()
 }

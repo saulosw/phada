@@ -22,7 +22,7 @@ function thread(overrides: Partial<ReviewThread> = {}): ReviewThread {
 }
 
 function state(threads: ReviewThread[]): PullRequestReviewState {
-  return { viewer: 'me', pullState: 'open', reviews: [], threads }
+  return { viewer: 'me', pullState: 'open', headSha: 'f'.repeat(40), reviews: [], threads }
 }
 
 describe('planPublication', () => {

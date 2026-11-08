@@ -83,9 +83,28 @@ describe('reportProgress', () => {
     ])
   })
 
+  it('reports a fix as its own kind of run', async () => {
+    const provider: ReviewProvider = {
+      id: 'codex-cli',
+      review: () => Promise.reject(new Error('unused')),
+      fix: async () => ({ text: '#1 fixed: x', durationMs: 1, blocked: [] }),
+    }
+    const { events, sink } = recorder()
+
+    const output = await reportProgress(provider, 'review', sink).fix?.({} as never)
+
+    expect(output?.text).toBe('#1 fixed: x')
+    expect(events).toEqual([
+      { kind: 'aiStarted', provider: 'codex-cli', run: 'fix' },
+      { kind: 'aiFinished', provider: 'codex-cli', run: 'fix', answered: true },
+    ])
+  })
+
   it('does not run skills when the provider does not', () => {
     const provider: ReviewProvider = { id: 'ollama', review: () => Promise.reject(new Error('x')) }
 
-    expect(reportProgress(provider, 'review', recorder().sink).runSkill).toBeUndefined()
+    const wrapped = reportProgress(provider, 'review', recorder().sink)
+    expect(wrapped.runSkill).toBeUndefined()
+    expect(wrapped.fix).toBeUndefined()
   })
 })

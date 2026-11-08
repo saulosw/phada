@@ -1,13 +1,15 @@
 import type { LocalRun } from '../app/local-review.js'
 import { localRunName } from '../app/run-target.js'
 import type { PullRequest } from '../github/pull-request.js'
+import { numberFindings } from '../review/finding-numbers.js'
 import { scoreFocus } from '../review/score.js'
 import type { FileChange, Finding, ReviewResult, Severity, Suggestion } from '../review/types.js'
 import { english } from './i18n/en.js'
 import { debtItem } from './debt-text.js'
 import { findingReferences, leftOutLine } from './finding-references.js'
 import type { Messages } from './i18n/messages.js'
-import { blockText, cell, codeFence, singleLine } from './markdown-text.js'
+import { singleLine } from '../app/terminal-text.js'
+import { blockText, cell, codeFence } from './markdown-text.js'
 import { modelLabel, shortSha } from './review-text.js'
 import { toTerminalText } from '../app/terminal-text.js'
 import { formatBytes, formatCount, formatDuration, formatTokens } from './units.js'
@@ -111,14 +113,14 @@ function filesSection(files: readonly FileChange[], messages: Messages): string 
 
 function findingsSection(findings: readonly Finding[], messages: Messages): string {
   if (findings.length === 0) return ''
-  let number = 0
+  const numbered = numberFindings(findings)
   const groups = SEVERITIES.flatMap((severity) => {
-    const group = findings.filter((finding) => finding.severity === severity)
+    const group = numbered.filter(({ finding }) => finding.severity === severity)
     if (group.length === 0) return []
     return [
       [
         `### ${messages.terminal.severity[severity]}`,
-        ...group.map((finding) => findingItem(++number, finding, messages)),
+        ...group.map(({ number, finding }) => findingItem(number, finding, messages)),
       ].join('\n\n'),
     ]
   })

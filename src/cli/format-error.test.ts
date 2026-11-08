@@ -43,7 +43,7 @@ describe('formatError', () => {
   it.each([
     [
       new LocalGitError('not-a-repository', '/w is not inside a git repository'),
-      'phada: /w is not inside a git repository. Run phada review in a clone of the repository, or pass a pull request (owner/repo#N).',
+      'phada: /w is not inside a git repository. Run phada in a clone of the repository, or pass a pull request (owner/repo#N).',
       2,
     ],
     [

@@ -18,6 +18,19 @@ export const READ_ONLY_COMMANDS: readonly string[] = [
   'gh',
 ]
 
+export const FIX_TOOLS: readonly string[] = ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash']
+
+export const FIX_ALLOWED_TOOLS: readonly string[] = [
+  'Read',
+  'Grep',
+  'Glob',
+  'Edit',
+  'Write',
+  ...READ_ONLY_COMMANDS.filter((command) => command.startsWith('git ')).map(
+    (command) => `Bash(${command}:*)`,
+  ),
+]
+
 const ALWAYS_ALLOWED: readonly string[] = ['Read', 'Grep', 'Glob', 'Task', 'Skill']
 const WRAPPER_PLUGIN = 'phada-skills'
 

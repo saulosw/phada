@@ -38,7 +38,7 @@ function thread(overrides: Partial<ReviewThread> = {}): ReviewThread {
 }
 
 function state(reviews: PublishedReview[], threads: ReviewThread[] = []): PullRequestReviewState {
-  return { viewer: 'me', pullState: 'open', reviews, threads }
+  return { viewer: 'me', pullState: 'open', headSha: HEAD, reviews, threads }
 }
 
 describe('decideRun', () => {
@@ -110,6 +110,7 @@ describe('decideRun', () => {
     const ghost = {
       viewer: '',
       pullState: 'open' as const,
+      headSha: HEAD,
       reviews: [review(HEAD, 0, '')],
       threads: [thread({ author: '' })],
     }

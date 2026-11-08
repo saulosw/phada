@@ -1,7 +1,7 @@
 import { destinationOf } from '../publish/feedback.js'
 import { numberOf, objectOf, parseJson, stringOf, stringsOf } from './stored-json.js'
 import { storedCoverage } from './stored-review.js'
-import type { CoverageGapKind, CoverageLevel } from '../review/types.js'
+import type { CoverageGapKind, CoverageLevel, Suggestion } from '../review/types.js'
 import type { Destination, SignalKind } from '../publish/feedback.js'
 import type {
   FindingFilter,
@@ -53,6 +53,7 @@ export interface StoredFinding {
   sources: string[]
   scope: 'change' | 'repository'
   closeToCut: boolean
+  suggestion?: Suggestion
 }
 
 export interface StoredClaim {
@@ -256,6 +257,7 @@ export function storedFindings(value: unknown): StoredFinding[] {
     const file = stringOf(finding?.file)
     const title = stringOf(finding?.title)
     if (finding === undefined || file === undefined || title === undefined) return []
+    const suggestion = storedSuggestion(finding.suggestion)
     return [
       {
         severity: stringOf(finding.severity) ?? null,
@@ -270,9 +272,27 @@ export function storedFindings(value: unknown): StoredFinding[] {
         sources: stringsOf(finding.sources),
         scope: finding.scope === 'repository' ? 'repository' : 'change',
         closeToCut: finding.closeToCut === true,
+        ...(suggestion === undefined ? {} : { suggestion }),
       },
     ]
   })
+}
+
+function storedSuggestion(value: unknown): Suggestion | undefined {
+  const suggestion = objectOf(value)
+  const startLine = numberOf(suggestion?.startLine)
+  const endLine = numberOf(suggestion?.endLine)
+  const original = stringOf(suggestion?.original)
+  const replacement = stringOf(suggestion?.replacement)
+  if (
+    startLine === undefined ||
+    endLine === undefined ||
+    original === undefined ||
+    replacement === undefined
+  ) {
+    return undefined
+  }
+  return { startLine, endLine, original, replacement }
 }
 
 export function storedClaims(value: unknown): StoredClaim[] {

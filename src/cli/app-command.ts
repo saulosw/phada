@@ -83,6 +83,7 @@ import { SLACK_APP_TOKEN, SLACK_BOT_TOKEN } from './review-event-sinks.js'
 import { terminalHandOff } from './terminal-hand-off.js'
 import { ensureUserRepoFile } from './user-repo-file.js'
 import type { TerminalHandOff } from './terminal-hand-off.js'
+import { isTerminalInput } from './confirm.js'
 
 export interface AppCommandDeps
   extends
@@ -426,10 +427,6 @@ async function observedOf(deps: AppCommandDeps, repo: string): Promise<ObservedR
   )
   if (read === 'unreadable') return { state: 'unreadable' }
   return { state: 'read', edges: read === 'missing' ? [] : read }
-}
-
-function isTerminalInput(stream: NodeJS.ReadableStream): stream is NodeJS.ReadStream {
-  return 'isTTY' in stream && stream.isTTY === true
 }
 
 function isTerminalOutput(stream: TextOutput): stream is TextOutput & NodeJS.WriteStream {

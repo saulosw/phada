@@ -8,11 +8,19 @@ import type { RunCommandResult } from '../process/run-command.js'
 import { runCli, snippet, USAGE_LIMIT, withTempDir } from './cli-run.js'
 import type { CliNames } from './cli-run.js'
 import { resolveClaudeModel } from './claude-model.js'
-import { allowedSkillTools, SKILL_TOOLS, writeSkillPlugin } from './claude-skill-args.js'
+import {
+  allowedSkillTools,
+  FIX_ALLOWED_TOOLS,
+  FIX_TOOLS,
+  SKILL_TOOLS,
+  writeSkillPlugin,
+} from './claude-skill-args.js'
 import { ProviderError } from './types.js'
 import type {
   BlockedCommand,
   ExternalToolCall,
+  FixOutput,
+  FixRequest,
   ProviderErrorReason,
   ReviewOutput,
   ReviewPrompt,
@@ -225,6 +233,51 @@ export class ClaudeCliProvider implements ReviewProvider {
     })
   }
 
+  fix(request: FixRequest): Promise<FixOutput> {
+    return withTempDir(TEMP_DIR_PREFIX, async (temp) => {
+      const instructionsPath = join(temp, INSTRUCTIONS_FILE)
+      await writeFile(instructionsPath, request.instructions)
+      const model = await resolveClaudeModel({
+        model: this.#model,
+        env: this.#env,
+        homeDir: this.#homeDir,
+      })
+      const run = await runCli({
+        providerId: PROVIDER_ID,
+        names: NAMES,
+        command: this.#command,
+        detached: this.#detached,
+        args: [
+          '-p',
+          '--output-format',
+          'stream-json',
+          '--verbose',
+          '--restricted',
+          '--setting-sources=',
+          '--no-session-persistence',
+          '--strict-mcp-config',
+          '--disable-slash-commands',
+          '--tools',
+          FIX_TOOLS.join(','),
+          '--allowedTools',
+          FIX_ALLOWED_TOOLS.join(','),
+          '--permission-mode',
+          'acceptEdits',
+          '--append-system-prompt-file',
+          instructionsPath,
+          '--max-turns',
+          String(request.maxTurns),
+          `--model=${model}`,
+        ],
+        stdin: request.data,
+        cwd: request.cwd,
+        env: this.#env,
+        timeoutMs: request.timeoutMs,
+      })
+      return toFixOutput(run, request.maxTurns)
+    })
+  }
+
   async #mcpArgs(cwd: string, prompt: ReviewPrompt, server: McpServer | undefined) {
     const allowed = [
       ...(prompt.tools?.definitions ?? []).map(({ name }) => `${PHADA_TOOL_PREFIX}${name}`),
@@ -249,27 +302,47 @@ function toSkillOutput(
   maxTurns: number,
   serverNames: ReadonlyMap<string, string>,
 ): SkillRunOutput {
+  const { claude, events, text } = agentResult(run, maxTurns, 'skill')
+  if (text.trim() === '') {
+    throw new ProviderError(PROVIDER_ID, 'invalid-output', 'The skill returned an empty answer.')
+  }
+  const externalCalls = externalCallsOf(events, serverNames)
+  return {
+    ...agentOutput(run, claude, text),
+    ...(externalCalls.length === 0 ? {} : { externalCalls }),
+  }
+}
+
+function toFixOutput(run: RunCommandResult, maxTurns: number): FixOutput {
+  const { claude, text } = agentResult(run, maxTurns, 'fix')
+  return agentOutput(run, claude, text)
+}
+
+function agentResult(
+  run: RunCommandResult,
+  maxTurns: number,
+  task: string,
+): { claude: ClaudeResult; events: unknown[]; text: string } {
   const { claude, events } = finalResult(run)
   if (claude.subtype === MAX_TURNS_SUBTYPE) {
     throw new ProviderError(
       PROVIDER_ID,
       'invalid-output',
-      `Claude did not finish the skill within ${maxTurns} turns.`,
+      `Claude did not finish the ${task} within ${maxTurns} turns.`,
     )
   }
   if (claude.is_error || claude.result === undefined) throw claudeError(claude)
-  if (claude.result.trim() === '') {
-    throw new ProviderError(PROVIDER_ID, 'invalid-output', 'The skill returned an empty answer.')
-  }
+  return { claude, events, text: claude.result }
+}
+
+function agentOutput(run: RunCommandResult, claude: ClaudeResult, text: string): FixOutput {
   const [model] = modelsByOutput(claude.modelUsage ?? {})
-  const externalCalls = externalCallsOf(events, serverNames)
   return {
-    text: claude.result,
+    text,
     durationMs: run.durationMs,
     ...(model === undefined ? {} : { model }),
     ...(claude.usage === undefined ? {} : { usage: toTokenUsage(claude.usage) }),
     blocked: (claude.permission_denials ?? []).map(blockedOf),
-    ...(externalCalls.length === 0 ? {} : { externalCalls }),
   }
 }
 

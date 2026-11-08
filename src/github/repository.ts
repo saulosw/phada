@@ -18,6 +18,7 @@ export interface RepositoryInfo {
   private: boolean
   defaultBranch?: string
   empty: boolean
+  canPush?: boolean
 }
 
 export class RepositoryAccessError extends GitHubError {
@@ -54,11 +55,13 @@ export async function fetchRepository(options: RepositoryFilesOptions): Promise<
   const json = await readJson(response, ctx)
   const branch = field(json, 'default_branch')
   const defaultBranch = typeof branch === 'string' && branch !== '' ? branch : undefined
+  const push = field(json, 'permissions.push')
   return {
     repo: stringField(json, 'full_name'),
     private: booleanField(json, 'private'),
     ...(defaultBranch === undefined ? {} : { defaultBranch }),
     empty: defaultBranch === undefined,
+    ...(typeof push === 'boolean' ? { canPush: push } : {}),
   }
 }
 

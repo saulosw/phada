@@ -2,6 +2,7 @@
   "data": {
     "repository": {
       "pullRequest": {
+        "headRefOid": "f41a2c3280de0d54ab06d79fa18e93e576e511e6",
         "reviewThreads": {
           "pageInfo": {
             "hasNextPage": false,
@@ -14,6 +15,7 @@
               "isOutdated": false,
               "path": "api/src/routes/users.ts",
               "line": 63,
+              "startLine": null,
               "originalLine": 63,
               "originalStartLine": null,
               "comments": {

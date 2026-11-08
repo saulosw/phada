@@ -7,7 +7,7 @@ import { allowedSkillTools } from './claude-skill-args.js'
 import { ClaudeCliProvider } from './claude.js'
 import type { ClaudeCliProviderOptions } from './claude.js'
 import { ProviderError } from './types.js'
-import type { ReviewPrompt, SkillRunRequest } from './types.js'
+import type { FixRequest, ReviewPrompt, SkillRunRequest } from './types.js'
 import type { Toolbox } from '../investigation/toolbox.js'
 
 const FAKE_CLAUDE = resolve('test/fixtures/bin/fake-claude')
@@ -639,5 +639,82 @@ describe('ClaudeCliProvider.runSkill', () => {
 
     const { argv } = readCapture()
     expect(existsSync(dirname(argAfter(argv, '--append-system-prompt-file') ?? ''))).toBe(false)
+  })
+})
+
+describe('ClaudeCliProvider.fix', () => {
+  let tree: string
+
+  beforeEach(() => {
+    tree = mkdtempSync(join(tmpdir(), 'phada-claude-tree-'))
+  })
+
+  afterEach(() => {
+    rmSync(tree, { recursive: true, force: true })
+  })
+
+  const request = (overrides: Partial<FixRequest> = {}): FixRequest => ({
+    instructions: 'Fix only these findings.',
+    data: '<<<PHADA_FINDINGS_n\n{"number":1}\nPHADA_FINDINGS_n>>>',
+    cwd: tree,
+    timeoutMs: 30_000,
+    maxTurns: 60,
+    ...overrides,
+  })
+
+  function argAfter(argv: string[], flag: string): string | undefined {
+    const index = argv.indexOf(flag)
+    return index === -1 ? undefined : argv[index + 1]
+  }
+
+  it('edits in the tree with the file tools and only the read-only git commands', async () => {
+    const output = await provider('success', {
+      env: { GITHUB_TOKEN: FAKE_SECRET, GH_TOKEN: FAKE_SECRET },
+    }).fix(request())
+
+    const { argv, stdin, instructions, cwd, env } = readCapture()
+    expect(argv).toEqual(
+      expect.arrayContaining([
+        '-p',
+        '--restricted',
+        '--setting-sources=',
+        '--no-session-persistence',
+        '--strict-mcp-config',
+        '--disable-slash-commands',
+      ]),
+    )
+    expect(argAfter(argv, '--tools')).toBe('Read,Grep,Glob,Edit,Write,Bash')
+    const allowed = argAfter(argv, '--allowedTools')?.split(',') ?? []
+    expect(allowed).toEqual(expect.arrayContaining(['Edit', 'Write', 'Bash(git diff:*)']))
+    expect(allowed).not.toContain('Bash')
+    expect(allowed.some((tool) => tool.startsWith('Bash(gh'))).toBe(false)
+    expect(argAfter(argv, '--permission-mode')).toBe('acceptEdits')
+    expect(argAfter(argv, '--max-turns')).toBe('60')
+    expect(argv.some((arg) => arg.startsWith('--json-schema'))).toBe(false)
+    expect(argv).not.toContain('--bare')
+    expect(instructions).toBe('Fix only these findings.')
+    expect(stdin).toBe(request().data)
+    expect(realpathSync(cwd)).toBe(realpathSync(tree))
+    expect(env.GITHUB_TOKEN).toBeUndefined()
+    expect(env.GH_TOKEN).toBeUndefined()
+    expect(output).toMatchObject({ text: 'LGTM from fake', model: 'claude-fake-1', blocked: [] })
+  })
+
+  it('reports the denied tools as blocked', async () => {
+    const output = await provider('denials').fix(request())
+
+    expect(output.blocked[0]).toEqual({ tool: 'Bash', input: 'npm test' })
+  })
+
+  it('fails when the fix does not finish within its turns', async () => {
+    const error = await provider('max_turns')
+      .fix(request())
+      .then(
+        () => undefined,
+        (reason: unknown) => reason,
+      )
+
+    expect((error as ProviderError).reason).toBe('invalid-output')
+    expect((error as ProviderError).message).toBe('Claude did not finish the fix within 60 turns.')
   })
 })

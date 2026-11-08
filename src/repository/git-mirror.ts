@@ -3,7 +3,6 @@ import { join } from 'node:path'
 import { CommandNotFoundError, CommandTimeoutError } from '../process/errors.js'
 import { runCommand, runCommandBytes } from '../process/run-command.js'
 import type { RunCommandBytesResult, RunCommandOptions } from '../process/run-command.js'
-import { redactSecrets } from '../providers/redact-secrets.js'
 import type { Checkout } from './checkout.js'
 import {
   CheckoutUnavailableError,
@@ -11,9 +10,10 @@ import {
   firstLine,
   GIT_READ_TIMEOUT_MS,
   GitCheckout,
-  gitEnvironment,
+  promptlessGitEnvironment,
 } from './git-checkout.js'
 import type { Run } from './git-checkout.js'
+import { gitHubAuth } from './github-auth.js'
 import { MirrorLockTimeoutError, withMirrorLock } from './mirror-lock.js'
 
 export const BLOB_BATCH_BYTES = 32_000_000
@@ -89,7 +89,7 @@ export interface LocalMirrorOptions {
 
 export async function openGitMirror(options: GitMirrorOptions): Promise<GitMirror> {
   const run = options.run ?? runCommand
-  const env = gitEnvironment(options.env)
+  const env = promptlessGitEnvironment(options.env)
   if (!(await isBareRepository(options.dir))) {
     try {
       await mkdir(options.dir, { recursive: true, mode: 0o700 })
@@ -118,7 +118,7 @@ export async function openExistingGitMirror(options: LocalMirrorOptions): Promis
       options,
       options.run ?? runCommand,
       options.runBytes ?? runCommandBytes,
-      gitEnvironment(options.env),
+      promptlessGitEnvironment(options.env),
     ),
   }
 }
@@ -245,7 +245,7 @@ class GitMirrorRepository extends LocalGitMirror implements GitMirror {
     signal?: AbortSignal,
   ): Promise<void> {
     const { owner, repo, token } = this.#options
-    const basic = Buffer.from(`x-access-token:${token}`).toString('base64')
+    const auth = gitHubAuth(token)
     const url = this.#options.remoteUrl ?? `https://github.com/${owner}/${repo}`
     const fetched = await this.run(
       'git',
@@ -261,22 +261,16 @@ class GitMirrorRepository extends LocalGitMirror implements GitMirror {
         `+${ref}:${keepAs}`,
       ],
       {
-        env: {
-          ...this.env,
-          GIT_TERMINAL_PROMPT: '0',
-          GIT_CONFIG_COUNT: '1',
-          GIT_CONFIG_KEY_0: 'http.https://github.com/.extraheader',
-          GIT_CONFIG_VALUE_0: `Authorization: Basic ${basic}`,
-        },
+        env: { ...this.env, ...auth.env },
         timeoutMs,
         ...(signal === undefined ? {} : { signal }),
       },
     )
     if (fetched.exitCode !== 0) {
-      const detail = firstLine(fetched.stderr).replaceAll(token, '').replaceAll(basic, '')
+      const detail = auth.scrub(firstLine(fetched.stderr))
       throw new CheckoutUnavailableError(
         NO_ACCESS.test(fetched.stderr) ? 'no-access' : 'fetch-failed',
-        `Could not fetch ${SHA.test(ref) ? ref.slice(0, 7) : ref} from ${owner}/${repo}: ${redactSecrets(detail) || `git exited with code ${fetched.exitCode}`}`,
+        `Could not fetch ${SHA.test(ref) ? ref.slice(0, 7) : ref} from ${owner}/${repo}: ${detail || `git exited with code ${fetched.exitCode}`}`,
       )
     }
   }
