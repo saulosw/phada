@@ -7,7 +7,7 @@ import type {
   ThreadComment,
 } from '../github/pull-request-reviews.js'
 import { buildConversation } from './conversation.js'
-import { FINDING_MARKER, resolvedMarker, reviewMarker } from './markers.js'
+import { FINDING_MARKER, replyMarker, resolvedMarker, reviewMarker } from './markers.js'
 
 const VIEWER = 'phada-owner'
 const AUTHOR = 'alice'
@@ -244,6 +244,38 @@ describe('buildConversation', () => {
         ],
         omittedReplies: 1,
       },
+    ])
+  })
+
+  it('leaves out the replies of Phada as its own', () => {
+    const phadaBody = `**P1** · Retry never stops · confidence 90\n\nWhy.\n\n${FINDING_MARKER}`
+    const answered = reply({ id: 'C2', body: 'Is it reached at all?' })
+    const phadaReply = reply({
+      id: 'C3',
+      author: VIEWER,
+      body: `Yes, from the scheduler.\n\n${replyMarker('question')}`,
+    })
+    const phadaThread = thread({
+      author: VIEWER,
+      body: phadaBody,
+      comments: 3,
+      replies: [reply({ id: 'C1', author: VIEWER, body: phadaBody }), answered, phadaReply],
+    })
+    const onlyPhada = thread({
+      id: 'T2',
+      author: VIEWER,
+      body: phadaBody,
+      comments: 2,
+      replies: [reply({ id: 'C1', author: VIEWER, body: phadaBody }), phadaReply],
+    })
+
+    const { items } = build({ threads: [phadaThread, onlyPhada] })
+
+    expect(items).toEqual([
+      expect.objectContaining({
+        role: 'phada',
+        replies: [expect.objectContaining({ body: 'Is it reached at all?' })],
+      }),
     ])
   })
 

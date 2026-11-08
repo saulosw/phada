@@ -239,6 +239,15 @@ export const spanish: UiMessages = {
       limited: (count, until) =>
         `${number(count)} ${count === 1 ? 'revisión' : 'revisiones'} en la última hora: la siguiente empieza a las ${until}.`,
       refused: (source, ref, reason) => `Pedido de ${source} para ${ref} rechazado: ${reason}.`,
+      replied: (ref, place, kind, outcome) =>
+        `Respuesta en ${ref} en ${place}: ${kind}, ${outcome}.`,
+      replyOutcomes: {
+        posted: 'publicada',
+        resolved: 'publicada e hilo resuelto',
+        noAnswer: 'nada que responder',
+        skipped: 'omitida (hilo resuelto)',
+        notPosted: 'no publicada',
+      },
     },
   },
   reviews: {
@@ -297,6 +306,13 @@ export const spanish: UiMessages = {
       ignored: 'ignorado',
       'negative-reaction': 'reacción negativa',
       'human-reply': 'respuesta de una persona',
+    },
+    replyKinds: {
+      ack: 'enterado',
+      applied: 'aplicado',
+      question: 'pregunta',
+      disagreed: 'desacuerdo',
+      refuted: 'refutación',
     },
     detail: {
       score: 'Nota',
@@ -727,6 +743,7 @@ export const spanish: UiMessages = {
     },
     marks: (negative, replies) =>
       `${negative} con reacción negativa · ${replies} con respuesta de una persona`,
+    replies: (kinds) => `Respuestas: ${kinds}`,
     detail: {
       published: 'Comentarios que Phada publicó',
       noComments: 'Ningún comentario publicado aquí todavía.',
@@ -1041,6 +1058,7 @@ export const spanish: UiMessages = {
       review: 'revisión',
       verify: 'verificación',
       recheck: 'reevaluación',
+      reply: 'respuesta',
       skill: 'skill',
       fix: 'corrección',
     },

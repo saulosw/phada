@@ -13,7 +13,7 @@ import type { MemoryFiles } from '../test/support/memory-files.js'
 import { pullRequestFixture } from '../test/support/pull-request.js'
 import { reviewReportJson } from '../test/support/review-report.js'
 import { verdictFixture, verificationJson } from '../test/support/verification.js'
-import { REVIEW_USAGE, USAGE } from './cli/args.js'
+import { REPLY_USAGE, REVIEW_USAGE, USAGE } from './cli/args.js'
 import { UsageError } from './cli/errors.js'
 import { formatAlreadyReviewedJson } from './cli/format-json.js'
 import type { ComparedFile, CompareOptions } from './github/compare-commits.js'
@@ -23,6 +23,7 @@ import {
   GitHubPermissionError,
   PullRequestNotFoundError,
   ReviewPermissionError,
+  ThreadPermissionError,
 } from './github/errors.js'
 import type {
   FetchReviewStateOptions,
@@ -294,6 +295,17 @@ function harness(
       events.push(`resolve ${options.threadId}`)
       replies.push(options)
     },
+    addThreadReply: async (options) => {
+      events.push(`reply ${options.threadId}`)
+      return {
+        id: 'C9',
+        url: `https://github.com/acme/shop/pull/12#discussion_${options.threadId}`,
+      }
+    },
+    resolveThread: async (options) => {
+      events.push(`resolve ${options.threadId}`)
+    },
+    isThreadOpen: async () => true,
     fetchRepositoryTree: (options) => {
       treeFetches.push({ sha: options.sha })
       if (overrides.tree !== undefined) return overrides.tree()
@@ -350,6 +362,7 @@ function harness(
     listClosedPullRequests: () => Promise.resolve([]),
     listIssueComments:
       overrides.comments ?? (() => Promise.resolve({ status: 'ok' as const, comments: [] })),
+    listReviewComments: () => Promise.resolve({ status: 'ok' as const, comments: [] }),
     addCommentReaction: async (options) => {
       events.push(`react ${options.commentId}`)
     },
@@ -4816,5 +4829,68 @@ describe('phada fix on a pull request', { timeout: 20_000 }, () => {
 
     expect(await run(argv, h.deps)).toBe(2)
     expect(h.stderr()).toBe(`phada: ${message} Run with --help for usage.\n`)
+  })
+})
+
+describe('phada reply', () => {
+  const ANSWERED: ReviewOutput = {
+    text: JSON.stringify({ kind: 'question', reply: 'The guard is in spend().' }),
+    durationMs: 900,
+  }
+  const WITH_REPLY = () =>
+    Promise.resolve(
+      phadaState([
+        {
+          commentId: 'C1',
+          replies: [
+            {
+              id: 'C2',
+              author: 'mona',
+              body: 'Where is the check?',
+              association: 'MEMBER',
+              bot: false,
+              createdAt: '2026-10-18T11:00:00Z',
+            },
+          ],
+        },
+      ]),
+    )
+
+  it('prints its help', async () => {
+    const h = harness()
+
+    expect(await run(['reply', '--help'], h.deps)).toBe(0)
+    expect(h.stdout()).toBe(`${REPLY_USAGE}\n`)
+  })
+
+  it('answers the replies in the threads of Phada and posts the answers', async () => {
+    const h = harness({ reviewState: WITH_REPLY, review: () => Promise.resolve(ANSWERED) })
+
+    expect(await run(['reply', 'acme/shop#12'], h.deps)).toBe(0)
+
+    expect(h.events).toContain('reply T1')
+    expect(h.stdout()).toContain('src/shop.ts:3 · question · posted\n  The guard is in spend().\n')
+    expect(h.stderr()).toContain('Reading the threads of Phada on acme/shop#12…\n')
+  })
+
+  it('refuses a closed pull request with a usage error', async () => {
+    const h = harness({
+      pullRequest: () => Promise.resolve({ ...pullRequestFixture(), state: 'closed' }),
+      reviewState: WITH_REPLY,
+    })
+
+    expect(await run(['reply', 'acme/shop#12'], h.deps)).toBe(2)
+    expect(h.stderr()).toContain(
+      'phada: acme/shop#12 is closed: phada reply answers on open pull requests only. Run with --help for usage.\n',
+    )
+    expect(h.prompts).toHaveLength(0)
+  })
+
+  it('says which permission the token needs when GitHub refuses the reply', async () => {
+    const h = harness({ reviewState: WITH_REPLY, review: () => Promise.resolve(ANSWERED) })
+    h.deps.addThreadReply = () => Promise.reject(new ThreadPermissionError())
+
+    expect(await run(['reply', 'acme/shop#12'], h.deps)).toBe(1)
+    expect(h.stderr()).toContain('"Pull requests: Read and write"')
   })
 })

@@ -9,7 +9,12 @@ const NOW = '2026-10-18T12:00:00.000Z'
 const at = (minutes: number) => new Date(Date.parse(NOW) + minutes * 60_000).toISOString()
 const A = 'a'.repeat(40)
 const B = 'b'.repeat(40)
-const REPO: WatchedRepoSettings = { repo: 'acme/shop', publish: 'pr', allowExternal: false }
+const REPO: WatchedRepoSettings = {
+  repo: 'acme/shop',
+  publish: 'pr',
+  allowExternal: false,
+  replies: 'auto',
+}
 
 const open = (number: number, headSha = A, overrides: Partial<OpenPull> = {}): OpenPull => ({
   number,

@@ -77,6 +77,7 @@ function published(changes: Partial<FeedbackFinding>): FeedbackFinding {
     signals: [],
     destination: 'open',
     marks: [],
+    replies: { ack: 0, applied: 0, question: 0, disagreed: 0, refuted: 0 },
     ...changes,
   }
 }
@@ -349,6 +350,27 @@ describe('the Reviews screen', () => {
     await showing('3 reviews')
     expect(frame()).toContain('3 reviews')
     expect(exits).toEqual([])
+  })
+
+  it('names the kinds of the replies each published comment got', async () => {
+    const base = detail()
+    const replies = { ack: 0, applied: 0, question: 2, disagreed: 0, refuted: 1 }
+    for (const [language, marks] of [
+      ['en', 'Total ignores the discount · question ×2 · refuted'],
+      ['pt', 'Total ignores the discount · pergunta ×2 · refutação'],
+      ['es', 'Total ignores the discount · pregunta ×2 · refutación'],
+    ] as const) {
+      const { frame, press, showing } = openReviews({
+        size: { columns: 100, rows: 60 },
+        language,
+        detail: () => ({ ...base, published: [published({ replies })] }),
+      })
+      await showing('acme/shop#1')
+      await press(KEYS.enter)
+      await showing(marks)
+      expect(frame()).toContain(marks)
+      cleanup()
+    }
   })
 
   it('says what a dry run would post, resolve and skip, and the body of each finding', async () => {

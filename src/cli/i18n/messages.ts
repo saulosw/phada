@@ -68,6 +68,7 @@ export interface Messages {
     preview(index: number, total: number, place: string): string
     fixedThreads(count: number, sha: string): string
     resolvedReply(sha: string, reason: string): string
+    automaticReply: string
     ci(state: Exclude<CiState, 'none'>, total: number, failing: CiNames, pending: CiNames): string
   }
 }

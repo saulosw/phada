@@ -7,6 +7,26 @@ output can change between minor versions.
 
 ## Unreleased
 
+### Added
+
+- `phada reply owner/repo#N` answers, with the AI, the replies people left in Phada's open
+  threads on an open pull request: `ack` and `applied` get no answer, a `question` gets the
+  answer, `disagreed` gets Phada's position with the evidence and `refuted` gets an
+  acknowledgement and the thread resolved. The answers are posted as the owner of the token with
+  a visible "Automatic reply from Phada" line, each reply is classified once (kept in the
+  history), `--dry-run` shows the kind and the answer without posting or keeping anything, and
+  `--format json` prints every thread.
+- `phada watch` answers the replies in Phada's threads on its own: each cycle it lists the
+  review comments of each repository (one call, with an ETag), keeps the open pull requests where
+  Phada published comments and someone replied in the history until they are answered, and answers at most 10 threads a cycle,
+  outside `maxReviewsPerHour`. `watch.replies` and `watch.repos[].replies` (`auto`, `mention` or
+  `off`) choose per repository; the default is `auto` where the repository publishes and `off`
+  with `publish: false`. Each answer shows in the watch output and in the app.
+- `phada history` shows the kinds of reply each comment got (`replies: question 2, refuted 1`),
+  and `--stats` how many comments got each kind per repository; the JSON gains `replies` on each
+  comment and each repository. The app shows them on the Learnings screen, per repository and per
+  rule, and on each published comment of a review.
+
 ## 0.17.0 - 2026-11-08
 
 ### Added

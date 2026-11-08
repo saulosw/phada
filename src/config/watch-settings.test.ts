@@ -37,7 +37,7 @@ describe('resolveWatchSettings', () => {
       intervalMs: 300_000,
       settleMs: 180_000,
       maxReviewsPerHour: 6,
-      repos: [{ repo: 'acme/shop', publish: 'pr', allowExternal: false }],
+      repos: [{ repo: 'acme/shop', publish: 'pr', allowExternal: false, replies: 'auto' }],
     })
   })
 
@@ -70,12 +70,36 @@ describe('resolveWatchSettings', () => {
           repo: 'a/b',
           publish: 'none',
           allowExternal: false,
+          replies: 'off',
           authors: ['Alice'],
           labels: ['x'],
           baseBranches: ['main'],
         },
       ],
     })
+  })
+
+  it('answers replies where the repository publishes, unless a mode is set', () => {
+    const settings = resolveWatchSettings([
+      user({
+        watch: {
+          replies: 'mention',
+          repos: [
+            'a/plain',
+            { repo: 'a/silent', publish: false },
+            { repo: 'a/own', replies: 'off' },
+            { repo: 'a/asked', publish: false, replies: 'auto' },
+          ],
+        },
+      }),
+    ])
+
+    expect(settings?.repos.map(({ repo, replies }) => [repo, replies])).toEqual([
+      ['a/plain', 'mention'],
+      ['a/silent', 'off'],
+      ['a/own', 'off'],
+      ['a/asked', 'auto'],
+    ])
   })
 
   it('reads only the top-level user config', () => {
@@ -138,8 +162,8 @@ describe('resolveWatchSettings when', () => {
       }),
     ])
     expect(settings?.repos).toEqual([
-      { repo: 'a/b', publish: 'pr', allowExternal: false, when: './only-team.sh' },
-      { repo: 'a/c', publish: 'pr', allowExternal: false, when: './c.sh' },
+      { repo: 'a/b', publish: 'pr', allowExternal: false, replies: 'auto', when: './only-team.sh' },
+      { repo: 'a/c', publish: 'pr', allowExternal: false, replies: 'auto', when: './c.sh' },
     ])
   })
 })

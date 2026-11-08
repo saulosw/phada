@@ -9,6 +9,7 @@ import {
   formatGitHubReview,
   formatIgnoredOnlyReview,
   formatResolvedReply,
+  formatThreadReply,
   GITHUB_BODY_LIMIT,
 } from './format-github.js'
 import { messagesFor } from './i18n/messages.js'
@@ -943,6 +944,27 @@ describe('formatResolvedReply', () => {
     expect(formatResolvedReply(SHA, 'Ok.', messagesFor('pt-BR'))).toBe(
       'Corrigido em `a1b2c3d`: Ok.',
     )
+  })
+})
+
+describe('formatThreadReply', () => {
+  it('escapes the answer of the AI and signs it as an automatic reply', () => {
+    expect(formatThreadReply('Ask @admin, <b>the caller</b> skips `auth()`.')).toBe(
+      'Ask @\u200badmin, \\<b>the caller\\</b> skips `auth()`.\n\n<sub>🦋 Automatic reply from Phada</sub>',
+    )
+  })
+
+  it.each([
+    ['pt-BR', '🦋 Resposta automática do Phada'],
+    ['es', '🦋 Respuesta automática de Phada'],
+  ])('signs the reply in %s', (language, signature) => {
+    expect(formatThreadReply('Ok.', messagesFor(language))).toBe(`Ok.\n\n<sub>${signature}</sub>`)
+  })
+
+  it('redacts a secret the AI repeated', () => {
+    const token = `ghp_${'a'.repeat(36)}`
+
+    expect(formatThreadReply(`The token ${token} leaks.`)).not.toContain(token)
   })
 })
 

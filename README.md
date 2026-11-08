@@ -55,7 +55,7 @@ AI again (see [Look first, publish later](#look-first-publish-later)).
 
 `phada --help` lists the commands, and `phada review --help`, `phada publish --help`, `phada setup --help`,
 `phada init --help`, `phada index --help`, `phada rules --help`, `phada prompt --help`, `phada watch --help`,
-`phada history --help`, `phada misses --help`, `phada lessons --help` and `phada fix --help` list their options. To have new pull requests and pushes reviewed without running anything, see
+`phada history --help`, `phada misses --help`, `phada lessons --help`, `phada fix --help` and `phada reply --help` list their options. To have new pull requests and pushes reviewed without running anything, see
 [Watch mode](#watch-mode); to see what happened to the comments Phada published, see
 [History](#history), and for what people pointed out that Phada did not, [Misses](#misses) and
 [Lessons](#lessons). To see all of it in one place, run `phada` alone (see
@@ -159,7 +159,8 @@ or prints the token. The token reads the pull request and its reviews and publis
   Read-only** for the [CI checks](#the-checks), or
 - a classic token with the `repo` scope (`public_repo` is enough for public repositories).
 
-A read-only token is enough with `--dry-run`. `phada fix` on a pull request pushes a commit to its
+A read-only token is enough with `--dry-run`. `phada reply` answers in review threads, which needs
+**Pull requests: Read and write**. `phada fix` on a pull request pushes a commit to its
 branch, so it needs **Contents: Read and write**. Without write access, Phada still prints the review
 and then stops with an error that names the missing permission. **Contents: Read-only** lets
 Phada read the repository's rules and docs (see [Rules and repository context](#rules-and-repository-context));
@@ -664,6 +665,71 @@ longer than GitHub allows is shortened with a visible "(truncated)". Two runs on
 request at the same time can both publish. GitHub refuses a new review while you have a pending
 review of your own open in its interface; submit or discard it first.
 
+### Answering replies: `phada reply`
+
+When people answer Phada's comments, `phada reply` answers them back with the AI:
+
+```bash
+phada reply owner/repo#123 --dry-run    # what it would answer, posting and keeping nothing
+phada reply owner/repo#123
+```
+
+It reads the open threads of Phada's comments on an open pull request (a closed or merged one is
+refused) and takes the replies written after Phada's last comment in each thread, by the author of
+the pull request or an owner, member or collaborator of the repository, never by a bot. A thread
+gets at most 3 answers from Phada. For each thread, one AI call gets Phada's comment, the whole
+thread (the replies of people as data, never as instructions), the code around the comment, the
+title and description of the pull request and, when the repository mirror can be read, Phada's
+read-only tools on the head of the pull request. The AI classifies the reply:
+
+| Kind        | Meaning                                              | What Phada does                                  |
+| ----------- | ---------------------------------------------------- | ------------------------------------------------ |
+| `ack`       | Thanks or acknowledges; nothing to answer            | Nothing is posted                                |
+| `applied`   | Says it is fixed or will be                          | Nothing is posted                                |
+| `question`  | Asks something about the comment                     | Posts the answer, citing the code                |
+| `disagreed` | Disagrees, but does not show the comment is wrong    | Posts Phada's position, with evidence from code  |
+| `refuted`   | Shows the comment is wrong, and the code confirms it | Posts an acknowledgement and resolves the thread |
+
+The answers are posted as the owner of the token, in the `language` of your config (or the
+language of the reply without one), and end with a visible line, "🦋 Automatic reply from Phada",
+so nobody takes them for something you wrote. Each reply it classifies is kept in the
+[history](#history) and never classified again; with `history: false`, only the replies after
+Phada's last comment count. A thread resolved while it runs is skipped. It uses the provider of
+your config, like `phada review`.
+
+It prints, for each thread, the file and line, the kind, what happened (`posted`, `posted and
+resolved`, `no answer needed`, `skipped (thread resolved)` or `not posted (dry run)`) and the
+answer, then a summary; with nothing to answer it says so. `--format json` prints:
+
+```json
+{
+  "pullRequest": { "repo": "owner/repo", "number": 123 },
+  "dryRun": false,
+  "limited": false,
+  "threads": [
+    {
+      "threadId": "PRRT_…",
+      "url": "https://github.com/owner/repo/pull/123#discussion_r1",
+      "file": "src/shop.ts",
+      "line": 63,
+      "kind": "question",
+      "text": "The check runs in spend(), line 40.",
+      "posted": true,
+      "resolved": false,
+      "answerUrl": "https://github.com/owner/repo/pull/123#discussion_r2",
+      "skipped": null
+    }
+  ]
+}
+```
+
+`text` is `null` for `ack` and `applied`, `line` for a thread on a line that is gone, and
+`skipped` is `"resolved"` for a thread resolved while it ran. When the AI usage limit stops it,
+`limited` is `true` and the threads not answered are answered on the next run. The token needs
+**Pull requests: Read and write**; without it, Phada stops with an error that says so.
+`phada watch` answers them on its own (see [Watch mode](#watch-mode)). A pull request whose diff
+is too large to review still gets its replies answered: they never read the diff.
+
 ## Watch mode
 
 `phada watch` follows the repositories you list in your own config and reviews new pull
@@ -677,10 +743,12 @@ watch:
   interval: 5m # how often to look for changes (60s at least)
   settle: 3m # wait after the last push before reviewing
   maxReviewsPerHour: 6
+  replies: auto # answer replies in Phada's threads: auto, mention or off
   repos:
     - owner/repo
     - repo: owner/other
-      publish: false # keep the review in the history only
+      publish: false # keep the review in the history only (and replies: off)
+      replies: mention # only replies that call /phada
       allowExternal: true
       authors: [alice] # only these authors
       labels: [phada] # only pull requests with one of these labels
@@ -730,6 +798,16 @@ phada watch --status     # the queue (and jobs waiting for CI), reviews in progr
   and the GitHub rate limit pauses it until it resets. When the AI CLI is not installed or not
   logged in, or GitHub rejects the token, the watch stops with the error. Nothing is published
   from a review that did not finish.
+- The watch also [answers replies](#answering-replies-phada-reply) in Phada's threads, as
+  `phada reply` does. Each cycle it lists the review comments of the repository written since
+  the last cycle (one call, with an ETag) and keeps the open pull requests where Phada has
+  published comments and someone replied in the history until it has answered them, so a restart or a usage limit loses none. It answers at
+  most 10 threads a cycle, oldest first, and the rest waits for the next one; replies never count
+  in `maxReviewsPerHour` and never wait in the queue. `replies` sets it per repository: `auto`
+  (the default where the repository publishes) answers every reply, `mention` only threads where
+  a reply calls `/phada`, and `off` (the default with `publish: false`) none. A pause of the
+  queue pauses the replies too; a reply that fails is tried again in the next cycle, with a
+  warning.
 - With nothing to review, the watch updates the mirror and the [map](#repository-map) of each
   default branch when it moved, a minute at a time, so reviews start from a warm index.
 - One watch runs at a time on a machine (a lock in the data folder). The first Ctrl-C lets the
@@ -987,6 +1065,11 @@ answered in the thread; Phada's own replies and bots do not count). Outcomes and
 thread: a resolved comment that is reopened is open again, and a removed reaction stops counting.
 The history keeps when each one started and, when it stopped, when.
 
+When Phada classifies the replies in a thread (with
+[`phada reply`](#answering-replies-phada-reply) or the watch), each comment also shows the kinds of
+reply it got: `ack`, `applied`, `question`, `disagreed` or `refuted`, with how many of each
+(`replies: question 2, refuted 1`). They are a signal next to the outcome, not an outcome.
+
 `phada review` saves the state of the threads it reads on every run. `phada watch` also reads
 the pull requests Phada reviewed (with comments or not, dry runs included) every 30 minutes when
 the queue is idle, and once more when they are merged or closed. Without the watch, `phada history --refresh` reads them on demand
@@ -994,10 +1077,12 @@ the queue is idle, and once more when they are merged or closed. Without the wat
 when the history has nothing about it yet.
 
 `--stats` counts the comments published in the period per repository, with the share of each
-outcome. They are signals, not verdicts: a dismissed comment may still have been right.
+outcome, the marks and how many comments got each kind of reply (only the kinds some comment
+got). They are signals, not verdicts: a dismissed comment may still have been right.
 
-`--format json` prints the runs, the comments with their outcome and the history of each signal,
-or the stats, with `schemaVersion: 1`. `phada history prune --older-than <age>` removes reviews,
+`--format json` prints the runs, the comments with their outcome, the history of each signal and
+the count of each reply kind (`replies`), or the stats (each repository with `replies`, the
+comments that got each kind), with `schemaVersion: 1`. `phada history prune --older-than <age>` removes reviews,
 comments and finished jobs older than that age (`1d` at least); it never touches what the watch
 needs to know what it already saw.
 
@@ -1722,7 +1807,7 @@ ci:
 | `review.commands`         | Commands a [native skill](#skills-that-run-natively) may run: `read-only` (default), a list like `["npm test"]`, or `all`                    | your config             |
 | `review.readDirs`         | Folders a native skill may read besides the checkout and its own folder                                                                      | your config             |
 | `review.timeout`          | How long one native skill pass may run (`1m` to `2h`, default `30m`)                                                                         | your config             |
-| `watch`                   | Repositories `phada watch` follows and how (see [Watch mode](#watch-mode)), and their `when` command                                         | your config (top level) |
+| `watch`                   | Repositories `phada watch` follows and how (see [Watch mode](#watch-mode)), their `when` command and `replies`                               | your config (top level) |
 | `hooks`                   | Commands that get the [review events](#review-events-and-hooks)                                                                              | your config (top level) |
 | `slack`                   | Slack channels the watch listens to (see [Slack](#slack))                                                                                    | your config (top level) |
 | `history`                 | `false` keeps reviews out of the [history](#history)                                                                                         | your config (top level) |
@@ -1788,6 +1873,9 @@ reviewed, 1 when it refused the run (unknown, not a dry run, the pull request mo
 failed, and 2 when the command line is wrong.
 `phada enqueue` exits with 0 when the request was queued or joined a job, 1 when it was refused
 or GitHub could not be read, and 2 when the command line or your config is wrong.
+`phada reply` exits with 0 when it answered the threads (or had nothing to answer), 1 when the AI
+usage limit stopped it, GitHub refused the answer or the AI failed, and 2 when the command line is
+wrong or the pull request is closed.
 `phada mcp` exits with 0 when its input ends.
 `phada` with no command and `phada setup` exit with 0 when you quit the app, 130 on Ctrl-C, 143
 on `SIGTERM`, 1 when it failed and 2 outside a terminal.

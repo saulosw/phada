@@ -1,4 +1,4 @@
-export type ReviewPass = 'review' | 'verify' | 'recheck'
+export type ReviewPass = 'review' | 'verify' | 'recheck' | 'reply'
 
 export interface ToolCallRecord {
   pass: ReviewPass

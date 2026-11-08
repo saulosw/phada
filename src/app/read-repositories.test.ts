@@ -284,6 +284,7 @@ describe('readRepository', () => {
       repo: 'acme/shop',
       publish: 'none',
       allowExternal: false,
+      replies: 'off',
       authors: ['ana'],
       labels: ['review-me'],
       baseBranches: ['main'],

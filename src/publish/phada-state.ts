@@ -1,5 +1,5 @@
 import type { PullRequestReviewState, ReviewThread } from '../github/pull-request-reviews.js'
-import { hasFindingMarker, hasResolvedMarker, parseReviewMarker } from './markers.js'
+import { hasFindingMarker, hasResolvedMarker, parseReviewMarker, replyKindOf } from './markers.js'
 import type { ReviewMarker } from './markers.js'
 
 export function latestPhadaReview(state: PullRequestReviewState): ReviewMarker | undefined {
@@ -42,12 +42,30 @@ export function openPhadaThreads(state: PullRequestReviewState): ReviewThread[] 
 }
 
 export function resolvedByPhada(state: PullRequestReviewState, thread: ReviewThread): boolean {
-  return thread.isResolved && repliedAsResolved(state, thread)
+  return thread.isResolved && repliedAsResolved(state, thread) && !refutedByPhada(state, thread)
 }
 
 export function repliedAsResolved(state: PullRequestReviewState, thread: ReviewThread): boolean {
   return thread.replies.some(
     (reply) => isViewer(state, reply.author) && hasResolvedMarker(reply.body),
+  )
+}
+
+export function refutedByPhada(state: PullRequestReviewState, thread: ReviewThread): boolean {
+  return thread.replies.some(
+    (reply) => isViewer(state, reply.author) && replyKindOf(reply.body) === 'refuted',
+  )
+}
+
+export function isPhadaComment(
+  state: PullRequestReviewState,
+  comment: { author: string; body: string },
+): boolean {
+  return (
+    isViewer(state, comment.author) &&
+    (hasFindingMarker(comment.body) ||
+      hasResolvedMarker(comment.body) ||
+      replyKindOf(comment.body) !== undefined)
   )
 }
 

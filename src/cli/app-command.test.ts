@@ -162,6 +162,10 @@ function deps(
       return { status: 'ok', pulls: options.openPulls ?? [] }
     },
     listIssueComments: () => Promise.reject(new Error('no watch in this test')),
+    listReviewComments: () => Promise.reject(new Error('no watch in this test')),
+    addThreadReply: () => Promise.reject(new Error('no reply in this test')),
+    resolveThread: () => Promise.reject(new Error('no reply in this test')),
+    isThreadOpen: () => Promise.reject(new Error('no reply in this test')),
     addCommentReaction: () => Promise.reject(new Error('no watch in this test')),
     fetchPullRequestHead: () => Promise.reject(new Error('no watch in this test')),
     fetchBranchHead: () => Promise.reject(new Error('no watch in this test')),
@@ -1643,6 +1647,7 @@ function fakeHistory(runs: RunRecord[]) {
     },
     run: (id: number) => runs.find((run) => run.id === id),
     findings: () => [],
+    replies: () => [],
   }
   return store as typeof store & HistoryStore
 }

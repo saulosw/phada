@@ -26,6 +26,24 @@ export type CommentListing =
 export async function listIssueComments(
   options: RepositoryFilesOptions & { since: string; etag?: string },
 ): Promise<CommentListing> {
+  const listed = await listCommentPages(options, 'issues/comments', toComment)
+  return listed.status === 'not-modified'
+    ? listed
+    : {
+        status: 'ok',
+        ...(listed.etag === undefined ? {} : { etag: listed.etag }),
+        comments: listed.items,
+      }
+}
+
+export type CommentPages<T> =
+  { status: 'not-modified' } | { status: 'ok'; etag?: string; items: T[] }
+
+export async function listCommentPages<T>(
+  options: RepositoryFilesOptions & { since: string; etag?: string },
+  listing: string,
+  toItem: (json: unknown) => T,
+): Promise<CommentPages<T>> {
   const ctx = context(options)
   const query = new URLSearchParams({
     since: options.since,
@@ -33,8 +51,8 @@ export async function listIssueComments(
     direction: 'asc',
     per_page: '100',
   })
-  let path: string | undefined = `${repoPath(options)}/issues/comments?${query.toString()}`
-  const comments: IssueComment[] = []
+  let path: string | undefined = `${repoPath(options)}/${listing}?${query.toString()}`
+  const items: T[] = []
   let etag: string | undefined
   for (let page = 0; path !== undefined && page < MAX_COMMENT_PAGES; page++) {
     const response = await sendGitHubRequest(
@@ -46,14 +64,14 @@ export async function listIssueComments(
     if (page === 0 && response.status === 304) return { status: 'not-modified' }
     await ensureOk(response, ctx)
     if (page === 0) etag = response.headers.get('etag') ?? undefined
-    const items = await readJson(response, ctx)
-    if (!Array.isArray(items)) {
+    const json = await readJson(response, ctx)
+    if (!Array.isArray(json)) {
       throw new RepositoryAccessError(`${options.owner}/${options.repo}`, response.status)
     }
-    comments.push(...items.map(toComment))
+    items.push(...json.map(toItem))
     path = nextPagePath(response.headers.get('link'))
   }
-  return { status: 'ok', ...(etag === undefined ? {} : { etag }), comments }
+  return { status: 'ok', ...(etag === undefined ? {} : { etag }), items }
 }
 
 export async function addCommentReaction(

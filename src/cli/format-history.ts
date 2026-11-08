@@ -1,8 +1,8 @@
-import type { RepoStats } from '../app/read-history.js'
+import type { FeedbackFinding, RepoStats, ReplyCounts } from '../app/read-history.js'
+import { repliedKinds } from '../app/reply-kinds.js'
 import { runTarget } from '../app/run-target.js'
-import { destinationOf } from '../publish/feedback.js'
-import type { Destination, SignalKind } from '../publish/feedback.js'
-import type { FindingRecord, RunRecord } from '../store/history-store.js'
+import type { Destination } from '../publish/feedback.js'
+import type { RunRecord } from '../store/history-store.js'
 import { toTerminalText } from '../app/terminal-text.js'
 import { singleLine } from '../app/terminal-text.js'
 import { shortSha } from './review-text.js'
@@ -14,7 +14,7 @@ const WARNING = 'Signals, not verdicts: a dismissed finding may still have been 
 export function formatHistoryText(
   runs: readonly RunRecord[],
   total: number,
-  findings: readonly FindingRecord[] | undefined,
+  findings: readonly FeedbackFinding[] | undefined,
 ): string {
   if (runs.length === 0 && (findings ?? []).length === 0) return 'No reviews in the history yet.\n'
   const lines = runs.map(runLine)
@@ -31,7 +31,7 @@ export function formatHistoryText(
 export function formatHistoryJson(
   runs: readonly RunRecord[],
   total: number,
-  findings: readonly FindingRecord[],
+  findings: readonly FeedbackFinding[],
 ): string {
   return `${JSON.stringify(
     {
@@ -79,13 +79,14 @@ function runLine(run: RunRecord): string {
   ].join('  ')
 }
 
-function findingLine(finding: FindingRecord): string {
-  const kinds = currentKinds(finding)
+function findingLine(finding: FeedbackFinding): string {
+  const replies = repliesText(finding.replies)
   const marks = [
-    destinationOf(kinds),
+    finding.destination,
     ...(finding.outdated ? ['outdated'] : []),
-    ...(kinds.includes('negative-reaction') ? ['negative reaction'] : []),
-    ...(kinds.includes('human-reply') ? ['replied'] : []),
+    ...(finding.marks.includes('negative-reaction') ? ['negative reaction'] : []),
+    ...(finding.marks.includes('human-reply') ? ['replied'] : []),
+    ...(replies === undefined ? [] : [replies]),
   ]
   const where = finding.line === undefined ? finding.file : `${finding.file}:${finding.line}`
   return `  ${finding.severity ?? '--'}  ${singleLine(where)}  ${singleLine(finding.title)}  ${marks.join(' · ')}`
@@ -95,12 +96,20 @@ function statsLine(stats: RepoStats): string {
   const share = (count: number) =>
     count === 0 ? '0' : `${count} (${Math.round((count / stats.published) * 100)}%)`
   const destinations: Destination[] = ['fixed', 'dismissed', 'ignored', 'open']
+  const replies = repliesText(stats.replies)
   return [
     `${stats.repo}: ${formatCount(stats.published, 'comment')}`,
     ...destinations.map((destination) => `${destination} ${share(stats[destination])}`),
     `negative reaction ${stats.negativeReaction}`,
     `replied ${stats.humanReply}`,
+    ...(replies === undefined ? [] : [replies]),
   ].join(' · ')
+}
+
+function repliesText(counts: ReplyCounts): string | undefined {
+  const kinds = repliedKinds(counts)
+  if (kinds.length === 0) return undefined
+  return `replies: ${kinds.map(({ kind, count }) => `${kind} ${count}`).join(', ')}`
 }
 
 export function runJson(run: RunRecord) {
@@ -129,7 +138,7 @@ export function runJson(run: RunRecord) {
   }
 }
 
-function findingJson(finding: FindingRecord) {
+function findingJson(finding: FeedbackFinding) {
   return {
     repo: finding.repo,
     number: finding.number,
@@ -142,8 +151,9 @@ function findingJson(finding: FindingRecord) {
     commitSha: finding.commitSha ?? null,
     threadUrl: finding.threadUrl ?? null,
     publishedAt: finding.publishedAt,
-    destination: destinationOf(currentKinds(finding)),
+    destination: finding.destination,
     outdated: finding.outdated,
+    replies: finding.replies,
     signals: finding.signals.map(({ kind, source, observedAt, clearedAt }) => ({
       kind,
       source,
@@ -151,8 +161,4 @@ function findingJson(finding: FindingRecord) {
       clearedAt: clearedAt ?? null,
     })),
   }
-}
-
-function currentKinds(finding: FindingRecord): SignalKind[] {
-  return finding.signals.filter((signal) => signal.clearedAt === undefined).map(({ kind }) => kind)
 }

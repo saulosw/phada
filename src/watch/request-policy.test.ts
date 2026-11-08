@@ -7,7 +7,12 @@ import type { PolicyInput } from './request-policy.js'
 const NOW = '2026-10-23T12:00:00.000Z'
 const at = (minutes: number) => new Date(Date.parse(NOW) + minutes * 60_000).toISOString()
 const A = 'a'.repeat(40)
-const REPO: WatchedRepoSettings = { repo: 'acme/shop', publish: 'pr', allowExternal: false }
+const REPO: WatchedRepoSettings = {
+  repo: 'acme/shop',
+  publish: 'pr',
+  allowExternal: false,
+  replies: 'auto',
+}
 
 const job = (id: number, overrides: Partial<JobRecord> = {}): JobRecord => ({
   id,

@@ -127,6 +127,7 @@ function shopDetail(): RepositoryDetail {
       repo: 'acme/shop',
       publish: 'none',
       allowExternal: false,
+      replies: 'off',
       authors: ['ana', 'bruno'],
       labels: ['review-me'],
       baseBranches: ['main'],

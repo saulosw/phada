@@ -128,6 +128,7 @@ export const portuguese: Messages = {
         ? `1 comentário de revisões anteriores está corrigido em ${sha}.`
         : `${value} comentários de revisões anteriores estão corrigidos em ${sha}.`,
     resolvedReply: (sha, reason) => `Corrigido em \`${sha}\`: ${reason}`,
+    automaticReply: '🦋 Resposta automática do Phada',
     ci: (state, total, failing, pending) => {
       const checks = count(total, 'check', 'checks')
       if (state === 'passing') {

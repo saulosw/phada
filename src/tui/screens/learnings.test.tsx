@@ -27,6 +27,7 @@ const counts = (changes: Partial<RepoStats> = {}) => ({
   open: 7,
   negativeReaction: 2,
   humanReply: 3,
+  replies: { ack: 0, applied: 0, question: 0, disagreed: 0, refuted: 0 },
   ...changes,
 })
 
@@ -306,6 +307,44 @@ describe('the Learnings screen', () => {
     await showing('What Phada learned from its reviews')
     expect(frame()).toContain('What Phada learned from its reviews')
     expect(exits).toEqual([])
+  })
+
+  it('shows how many comments got each kind of reply, for the repository and each rule', async () => {
+    const replies = { ack: 0, applied: 1, question: 2, disagreed: 0, refuted: 1 }
+    const replied = shop({
+      feedback: { repo: 'acme/shop', ...counts({ replies }) },
+      rules: [rule('money-in-cents', { replies: { ...replies, applied: 0, question: 1 } })],
+    })
+    const read = async (): Promise<Learnings> => ({ recorded: true, repos: [replied] })
+    for (const [language, repo, byRule] of [
+      ['en', 'Replies: applied 1 · question 2 · refuted 1', 'Replies: question 1 · refuted 1'],
+      [
+        'pt',
+        'Respostas: aplicado 1 · pergunta 2 · refutação 1',
+        'Respostas: pergunta 1 · refutação 1',
+      ],
+      [
+        'es',
+        'Respuestas: aplicado 1 · pregunta 2 · refutación 1',
+        'Respuestas: pregunta 1 · refutación 1',
+      ],
+    ] as const) {
+      const { frame, press, showing } = openLearnings(read, { language })
+      await showing('acme/shop')
+      await press(KEYS.enter)
+      await showing(repo)
+      expectFits(frame(), { columns: 80, rows: 24 })
+      expect(frame()).toContain(byRule)
+      cleanup()
+    }
+  })
+
+  it('leaves the replies out when no comment got one', async () => {
+    const { frame, press, showing } = openLearnings(async () => full())
+    await showing('acme/shop')
+    await press(KEYS.enter)
+    await showing('Relations learned (2)')
+    expect(frame()).not.toContain('Replies:')
   })
 
   it('explains unreadable relations, a repository without comments and one without relations', async () => {

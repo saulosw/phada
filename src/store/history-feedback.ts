@@ -135,6 +135,13 @@ export function findings(db: DatabaseSync, filter: FindingFilter): FindingRecord
     })
 }
 
+export function publishedPulls(db: DatabaseSync, repo: string): number[] {
+  return db
+    .prepare('select distinct number from finding where repo = ? order by number')
+    .all(repo.toLowerCase())
+    .map((row) => Number(row.number))
+}
+
 export function feedbackDue(
   db: DatabaseSync,
   filter: DueFilter,

@@ -1,7 +1,8 @@
+import type { ThreadReply } from '../app/reply-to-threads.js'
 import type { ReviewRun } from '../app/review-and-publish.js'
 import type { WatchEnd, WatchEvent } from '../app/watch-event.js'
 import { failedText } from './data-view.js'
-import type { UiMessages } from './i18n/messages.js'
+import type { ReplyOutcome, UiMessages } from './i18n/messages.js'
 import { refusalText } from './refusal-text.js'
 import { clockTime } from './relative-time.js'
 import { checkNames, pauseReasonText, pendingText } from './queue-text.js'
@@ -46,6 +47,8 @@ export function watchLogTone({ line }: WatchLogEntry): WatchLogTone {
     case 'limited':
     case 'refused':
       return 'warn'
+    case 'replied':
+      return event.reply.posted ? 'ok' : undefined
     case 'finished':
       return event.run.status !== 'skipped' && event.run.publication?.status === 'published'
         ? 'ok'
@@ -133,7 +136,23 @@ function eventText(event: WatchEvent, messages: UiMessages): string {
         pullRef(event.request.repo, event.request.number),
         refusalText(event.result, messages),
       )
+    case 'replied':
+      return l.replied(
+        pullRef(event.repo, event.number),
+        oneLine(
+          event.reply.line === null ? event.reply.file : `${event.reply.file}:${event.reply.line}`,
+        ),
+        messages.reviews.replyKinds[event.reply.kind],
+        l.replyOutcomes[replyOutcome(event.reply)],
+      )
   }
+}
+
+function replyOutcome(reply: ThreadReply): ReplyOutcome {
+  if (reply.text === undefined) return 'noAnswer'
+  if (reply.skipped === 'resolved') return 'skipped'
+  if (reply.resolved) return 'resolved'
+  return reply.posted ? 'posted' : 'notPosted'
 }
 
 function finishedText(job: Job, run: ReviewRun, messages: UiMessages): string {

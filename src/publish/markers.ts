@@ -1,4 +1,5 @@
-import type { Severity } from '../review/types.js'
+import type { ReplyKind, Severity } from '../review/types.js'
+import { REPLY_KINDS } from './types.js'
 
 export const FINDING_MARKER = '<!-- phada:finding -->'
 
@@ -7,6 +8,7 @@ const REVIEW_MARKER =
 const THREAD_TITLE = /^\*\*(P[0-2])\*\* · (.+) · [^·]+ \d+$/
 const TRAILING_FINDING_MARKER = /<!-- phada:finding(?: skill=[^\s<>]+)? -->\s*$/
 const TRAILING_RESOLVED_MARKER = /<!-- phada:resolved sha=[0-9a-f]{40} -->\s*$/
+const TRAILING_REPLY_MARKER = /<!-- phada:reply kind=([a-z]+) -->\s*$/
 
 export interface ReviewMarker {
   sha: string
@@ -46,6 +48,15 @@ export function resolvedMarker(sha: string): string {
 
 export function hasResolvedMarker(body: string): boolean {
   return TRAILING_RESOLVED_MARKER.test(body)
+}
+
+export function replyMarker(kind: ReplyKind): string {
+  return `<!-- phada:reply kind=${kind} -->`
+}
+
+export function replyKindOf(body: string): ReplyKind | undefined {
+  const kind = TRAILING_REPLY_MARKER.exec(body)?.[1]
+  return REPLY_KINDS.find((known) => known === kind)
 }
 
 export function findingTitle(body: string): string | undefined {

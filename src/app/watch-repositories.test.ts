@@ -9,13 +9,16 @@ import type { BranchHead } from '../github/repository.js'
 import { openHistoryStore } from '../store/history-store.js'
 import type { DuePull, HistoryStore } from '../store/history-store.js'
 import type { CommentListing, IssueComment } from '../github/issue-comments.js'
+import type { ReviewComment, ReviewCommentListing } from '../github/review-comments.js'
+import type { RepliesMode } from '../publish/reply-candidates.js'
+import type { ThreadReply } from './reply-to-threads.js'
 import type { FailureKind, JobRecord, RequestRecord } from '../watch/types.js'
 import type { WhenInput } from './submit-request.js'
 import { submitRequest } from './submit-request.js'
 import { CiReadError } from './read-ci.js'
 import type { ReviewRun } from './review-and-publish.js'
 import { watchRepositories } from './watch-repositories.js'
-import type { PullCi, WatchDeps } from './watch-repositories.js'
+import type { PullCi, WatchDeps, WatchReplies } from './watch-repositories.js'
 
 const dir = mkdtempSync(join(tmpdir(), 'phada-watch-'))
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
@@ -29,7 +32,7 @@ const SETTINGS: WatchSettings = {
   intervalMs: 5 * MIN,
   settleMs: 3 * MIN,
   maxReviewsPerHour: 6,
-  repos: [{ repo: 'acme/shop', publish: 'pr', allowExternal: false }],
+  repos: [{ repo: 'acme/shop', publish: 'pr', allowExternal: false, replies: 'auto' }],
 }
 
 const pull = (number: number, headSha = A, overrides: Partial<OpenPull> = {}): OpenPull => ({
@@ -82,6 +85,8 @@ interface Script {
   comments?: (since: string) => CommentListing
   baselineAt?: string
   ci?: (job: JobRecord, now: number) => PullCi | undefined
+  reviewComments?: (since: string) => ReviewCommentListing
+  replyTo?: (number: number, maxThreads: number) => Promise<WatchReplies>
 }
 
 async function setup(script: Script, history?: HistoryStore) {
@@ -102,6 +107,8 @@ async function setup(script: Script, history?: HistoryStore) {
   const recorded: string[] = []
   const indexed: number[] = []
   const ciReads: string[] = []
+  const replyCalls: string[] = []
+  const { reviewComments, replyTo } = script
   const deps: WatchDeps = {
     history: store,
     listPulls: async () => {
@@ -139,6 +146,29 @@ async function setup(script: Script, history?: HistoryStore) {
     react: async (_repo, id) => {
       reacted.push(id)
     },
+    ...(reviewComments === undefined
+      ? {}
+      : {
+          listReviewComments: async (repo: string, since: string, etag?: string) => {
+            replyCalls.push(`list ${repo} ${etag ?? '-'}`)
+            return reviewComments(since)
+          },
+        }),
+    ...(replyTo === undefined
+      ? {}
+      : {
+          replyTo: async (
+            repo: string,
+            number: number,
+            options: { mode: RepliesMode; maxThreads: number },
+            replied: (reply: ThreadReply) => void,
+          ) => {
+            replyCalls.push(`reply ${repo}#${number} ${options.mode} max ${options.maxThreads}`)
+            const run = await replyTo(number, options.maxThreads)
+            for (const reply of run.threads) replied(reply)
+            return run
+          },
+        }),
     branchHead: async () => script.branchHead?.(now) ?? { status: 'not-modified' },
     runJob: async (job, requests) => {
       ran.push(job)
@@ -208,6 +238,8 @@ async function setup(script: Script, history?: HistoryStore) {
         events.push(`refused ${request.source} #${request.number} ${result.reason}`),
       limited: (count, until) =>
         events.push(`limited ${count} until ${(Date.parse(until) - START) / MIN}`),
+      replied: (repo, number, reply) =>
+        events.push(`replied ${repo}#${number} ${reply.file} ${reply.kind}`),
     },
   }
   return {
@@ -222,6 +254,7 @@ async function setup(script: Script, history?: HistoryStore) {
     recorded,
     indexed,
     ciReads,
+    replyCalls,
     now: () => now - START,
   }
 }
@@ -729,7 +762,10 @@ describe('watchRepositories', () => {
     const h = await setup({
       settings: {
         ...SETTINGS,
-        repos: [...SETTINGS.repos, { repo: 'acme/web', publish: 'pr', allowExternal: false }],
+        repos: [
+          ...SETTINGS.repos,
+          { repo: 'acme/web', publish: 'pr', allowExternal: false, replies: 'auto' },
+        ],
       },
     })
     let listed = 0
@@ -745,7 +781,10 @@ describe('watchRepositories', () => {
         once: true,
         settings: {
           ...SETTINGS,
-          repos: [...SETTINGS.repos, { repo: 'acme/web', publish: 'pr', allowExternal: false }],
+          repos: [
+            ...SETTINGS.repos,
+            { repo: 'acme/web', publish: 'pr', allowExternal: false, replies: 'auto' },
+          ],
         },
       }),
       h.deps,
@@ -763,7 +802,10 @@ describe('watchRepositories', () => {
     const h = await setup({
       settings: {
         ...SETTINGS,
-        repos: [...SETTINGS.repos, { repo: 'acme/web', publish: 'pr', allowExternal: false }],
+        repos: [
+          ...SETTINGS.repos,
+          { repo: 'acme/web', publish: 'pr', allowExternal: false, replies: 'auto' },
+        ],
       },
       stopWhen: () => stop,
     })
@@ -778,7 +820,10 @@ describe('watchRepositories', () => {
       input({
         settings: {
           ...SETTINGS,
-          repos: [...SETTINGS.repos, { repo: 'acme/web', publish: 'pr', allowExternal: false }],
+          repos: [
+            ...SETTINGS.repos,
+            { repo: 'acme/web', publish: 'pr', allowExternal: false, replies: 'auto' },
+          ],
         },
       }),
       h.deps,
@@ -1374,6 +1419,298 @@ describe('watchRepositories', () => {
       expect(h.ciReads).toEqual(['#3 @0'])
       expect(h.notified).toEqual(['skipped #3 ci-failing [mcp]'])
       expect(h.store.job(id)).toMatchObject({ status: 'skipped', reason: 'ci-failing' })
+    })
+  })
+
+  describe('replies', () => {
+    const at = (offset: number) => new Date(START + offset).toISOString()
+    const answer = (id: number, overrides: Partial<ReviewComment> = {}): ReviewComment => ({
+      id,
+      inReplyTo: 1,
+      number: 3,
+      author: 'bob',
+      authorIsBot: false,
+      association: 'CONTRIBUTOR',
+      createdAt: at(MIN),
+      ...overrides,
+    })
+    const threads = (count: number, kind: ThreadReply['kind'] = 'question'): ThreadReply[] =>
+      Array.from({ length: count }, (_, index) => ({
+        threadId: `T${index}`,
+        url: `https://x/t${index}`,
+        file: `f${index}.ts`,
+        line: 1,
+        kind,
+        posted: kind !== 'ack',
+        resolved: false,
+      }))
+    const openPulls = () => ({ status: 'ok' as const, pulls: [pull(3), pull(4), pull(5)] })
+    const due = (h: { store: HistoryStore }) =>
+      h.store.repliesDue('acme/shop').map(({ number }) => number)
+    const publishedOn = (store: HistoryStore, ...numbers: number[]) =>
+      store.recordPublished(
+        numbers.map((number) => ({
+          repo: 'acme/shop',
+          number,
+          commitSha: A,
+          fingerprint: `f.ts:finding ${number}`,
+          file: 'f.ts',
+          line: 1,
+          title: `Finding ${number}`,
+          severity: 'P1' as const,
+          confidence: 90,
+          publishedAt: at(-MIN),
+        })),
+      )
+
+    it('marks the open pull requests with a new reply and answers them', async () => {
+      const sinces: string[] = []
+      const h = await setup({
+        listings: openPulls,
+        reviewComments: (since) => {
+          sinces.push(since)
+          return {
+            status: 'ok',
+            etag: 'W/"r"',
+            comments: [answer(10), answer(11, { number: 4, authorIsBot: true })],
+          }
+        },
+        replyTo: async () => ({ threads: threads(1), limited: false }),
+      })
+
+      publishedOn(h.store, 3, 4)
+
+      await watchRepositories(input({ once: true }), h.deps)
+
+      expect(sinces).toEqual([at(0)])
+      expect(h.replyCalls).toEqual(['list acme/shop -', 'reply acme/shop#3 auto max 10'])
+      expect(h.events).toContain('replied acme/shop#3 f0.ts question')
+      expect(due(h)).toEqual([])
+      expect(h.store.repo('acme/shop')).toMatchObject({
+        reviewCommentsEtag: 'W/"r"',
+        reviewCommentsLastId: 11,
+        reviewCommentsSince: at(MIN),
+      })
+    })
+
+    it('marks no pull request where Phada published no comment', async () => {
+      const h = await setup({
+        listings: openPulls,
+        reviewComments: () => ({ status: 'ok', comments: [answer(10), answer(11, { number: 5 })] }),
+        replyTo: async () => ({ threads: threads(1), limited: false }),
+      })
+      publishedOn(h.store, 3)
+
+      await watchRepositories(input({ once: true }), h.deps)
+
+      expect(h.replyCalls).toEqual(['list acme/shop -', 'reply acme/shop#3 auto max 10'])
+      expect(h.store.repo('acme/shop')).toMatchObject({ reviewCommentsLastId: 11 })
+    })
+
+    it('answers at most 10 threads a cycle and keeps the rest due', async () => {
+      const store = await openHistoryStore(join(dir, `w${++files}.sqlite`))
+      store.markRepliesDue('acme/shop', [3, 4, 5], at(-MIN))
+      const h = await setup(
+        {
+          listings: openPulls,
+          reviewComments: () => ({ status: 'not-modified' }),
+          replyTo: async (number, maxThreads) =>
+            number === 3
+              ? { threads: threads(6), limited: false }
+              : { threads: threads(maxThreads, 'ack'), limited: false, more: true },
+        },
+        store,
+      )
+
+      await watchRepositories(input({ once: true }), h.deps)
+
+      expect(h.replyCalls).toEqual([
+        'list acme/shop -',
+        'reply acme/shop#3 auto max 10',
+        'reply acme/shop#4 auto max 4',
+      ])
+      expect(due(h)).toEqual([4, 5])
+    })
+
+    it('stops replying at the AI usage limit and keeps the pull requests due', async () => {
+      const store = await openHistoryStore(join(dir, `w${++files}.sqlite`))
+      store.markRepliesDue('acme/shop', [3, 4], at(-MIN))
+      const h = await setup(
+        {
+          listings: openPulls,
+          reviewComments: () => ({ status: 'not-modified' }),
+          replyTo: async () => ({ threads: [], limited: true }),
+        },
+        store,
+      )
+
+      await watchRepositories(input({ once: true }), h.deps)
+
+      expect(h.replyCalls).toEqual(['list acme/shop -', 'reply acme/shop#3 auto max 10'])
+      expect(due(h)).toEqual([3, 4])
+    })
+
+    it('clears a pull request no longer open without answering it', async () => {
+      const store = await openHistoryStore(join(dir, `w${++files}.sqlite`))
+      store.markRepliesDue('acme/shop', [9], at(-MIN))
+      const h = await setup(
+        {
+          listings: openPulls,
+          reviewComments: () => ({ status: 'not-modified' }),
+          replyTo: async () => ({ threads: [], limited: false }),
+        },
+        store,
+      )
+
+      await watchRepositories(input({ once: true }), h.deps)
+
+      expect(h.replyCalls).toEqual(['list acme/shop -'])
+      expect(due(h)).toEqual([])
+    })
+
+    it('warns about a failed answer and tries it again only after an interval', async () => {
+      let calls = 0
+      const h = await setup({
+        listings: openPulls,
+        reviewComments: () => ({ status: 'ok', comments: calls === 0 ? [answer(10)] : [] }),
+        replyTo: async () => {
+          calls += 1
+          throw new Error('GitHub said no')
+        },
+        stopWhen: ({ sleeps }) => sleeps === 2,
+      })
+
+      publishedOn(h.store, 3, 4)
+
+      await watchRepositories(input(), h.deps)
+
+      expect(h.events.filter((event) => event.startsWith('warning'))).toEqual([
+        'warning acme/shop#3: could not answer the replies (GitHub said no); tried again in the next cycle.',
+        'warning acme/shop#3: could not answer the replies (GitHub said no); tried again in the next cycle.',
+      ])
+      expect(h.store.repliesDue('acme/shop')).toEqual([
+        { repo: 'acme/shop', number: 3, since: at(0), triedAt: at(5 * MIN) },
+      ])
+    })
+
+    it('keeps a pull request due after an invalid answer, waits an interval and counts the attempt', async () => {
+      const store = await openHistoryStore(join(dir, `w${++files}.sqlite`))
+      store.markRepliesDue('acme/shop', [3, 4], at(-MIN))
+      const h = await setup(
+        {
+          listings: openPulls,
+          reviewComments: () => ({ status: 'not-modified' }),
+          replyTo: async (number, maxThreads) =>
+            number === 3
+              ? { threads: threads(2), limited: false, unanswered: 8 }
+              : { threads: threads(maxThreads, 'ack'), limited: false },
+        },
+        store,
+      )
+
+      await watchRepositories(input({ once: true }), h.deps)
+
+      expect(h.replyCalls).toEqual(['list acme/shop -', 'reply acme/shop#3 auto max 10'])
+      expect(store.repliesDue('acme/shop')).toEqual([
+        { repo: 'acme/shop', number: 3, since: at(-MIN), triedAt: at(0) },
+        { repo: 'acme/shop', number: 4, since: at(-MIN) },
+      ])
+    })
+
+    it('does not answer again a pull request tried less than an interval ago', async () => {
+      const store = await openHistoryStore(join(dir, `w${++files}.sqlite`))
+      store.markRepliesDue('acme/shop', [3], at(-MIN))
+      store.triedReplyDue('acme/shop', 3, at(-MIN))
+      const h = await setup(
+        {
+          listings: openPulls,
+          reviewComments: () => ({ status: 'not-modified' }),
+          replyTo: async () => ({ threads: [], limited: false }),
+        },
+        store,
+      )
+
+      await watchRepositories(input({ once: true }), h.deps)
+
+      expect(h.replyCalls).toEqual(['list acme/shop -'])
+      expect(due(h)).toEqual([3])
+    })
+
+    it('pauses the queue and stops replying when GitHub limits the rate', async () => {
+      const store = await openHistoryStore(join(dir, `w${++files}.sqlite`))
+      store.markRepliesDue('acme/shop', [3, 4], at(-MIN))
+      const h = await setup(
+        {
+          listings: openPulls,
+          reviewComments: () => ({ status: 'not-modified' }),
+          replyTo: async () => {
+            throw new Error('rate limited')
+          },
+          classify: () => ({ kind: 'rate-limit', resetAt: at(30 * MIN) }),
+        },
+        store,
+      )
+
+      await watchRepositories(input({ once: true }), h.deps)
+
+      expect(h.replyCalls).toEqual(['list acme/shop -', 'reply acme/shop#3 auto max 10'])
+      expect(h.events).toContain(`paused until ${30 + 5_000 / MIN}`)
+      expect(due(h)).toEqual([3, 4])
+    })
+
+    it('neither reads nor answers while the watch is paused', async () => {
+      const store = await openHistoryStore(join(dir, `w${++files}.sqlite`))
+      store.markRepliesDue('acme/shop', [3], at(-MIN))
+      store.setPause({ until: at(30 * MIN), reason: 'rate-limit', streak: 1 })
+      const h = await setup(
+        {
+          listings: openPulls,
+          reviewComments: () => ({ status: 'ok', comments: [answer(10)] }),
+          replyTo: async () => ({ threads: [], limited: false }),
+        },
+        store,
+      )
+
+      await watchRepositories(input({ once: true }), h.deps)
+
+      expect(h.replyCalls).toEqual([])
+      expect(due(h)).toEqual([3])
+    })
+
+    it('reads no review comment for a repository with replies off', async () => {
+      const settings: WatchSettings = {
+        ...SETTINGS,
+        repos: [{ repo: 'acme/shop', publish: 'none', allowExternal: false, replies: 'off' }],
+      }
+      const h = await setup({
+        settings,
+        listings: openPulls,
+        reviewComments: () => ({ status: 'ok', comments: [answer(10)] }),
+        replyTo: async () => ({ threads: [], limited: false }),
+      })
+
+      await watchRepositories(input({ once: true, settings }), h.deps)
+
+      expect(h.replyCalls).toEqual([])
+    })
+
+    it('passes the mention mode of the repository', async () => {
+      const settings: WatchSettings = {
+        ...SETTINGS,
+        repos: [{ repo: 'acme/shop', publish: 'pr', allowExternal: false, replies: 'mention' }],
+      }
+      const h = await setup({
+        settings,
+        listings: openPulls,
+        reviewComments: () => ({ status: 'ok', comments: [answer(10)] }),
+        replyTo: async () => ({ threads: [], limited: false }),
+      })
+
+      publishedOn(h.store, 3, 4)
+
+      await watchRepositories(input({ once: true, settings }), h.deps)
+
+      expect(h.replyCalls).toContain('reply acme/shop#3 mention max 10')
     })
   })
 })

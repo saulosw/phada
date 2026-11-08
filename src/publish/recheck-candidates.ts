@@ -2,7 +2,12 @@ import type { ComparedFile } from '../github/compare-commits.js'
 import type { PullRequestReviewState, ReviewThread } from '../github/pull-request-reviews.js'
 import type { RecheckThread } from '../review/types.js'
 import { findingTitle } from './markers.js'
-import { openPhadaThreads, repliedAsResolved, reviewedShaOf } from './phada-state.js'
+import {
+  openPhadaThreads,
+  refutedByPhada,
+  repliedAsResolved,
+  reviewedShaOf,
+} from './phada-state.js'
 
 export interface ThreadToRecheck {
   thread: ReviewThread
@@ -16,7 +21,7 @@ export function threadsToRecheck(
   headSha: string,
 ): ThreadToRecheck[] {
   return openPhadaThreads(state).flatMap((thread) => {
-    if (repliedAsResolved(state, thread)) return []
+    if (repliedAsResolved(state, thread) || refutedByPhada(state, thread)) return []
     const reviewedSha = reviewedShaOf(state, thread)
     return reviewedSha === headSha ? [] : [{ thread, reviewedSha }]
   })

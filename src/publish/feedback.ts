@@ -1,7 +1,13 @@
 import type { PullRequestReviewState, ReviewThread } from '../github/pull-request-reviews.js'
 import type { Severity } from '../review/types.js'
-import { findingSeverity, findingTitle, hasFindingMarker, hasResolvedMarker } from './markers.js'
-import { phadaThreads, resolvedByPhada, reviewedShaOf } from './phada-state.js'
+import { findingSeverity, findingTitle } from './markers.js'
+import {
+  isPhadaComment,
+  phadaThreads,
+  refutedByPhada,
+  resolvedByPhada,
+  reviewedShaOf,
+} from './phada-state.js'
 import { normalizeTitle } from './plan-publication.js'
 
 export type Destination = 'fixed' | 'dismissed' | 'ignored' | 'open'
@@ -66,15 +72,12 @@ function unescapeTitle(title: string): string {
 
 function destinationOfThread(state: PullRequestReviewState, thread: ReviewThread): Destination {
   if (thread.isResolved) {
+    if (refutedByPhada(state, thread)) return 'dismissed'
     return resolvedByPhada(state, thread) || thread.isOutdated ? 'fixed' : 'dismissed'
   }
   return state.pullState === 'open' ? 'open' : 'ignored'
 }
 
 function hasHumanReply(state: PullRequestReviewState, thread: ReviewThread): boolean {
-  return thread.replies.some((reply) => {
-    if (reply.bot) return false
-    const own = reply.author === state.viewer
-    return !(own && (hasFindingMarker(reply.body) || hasResolvedMarker(reply.body)))
-  })
+  return thread.replies.some((reply) => !reply.bot && !isPhadaComment(state, reply))
 }

@@ -7,7 +7,12 @@ import { fetchCommitStatuses } from './github/commit-statuses.js'
 import { fetchComparison } from './github/compare-commits.js'
 import { fetchJobLog } from './github/job-log.js'
 import { createReview } from './github/create-review.js'
-import { replyAndResolve } from './github/resolve-thread.js'
+import {
+  addThreadReply,
+  isThreadOpen,
+  replyAndResolve,
+  resolveThread,
+} from './github/resolve-thread.js'
 import { fetchPullComments, fetchReviewState } from './github/pull-request-reviews.js'
 import { fetchRepositoryFile, fetchRepositoryTree } from './github/repository-files.js'
 import { suppressSqliteWarning } from './cli/suppress-sqlite-warning.js'
@@ -19,6 +24,7 @@ import { openObservedStore } from './store/observed-store.js'
 import { openHistoryStore } from './store/history-store.js'
 import { setTimeout as wait } from 'node:timers/promises'
 import { addCommentReaction, listIssueComments } from './github/issue-comments.js'
+import { listReviewComments } from './github/review-comments.js'
 import { listOpenPullRequests } from './github/list-pull-requests.js'
 import { listClosedPullRequests } from './github/list-closed-pull-requests.js'
 import {
@@ -63,6 +69,9 @@ process.exitCode = await run(process.argv.slice(2), {
   createReview,
   fetchComparison,
   replyAndResolve,
+  addThreadReply,
+  resolveThread,
+  isThreadOpen,
   fetchRepositoryTree,
   fetchRepositoryFile,
   fetchRepository,
@@ -76,6 +85,7 @@ process.exitCode = await run(process.argv.slice(2), {
   listOpenPullRequests,
   listClosedPullRequests,
   listIssueComments,
+  listReviewComments,
   addCommentReaction,
   fetchPullRequestHead,
   fetchPullRequestMetadata,

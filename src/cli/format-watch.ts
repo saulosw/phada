@@ -2,6 +2,7 @@ import { runTarget } from '../app/run-target.js'
 import type { ReviewRun } from '../app/review-and-publish.js'
 import type { WatchEvent } from '../app/watch-event.js'
 import { refusalText } from './format-request.js'
+import { replyOutcome, replyPlace } from './format-reply.js'
 import type { HistoryStatus, RunRecord, StatusJob } from '../store/history-store.js'
 import type { JobRecord, PauseState } from '../watch/types.js'
 import { errorMessage } from '../app/error-message.js'
@@ -58,6 +59,8 @@ function eventText(event: WatchEvent): string {
       return `${formatCount(event.count, 'review')} in the last hour (maxReviewsPerHour): the next one starts at ${clock(new Date(event.until))}.`
     case 'refused':
       return `Refused a ${event.request.source} request for ${event.request.repo}#${event.request.number}: ${refusalText(event.result)}.`
+    case 'replied':
+      return `Reply on ${event.repo}#${event.number} at ${replyPlace(event.reply)}: ${event.reply.kind}, ${replyOutcome(event.reply, false)}.`
   }
 }
 

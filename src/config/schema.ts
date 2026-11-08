@@ -50,6 +50,8 @@ const Duration = z.string().trim().regex(DURATION, 'use a duration like 90s, 5m 
 
 const WhenSchema = z.strictObject({ command: z.string().trim().min(1, 'give the command to run') })
 
+const RepliesSchema = z.enum(['auto', 'mention', 'off'])
+
 const WatchedRepoSchema = z.union([
   RepoName,
   z.strictObject({
@@ -60,6 +62,7 @@ const WatchedRepoSchema = z.union([
     labels: z.array(z.string().trim().min(1)).optional(),
     baseBranches: z.array(z.string().trim().min(1)).optional(),
     when: WhenSchema.optional(),
+    replies: RepliesSchema.optional(),
   }),
 ])
 
@@ -71,6 +74,7 @@ const WatchSchema = z.strictObject({
   settle: Duration.optional(),
   maxReviewsPerHour: z.number().int().min(1).max(60).optional(),
   when: WhenSchema.optional(),
+  replies: RepliesSchema.optional(),
   repos: z
     .array(WatchedRepoSchema)
     .min(1, 'list at least one owner/repo')

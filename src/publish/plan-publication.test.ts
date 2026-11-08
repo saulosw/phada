@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { findingFixture } from '../../test/support/finding.js'
 import type { PullRequestReviewState, ReviewThread } from '../github/pull-request-reviews.js'
-import { FINDING_MARKER, resolvedMarker } from './markers.js'
+import { FINDING_MARKER, replyMarker, resolvedMarker } from './markers.js'
 import { normalizeTitle, planPublication } from './plan-publication.js'
 
 function thread(overrides: Partial<ReviewThread> = {}): ReviewThread {
@@ -190,6 +190,19 @@ describe('planPublication', () => {
       const same = findingFixture({ line: 10 })
 
       expect(planPublication([same], state([replied])).dismissed).toEqual([same])
+    })
+
+    it('holds back the finding of a thread Phada resolved after refuting it', () => {
+      const refuted = byPhada({
+        replies: [
+          { author: 'me', body: `Fixed in \`a1b2c3d\`.\n\n${resolvedMarker(HEAD)}`, bot: false },
+          { author: 'octocat', body: 'It was never a bug: the caller checks it.', bot: false },
+          { author: 'me', body: `You are right.\n\n${replyMarker('refuted')}`, bot: false },
+        ],
+      })
+      const same = findingFixture({ line: 10 })
+
+      expect(planPublication([same], state([refuted])).dismissed).toEqual([same])
     })
 
     it('reopened thread is open again', () => {

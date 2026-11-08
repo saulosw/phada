@@ -19,6 +19,7 @@ import type { Statement } from './history-columns.js'
 import { isNotADatabase } from './index-store.js'
 import {
   feedbackDue,
+  publishedPulls,
   findings,
   observeFeedback,
   recordPublished,
@@ -49,6 +50,16 @@ import type {
   LessonFilter,
   LessonRecord,
 } from './history-lessons.js'
+import {
+  classifiedComments,
+  clearReplyDue,
+  markRepliesDue,
+  recordReplies,
+  replies,
+  repliesDue,
+  triedReplyDue,
+} from './history-replies.js'
+import type { ClassifiedReply, ReplyDue, ReplyFilter } from './history-replies.js'
 import type { Miss } from '../publish/misses.js'
 import type {
   FailureKind,
@@ -71,6 +82,7 @@ export type {
 } from './history-feedback.js'
 export type { MissFilter, MissOutcome, MissRecord, MissReplayRecord } from './history-misses.js'
 export type { LessonChanges, LessonDecision, LessonEdit, LessonRecord } from './history-lessons.js'
+export type { ClassifiedReply, ReplyDue, ReplyFilter, ReplySource } from './history-replies.js'
 
 export type RunStatus =
   'published' | 'dry-run' | 'not-published' | 'superseded' | 'skipped' | 'nothing' | 'failed'
@@ -88,6 +100,9 @@ export interface RepoRecord {
   commentsSince?: string
   commentsEtag?: string
   commentsLastId?: number
+  reviewCommentsSince?: string
+  reviewCommentsEtag?: string
+  reviewCommentsLastId?: number
 }
 
 export interface RunRecord {
@@ -175,6 +190,7 @@ export interface HistoryStore {
   recordPublished(findings: readonly PublishedFinding[]): void
   observeFeedback(observation: FeedbackObservation): void
   findings(filter: FindingFilter): FindingRecord[]
+  publishedPulls(repo: string): number[]
   feedbackDue(filter: DueFilter, before: string, limit?: number): DuePull[]
   aiRuns(pull: DuePull, filter?: AiRunFilter): RunRecord[]
   recordMisses(misses: readonly Miss[], harvestedAt: string): number
@@ -186,6 +202,13 @@ export interface HistoryStore {
   lessons(filter: LessonFilter): LessonRecord[]
   decideLesson(id: number, decision: LessonDecision, decidedAt: string, edit?: LessonEdit): boolean
   linkedMissIds(): Set<number>
+  recordReplies(replies: readonly ClassifiedReply[]): void
+  classifiedComments(repo: string, number: number): Set<string>
+  replies(filter: ReplyFilter): ClassifiedReply[]
+  markRepliesDue(repo: string, numbers: readonly number[], since: string): void
+  repliesDue(repo: string): ReplyDue[]
+  triedReplyDue(repo: string, number: number, at: string): void
+  clearReplyDue(repo: string, number: number): void
   runs(filter: HistoryFilter): { runs: ListedRun[]; total: number }
   prune(before: string): PruneCounts
   close(): void
@@ -588,6 +611,10 @@ class SqliteHistoryStore implements HistoryStore {
     return findings(this.#db, filter)
   }
 
+  publishedPulls(repo: string): number[] {
+    return publishedPulls(this.#db, repo)
+  }
+
   feedbackDue(filter: DueFilter, before: string, limit?: number): DuePull[] {
     return feedbackDue(this.#db, filter, before, limit)
   }
@@ -637,6 +664,34 @@ class SqliteHistoryStore implements HistoryStore {
     return linkedMissIds(this.#db)
   }
 
+  recordReplies(found: readonly ClassifiedReply[]): void {
+    recordReplies(this.#db, found)
+  }
+
+  classifiedComments(repo: string, number: number): Set<string> {
+    return classifiedComments(this.#db, repo, number)
+  }
+
+  replies(filter: ReplyFilter): ClassifiedReply[] {
+    return replies(this.#db, filter)
+  }
+
+  markRepliesDue(repo: string, numbers: readonly number[], since: string): void {
+    markRepliesDue(this.#db, repo, numbers, since)
+  }
+
+  repliesDue(repo: string): ReplyDue[] {
+    return repliesDue(this.#db, repo)
+  }
+
+  triedReplyDue(repo: string, number: number, at: string): void {
+    triedReplyDue(this.#db, repo, number, at)
+  }
+
+  clearReplyDue(repo: string, number: number): void {
+    clearReplyDue(this.#db, repo, number)
+  }
+
   runs(filter: HistoryFilter): { runs: ListedRun[]; total: number } {
     const where: string[] = []
     const values: SQLInputValue[] = []
@@ -683,6 +738,7 @@ class SqliteHistoryStore implements HistoryStore {
     const counts = transaction(this.#db, () => {
       const runs = this.#changes('delete from run where started_at < ?', before)
       const findings = this.#changes('delete from finding where published_at < ?', before)
+      this.#changes('delete from thread_reply where observed_at < ?', before)
       const jobs = this.#changes(
         `delete from job where status in ('done', 'failed', 'skipped', 'superseded')
          and finished_at < ? and not exists (select 1 from run where run.job_id = job.id)

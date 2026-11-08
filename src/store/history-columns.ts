@@ -27,6 +27,9 @@ export const REPO_TABLE: HistoryTable = {
     commentsSince: 'comments_since',
     commentsEtag: 'comments_etag',
     commentsLastId: 'comments_last_id',
+    reviewCommentsSince: 'review_comments_since',
+    reviewCommentsEtag: 'review_comments_etag',
+    reviewCommentsLastId: 'review_comments_last_id',
   },
 }
 
@@ -214,6 +217,36 @@ export const LESSON_TABLE: HistoryTable = {
   },
 }
 
+export const REPLY_DUE_TABLE: HistoryTable = {
+  name: 'reply_due',
+  keys: ['repo', 'number'],
+  columns: {
+    repo: 'repo',
+    number: 'number',
+    since: 'since',
+    triedAt: 'tried_at',
+  },
+}
+
+export const REPLY_TABLE: HistoryTable = {
+  name: 'thread_reply',
+  keys: ['commentId'],
+  columns: {
+    repo: 'repo',
+    number: 'number',
+    threadId: 'thread_id',
+    commentId: 'comment_id',
+    author: 'author',
+    kind: 'kind',
+    answered: 'answered',
+    answerId: 'answer_id',
+    answerUrl: 'answer_url',
+    resolved: 'resolved',
+    source: 'source',
+    observedAt: 'observed_at',
+  },
+}
+
 const NUMBERS = new Set([
   'id',
   'number',
@@ -228,8 +261,9 @@ const NUMBERS = new Set([
   'missId',
   'findingId',
   'commentsLastId',
+  'reviewCommentsLastId',
 ])
-const BOOLEANS = new Set(['eligible', 'aiCalled', 'outdated', 'dirty'])
+const BOOLEANS = new Set(['eligible', 'aiCalled', 'outdated', 'dirty', 'answered', 'resolved'])
 const JSON_FIELDS = new Set(['data', 'ciPending', 'ciFailing', 'scope'])
 const LOWERCASE = new Set(['repo'])
 

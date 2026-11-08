@@ -149,6 +149,63 @@ describe('the watch of the app', () => {
     expectFits(frame())
   })
 
+  it('logs the replies the watch answers', async () => {
+    const { frame, press, showing, watch } = openWatch()
+    await showing('w start the watch')
+    await press('w')
+    await showing('Watch started in this app.')
+    const reply = {
+      threadId: 'T1',
+      url: 'https://x/t1',
+      file: 'api/users.ts',
+      line: 63,
+      kind: 'refuted' as const,
+      text: 'You are right.',
+      posted: true,
+      resolved: true,
+    }
+    watch.emit({ kind: 'replied', repo: 'acme/shop', number: 12, reply })
+    watch.emit({
+      kind: 'replied',
+      repo: 'acme/shop',
+      number: 12,
+      reply: {
+        threadId: 'T2',
+        url: 'https://x/t2',
+        file: 'api/users.ts',
+        line: null,
+        kind: 'ack',
+        posted: false,
+        resolved: false,
+      },
+    })
+    await showing('Reply on acme/shop#12 at api/users.ts:63: refuted, posted and resolved.')
+    expect(frame()).toContain('Reply on acme/shop#12 at api/users.ts: ack, no answer needed.')
+  })
+
+  it('names the reply kind in the language of the app', async () => {
+    const { press, showing, watch } = openWatch({ language: 'pt' })
+    await showing('w iniciar o watch')
+    await press('w')
+    await showing('Watch iniciado neste app.')
+    watch.emit({
+      kind: 'replied',
+      repo: 'acme/shop',
+      number: 12,
+      reply: {
+        threadId: 'T1',
+        url: 'https://x/t1',
+        file: 'api/users.ts',
+        line: 63,
+        kind: 'question',
+        text: 'Porque o chamador não confere.',
+        posted: true,
+        resolved: false,
+      },
+    })
+    await showing('Resposta em acme/shop#12 em api/users.ts:63: pergunta, publicada.')
+  })
+
   it('keeps the log while another tab is open', async () => {
     const { frame, press, showing, watch } = openWatch()
     await showing('w start the watch')
