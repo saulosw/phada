@@ -66,6 +66,7 @@ describe('fetchReviewState', () => {
       viewer: 'saulosw',
       pullState: 'open',
       author: 'octocat',
+      headSha: HEAD_SHA,
       reviews: [
         {
           id: REVIEW_ID,
@@ -176,6 +177,34 @@ describe('fetchReviewState', () => {
     })
   })
 
+  it('reads the head of the pull request with the last page of its threads', async () => {
+    const moved = 'a'.repeat(40)
+    const threads = fixture('graphql-threads.json')
+    const firstThreads = withPage(threads, 'reviewThreads', (root) => {
+      root.pageInfo = { hasNextPage: true, endCursor: 'next' }
+    })
+    const lastThreads = structuredClone(threads)
+    ;(((lastThreads.data as Json).repository as Json).pullRequest as Json).headRefOid = moved
+    const { fetch } = fakeGitHub(
+      [ok(fixture('graphql-reviews.json'))],
+      [ok(firstThreads), ok(lastThreads)],
+    )
+
+    expect((await fetchWith(fetch)).headSha).toBe(moved)
+  })
+
+  it('reads the current first line of a thread over several lines', async () => {
+    const threads = withPage(fixture('graphql-threads.json'), 'reviewThreads', (root) => {
+      const [thread] = root.nodes as Json[]
+      thread!.startLine = 60
+    })
+    const { fetch } = fakeGitHub([ok(fixture('graphql-reviews.json'))], [ok(threads)])
+
+    const [thread] = (await fetchWith(fetch)).threads
+
+    expect(thread).toMatchObject({ startLine: 60, line: 63 })
+  })
+
   it('reads a pull request whose author was deleted and a thread without original lines', async () => {
     const reviews = fixture('graphql-reviews.json')
     ;(((reviews.data as Json).repository as Json).pullRequest as Json).author = null
@@ -191,6 +220,7 @@ describe('fetchReviewState', () => {
 
     expect(state.author).toBe('')
     expect(state.threads[0]).not.toHaveProperty('originalLine')
+    expect(state.threads[0]).not.toHaveProperty('startLine')
     expect(state.threads[0]).not.toHaveProperty('originalCommit')
   })
 

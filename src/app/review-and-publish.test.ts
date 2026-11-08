@@ -44,6 +44,7 @@ function state(
   return {
     viewer: 'octocat',
     pullState: 'open',
+    headSha: PR.headSha,
     reviews: options.reviewedHead
       ? [
           {
@@ -83,6 +84,7 @@ function earlierComments(
   return async () => ({
     viewer: 'octocat',
     pullState: 'open',
+    headSha: PR.headSha,
     reviews: [
       {
         id: 'R0',
@@ -349,6 +351,7 @@ describe('reviewAndPublish', () => {
     const reviewedBefore = async (): Promise<PullRequestReviewState> => ({
       viewer: 'octocat',
       pullState: 'open',
+      headSha: PR.headSha,
       reviews: [
         {
           id: 'R0',
@@ -830,6 +833,7 @@ describe('reviewAndPublish with the pull request conversation', () => {
   const conversationState = async (): Promise<PullRequestReviewState> => ({
     viewer: 'octocat',
     pullState: 'open',
+    headSha: PR.headSha,
     reviews: [
       {
         id: 'R0',
@@ -1592,6 +1596,7 @@ describe('reviewAndPublish replaying an earlier commit', () => {
   const fullState = async (): Promise<PullRequestReviewState> => ({
     viewer: 'octocat',
     pullState: 'open',
+    headSha: PR.headSha,
     reviews: [
       {
         id: 'R1',

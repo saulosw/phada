@@ -21,9 +21,18 @@ import {
   LessonNotFoundError,
   LessonRuleRefusedError,
 } from '../app/decide-lesson.js'
+import { NoLocalBranchError, NoLocalReviewError } from '../app/local-fix.js'
+import {
+  ClosedPullRequestFixError,
+  ForkFixError,
+  NoPushPermissionError,
+} from '../app/pull-request-fix.js'
 import { NoDefaultBranchError, NothingToReviewError } from '../app/local-review.js'
-import { toTerminalText } from '../app/terminal-text.js'
+import { singleLine, toTerminalText } from '../app/terminal-text.js'
+import { MissingGitIdentityError } from '../repository/git-identity.js'
 import { LocalDiffTooLargeError, LocalGitError } from '../repository/local-git.js'
+import { BranchMovedError } from '../repository/branch-moved.js'
+import { CommitFailedError, PushFailedError } from '../repository/push-fix.js'
 import type { LocalGitErrorReason } from '../repository/local-git.js'
 import { EditorNotFoundError } from './text-editor.js'
 
@@ -40,7 +49,7 @@ interface ProviderHints {
 
 const LOCAL_GIT_HINTS: Readonly<Partial<Record<LocalGitErrorReason, string>>> = {
   'not-a-repository':
-    'Run phada review in a clone of the repository, or pass a pull request (owner/repo#N).',
+    'Run phada in a clone of the repository, or pass a pull request (owner/repo#N).',
   'unknown-base': 'Pass a branch, tag or commit SHA to --base.',
   'no-origin':
     'A local review takes its GitHub repository from origin: git remote add origin <URL of the repository on GitHub>.',
@@ -66,6 +75,43 @@ const PROVIDER_HINTS: Readonly<Record<string, ProviderHints>> = {
   },
 }
 
+type ErrorClass = abstract new (...args: never[]) => Error
+
+const USAGE_ERRORS: readonly ErrorClass[] = [
+  ConfigError,
+  SkillError,
+  InvalidPullRequestRefError,
+  ReplayNeedsDryRunError,
+]
+
+const MESSAGE_ERRORS: readonly ErrorClass[] = [
+  HeadNotInPullRequestError,
+  MissingGitHubTokenError,
+  WatchRunningError,
+  HistoryStoreError,
+  RunNotFoundError,
+  MissNotFoundError,
+  LessonNotFoundError,
+  LessonDecidedError,
+  LessonRuleRefusedError,
+  InvalidLessonEditError,
+  EditorNotFoundError,
+  PublishRefusedError,
+  NoDefaultBranchError,
+  NothingToReviewError,
+  NoLocalReviewError,
+  NoLocalBranchError,
+  ForkFixError,
+  ClosedPullRequestFixError,
+  NoPushPermissionError,
+  MissingGitIdentityError,
+  BranchMovedError,
+  CommitFailedError,
+  PushFailedError,
+  CheckoutUnavailableError,
+  IndexStoreError,
+]
+
 export function formatError(error: unknown, options: { debug: boolean }): FormattedError {
   const line = `phada: ${errorSummary(error)}`
   const { exitCode } = describe(error)
@@ -80,26 +126,8 @@ function describe(error: unknown): { summary: string; exitCode: 1 | 2 } {
   if (error instanceof UsageError) {
     return { summary: `${error.message} Run with --help for usage.`, exitCode: 2 }
   }
-  if (error instanceof ConfigError) return { summary: error.message, exitCode: 2 }
-  if (error instanceof SkillError) return { summary: error.message, exitCode: 2 }
-  if (error instanceof InvalidPullRequestRefError) return { summary: error.message, exitCode: 2 }
-  if (error instanceof ReplayNeedsDryRunError) return { summary: error.message, exitCode: 2 }
-  if (error instanceof HeadNotInPullRequestError) return { summary: error.message, exitCode: 1 }
-  if (error instanceof MissingGitHubTokenError) return { summary: error.message, exitCode: 1 }
-  if (
-    error instanceof WatchRunningError ||
-    error instanceof HistoryStoreError ||
-    error instanceof RunNotFoundError ||
-    error instanceof MissNotFoundError ||
-    error instanceof LessonNotFoundError ||
-    error instanceof LessonDecidedError ||
-    error instanceof LessonRuleRefusedError ||
-    error instanceof InvalidLessonEditError ||
-    error instanceof EditorNotFoundError ||
-    error instanceof PublishRefusedError
-  ) {
-    return { summary: error.message, exitCode: 1 }
-  }
+  if (isOneOf(error, USAGE_ERRORS)) return { summary: error.message, exitCode: 2 }
+  if (isOneOf(error, MESSAGE_ERRORS)) return { summary: error.message, exitCode: 1 }
   if (error instanceof LocalGitError) return describeLocalGitError(error)
   if (error instanceof LocalDiffTooLargeError) {
     return {
@@ -107,16 +135,10 @@ function describe(error: unknown): { summary: string; exitCode: 1 | 2 } {
       exitCode: 1,
     }
   }
-  if (error instanceof NoDefaultBranchError || error instanceof NothingToReviewError) {
-    return { summary: error.message, exitCode: 1 }
-  }
   if (error instanceof DiffTooLargeError) {
     return { summary: `${error.message} Phada never truncates a diff.`, exitCode: 1 }
   }
   if (error instanceof GitHubError) return { summary: error.message, exitCode: 1 }
-  if (error instanceof CheckoutUnavailableError || error instanceof IndexStoreError) {
-    return { summary: error.message, exitCode: 1 }
-  }
   if (error instanceof ProviderError) return { summary: describeProviderError(error), exitCode: 1 }
   if (error instanceof InvalidReviewReportError || error instanceof InvalidLessonsAnswerError) {
     return { summary: `${error.message} Run with --debug to see its answer.`, exitCode: 1 }
@@ -126,6 +148,10 @@ function describe(error: unknown): { summary: string; exitCode: 1 | 2 } {
     summary: `Unexpected error: ${message.replace(/\.$/, '')}. Run with --debug for details.`,
     exitCode: 1,
   }
+}
+
+function isOneOf(error: unknown, classes: readonly ErrorClass[]): error is Error {
+  return classes.some((errorClass) => error instanceof errorClass)
 }
 
 function describeLocalGitError(error: LocalGitError): { summary: string; exitCode: 1 | 2 } {
@@ -161,10 +187,4 @@ function details(error: unknown): string {
   if (error instanceof InvalidReviewReportError || error instanceof InvalidLessonsAnswerError)
     lines.push(`AI answer (start):\n${error.preview}`)
   return toTerminalText(lines.join('\n'))
-}
-
-function singleLine(text: string): string {
-  return toTerminalText(text)
-    .replace(/\s*\n\s*/g, ' ')
-    .trim()
 }

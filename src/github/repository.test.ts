@@ -28,6 +28,18 @@ describe('fetchRepository', () => {
     expect(calls[0]?.url).toBe('https://api.github.com/repos/acme/web')
   })
 
+  it.each([true, false])('reads whether the token can push (push: %s)', async (push) => {
+    const { fetch } = createFakeFetch({
+      [JSON_ACCEPT]: [
+        { status: 200, body: repositoryBody({ permissions: { admin: false, push, pull: true } }) },
+      ],
+    })
+
+    const info = await fetchRepository({ owner: 'acme', repo: 'web', token: TOKEN, fetch })
+
+    expect(info.canPush).toBe(push)
+  })
+
   it('calls a repository without commits empty', async () => {
     const { fetch } = createFakeFetch({
       [JSON_ACCEPT]: [{ status: 200, body: repositoryBody({ size: 0, default_branch: null }) }],

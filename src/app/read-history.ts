@@ -1,7 +1,7 @@
 import { destinationOf } from '../publish/feedback.js'
 import { numberOf, objectOf, parseJson, stringOf, stringsOf } from './stored-json.js'
-import { storedCoverage } from './stored-review.js'
-import type { CoverageGapKind, CoverageLevel } from '../review/types.js'
+import { storedCoverage, storedSuggestion } from './stored-review.js'
+import type { CoverageGapKind, CoverageLevel, Suggestion } from '../review/types.js'
 import type { Destination, SignalKind } from '../publish/feedback.js'
 import type {
   FindingFilter,
@@ -53,6 +53,7 @@ export interface StoredFinding {
   sources: string[]
   scope: 'change' | 'repository'
   closeToCut: boolean
+  suggestion?: Suggestion
 }
 
 export interface StoredClaim {
@@ -256,6 +257,7 @@ export function storedFindings(value: unknown): StoredFinding[] {
     const file = stringOf(finding?.file)
     const title = stringOf(finding?.title)
     if (finding === undefined || file === undefined || title === undefined) return []
+    const suggestion = storedSuggestion(finding.suggestion)
     return [
       {
         severity: stringOf(finding.severity) ?? null,
@@ -270,6 +272,7 @@ export function storedFindings(value: unknown): StoredFinding[] {
         sources: stringsOf(finding.sources),
         scope: finding.scope === 'repository' ? 'repository' : 'change',
         closeToCut: finding.closeToCut === true,
+        ...(suggestion === undefined ? {} : { suggestion }),
       },
     ]
   })

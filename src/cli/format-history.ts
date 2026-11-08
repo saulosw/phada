@@ -4,7 +4,7 @@ import { destinationOf } from '../publish/feedback.js'
 import type { Destination, SignalKind } from '../publish/feedback.js'
 import type { FindingRecord, RunRecord } from '../store/history-store.js'
 import { toTerminalText } from '../app/terminal-text.js'
-import { singleLine } from './markdown-text.js'
+import { singleLine } from '../app/terminal-text.js'
 import { shortSha } from './review-text.js'
 import { formatCount, formatLocalTime } from './units.js'
 

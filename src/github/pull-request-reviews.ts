@@ -56,6 +56,7 @@ const REVIEWS_QUERY = `query($owner: String!, $repo: String!, $number: Int!, $af
 const THREADS_QUERY = `query($owner: String!, $repo: String!, $number: Int!, $after: String) {
   repository(owner: $owner, name: $repo) {
     pullRequest(number: $number) {
+      headRefOid
       reviewThreads(first: 100, after: $after) {
         pageInfo { hasNextPage endCursor }
         nodes {
@@ -64,6 +65,7 @@ const THREADS_QUERY = `query($owner: String!, $repo: String!, $number: Int!, $af
           isOutdated
           path
           line
+          startLine
           originalLine
           originalStartLine
           comments(first: 1) {
@@ -139,6 +141,7 @@ export interface ReviewThread {
   isOutdated: boolean
   path: string
   line: number | null
+  startLine?: number
   originalLine?: number
   originalStartLine?: number
   originalCommit?: string
@@ -161,6 +164,7 @@ export interface PullRequestReviewState {
   viewer: string
   pullState: PullState
   author?: string
+  headSha: string
   reviews: PublishedReview[]
   threads: ReviewThread[]
 }
@@ -185,6 +189,7 @@ export async function fetchReviewState(
     viewer: stringField(reviewPages[0]?.data, 'viewer.login'),
     pullState: pullStateOf(reviewPages[0]?.data),
     author: login(reviewPages[0]?.data, 'repository.pullRequest.author'),
+    headSha: stringField(threadPages.at(-1)?.data, 'repository.pullRequest.headRefOid'),
     reviews: reviewPages.flatMap(({ nodes }) => nodes.map(toReview)),
     threads: threadPages.flatMap(({ nodes }) => nodes.map(toThread)),
   }
@@ -288,6 +293,7 @@ function toThread(node: unknown): ReviewThread {
     isOutdated: booleanField(node, 'isOutdated'),
     path: stringField(node, 'path'),
     line: nullableNumberField(node, 'line'),
+    ...startLineOf(node),
     ...originalLines(node),
     url: comment === undefined ? '' : stringField(comment, 'url'),
     author: comment === undefined ? '' : login(comment, 'author'),
@@ -317,6 +323,11 @@ function toThread(node: unknown): ReviewThread {
         }),
     comments: numberField(node, 'replies.totalCount'),
   }
+}
+
+function startLineOf(node: unknown): Pick<ReviewThread, 'startLine'> {
+  const start = nullableNumberField(node, 'startLine')
+  return start === null ? {} : { startLine: start }
 }
 
 function originalLines(node: unknown): Pick<ReviewThread, 'originalLine' | 'originalStartLine'> {

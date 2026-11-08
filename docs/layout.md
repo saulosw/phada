@@ -14,7 +14,8 @@ src/
                          #   run through formatRunSections()), a history save that failed and
                          #   the id of the saved run; review with no pull request →
                          #   runLocalReview() of local-review-command.ts (the start line, the
-                         #   review, the saved run); publish → runPublish(); no command →
+                         #   review, the saved run); publish → runPublish(); fix → runLocalFix();
+                         #   no command →
                          #   runApp(); createProvider()
   architecture.test.ts   # allowed imports of src/review/, src/publish/, src/watch/, src/context/,
                          #   src/investigation/, src/repository/, src/repo-map/, src/store/,
@@ -62,12 +63,12 @@ src/
                          #   them today (GhFacadeError); other repositories read as usual
     review-progress.ts   #   ReviewProgress: each step of a review as data (fetched, conversation
                          #   and CI read, CI wait, context, indexing, related, impact, passes, the
-                         #   AI running a review, verify, recheck or skill run, publishing,
+                         #   AI running a review, verify, recheck, skill run or fix, publishing,
                          #   warning), ReviewProgressSink; reportProgress(): ReviewProvider
                          #   decorator that reports when the AI starts and finishes a run,
                          #   whether it answered and the tokens it reported
-    wrap-provider-runs.ts #  wrapProviderRuns(): a ReviewProvider whose review and skill runs go
-                         #   through a wrapper (the progress report, the refusal once cancelled)
+    wrap-provider-runs.ts #  wrapProviderRuns(): a ReviewProvider whose review, skill and fix runs
+                         #   go through a wrapper (the progress report, the refusal once cancelled)
     requested-review.ts  #   a review the person asks for in the app: ReviewMode (look, publish),
                          #   PullRequestTarget, OpenPullRequests, HistorySave, RequestedReview
                          #   (the review detail and how the history kept it, cancelled, a watch
@@ -125,7 +126,7 @@ src/
                          #   repositories for the prompt, the CLI and the JSON
     error-message.ts     #   errorMessage(): the message of any thrown value
     terminal-text.ts     #   toTerminalText(): strips control and bidi characters from external
-                         #   text (the CLI and the app)
+                         #   text (the CLI and the app); singleLine(): the same on one line
     wait-for-ci.ts       #   waitForCi(): the checks that count read through the CI gate (the
                          #   command's start as when Phada saw the commit, never skipping) and
                          #   slept on until it reviews; ciWaiting/ciWaited events, a failed read
@@ -206,6 +207,40 @@ src/
                          #   as text, no recheck, conversation, CI or learning; warnings for
                          #   nothing uncommitted and skills sent as text; ReviewedLocalChanges,
                          #   LocalRun; NoDefaultBranchError, NothingToReviewError
+    local-fix.ts         #   readLocalFix(): origin, branch and HEAD of the local git → the last
+                         #   local run of owner/repo@branch, its findings read leniently from the
+                         #   stored JSON (storedFindings() of read-history.ts, with a severity
+                         #   and a line) and numbered as the review printed them, the head it
+                         #   reviewed; NoLocalReviewError, NoLocalBranchError
+    fix-findings.ts      #   fixFindings(): applyFileSuggestions(), then the findings left sent to
+                         #   the provider's fix() in the tree (the fix prompt with a new nonce,
+                         #   15 min and 60 turns, the answer parsed into outcomes, summary and
+                         #   blocked commands; a provider error kept as failed), with snapshots
+                         #   of the tree before, between and after → applied, files changed,
+                         #   left, AiFix (files the AI changed, its outcomes, or its failure);
+                         #   leftAfterAi(): the findings left split into the ones the AI said
+                         #   it fixed and the rest; shared by the local and the pull request fix
+    pull-request-fix.ts  #   readPullRequestFix(): the pull request (a fork or a closed one
+                         #   refused), the repository (refused unless the token can push), then
+                         #   threadFindings() of the review state (its head moved since the pull
+                         #   request was read → BranchMovedError); fixPullRequest(): a work tree
+                         #   of the head from the mirror in a work folder, fixFindings() there,
+                         #   its tree and the diff from the head → PullRequestFix with close()
+                         #   (removes the folder; also on any failure while fixing);
+                         #   pushPullRequestFix(): the head read again (moved →
+                         #   BranchMovedError), the commit of the tree with fixCommitMessage()
+                         #   (fix: address review comments, then file:line and title of each
+                         #   applied suggestion and of each finding the AI said it fixed) and
+                         #   the push, both injected; ForkFixError, ClosedPullRequestFixError,
+                         #   NoPushPermissionError
+    pull-request-work-tree.ts # openFreshWorkDir(): orphan work folders swept, then a new one;
+                         #   materializePullRequest(): the work tree of a pull request head
+                         #   from the mirror in that folder, its warnings reported; shared by
+                         #   the native skills and the pull request fix
+    apply-file-suggestions.ts # applyFileSuggestions(): numbered findings grouped by file, each
+                         #   file read and written through WorkingFiles with applySuggestions();
+                         #   left with a reason (no suggestion, missing file, not found,
+                         #   ambiguous, overlap)
     local-pull-request.ts #  localPullRequest(): the pull request of a local review (number 0,
                          #   title from the only commit or the branch, the commit messages as
                          #   description, a line for uncommitted changes)
@@ -533,7 +568,9 @@ src/
     format-watch.ts      #   formatWatchEvent(), formatWatchStatus(), formatWatchStatusJson(); a
                          #   job waiting for CI with its deadline and pending checks, skipped
                          #   for failing CI or back in the queue
-    provider-choice.ts   #   assertProviderChoice(): known provider, model for ollama, no MCP
+    provider-choice.ts   #   loadProviderChoice(): the user layers of a repository and the
+                         #   provider and model of the flags or of those layers; modelOption();
+                         #   assertProviderChoice(): known provider, model for ollama, no MCP
                          #   server names with ollama; providerRunsSkills()
     mcp-names.ts         #   checkMcpNames(): MCP server names checked with `claude mcp get` or
                          #   read with `codex mcp get --json` before the review
@@ -559,6 +596,30 @@ src/
                          #   root and whose context is read from the local git → the run saved
                          #   as source local (branch, dirty, number 0, never feedback); prints
                          #   nothing; shared by phada review and phada mcp
+    local-fix-command.ts #   runLocalFix(): the local git of a folder (injectable), the history
+                         #   opened (missing → no local review), readLocalFix(), then startFix()
+                         #   with the HEAD moved as a warning after --only and the provider of
+                         #   the origin, fixFindings() on the files of the working tree (inside
+                         #   its root), reportFix(); no token
+    fix-wiring.ts        #   shared by the fix commands: startFix() (nothing to fix, --only
+                         #   checked against the numbers by pickNumbers(), the list and --list,
+                         #   the preparation before the AI, the list again), reportFix() (the
+                         #   report, the warnings, and the AI's error after them), fixProvider()
+                         #   (--provider/--model or the user config, with the progress of the
+                         #   fix), workingFiles() (the files inside a root)
+    pull-request-fix-command.ts # runPullRequestFix(): stdin not a terminal without --yes refused
+                         #   first, then the token, readPullRequestFix(), --only, the list
+                         #   (--list stops), the git identity of the folder (missing → error
+                         #   before the AI), the provider, fixPullRequest() in the mirror of
+                         #   the cache, the diff and the report, the question (confirm()), then
+                         #   pushPullRequestFix() with commitWorkTree() and pushCommit()
+                         #   (injectable), the commit and branch printed and a git pull hint
+                         #   when the clone of the folder is on that branch; the work tree is
+                         #   always removed
+    confirm.ts           #   isTerminalInput(); confirm(): a question and one line of stdin, yes
+                         #   only for y or yes
+    format-fix.ts        #   the numbered list (of a run or of the comments of a pull request),
+                         #   the report and the warnings of phada fix
     publish-saved.ts     #   publishSavedRun(): the history opened (missing → not found), then
                          #   publishSavedReview() with the GitHub readers and writers of the
                          #   token and renderReview, the publication saved as a new manual run
@@ -1026,8 +1087,10 @@ src/
                          #   fetchCommitDiff(): the diff base...sha (compare), same limit
     pull-request-timeline.ts # fetchPullRequestTimeline(): the commits (oid, committedDate) and
                          #   force-pushes (date, before and after) of a pull request, paginated
-    pull-request-reviews.ts # fetchReviewState(): viewer, pull request state, reviews (state, date,
-                         #   author association, bot) and threads (id, outdated, first comment
+    pull-request-reviews.ts # fetchReviewState(): viewer, pull request state, its head (read with the
+                         #   last page of threads), reviews (state, date, author association,
+                         #   bot) and threads (id, outdated, current and
+                         #   original lines, first comment
                          #   with its URL and negative reactions, last 20 replies and the count),
                          #   paginated; fetchPullComments(): the general comments of the pull
                          #   request; fetchPullRequestPages(): a paginated pull request query.
@@ -1039,7 +1102,8 @@ src/
                          #   (at most COMPARE_MAX_FILES)
     resolve-thread.ts    #   replyAndResolve(): resolve a review thread, then reply on it
     repository-files.ts  #   fetchRepositoryTree(), fetchRepositoryFile(): the repository at a commit
-    repository.ts        #   fetchRepository(): visibility, default branch, empty; fetchBranchHead()
+    repository.ts        #   fetchRepository(): visibility, default branch, empty, whether the
+                         #   token can push; fetchBranchHead()
     list-pull-requests.ts #  listOpenPullRequests(): open pull requests, ETag of the first page;
                          #   readPullPage() (404/403 → RepositoryAccessError), MAX_PULL_PAGES
     list-closed-pull-requests.ts # listClosedPullRequests(): the numbers of the pull requests
@@ -1133,14 +1197,18 @@ src/
     work-dirs.ts         #   openWorkDir(), closeWorkDir(), removeOpenWorkDirs() (Ctrl-C),
                          #   sweepOrphanWorkDirs(): the phada-native-* folders
   providers/             # ReviewProvider and its implementations
-    types.ts             #   ReviewProvider, ReviewPrompt, ReviewOutput, TokenUsage (input, the
+    types.ts             #   ReviewProvider (review, optional runSkill and fix), ReviewPrompt,
+                         #   ReviewOutput, FixRequest, FixOutput, TokenUsage (input, the
                          #   part of it read from cache, output), ProviderError; ProviderStatus
                          #   (CliStatus, OllamaStatus)
     cli-run.ts           #   shared by AI CLIs: temp dir, env without GitHub tokens, typed errors
     redact-secrets.ts    #   redacts token patterns from CLI output in error messages
-    claude.ts            #   ClaudeCliProvider: review() and runSkill() (+ claude-model.ts: model
-                         #   resolution; claude-skill-args.ts: allowed tools, temporary plugin)
-    codex.ts             #   CodexCliProvider (+ codex-model.ts: model resolution; codex-mcp.ts:
+    claude.ts            #   ClaudeCliProvider: review(), runSkill() and fix() (file tools and the
+                         #   read-only git commands, restricted to the tree) (+ claude-model.ts:
+                         #   model resolution; claude-skill-args.ts: allowed tools, temporary
+                         #   plugin)
+    codex.ts             #   CodexCliProvider: review() and fix() (exec -s workspace-write -C the
+                         #   tree) (+ codex-model.ts: model resolution; codex-mcp.ts:
                          #   named MCP servers as -c settings; mcp-env-launcher.ts: runs a server
                          #   with the env of a private file)
     ollama.ts            #   OllamaProvider over HTTP (+ ollama-host.ts; node-http-fetch.ts: fetch
@@ -1159,9 +1227,14 @@ src/
   publish/               # pure: what to publish, data in, decision out
     markers.ts           #   the review (with the diff fingerprint), finding (findingMarker():
                          #   with the skill, older ones without it still read) and resolved
-                         #   markers, read only at the end of a body; findingTitle()
+                         #   markers, read only at the end of a body; findingTitle();
+                         #   withoutFindingMarker()
     phada-state.ts       #   Phada's own reviews and open threads (author = token owner + marker);
                          #   resolvedByPhada(), reviewedShaOf()
+    thread-findings.ts   #   threadFindings(): the open Phada threads numbered by file and line
+                         #   as findings (severity and title of the first line, the rest of the
+                         #   comment as why) with the suggestion block as a replacement of
+                         #   the current lines, only when the thread is not outdated
     feedback.ts          #   threadFeedback(): each Phada thread → outcome (fixed, dismissed,
                          #   ignored, open) and marks (negative-reaction, human-reply);
                          #   findingFingerprint()
@@ -1199,7 +1272,18 @@ src/
                          #   local clone a local review reads
     checkout.ts          #   Checkout (read, grep, list, history), CheckoutError
     git-checkout.ts      #   GitCheckout: one commit of the mirror (log, blame); the git environment
-                         #   without tokens
+                         #   without tokens, and promptlessGitEnvironment() (never asks a terminal)
+    github-auth.ts       #   gitHubAuth(): the token as an http.extraheader in the environment of
+                         #   git (never in argv or the URL) and scrub() for what git prints
+    git-identity.ts      #   readGitIdentity(): user.name, user.email and the signing settings
+                         #   (commit.gpgsign, user.signingkey, gpg.*) of git config in a folder;
+                         #   MissingGitIdentityError
+    push-fix.ts          #   commitWorkTree(): a tree committed on HEAD of a work tree as the
+                         #   user, signed as their settings say, no hook run; pushCommit(): a
+                         #   plain push of a commit to a branch with gitHubAuth(), never forced;
+                         #   BranchMovedError (rejected), PushFailedError, CommitFailedError
+    branch-moved.ts      #   BranchMovedError: the branch of a pull request moved since phada fix
+                         #   read it (shared by push-fix.ts and the pull request fix)
     git-mirror.ts        #   openGitMirror(): bare repository in the cache, fetch --depth 1 into
                          #   refs/phada/* (stopped by the caller's signal), deepen to 200 commits for history, ls-tree -r,
                          #   cat-file --batch; openExistingGitMirror(): only the local reads
@@ -1211,8 +1295,10 @@ src/
                          #   HEAD, owner/repo of origin, the merge base, the diff as GitHub gives
                          #   it whatever the user's git config (1 MB at most,
                          #   LocalDiffTooLargeError), stats, commit messages, tree and files at a
-                         #   commit, and commitWorkingTree() (a temporary index, no ref, the
-                         #   user's index and status untouched, dated as HEAD); LocalGitError
+                         #   commit, workingTree() (the tree of the working tree through a
+                         #   temporary index, no ref, the user's index and status untouched),
+                         #   commitWorkingTree() (that tree as a commit on HEAD, dated as HEAD),
+                         #   changedFiles() between two trees; LocalGitError
     work-tree.ts         #   materializeWorkTree(): a checkout of the head with origin/<base> at
                          #   the merge base, objects shared with the mirror, the diff and the
                          #   files it is given next to it
@@ -1238,7 +1324,7 @@ src/
     history-store.ts     #   openHistoryStore(): the review history, never rebuilt; watched
                          #   repositories and pull requests, jobs and their review requests, runs
                          #   with their verdict, pause, runs() (with the title, by text), run(),
-                         #   prune(); requestsWith(): the requests of a source whose data has
+                         #   lastLocalRun() (of owner/repo@branch), prune(); requestsWith(): the requests of a source whose data has
                          #   some values (a Slack message);
                          #   readOnly: no folder, pragma or migration, an older file refused
                          #   (HistoryOutdatedError); openExistingHistoryStore(): missing, open,
@@ -1288,8 +1374,8 @@ src/
                          #   PublishTarget, PullRecord, PauseState, JobStatus (waiting for CI),
                          #   FailureKind
   review/                # the engine: data in, result out
-    types.ts             #   ReviewRequest, Finding (closeToCut), ReviewResult (passUsage),
-                         #   PassUsage, ReviewOutcome, …
+    types.ts             #   ReviewRequest, Finding (closeToCut), Suggestion, SuggestedEdit,
+                         #   ReviewResult (passUsage), PassUsage, ReviewOutcome, …
     token-usage.ts       #   sumUsage(), totalUsage(); usageReport(): the tokens of each AI pass
                          #   of a review and of the recheck, with their total
     prompt-parts.ts      #   text shared by the review and verification prompts: rules section,
@@ -1334,6 +1420,15 @@ src/
                          #   of n, every changed file, the ones of the group marked)
     map-limit.ts         #   mapLimit(): at most n calls at a time, no new ones after a failure
     suggestions.ts       #   checkSuggestion(), checkSuggestions(): a code suggestion against the diff
+    apply-suggestions.ts #   applySuggestions(): the suggestions of one file applied to its text (at
+                         #   their range, or at the one place their original moved to; overlapping
+                         #   ones after the first refused), keeping its line endings
+    finding-numbers.ts   #   numberFindings(): the number of each finding as the review prints it
+                         #   (by severity, then in order); SEVERITIES, isSeverity()
+    fix-prompt.ts        #   buildFixPrompt(): the numbered findings to fix as a PHADA_FINDINGS
+                         #   block with a nonce; fix only them, no git writes, one outcome line each
+    fix-outcomes.ts      #   parseFixOutcomes(): the "#n fixed|skipped: reason" lines of a fix
+                         #   answer → outcomes, the numbers not reported, the rest as summary
     convert-prompt.ts    #   buildConvertPrompt(): a native skill's output → Phada's report (the
                          #   verdict of each claim of the description from that output alone)
     native-context.ts    #   nativeSkillContext(): what a native skill is told about the checkout

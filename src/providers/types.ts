@@ -57,21 +57,35 @@ export interface SkillRunRequest {
   maxTurns: number
 }
 
-export interface SkillRunOutput {
+export interface AgentOutput {
   text: string
   durationMs: number
   model?: string
   usage?: TokenUsage
   blocked: BlockedCommand[]
+}
+
+export interface SkillRunOutput extends AgentOutput {
   externalCalls?: ExternalToolCall[]
   warnings?: string[]
 }
+
+export interface FixRequest {
+  instructions: string
+  data: string
+  cwd: string
+  timeoutMs: number
+  maxTurns: number
+}
+
+export type FixOutput = AgentOutput
 
 export interface ReviewProvider {
   readonly id: string
   readonly concurrency?: number
   review(prompt: ReviewPrompt): Promise<ReviewOutput>
   runSkill?(request: SkillRunRequest): Promise<SkillRunOutput>
+  fix?(request: FixRequest): Promise<FixOutput>
 }
 
 export type ProviderErrorReason =

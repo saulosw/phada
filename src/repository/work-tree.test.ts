@@ -174,6 +174,35 @@ describe('materializeWorkTree', () => {
   })
 })
 
+describe('materializeWorkTree without a diff', () => {
+  it('writes an empty diff file', async () => {
+    count += 1
+    const mirror = await openGitMirror({
+      dir: join(parent, `m${count}`, 'shop.git'),
+      owner: 'acme',
+      repo: 'shop',
+      token: 'x',
+      env: process.env,
+      remoteUrl: repository.url,
+    })
+    const tree = await materializeWorkTree(
+      mirror,
+      {
+        dir: join(parent, `e${count}`, 'repo'),
+        headSha,
+        baseSha,
+        baseRef: 'main',
+        headRef: 'feat/x',
+        number: 12,
+        commits: 3,
+      },
+      { env: process.env },
+    )
+
+    expect(readFileSync(tree.diffFile, 'utf8')).toBe('')
+  })
+})
+
 describe('materializeWorkTree without a merge base', () => {
   it('points origin/<base> at the base commit and warns', async () => {
     count += 1

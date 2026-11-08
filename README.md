@@ -55,7 +55,7 @@ AI again (see [Look first, publish later](#look-first-publish-later)).
 
 `phada --help` lists the commands, and `phada review --help`, `phada publish --help`, `phada setup --help`,
 `phada init --help`, `phada index --help`, `phada rules --help`, `phada prompt --help`, `phada watch --help`,
-`phada history --help`, `phada misses --help` and `phada lessons --help` list their options. To have new pull requests and pushes reviewed without running anything, see
+`phada history --help`, `phada misses --help`, `phada lessons --help` and `phada fix --help` list their options. To have new pull requests and pushes reviewed without running anything, see
 [Watch mode](#watch-mode); to see what happened to the comments Phada published, see
 [History](#history), and for what people pointed out that Phada did not, [Misses](#misses) and
 [Lessons](#lessons). To see all of it in one place, run `phada` alone (see
@@ -94,6 +94,58 @@ nothing; `--force`, `--wait-ci`, `--head`, `--no-resolve`, `--no-conversation` a
 a pull request. In `--format json` a `local` block (`repo`, `branch`, `base`, `head`, `dirty`,
 `reviewed`, `title`) takes the place of `pullRequest`, `publication`, `conversation` and `ci`.
 
+### Fixing the findings: `phada fix`
+
+```bash
+phada fix                        # the findings of the last local review of this branch
+phada fix owner/repo#123         # the open comments of Phada on a pull request: commit and push
+phada fix owner/repo#123 --list  # print them numbered, and stop
+phada fix --only 1,3             # only these
+phada fix owner/repo#123 --yes   # commit and push without asking
+```
+
+`phada fix` starts with the findings, numbered: with no pull request, those of the last local
+review of the branch you are on, numbered as the review printed them; with a pull request, the
+open comments Phada published on it, numbered by file and line. `--list` prints them and stops,
+and `--only` fixes only the numbers you pick.
+
+Phada applies the [suggested changes](#suggested-changes) itself, with no AI: in your branch,
+where the lines still hold the code the review saw (or where that code appears once in the
+file); on a pull request, at the current lines of each comment that is not outdated, as GitHub's
+"Apply suggestion" does. The findings left go to your AI CLI, with the findings as data: Claude
+Code edits the files with its file tools and runs only git commands that read, and Codex edits in
+its `workspace-write` sandbox. Each says, per finding, whether it fixed it or skipped it and why.
+With Ollama, `phada fix` applies only the suggestions and lists the findings left. The provider
+and model come from your config, or from `--provider` and `--model` as in `phada review`.
+
+With no pull request, the fix stays in the working tree of your clone, uncommitted, and needs no
+GitHub token. It ends with the suggestions applied, the files the fix changed (changes already in the
+working tree do not count), what the AI fixed and the findings left; when `HEAD` moved since
+the review, it warns and goes on.
+
+With a pull request, nothing happens in your clone: Phada fixes a checkout of the head of the pull
+request made from its mirror, shows the diff and what was left, and asks
+`Commit and push to owner/repo:branch? [y/N]`. Saying no, or nothing changing, removes the
+checkout. Yes (or `--yes`, required when stdin is not a terminal) makes one commit,
+`fix: address review comments` with a `- file:line title` line for each applied suggestion and
+each finding the AI says it fixed, and pushes it to the branch of the pull request:
+
+- The commit is yours: the `user.name` and `user.email` of `git config` where you run
+  `phada fix` (your clone's, inside a clone; otherwise your global config). Without them, it
+  stops before anything runs. It is signed when your config signs commits (`commit.gpgsign`,
+  `user.signingkey`, `gpg.*`), and no git hook runs.
+- The push is a plain one, never forced, with the token in the environment of git only. Phada
+  checks the head of the pull request when it reads the comments and again before the commit:
+  when the branch moved since the fix read it, or the push is rejected because it moved, nothing
+  is pushed; run `phada fix` again.
+- After the push it prints the commit and the branch, and when your clone is on that branch, it
+  tells you to `git pull`. The fix does not resolve the comments: the next review rechecks them
+  and resolves the fixed ones (see [Comments fixed in a new commit](#comments-fixed-in-a-new-commit)).
+
+A pull request from a fork, a closed one, or a token that cannot push to the repository is
+refused before anything runs: the token needs **Contents: Read and write** (or the `repo` scope)
+to push.
+
 ### GitHub token
 
 Phada reads the token from `GITHUB_TOKEN`, or from `GH_TOKEN` when `GITHUB_TOKEN` is not set.
@@ -107,7 +159,8 @@ or prints the token. The token reads the pull request and its reviews and publis
   Read-only** for the [CI checks](#the-checks), or
 - a classic token with the `repo` scope (`public_repo` is enough for public repositories).
 
-A read-only token is enough with `--dry-run`. Without write access, Phada still prints the review
+A read-only token is enough with `--dry-run`. `phada fix` on a pull request pushes a commit to its
+branch, so it needs **Contents: Read and write**. Without write access, Phada still prints the review
 and then stops with an error that names the missing permission. **Contents: Read-only** lets
 Phada read the repository's rules and docs (see [Rules and repository context](#rules-and-repository-context));
 without it, the review runs on the diff alone and says so. Without one of the CI permissions, the

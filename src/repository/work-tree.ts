@@ -6,7 +6,7 @@ import {
   FETCH_TIMEOUT_MS,
   firstLine,
   GIT_READ_TIMEOUT_MS,
-  gitEnvironment,
+  promptlessGitEnvironment,
 } from './git-checkout.js'
 import type { Run } from './git-checkout.js'
 import { HISTORY_DEPTH } from './git-mirror.js'
@@ -20,7 +20,7 @@ export interface WorkTreeInput {
   headRef: string
   number: number
   commits: number
-  diff: string
+  diff?: string
   files?: Readonly<Record<string, string>>
 }
 
@@ -40,7 +40,7 @@ export async function materializeWorkTree(
   options: { env: NodeJS.ProcessEnv; run?: Run },
 ): Promise<WorkTree> {
   const run = options.run ?? runCommand
-  const env = { ...gitEnvironment(options.env), GIT_TERMINAL_PROMPT: '0', GIT_LFS_SKIP_SMUDGE: '1' }
+  const env = { ...promptlessGitEnvironment(options.env), GIT_LFS_SKIP_SMUDGE: '1' }
   const headKeep = `refs/phada/pull/${input.number}`
   const baseKeep = `refs/phada/base/${input.number}`
   await mirror.fetch(input.baseSha, baseKeep, { depth: 1 })
@@ -99,7 +99,7 @@ export async function materializeWorkTree(
     FETCH_TIMEOUT_MS,
   )
   const diffFile = join(input.dir, '.git', DIFF_FILE)
-  await writeFile(diffFile, input.diff)
+  await writeFile(diffFile, input.diff ?? '')
   const files: Record<string, string> = {}
   for (const [name, content] of Object.entries(input.files ?? {})) {
     files[name] = join(input.dir, '.git', name)

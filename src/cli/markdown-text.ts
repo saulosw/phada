@@ -1,4 +1,4 @@
-import { toTerminalText } from '../app/terminal-text.js'
+import { singleLine, toTerminalText } from '../app/terminal-text.js'
 
 const RULE_LINE = /^(\s*)(([-=*_])(?:\s*\3)*\s*)$/
 const BLOCK_MARKER = /^((?:\s*(?:>|[-*+]\s|\d{1,9}[.)]\s))*\s*)(#|<|```|~~~)/
@@ -13,12 +13,6 @@ export function blockText(text: string): string {
 
 export function cell(text: string): string {
   return singleLine(text).replace(/(\\*)\|/g, '$1$1\\|')
-}
-
-export function singleLine(text: string): string {
-  return toTerminalText(text)
-    .replace(/\s*\n\s*/g, ' ')
-    .trim()
 }
 
 const INLINE_CODE = /(?<![`\\])(`+)(?!`)[^\n]*?(?<!`)\1(?!`)/g

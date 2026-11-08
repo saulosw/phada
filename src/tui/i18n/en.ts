@@ -1008,7 +1008,7 @@ export const english: UiMessages = {
       noAnswer: 'no answer',
       publishing: 'Publishing on GitHub…',
     },
-    runs: { review: 'review', verify: 'verify', recheck: 'recheck', skill: 'skill' },
+    runs: { review: 'review', verify: 'verify', recheck: 'recheck', skill: 'skill', fix: 'fix' },
     warnings: (count) => `Warnings (${count})`,
     moreWarnings: (count) => `+${number(count)} more`,
     done: (elapsed) => `Done in ${elapsed}.`,

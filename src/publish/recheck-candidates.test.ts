@@ -33,7 +33,7 @@ function review(id: string, sha: string | null, markerSha = sha ?? OLD): Publish
 }
 
 function state(threads: ReviewThread[], reviews = [review('R1', OLD)]): PullRequestReviewState {
-  return { viewer: 'me', pullState: 'open', reviews, threads }
+  return { viewer: 'me', pullState: 'open', headSha: HEAD, reviews, threads }
 }
 
 describe('threadsToRecheck', () => {

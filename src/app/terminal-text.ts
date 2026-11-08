@@ -3,3 +3,9 @@ const CONTROL_CHARACTERS = /[\u0000-\u0008\u000B-\u001F\u007F-\u009F\u202A-\u202
 export function toTerminalText(text: string): string {
   return text.replace(CONTROL_CHARACTERS, '')
 }
+
+export function singleLine(text: string): string {
+  return toTerminalText(text)
+    .replace(/\s*\n\s*/g, ' ')
+    .trim()
+}

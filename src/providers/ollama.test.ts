@@ -4,7 +4,7 @@ import type { FakeCall, FakeResponse } from '../../test/support/fake-fetch.js'
 import { OllamaProvider } from './ollama.js'
 import type { OllamaProviderOptions } from './ollama.js'
 import { ProviderError } from './types.js'
-import type { ReviewPrompt } from './types.js'
+import type { ReviewPrompt, ReviewProvider } from './types.js'
 import type { Toolbox } from '../investigation/toolbox.js'
 
 const FAKE_SECRET = `ghp_${'A1b2C3d4E5'.repeat(4)}`
@@ -78,6 +78,11 @@ async function reviewError(provider: OllamaProvider, prompt = PROMPT): Promise<P
 describe('OllamaProvider', () => {
   it('has the ollama id', () => {
     expect(new OllamaProvider({ model: MODEL }).id).toBe('ollama')
+  })
+
+  it('cannot edit files, so a fix applies only the suggestions', () => {
+    const provider: ReviewProvider = new OllamaProvider({ model: MODEL })
+    expect(provider.fix).toBeUndefined()
   })
 
   it('runs one group pass at a time, as the local model answers one prompt at a time', () => {

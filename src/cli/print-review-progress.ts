@@ -17,6 +17,7 @@ const AI_LABELS: Readonly<Record<AiRun, string>> = {
   verify: 'Verifying findings',
   recheck: 'Rechecking open comments',
   skill: 'Running the skill',
+  fix: 'Fixing the findings',
 }
 
 export function printReviewProgress(

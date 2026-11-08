@@ -167,6 +167,7 @@ export interface HistoryStore {
   addRun(run: RunRecord): number
   runOfJob(jobId: number): RunRecord | undefined
   run(id: number): RunRecord | undefined
+  lastLocalRun(repo: string, branch: string): RunRecord | undefined
   watchRunsSince(iso: string): string[]
   pause(): PauseState | undefined
   setPause(state: PauseState | undefined): void
@@ -506,6 +507,16 @@ class SqliteHistoryStore implements HistoryStore {
 
   run(id: number): RunRecord | undefined {
     const row = this.#db.prepare('select * from run where id = ?').get(id)
+    return row === undefined ? undefined : fromRow<RunRecord>(row, RUN_TABLE)
+  }
+
+  lastLocalRun(repo: string, branch: string): RunRecord | undefined {
+    const row = this.#db
+      .prepare(
+        `select * from run where source = 'local' and repo = ? and branch = ?
+         order by started_at desc, id desc limit 1`,
+      )
+      .get(repo.toLowerCase(), branch)
     return row === undefined ? undefined : fromRow<RunRecord>(row, RUN_TABLE)
   }
 

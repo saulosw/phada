@@ -222,11 +222,15 @@ export interface Finding {
   closeToCut?: true
 }
 
-export interface Suggestion {
+export interface SuggestedEdit {
   startLine: number
   endLine: number
-  original: string
+  original?: string
   replacement: string
+}
+
+export interface Suggestion extends SuggestedEdit {
+  original: string
 }
 
 export type ClaimVerdict = 'confirmed' | 'contradicted' | 'unverified'

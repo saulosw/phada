@@ -58,7 +58,7 @@ describe('parseCliArgs', () => {
     ],
     [
       ['reveiw', 'acme/shop#12'],
-      'Unknown command "reveiw". Available: setup, review, publish, init, index, rules, prompt, watch, enqueue, mcp, history, misses, lessons.',
+      'Unknown command "reveiw". Available: setup, review, publish, fix, init, index, rules, prompt, watch, enqueue, mcp, history, misses, lessons.',
     ],
     [['--verify'], "Unknown option '--verify'."],
     [

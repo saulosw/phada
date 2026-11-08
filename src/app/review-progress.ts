@@ -9,7 +9,7 @@ import type { PassPlan } from './review-passes.js'
 import type { CiWaited, CiWaiting } from './wait-for-ci.js'
 import { wrapProviderRuns } from './wrap-provider-runs.js'
 
-export type AiRun = ReviewPass | 'skill'
+export type AiRun = ReviewPass | 'skill' | 'fix'
 
 export type ReviewProgress =
   | { kind: 'fetched'; pullRequest: PullRequest }
@@ -66,5 +66,5 @@ export function reportProgress(
       })
     }
   }
-  return wrapProviderRuns(provider, (run, work) => running(run === 'review' ? pass : 'skill', work))
+  return wrapProviderRuns(provider, (run, work) => running(run === 'review' ? pass : run, work))
 }

@@ -1,4 +1,9 @@
+import type { LocalFileSystem } from '../config/local-files.js'
+import { resolveProvider } from '../config/merge-config.js'
+import type { ProviderChoice } from '../config/merge-config.js'
 import type { ResolvedMcp } from '../config/mcp-servers.js'
+import type { ConfigLayer } from '../config/types.js'
+import { loadUserLayers } from '../config/user-config.js'
 import { UsageError } from './errors.js'
 import type { CheckedNames } from './mcp-names.js'
 
@@ -8,6 +13,32 @@ export interface ProviderOptions {
   model?: string
   mcpNames?: CheckedNames
   detached?: boolean
+}
+
+export async function loadProviderChoice(
+  repository: { owner: string; repo: string },
+  flags: { provider?: string; model?: string },
+  deps: { env: NodeJS.ProcessEnv; home: string; files: LocalFileSystem },
+): Promise<{ userLayers: ConfigLayer[]; choice: ProviderChoice }> {
+  const userLayers = await loadUserLayers({
+    env: deps.env,
+    home: deps.home,
+    owner: repository.owner,
+    repo: repository.repo,
+    files: deps.files,
+  })
+  const choice = resolveProvider(
+    {
+      ...(flags.provider === undefined ? {} : { provider: flags.provider }),
+      ...(flags.model === undefined ? {} : { model: flags.model }),
+    },
+    userLayers,
+  )
+  return { userLayers, choice }
+}
+
+export function modelOption({ model }: ProviderChoice): { model?: string } {
+  return model === undefined ? {} : { model }
 }
 
 export function assertProviderChoice(

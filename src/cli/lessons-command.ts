@@ -5,8 +5,8 @@ import { readLessons } from '../app/read-lessons.js'
 import { toTerminalText } from '../app/terminal-text.js'
 import { dataFiles } from '../config/data-paths.js'
 import type { LocalFileSystem } from '../config/local-files.js'
-import { mergeConfig, resolveProvider } from '../config/merge-config.js'
-import { loadTopLevelUserLayers, loadUserLayers } from '../config/user-config.js'
+import { mergeConfig } from '../config/merge-config.js'
+import { loadTopLevelUserLayers } from '../config/user-config.js'
 import { historyEnabled } from '../config/watch-settings.js'
 import { splitRepoName } from '../github/pull-request-ref.js'
 import type { ReviewProvider } from '../providers/types.js'
@@ -17,7 +17,7 @@ import { formatLessonsJson, formatLessonsText } from './format-lessons.js'
 import { existingHistory } from './history-access.js'
 import { withLessonHistory } from './lesson-history.js'
 import type { TextOutput } from './progress.js'
-import { assertProviderChoice } from './provider-choice.js'
+import { assertProviderChoice, loadProviderChoice, modelOption } from './provider-choice.js'
 import type { ProviderOptions } from './provider-choice.js'
 import { textEditor } from './text-editor.js'
 import type { TextEditorDeps } from './text-editor.js'
@@ -102,9 +102,8 @@ export async function runLessonsDiscard(
 }
 
 async function lessonSetup(repo: string, deps: LessonsCommandDeps): Promise<LessonSetup> {
-  const userLayers = await loadUserLayers({ ...deps, ...splitRepoName(repo) })
-  const choice = resolveProvider({}, userLayers)
-  const options = choice.model === undefined ? {} : { model: choice.model }
+  const { userLayers, choice } = await loadProviderChoice(splitRepoName(repo), {}, deps)
+  const options = modelOption(choice)
   assertProviderChoice(choice.provider, options, 'config')
   const config = mergeConfig(userLayers)
   return {

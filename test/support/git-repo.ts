@@ -13,7 +13,7 @@ export interface LocalRepository {
 
 export type RepositoryFiles = Record<string, string | Buffer>
 
-const GIT_ENV = {
+export const GIT_ENV = {
   ...process.env,
   GIT_AUTHOR_NAME: 'Test',
   GIT_AUTHOR_EMAIL: 'test@example.com',

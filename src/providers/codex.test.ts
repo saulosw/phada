@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -6,7 +14,7 @@ import { CodexCliProvider } from './codex.js'
 import { CodexMcpServerSchema } from './codex-mcp.js'
 import type { CodexCliProviderOptions } from './codex.js'
 import { ProviderError } from './types.js'
-import type { ReviewPrompt } from './types.js'
+import type { FixRequest, ReviewPrompt } from './types.js'
 import type { Toolbox } from '../investigation/toolbox.js'
 
 const FAKE_CODEX = resolve('test/fixtures/bin/fake-codex')
@@ -472,5 +480,70 @@ describe('CodexCliProvider', () => {
       expect(withEmpty).toHaveLength(without.length)
       expect(withEmpty.some((arg) => arg.startsWith('mcp_servers.'))).toBe(false)
     })
+  })
+})
+
+describe('CodexCliProvider.fix', () => {
+  let tree: string
+
+  beforeEach(() => {
+    tree = mkdtempSync(join(tmpdir(), 'phada-codex-tree-'))
+  })
+
+  afterEach(() => {
+    rmSync(tree, { recursive: true, force: true })
+  })
+
+  const request = (): FixRequest => ({
+    instructions: 'Fix only these findings.',
+    data: '<<<PHADA_FINDINGS_n\n{"number":1}\nPHADA_FINDINGS_n>>>',
+    cwd: tree,
+    timeoutMs: 30_000,
+    maxTurns: 60,
+  })
+
+  it('runs codex exec able to write only the tree, with the prompt on stdin', async () => {
+    const output = await provider('success', {
+      model: 'gpt-fake',
+      env: { GITHUB_TOKEN: FAKE_SECRET, GH_TOKEN: FAKE_SECRET },
+    }).fix(request())
+
+    const { argv, stdin, instructions, outputSchema, cwd, env } = readCapture()
+    expect(argv.slice(0, 3)).toEqual(['exec', '--skip-git-repo-check', '--ephemeral'])
+    expect(argv[argv.indexOf('-s') + 1]).toBe('workspace-write')
+    expect(argv).not.toContain('read-only')
+    expect(argv[argv.indexOf('-C') + 1]).toBe(tree)
+    expect(argv).toContain('--ignore-user-config')
+    expect(argv).toContain('web_search="disabled"')
+    const disabled = argv.filter((_, index) => argv[index - 1] === '--disable')
+    expect(disabled).toContain('apps')
+    expect(disabled).not.toContain('shell_tool')
+    expect(argv).toContain('--model=gpt-fake')
+    expect(argv.at(-1)).toBe('-')
+    expect(instructions).toBeNull()
+    expect(outputSchema).toBeNull()
+    expect(stdin).toBe(`Fix only these findings.\n\n${request().data}`)
+    expect(realpathSync(cwd)).toBe(realpathSync(tree))
+    expect(env.GITHUB_TOKEN).toBeUndefined()
+    expect(env.GH_TOKEN).toBeUndefined()
+    expect(output).toMatchObject({ text: 'LGTM from fake codex', model: 'gpt-fake', blocked: [] })
+    expect(output.usage?.outputTokens).toBe(410)
+  })
+
+  it('keeps a blank final message, since the edits are in the tree', async () => {
+    const output = await provider('empty_output').fix(request())
+
+    expect(output.text.trim()).toBe('')
+  })
+
+  it('reports the Codex error when it fails', async () => {
+    const error = await provider('logged_out')
+      .fix(request())
+      .then(
+        () => undefined,
+        (reason: unknown) => reason,
+      )
+
+    expect((error as ProviderError).reason).toBe('not-authenticated')
   })
 })

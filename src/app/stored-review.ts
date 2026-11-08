@@ -1,6 +1,12 @@
 import { z } from 'zod'
 import type { CiSummary } from '../context/types.js'
-import type { Coverage, Finding, RecheckVerdict, ReviewResult } from '../review/types.js'
+import type {
+  Coverage,
+  Finding,
+  RecheckVerdict,
+  ReviewResult,
+  Suggestion,
+} from '../review/types.js'
 
 const SuggestionSchema = z.object({
   startLine: z.number(),
@@ -8,6 +14,11 @@ const SuggestionSchema = z.object({
   original: z.string(),
   replacement: z.string(),
 })
+
+export function storedSuggestion(value: unknown): Suggestion | undefined {
+  const parsed = SuggestionSchema.safeParse(value)
+  return parsed.success ? parsed.data : undefined
+}
 
 const FindingSchema = z.object({
   severity: z.enum(['P0', 'P1', 'P2']),

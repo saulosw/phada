@@ -23,6 +23,25 @@ import { NoDefaultBranchError, NothingToReviewError } from '../app/local-review.
 import { LocalDiffTooLargeError, LocalGitError } from '../repository/local-git.js'
 import { MissingGitHubTokenError, UsageError } from './errors.js'
 import { errorSummary, formatError } from './format-error.js'
+import { HeadNotInPullRequestError, ReplayNeedsDryRunError } from '../app/replay.js'
+import { NoLocalBranchError, NoLocalReviewError } from '../app/local-fix.js'
+import {
+  ClosedPullRequestFixError,
+  ForkFixError,
+  NoPushPermissionError,
+} from '../app/pull-request-fix.js'
+import { MissingGitIdentityError } from '../repository/git-identity.js'
+import { BranchMovedError } from '../repository/branch-moved.js'
+import { CommitFailedError, PushFailedError } from '../repository/push-fix.js'
+import { CheckoutUnavailableError } from '../repository/git-checkout.js'
+import { HistoryStoreError } from '../store/history-store.js'
+import { IndexStoreError } from '../store/index-store.js'
+import {
+  MissNotFoundError,
+  PublishRefusedError,
+  RunNotFoundError,
+  WatchRunningError,
+} from './errors.js'
 
 const TOKEN = `ghp_${'A1b2C3d4E5'.repeat(4)}`
 
@@ -41,9 +60,48 @@ describe('errorSummary', () => {
 
 describe('formatError', () => {
   it.each([
+    [ConfigError, 2],
+    [SkillError, 2],
+    [InvalidPullRequestRefError, 2],
+    [ReplayNeedsDryRunError, 2],
+    [HeadNotInPullRequestError, 1],
+    [MissingGitHubTokenError, 1],
+    [WatchRunningError, 1],
+    [HistoryStoreError, 1],
+    [RunNotFoundError, 1],
+    [MissNotFoundError, 1],
+    [LessonNotFoundError, 1],
+    [LessonDecidedError, 1],
+    [LessonRuleRefusedError, 1],
+    [InvalidLessonEditError, 1],
+    [EditorNotFoundError, 1],
+    [PublishRefusedError, 1],
+    [NoDefaultBranchError, 1],
+    [NothingToReviewError, 1],
+    [NoLocalReviewError, 1],
+    [NoLocalBranchError, 1],
+    [ForkFixError, 1],
+    [ClosedPullRequestFixError, 1],
+    [NoPushPermissionError, 1],
+    [MissingGitIdentityError, 1],
+    [BranchMovedError, 1],
+    [CommitFailedError, 1],
+    [PushFailedError, 1],
+    [GitHubRequestError, 1],
+    [CheckoutUnavailableError, 1],
+    [IndexStoreError, 1],
+  ] as const)('prints the message of %o as it is, with its exit code', (errorClass, exitCode) => {
+    const error = Object.assign(Object.create(errorClass.prototype) as Error, {
+      message: 'Something precise went wrong.',
+    })
+
+    expect(format(error)).toEqual({ message: 'phada: Something precise went wrong.', exitCode })
+  })
+
+  it.each([
     [
       new LocalGitError('not-a-repository', '/w is not inside a git repository'),
-      'phada: /w is not inside a git repository. Run phada review in a clone of the repository, or pass a pull request (owner/repo#N).',
+      'phada: /w is not inside a git repository. Run phada in a clone of the repository, or pass a pull request (owner/repo#N).',
       2,
     ],
     [

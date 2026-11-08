@@ -1,6 +1,6 @@
 import type { ReviewProvider, TokenUsage } from '../providers/types.js'
 
-export type ProviderRun = 'review' | 'skill'
+export type ProviderRun = 'review' | 'skill' | 'fix'
 
 export type RunWrapper = <T extends { usage?: TokenUsage }>(
   run: ProviderRun,
@@ -9,6 +9,7 @@ export type RunWrapper = <T extends { usage?: TokenUsage }>(
 
 export function wrapProviderRuns(provider: ReviewProvider, wrap: RunWrapper): ReviewProvider {
   const runSkill = provider.runSkill?.bind(provider)
+  const fix = provider.fix?.bind(provider)
   return {
     id: provider.id,
     ...(provider.concurrency === undefined ? {} : { concurrency: provider.concurrency }),
@@ -16,5 +17,6 @@ export function wrapProviderRuns(provider: ReviewProvider, wrap: RunWrapper): Re
     ...(runSkill === undefined
       ? {}
       : { runSkill: (request) => wrap('skill', () => runSkill(request)) }),
+    ...(fix === undefined ? {} : { fix: (request) => wrap('fix', () => fix(request)) }),
   }
 }

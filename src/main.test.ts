@@ -1,12 +1,13 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { Readable } from 'node:stream'
 import { GitHubError } from './github/errors.js'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { findingFixture } from '../test/support/finding.js'
-import { createLocalRepository } from '../test/support/git-repo.js'
+import { fakeFixProvider } from '../test/support/fix-provider.js'
+import { createLocalRepository, GIT_ENV } from '../test/support/git-repo.js'
 import { memoryFiles } from '../test/support/memory-files.js'
 import type { MemoryFiles } from '../test/support/memory-files.js'
 import { pullRequestFixture } from '../test/support/pull-request.js'
@@ -33,6 +34,7 @@ import type { RepositoryTree } from './github/repository-files.js'
 import type { Checkout } from './repository/checkout.js'
 import { CheckoutUnavailableError } from './repository/git-checkout.js'
 import { openGitMirror } from './repository/git-mirror.js'
+import { pushCommit } from './repository/push-fix.js'
 import type { GitMirror, GitMirrorOptions } from './repository/git-mirror.js'
 import { createExtractor } from './repo-map/extract.js'
 import { openIndexStore } from './store/index-store.js'
@@ -79,6 +81,7 @@ const REVIEW_URL = 'https://github.com/acme/shop/pull/12#pullrequestreview-1'
 const EMPTY_STATE: PullRequestReviewState = {
   viewer: 'octocat',
   pullState: 'open',
+  headSha: HEAD_SHA,
   reviews: [],
   threads: [],
 }
@@ -456,6 +459,7 @@ function phadaState(threads: Partial<ReviewThread>[], findings = 1): PullRequest
   return {
     viewer: 'octocat',
     pullState: 'open',
+    headSha: HEAD_SHA,
     reviews: [
       {
         id: 'R1',
@@ -1005,6 +1009,7 @@ describe('run publishing', () => {
       Promise.resolve({
         viewer: 'octocat',
         pullState: 'open',
+        headSha: HEAD_SHA,
         reviews: [
           {
             id: 'R0',
@@ -3853,15 +3858,6 @@ describe('run review --head', () => {
 })
 
 describe('run review with no pull request', { timeout: 20_000 }, () => {
-  const GIT_ENV = {
-    ...process.env,
-    GIT_AUTHOR_NAME: 'T',
-    GIT_AUTHOR_EMAIL: 't@example.com',
-    GIT_COMMITTER_NAME: 'T',
-    GIT_COMMITTER_EMAIL: 't@example.com',
-    GIT_CONFIG_NOSYSTEM: '1',
-    GIT_CONFIG_GLOBAL: '/dev/null',
-  }
   const git = (dir: string, ...args: string[]) =>
     execFileSync('git', ['-C', dir, ...args], { env: GIT_ENV, encoding: 'utf8' }).trim()
   const scratch = mkdtempSync(join(tmpdir(), 'phada-main-local-'))
@@ -4165,7 +4161,7 @@ describe('run review with no pull request', { timeout: 20_000 }, () => {
     expect(await run(['review'], h.deps)).toBe(2)
     expect(h.stderr()).toMatch(
       new RegExp(
-        `^phada: ${dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} is not inside a git repository\\. Run phada review in a clone of the repository, or pass a pull request \\(owner/repo#N\\)\\.\\n$`,
+        `^phada: ${dir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} is not inside a git repository\\. Run phada in a clone of the repository, or pass a pull request \\(owner/repo#N\\)\\.\\n$`,
       ),
     )
   })
@@ -4185,5 +4181,640 @@ describe('run review with no pull request', { timeout: 20_000 }, () => {
     await run(['review', '--no-verify'], h.deps)
 
     expect(h.aborts).toEqual([130])
+  })
+
+  describe('phada fix', () => {
+    const COUNT = 'export function total(p: number[]) {\n  return p.length\n}\n'
+    const SUM = '  return p.reduce((sum, price) => sum + price, 0)'
+    const FINDINGS = [
+      findingFixture({
+        severity: 'P1',
+        line: 2,
+        title: 'counts instead of summing',
+        suggestion: {
+          startLine: 2,
+          endLine: 2,
+          original: '  return p.length',
+          replacement: SUM,
+        },
+      }),
+      findingFixture({ severity: 'P0', line: 1, title: 'total has no auth' }),
+    ]
+
+    async function reviewed() {
+      const { dir, defaultBranch } = clone()
+      const head = commit(dir, COUNT, 'Count')
+      const h = localHarness(dir, defaultBranch)
+      h.deps.createProvider = () => ({
+        id: 'fake-cli',
+        review: async () => ({ text: reviewReportJson({ findings: FINDINGS }), durationMs: 1 }),
+      })
+      expect(await run(['review', '--no-verify'], h.deps)).toBe(0)
+      h.deps.files = { ...h.deps.files, exists: async () => true }
+      h.deps.env = { ...h.deps.env, GITHUB_TOKEN: '', GH_TOKEN: '' }
+      const printed = { out: h.stdout().length, err: h.stderr().length }
+      return {
+        dir,
+        head,
+        h,
+        review: h.stdout(),
+        out: () => h.stdout().slice(printed.out),
+        err: () => h.stderr().slice(printed.err),
+      }
+    }
+
+    it('lists the findings as the review numbered them and applies the suggestions to the working tree, without a token', async () => {
+      const { dir, head, h, review, out, err } = await reviewed()
+      expect(review).toContain('1. **src/shop.ts:1**: total has no auth')
+      expect(review).toContain('2. **src/shop.ts:2**: counts instead of summing')
+
+      expect(await run(['fix'], h.deps)).toBe(0)
+
+      expect(out()).toBe(
+        [
+          'Findings of run 1 (acme/shop@feat/spend):',
+          '1. P0 src/shop.ts:1 total has no auth',
+          '2. P1 src/shop.ts:2 counts instead of summing (suggestion)',
+          '',
+          'Applied 1 suggestion: 2.',
+          'Changed 1 file: src/shop.ts',
+          'Left 1 finding:',
+          '1. src/shop.ts:1 total has no auth: no suggestion',
+          '',
+        ].join('\n'),
+      )
+      expect(err()).toBe(
+        'Warning: phada fix applied only the suggestions: Claude Code or Codex edit the 1 finding left.\n',
+      )
+      expect(git(dir, 'show', 'HEAD:src/shop.ts')).toBe(COUNT.trim())
+      expect(git(dir, 'diff', '--', 'src/shop.ts')).toContain(`+${SUM}`)
+      expect(git(dir, 'rev-parse', 'HEAD')).toBe(head)
+      expect(h.ghAsks()).toBe(0)
+    })
+
+    function editingAi(h: Awaited<ReturnType<typeof reviewed>>['h'], dir: string) {
+      const chosen: [string, ProviderOptions][] = []
+      h.deps.createProvider = (name, options) => {
+        chosen.push([name, options])
+        return fakeFixProvider(() => {
+          writeFileSync(join(dir, 'src/shop.ts'), `// auth\n${COUNT}`)
+          return {
+            text: 'Added the check.\n#1 fixed: checks the caller first.',
+            blocked: [{ tool: 'Bash', input: 'npm test' }],
+          }
+        })
+      }
+      return chosen
+    }
+
+    it('has the AI CLI edit the findings the suggestions left and reports what it did', async () => {
+      const { dir, head, h, out, err } = await reviewed()
+      const chosen = editingAi(h, dir)
+
+      expect(await run(['fix', '--provider', 'codex', '--model', 'gpt-x'], h.deps)).toBe(0)
+
+      expect(chosen).toEqual([['codex', { model: 'gpt-x' }]])
+      expect(out().split('\n').slice(4)).toEqual([
+        'Applied 1 suggestion: 2.',
+        'Changed 1 file: src/shop.ts',
+        'fake-cli changed 1 file: src/shop.ts',
+        'fake-cli fixed 1 finding:',
+        '1. src/shop.ts:1 total has no auth: checks the caller first.',
+        'Left no finding.',
+        'Summary of fake-cli:',
+        'Added the check.',
+        '',
+      ])
+      expect(err()).toBe(
+        [
+          'Fixing the findings with fake-cli… (this can take a few minutes)',
+          'Warning: fake-cli was refused 1 command: Bash npm test',
+          '',
+        ].join('\n'),
+      )
+      expect(git(dir, 'rev-parse', 'HEAD')).toBe(head)
+      expect(h.ghAsks()).toBe(0)
+    })
+
+    it('says why a suggestion did not apply when the AI fixed its finding instead', async () => {
+      const { dir, h, out } = await reviewed()
+      writeFileSync(join(dir, 'src/shop.ts'), COUNT.replace('p.length', 'p.size'))
+      h.deps.createProvider = () =>
+        fakeFixProvider(() => {
+          writeFileSync(
+            join(dir, 'src/shop.ts'),
+            `// auth\n${COUNT.replace('  return p.length', SUM)}`,
+          )
+          return '#1 fixed: checks the caller first.\n#2 fixed: sums the prices.'
+        })
+
+      expect(await run(['fix'], h.deps)).toBe(0)
+
+      expect(out().split('\n').slice(4)).toEqual([
+        'Applied no suggestion.',
+        'Changed 1 file: src/shop.ts',
+        'fake-cli changed 1 file: src/shop.ts',
+        'fake-cli fixed 2 findings:',
+        '1. src/shop.ts:1 total has no auth: checks the caller first.',
+        '2. src/shop.ts:2 counts instead of summing (suggestion not applied: the suggestion no longer matches the file): sums the prices.',
+        'Left no finding.',
+        '',
+      ])
+    })
+
+    it('uses the provider of the user config of the repository', async () => {
+      const { dir, h } = await reviewed()
+      h.files.files.set('/cfg/repos/acme/shop/config.yml', 'provider: codex\nmodel: gpt-y')
+      const chosen = editingAi(h, dir)
+
+      expect(await run(['fix'], h.deps)).toBe(0)
+
+      expect(chosen).toEqual([['codex', { model: 'gpt-y' }]])
+    })
+
+    it('names the findings the AI did not report and lists the ones it skipped as left', async () => {
+      const { dir, h, out, err } = await reviewed()
+      h.deps.createProvider = () => fakeFixProvider(() => 'Nothing to do.')
+
+      expect(await run(['fix'], h.deps)).toBe(0)
+
+      expect(out()).toContain(
+        ['Left 1 finding:', '1. src/shop.ts:1 total has no auth: fake-cli did not say'].join('\n'),
+      )
+      expect(err()).toContain(
+        'Warning: fake-cli did not say what it did with finding 1; check it in git diff.\n',
+      )
+      expect(git(dir, 'diff', '--', 'src/shop.ts')).toContain(`+${SUM}`)
+    })
+
+    it('prints the report of the suggestions and fails when the AI fails', async () => {
+      const { dir, h, out, err } = await reviewed()
+      h.deps.createProvider = () =>
+        fakeFixProvider(() => {
+          throw new ProviderError('claude-cli', 'timeout', 'Claude did not answer within 900s.')
+        }, 'claude-cli')
+
+      expect(await run(['fix'], h.deps)).toBe(1)
+
+      expect(out()).toContain(
+        [
+          'Applied 1 suggestion: 2.',
+          'Changed 1 file: src/shop.ts',
+          'Left 1 finding:',
+          '1. src/shop.ts:1 total has no auth: no suggestion',
+        ].join('\n'),
+      )
+      expect(err()).toContain('Claude did not answer within 900s.')
+      expect(git(dir, 'diff', '--', 'src/shop.ts')).toContain(`+${SUM}`)
+    })
+
+    it('stops after the list with --list', async () => {
+      const { dir, h, out } = await reviewed()
+
+      expect(await run(['fix', '--list'], h.deps)).toBe(0)
+
+      expect(out()).toBe(
+        [
+          'Findings of run 1 (acme/shop@feat/spend):',
+          '1. P0 src/shop.ts:1 total has no auth',
+          '2. P1 src/shop.ts:2 counts instead of summing (suggestion)',
+          '',
+        ].join('\n'),
+      )
+      expect(git(dir, 'status', '--porcelain')).toBe('')
+    })
+
+    it('fixes only the findings picked with --only', async () => {
+      const { dir, h, out, err } = await reviewed()
+
+      expect(await run(['fix', '--only', '1'], h.deps)).toBe(0)
+
+      expect(out()).toContain(
+        ['Applied no suggestion.', 'Changed no file.', 'Left 1 finding:'].join('\n'),
+      )
+      expect(err()).toContain('edit the 1 finding left')
+      expect(git(dir, 'status', '--porcelain')).toBe('')
+    })
+
+    it('refuses a number the list does not have', async () => {
+      const { dir, h, err } = await reviewed()
+
+      expect(await run(['fix', '--only', '2,5'], h.deps)).toBe(2)
+
+      expect(err()).toBe(
+        'phada: No finding 5 in run 1: its findings go from 1 to 2. Run with --help for usage.\n',
+      )
+      expect(git(dir, 'status', '--porcelain')).toBe('')
+    })
+
+    it('warns when HEAD moved since the review and fixes what still matches', async () => {
+      const { dir, head, h, err } = await reviewed()
+      writeFileSync(join(dir, 'NOTES.md'), 'notes\n')
+      git(dir, 'add', 'NOTES.md')
+      git(dir, 'commit', '-q', '--no-gpg-sign', '-m', 'Notes')
+      const moved = git(dir, 'rev-parse', 'HEAD')
+
+      expect(await run(['fix'], h.deps)).toBe(0)
+
+      expect(err().split('\n')[0]).toBe(
+        `Warning: HEAD moved from ${head.slice(0, 7)} to ${moved.slice(0, 7)} since run 1 reviewed it; suggestions apply only where the code still matches.`,
+      )
+      expect(git(dir, 'diff', '--', 'src/shop.ts')).toContain(`+${SUM}`)
+    })
+
+    it('says to run phada review first when the branch has none', async () => {
+      const { dir, defaultBranch } = clone()
+      const h = localHarness(dir, defaultBranch)
+
+      expect(await run(['fix'], h.deps)).toBe(1)
+      expect(h.stderr()).toBe(
+        'phada: No local review of acme/shop@feat/spend in the history: run phada review first.\n',
+      )
+    })
+
+    it.each([
+      [['fix', '--list', '--only', '1'], '--list and --only do not go together.'],
+      [['fix', '--model', ' '], '--model needs a model name.'],
+      [
+        ['fix', '--only', '1,x'],
+        'Invalid --only "1,x". Use finding numbers separated by commas, e.g. --only 1,3.',
+      ],
+    ])('refuses %j', async (argv, message) => {
+      const h = localHarness(folder('plain'), 'main')
+
+      expect(await run(argv, h.deps)).toBe(2)
+      expect(h.stderr()).toBe(`phada: ${message} Run with --help for usage.\n`)
+    })
+
+    it('refuses an argument that is not a pull request', async () => {
+      const h = localHarness(folder('plain'), 'main')
+
+      expect(await run(['fix', 'shop'], h.deps)).toBe(2)
+      expect(h.stderr()).toContain('phada: Invalid pull request reference "shop".')
+    })
+  })
+})
+
+describe('phada fix on a pull request', { timeout: 20_000 }, () => {
+  const SHOP = [
+    'export function spend(userId: string, amount: number) {',
+    '  const user = users.get(userId)',
+    '  user.crystals -= amount',
+    '  return user',
+    '}',
+    '',
+  ].join('\n')
+  const CLAMPED = '  user.crystals = Math.max(0, user.crystals - amount)'
+  const scratch = mkdtempSync(join(tmpdir(), 'phada-main-pr-fix-'))
+  const remotes: (() => void)[] = []
+  afterAll(() => {
+    for (const remove of remotes) remove()
+    rmSync(scratch, { recursive: true, force: true })
+  })
+  let count = 0
+
+  function terminal(...lines: string[]): NodeJS.ReadableStream {
+    return Object.assign(Readable.from(lines.map((line) => `${line}\n`)), { isTTY: true })
+  }
+
+  function identityClone(
+    config: Record<string, string> = {
+      'user.name': 'Ana Lima',
+      'user.email': 'ana@example.com',
+    },
+    branch?: string,
+  ): string {
+    const dir = join(scratch, `clone-${count}`)
+    execFileSync('git', ['init', '-q', dir])
+    for (const [key, value] of Object.entries(config)) {
+      execFileSync('git', ['-C', dir, 'config', key, value])
+    }
+    execFileSync('git', ['-C', dir, 'remote', 'add', 'origin', 'https://github.com/Acme/shop.git'])
+    if (branch !== undefined) execFileSync('git', ['-C', dir, 'checkout', '-q', '-b', branch])
+    return dir
+  }
+
+  function pullRequestHarness(
+    threads: Partial<ReviewThread>[],
+    overrides: {
+      fromFork?: boolean
+      canPush?: boolean
+      stdin?: NodeJS.ReadableStream
+      cwd?: (count: number) => string
+      movedHead?: boolean
+      threadsHead?: string
+      repo?: string
+    } = {},
+  ) {
+    count += 1
+    const remote = createLocalRepository({ 'src/shop.ts': 'start\n' })
+    remotes.push(() => remote.remove())
+    const baseSha = remote.sha
+    const headSha = remote.commit({ 'src/shop.ts': SHOP }, 'spend')
+    const bare = join(scratch, `remote-${count}.git`)
+    execFileSync('git', ['clone', '-q', '--bare', remote.dir, bare])
+    execFileSync('git', ['-C', bare, 'branch', 'feature/spend', headSha])
+    const reads: string[] = []
+    let headReads = 0
+    const h = harness({
+      cwd: overrides.cwd?.(count) ?? identityClone(),
+      pullRequest: async () => {
+        headReads += 1
+        return pullRequestFixture({
+          ...(overrides.repo === undefined ? {} : { repo: overrides.repo }),
+          baseSha,
+          headSha: overrides.movedHead === true && headReads > 1 ? 'f'.repeat(40) : headSha,
+          fromFork: overrides.fromFork ?? false,
+          stats: { changedFiles: 1, additions: 5, deletions: 1, commits: 1 },
+        })
+      },
+      fetchRepository: async (options) => {
+        reads.push(`repository ${options.owner}/${options.repo}`)
+        return {
+          repo: 'acme/shop',
+          private: false,
+          empty: false,
+          ...(overrides.canPush === undefined ? { canPush: true } : { canPush: overrides.canPush }),
+        }
+      },
+      reviewState: async () => ({
+        ...phadaState(threads),
+        headSha: overrides.threadsHead ?? headSha,
+      }),
+      openMirror: (options) =>
+        openGitMirror({
+          ...options,
+          dir: join(scratch, `m${count}`, 'shop.git'),
+          remoteUrl: remote.url,
+        }),
+    })
+    Object.defineProperty(h.deps, 'stdin', { value: overrides.stdin ?? terminal() })
+    const pushes: string[] = []
+    h.deps.pushCommit = (options) => {
+      pushes.push(
+        `${options.owner}/${options.repo}:${options.branch} ${options.token === TOKEN ? 'token' : 'other'}`,
+      )
+      return pushCommit({ ...options, remoteUrl: `file://${bare}` })
+    }
+    const remoteGit = (...args: string[]) =>
+      execFileSync('git', ['-C', bare, ...args], { encoding: 'utf8' }).trim()
+    const branchHead = () => remoteGit('rev-parse', 'refs/heads/feature/spend')
+    return { h, reads, remote, headSha, branchHead, remoteGit, pushes }
+  }
+
+  const SUGGESTED = {
+    line: 3,
+    body: [
+      '**P1** · crystals go negative · confidence 90',
+      'Why.',
+      `\`\`\`suggestion\n${CLAMPED}\n\`\`\``,
+      FINDING_MARKER,
+    ].join('\n\n'),
+  }
+  const NO_AUTH = { line: 1 }
+
+  function recordingAi(h: ReturnType<typeof pullRequestHarness>['h']) {
+    const dirs: string[] = []
+    h.deps.createProvider = () =>
+      fakeFixProvider((request) => {
+        dirs.push(request.cwd)
+        writeFileSync(join(request.cwd, 'src/auth.ts'), 'export const auth = true\n')
+        return '#1 fixed: added the check.'
+      })
+    return dirs
+  }
+
+  it('lists the open Phada comments numbered by file and line with --list, and stops', async () => {
+    const { h } = pullRequestHarness([SUGGESTED, NO_AUTH], { stdin: Readable.from([]) })
+
+    expect(await run(['fix', 'acme/shop#12', '--list'], h.deps)).toBe(0)
+
+    expect(h.stdout()).toBe(
+      [
+        'Open Phada comments on acme/shop#12 (feature/spend):',
+        '1. P1 src/shop.ts:1 spend has no auth',
+        '2. P1 src/shop.ts:3 crystals go negative (suggestion)',
+        '',
+      ].join('\n'),
+    )
+    expect(h.mirrors).toEqual([])
+  })
+
+  it('fixes in a work tree of the head, shows the diff and what was left, and removes it all on no', async () => {
+    const { h, remote } = pullRequestHarness([SUGGESTED, NO_AUTH], { stdin: terminal('n') })
+    const dirs = recordingAi(h)
+
+    expect(await run(['fix', 'acme/shop#12'], h.deps)).toBe(0)
+
+    const out = h.stdout()
+    expect(out).toContain('2. P1 src/shop.ts:3 crystals go negative (suggestion)\n')
+    expect(out).toContain(`-  user.crystals -= amount\n+${CLAMPED}`)
+    expect(out).toContain('+export const auth = true')
+    expect(out).toContain(
+      [
+        'Applied 1 suggestion: 2.',
+        'Changed 2 files: src/auth.ts, src/shop.ts',
+        'fake-cli changed 1 file: src/auth.ts',
+        'fake-cli fixed 1 finding:',
+        '1. src/shop.ts:1 spend has no auth: added the check.',
+        'Left no finding.',
+      ].join('\n'),
+    )
+    expect(h.stderr()).toContain('Commit and push to acme/shop:feature/spend? [y/N] ')
+    expect(h.stderr()).toContain('Nothing committed or pushed: the work tree is removed.\n')
+    expect(dirs).toHaveLength(1)
+    expect(existsSync(dirs[0] ?? '')).toBe(false)
+    expect(
+      execFileSync('git', ['-C', remote.dir, 'status', '--porcelain'], { encoding: 'utf8' }),
+    ).toBe('')
+    expect(h.mirrors.map(({ token }) => token)).toEqual([TOKEN])
+  })
+
+  it('commits as the user and pushes to the branch with --yes, without asking', async () => {
+    const { h, headSha, branchHead, pushes, remoteGit } = pullRequestHarness([SUGGESTED, NO_AUTH], {
+      stdin: Readable.from([]),
+    })
+    const dirs = recordingAi(h)
+
+    expect(await run(['fix', 'acme/shop#12', '--yes'], h.deps)).toBe(0)
+
+    const commit = branchHead()
+    expect(commit).not.toBe(headSha)
+    expect(h.stderr()).not.toContain('[y/N]')
+    expect(h.stdout()).toContain(`Pushed ${commit} to acme/shop:feature/spend.\n`)
+    expect(h.stdout()).not.toContain('git pull')
+    expect(pushes).toEqual(['acme/shop:feature/spend token'])
+    expect(remoteGit('show', '-s', '--format=%an <%ae>%n%B', commit)).toBe(
+      [
+        'Ana Lima <ana@example.com>',
+        'fix: address review comments',
+        '',
+        '- src/shop.ts:1 spend has no auth',
+        '- src/shop.ts:3 crystals go negative',
+      ].join('\n'),
+    )
+    expect(existsSync(dirs[0] ?? '')).toBe(false)
+  })
+
+  it('commits and pushes on yes, and tells a clone on the branch to pull', async () => {
+    const { h, headSha, branchHead } = pullRequestHarness([SUGGESTED], {
+      stdin: terminal('y'),
+      cwd: () => identityClone(undefined, 'feature/spend'),
+    })
+
+    expect(await run(['fix', 'acme/shop#12'], h.deps)).toBe(0)
+
+    const commit = branchHead()
+    expect(commit).not.toBe(headSha)
+    expect(h.stdout()).toContain(
+      `Pushed ${commit} to acme/shop:feature/spend.\nYour clone is on feature/spend: run git pull to bring the fix in.\n`,
+    )
+  })
+
+  it('cleans the repository GitHub names before it asks and says where it pushed', async () => {
+    const { h, branchHead } = pullRequestHarness([SUGGESTED], {
+      stdin: terminal('y'),
+      repo: 'acme/sh\u0007op',
+    })
+
+    expect(await run(['fix', 'acme/shop#12'], h.deps)).toBe(0)
+
+    expect(h.stderr()).toContain('Commit and push to acme/shop:feature/spend? [y/N] ')
+    expect(h.stdout()).toContain(`Pushed ${branchHead()} to acme/shop:feature/spend.\n`)
+    expect(h.stdout() + h.stderr()).not.toContain('\u0007')
+  })
+
+  it('refuses to run without a git identity before the work tree and the AI', async () => {
+    const { h } = pullRequestHarness([SUGGESTED, NO_AUTH], {
+      cwd: () => identityClone({ 'user.email': 'ana@example.com' }),
+    })
+    const dirs = recordingAi(h)
+
+    expect(await run(['fix', 'acme/shop#12'], h.deps)).toBe(1)
+
+    expect(h.stderr()).toBe(
+      'phada: phada fix commits as you, and git has no user.name here: set it with git config --global.\n',
+    )
+    expect(dirs).toEqual([])
+    expect(h.mirrors).toEqual([])
+  })
+
+  it('refuses a head that moved while it read the comments, before the work tree and the AI', async () => {
+    const { h, pushes } = pullRequestHarness([SUGGESTED, NO_AUTH], {
+      stdin: terminal('y'),
+      threadsHead: 'f'.repeat(40),
+    })
+    const dirs = recordingAi(h)
+
+    expect(await run(['fix', 'acme/shop#12'], h.deps)).toBe(1)
+
+    expect(h.stderr()).toBe(
+      'phada: feature/spend moved on acme/shop since phada fix read it: nothing was pushed; run phada fix again.\n',
+    )
+    expect(dirs).toEqual([])
+    expect(h.mirrors).toEqual([])
+    expect(pushes).toEqual([])
+  })
+
+  it('pushes nothing when the head of the pull request moved, and removes the work tree', async () => {
+    const { h, headSha, branchHead, pushes } = pullRequestHarness([SUGGESTED, NO_AUTH], {
+      stdin: terminal('y'),
+      movedHead: true,
+    })
+    const dirs = recordingAi(h)
+
+    expect(await run(['fix', 'acme/shop#12'], h.deps)).toBe(1)
+
+    expect(h.stderr()).toContain(
+      'phada: feature/spend moved on acme/shop since phada fix read it: nothing was pushed; run phada fix again.\n',
+    )
+    expect(pushes).toEqual([])
+    expect(branchHead()).toBe(headSha)
+    expect(existsSync(dirs[0] ?? '')).toBe(false)
+  })
+
+  it('removes the work tree and fails when the AI CLI fails, without asking', async () => {
+    const { h } = pullRequestHarness([SUGGESTED, NO_AUTH], { stdin: terminal('y') })
+    const dirs: string[] = []
+    h.deps.createProvider = () =>
+      fakeFixProvider((request) => {
+        dirs.push(request.cwd)
+        throw new Error('the CLI crashed')
+      })
+
+    expect(await run(['fix', 'acme/shop#12'], h.deps)).toBe(1)
+
+    expect(h.stdout()).toContain(`+${CLAMPED}`)
+    expect(h.stderr()).not.toContain('[y/N]')
+    expect(h.stderr()).toContain('the CLI crashed')
+    expect(existsSync(dirs[0] ?? '')).toBe(false)
+  })
+
+  it('asks nothing when nothing changed', async () => {
+    const { h } = pullRequestHarness([NO_AUTH], { stdin: terminal('y') })
+
+    expect(await run(['fix', 'acme/shop#12'], h.deps)).toBe(0)
+
+    expect(h.stderr()).not.toContain('[y/N]')
+    expect(h.stdout()).toContain('Nothing changed: nothing to commit to acme/shop#12.\n')
+  })
+
+  it('fixes only the comments picked with --only, and refuses a number the list does not have', async () => {
+    const { h } = pullRequestHarness([SUGGESTED, NO_AUTH], { stdin: terminal('n') })
+
+    expect(await run(['fix', 'acme/shop#12', '--only', '1'], h.deps)).toBe(0)
+    expect(h.stdout()).toContain('Applied no suggestion.\nChanged no file.')
+    expect(await run(['fix', 'acme/shop#12', '--only', '3'], h.deps)).toBe(2)
+    expect(h.stderr()).toContain(
+      'phada: No comment 3 on acme/shop#12: its comments go from 1 to 2. Run with --help for usage.\n',
+    )
+  })
+
+  it('says there is nothing to fix when no Phada comment is open', async () => {
+    const { h } = pullRequestHarness([])
+
+    expect(await run(['fix', 'acme/shop#12'], h.deps)).toBe(0)
+
+    expect(h.stdout()).toBe('Nothing to fix: acme/shop#12 has no open Phada comment.\n')
+  })
+
+  it('refuses a fork and a token without push before the work tree and the AI', async () => {
+    const fork = pullRequestHarness([SUGGESTED], { fromFork: true })
+    const readOnly = pullRequestHarness([SUGGESTED], { canPush: false })
+
+    expect(await run(['fix', 'acme/shop#12'], fork.h.deps)).toBe(1)
+    expect(await run(['fix', 'acme/shop#12'], readOnly.h.deps)).toBe(1)
+
+    expect(fork.h.stderr()).toBe(
+      'phada: acme/shop#12 comes from a fork: phada fix pushes only to a branch of acme/shop.\n',
+    )
+    expect(fork.reads).toEqual([])
+    expect(readOnly.h.stderr()).toBe(
+      'phada: Your GitHub token cannot push to acme/shop: phada fix commits to the branch of the pull request.\n',
+    )
+    expect(readOnly.h.stateFetches).toEqual([])
+    expect([...fork.h.mirrors, ...readOnly.h.mirrors]).toEqual([])
+  })
+
+  it('refuses to run without a terminal to ask in and without --yes, before reading GitHub', async () => {
+    const { h, reads } = pullRequestHarness([SUGGESTED], { stdin: Readable.from(['y\n']) })
+
+    expect(await run(['fix', 'acme/shop#12'], h.deps)).toBe(2)
+
+    expect(h.stderr()).toBe(
+      'phada: phada fix asks before it commits and pushes, and stdin is not a terminal: pass --yes to commit and push without asking. Run with --help for usage.\n',
+    )
+    expect(reads).toEqual([])
+    expect(h.stateFetches).toEqual([])
+  })
+
+  it.each([
+    [['fix', '--yes'], '--yes goes with a pull request: phada fix on this branch commits nothing.'],
+    [['fix', 'acme/shop#1', 'acme/shop#2'], 'phada fix takes one pull request.'],
+  ])('refuses %j', async (argv, message) => {
+    const h = harness()
+
+    expect(await run(argv, h.deps)).toBe(2)
+    expect(h.stderr()).toBe(`phada: ${message} Run with --help for usage.\n`)
   })
 })

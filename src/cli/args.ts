@@ -109,6 +109,16 @@ export type CliCommand =
       debug: boolean
     }
   | {
+      kind: 'fix'
+      ref?: PullRequestRef
+      yes: boolean
+      list: boolean
+      only?: number[]
+      provider?: string
+      model?: string
+      debug: boolean
+    }
+  | {
       kind: 'review-local'
       base?: string
       uncommitted: boolean
@@ -141,6 +151,9 @@ Commands:
   review [pull request]  Review a pull request and publish the review on it, or,
                          with none, review the changes of this branch locally
   publish <id>           Publish a dry run kept in the history, without the AI
+  fix [pull request]     Fix the findings of the last local review of this
+                         branch in its files, or the open comments of Phada on
+                         a pull request, with their suggestions and the AI
   init                   Create config files for Phada
   index <owner/repo>     Build a map of a repository's code on this machine
   rules <owner/repo[#N]> Show the rules and docs a review would read
@@ -409,6 +422,48 @@ Environment:
   PHADA_DATA_HOME    Folder of the history (default: ~/.local/share/phada)
   PHADA_CACHE_HOME   Folder of the mirrors and indexes (default: ~/.cache/phada)`
 
+export const FIX_USAGE = `Usage: phada fix [pull request] [options]
+
+With no pull request, fixes the findings of the last local review of the branch
+checked out in this clone (phada review with no pull request): prints them
+numbered as the review did, applies their suggestions to the files of the
+working tree where the code still matches, then has the AI CLI edit this clone
+for the findings left. Nothing is committed.
+
+With a pull request (owner/repo#123 or its URL), fixes the open comments Phada
+published on it, numbered by file and line: in a checkout of the head of the
+pull request made by Phada, never in your clone, it applies the suggestion of
+each comment whose lines did not change since, then has the AI CLI edit the
+checkout for the comments left. It shows the diff and asks before it commits
+and pushes; refusing removes the checkout. The commit is yours (user.name and
+user.email of git config here, signed if your config signs commits), and the
+push is a plain one to the branch of the pull request, never forced: if the
+branch moved meanwhile, nothing is pushed. A pull request from a fork or
+closed, a token that cannot push to the repository, or no user.name or
+user.email in git config is refused before anything runs.
+
+The AI edits only the files of the checkout or clone and runs no git command
+that writes. Ends with the suggestions applied, the files changed, what the AI
+fixed and the findings left. Claude Code and Codex edit files; with Ollama,
+phada fix applies only the suggestions.
+
+Options:
+  --provider <name>    AI provider: claude, codex or ollama (default: the one of
+                       your config, or claude)
+  --model <name>       Model (default: the one of your config, or the provider's)
+  --only <numbers>     Fix only these findings, e.g. --only 1,3
+  --list               Print the findings and stop
+  -y, --yes            With a pull request: commit and push without asking
+  --debug              Show error details
+  -h, --help           Show this help
+
+Environment:
+  GITHUB_TOKEN         With a pull request: a token that can push to it
+                       (GH_TOKEN or your gh login otherwise)
+  PHADA_CONFIG_HOME    Folder of your own config (default: ~/.config/phada)
+  PHADA_DATA_HOME      Folder of the history (default: ~/.local/share/phada)
+  PHADA_CACHE_HOME     Folder of the mirrors (default: ~/.cache/phada)`
+
 export const PUBLISH_USAGE = `Usage: phada publish <id> [options]
 
 Publishes on the pull request the review a dry run kept in the history (its id
@@ -555,6 +610,7 @@ export function parseCliArgs(argv: readonly string[]): CliCommand {
   if (command === 'setup') return parseSetupArgs(rest)
   if (command === 'review') return parseReviewArgs(rest)
   if (command === 'publish') return parsePublishArgs(rest)
+  if (command === 'fix') return parseFixArgs(rest)
   if (command === 'init') return parseInitArgs(rest)
   if (command === 'index') return parseIndexArgs(rest)
   if (command === 'rules') return parseRulesArgs(rest)
@@ -584,7 +640,7 @@ function unknownCommand(command: string): UsageError {
     return new UsageError(`Unknown command "${command}". Did you mean "phada review ${command}"?`)
   }
   return new UsageError(
-    `Unknown command "${command}". Available: setup, review, publish, init, index, rules, prompt, watch, enqueue, mcp, history, misses, lessons.`,
+    `Unknown command "${command}". Available: setup, review, publish, fix, init, index, rules, prompt, watch, enqueue, mcp, history, misses, lessons.`,
   )
 }
 
@@ -1198,6 +1254,50 @@ function parsePublishArgs(argv: readonly string[]): CliCommand {
     throw new UsageError(`Invalid --format "${format}". Use text or json.`)
   }
   return { kind: 'publish', id, force: values.force, format, debug: values.debug }
+}
+
+function parseFixArgs(argv: readonly string[]): CliCommand {
+  const { values, positionals } = parseOptions(argv, {
+    provider: { type: 'string' },
+    model: { type: 'string' },
+    only: { type: 'string' },
+    list: { type: 'boolean', default: false },
+    yes: { type: 'boolean', short: 'y', default: false },
+    debug: { type: 'boolean', default: false },
+    help: { type: 'boolean', short: 'h', default: false },
+  })
+  if (values.help) return { kind: 'help', text: FIX_USAGE }
+  const [input, ...extra] = positionals
+  if (extra.length > 0) throw new UsageError('phada fix takes one pull request.')
+  if (input === undefined && values.yes) {
+    throw new UsageError(
+      '--yes goes with a pull request: phada fix on this branch commits nothing.',
+    )
+  }
+  if (values.list && values.only !== undefined) {
+    throw new UsageError('--list and --only do not go together.')
+  }
+  if (values.model?.trim() === '') throw new UsageError('--model needs a model name.')
+  return {
+    kind: 'fix',
+    ...(input === undefined ? {} : { ref: parsePullRequestRef(input) }),
+    yes: values.yes,
+    list: values.list,
+    ...(values.only === undefined ? {} : { only: parseFindingNumbers(values.only) }),
+    ...(values.provider === undefined ? {} : { provider: values.provider }),
+    ...(values.model === undefined ? {} : { model: values.model.trim() }),
+    debug: values.debug,
+  }
+}
+
+function parseFindingNumbers(text: string): number[] {
+  const parts = text.split(',').map((part) => part.trim())
+  if (!parts.every((part) => /^[1-9]\d{0,5}$/.test(part))) {
+    throw new UsageError(
+      `Invalid --only "${text}". Use finding numbers separated by commas, e.g. --only 1,3.`,
+    )
+  }
+  return [...new Set(parts.map(Number))]
 }
 
 function parseRunId(positionals: readonly string[], command: string, noun = 'run id'): number {

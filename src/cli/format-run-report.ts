@@ -6,7 +6,7 @@ import { formatGitHubPreview } from './format-github.js'
 import { runJson } from './format-history.js'
 import { formatRunSections } from './format-run-sections.js'
 import type { RunSections } from './format-run-sections.js'
-import { singleLine } from './markdown-text.js'
+import { singleLine } from '../app/terminal-text.js'
 import { shortSha } from './review-text.js'
 import { formatLocalTime } from './units.js'
 
