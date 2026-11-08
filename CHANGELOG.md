@@ -23,6 +23,20 @@ output can change between minor versions.
   `--format json` has a `local` block instead of `pullRequest`.
 - `phada mcp` has `review_local_changes` and `wait_for_local_review`, so a coding agent can
   review its branch before opening the pull request.
+- `phada fix` applies the suggestions of the last local review of the branch to the working tree,
+  where the code still matches, and has Claude Code or Codex edit the files for the findings
+  left, given as data; nothing is committed and no GitHub token is needed. It ends with what was
+  applied, the files changed, what the AI fixed and the findings left. With Ollama, only the
+  suggestions are applied.
+- `phada fix owner/repo#N` fixes the open comments of Phada on a pull request in a checkout of its
+  head made from the mirror, never in your clone: suggestions at the current lines of the comments
+  that are not outdated, the rest by the AI CLI. It shows the diff and asks, then makes one commit,
+  `fix: address review comments` listing the findings fixed, with your git identity (signed when
+  your config signs commits), and a plain push to the branch, never forced; when the branch moved,
+  nothing is pushed. A fork, a closed pull request, a token that cannot push, or no git
+  identity is refused before anything runs.
+- `phada fix` takes `--list` (print the numbered findings and stop), `--only <numbers>`, `--yes`
+  (commit and push without asking), `--provider` and `--model`.
 
 ## 0.16.0 - 2026-11-05
 
