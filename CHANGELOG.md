@@ -7,6 +7,8 @@ output can change between minor versions.
 
 ## Unreleased
 
+## 0.17.0 - 2026-11-08
+
 ### Added
 
 - `phada review` with no pull request reviews the branch you are on, before the pull request: its
