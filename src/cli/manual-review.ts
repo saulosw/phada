@@ -10,11 +10,9 @@ import type { ReviewOptions } from '../app/review-pull-request.js'
 import type { ReviewProgressSink } from '../app/review-progress.js'
 import type { HistorySave } from '../app/requested-review.js'
 import { dataFiles } from '../config/data-paths.js'
-import { resolveProvider } from '../config/merge-config.js'
 import { resolveMcp, userMcp } from '../config/mcp-servers.js'
 import type { ResolvedMcp } from '../config/mcp-servers.js'
 import type { ConfigLayer } from '../config/types.js'
-import { loadUserLayers } from '../config/user-config.js'
 import { historyEnabled } from '../config/watch-settings.js'
 import type { ComparedFile, CompareOptions } from '../github/compare-commits.js'
 import type { CreatedReview, CreateReviewOptions } from '../github/create-review.js'
@@ -29,7 +27,7 @@ import type { ReplyAndResolveOptions } from '../github/resolve-thread.js'
 import type { HistoryStore, RunRecord } from '../store/history-store.js'
 import { historyRun } from './history-run.js'
 import type { RunMeta } from './history-run.js'
-import { assertProviderChoice } from './provider-choice.js'
+import { assertProviderChoice, loadProviderChoice, modelOption } from './provider-choice.js'
 import {
   ciReaders,
   mcpNameChecker,
@@ -100,25 +98,9 @@ export async function prepareProvider(
   flags: ProviderFlags,
   deps: ReviewWiringDeps,
 ): Promise<ProviderSetup> {
-  const userLayers = await loadUserLayers({
-    env: deps.env,
-    home: deps.home,
-    owner: repository.owner,
-    repo: repository.repo,
-    files: deps.files,
-  })
-  const choice = resolveProvider(
-    {
-      ...(flags.provider === undefined ? {} : { provider: flags.provider }),
-      ...(flags.model === undefined ? {} : { model: flags.model }),
-    },
-    userLayers,
-  )
+  const { userLayers, choice } = await loadProviderChoice(repository, flags, deps)
   const mcp = resolveMcp(userMcp(userLayers), deps.env)
-  assertProviderChoice(choice.provider, {
-    ...(choice.model === undefined ? {} : { model: choice.model }),
-    mcp,
-  })
+  assertProviderChoice(choice.provider, { ...modelOption(choice), mcp })
   const mcpNames = await mcpNameChecker(deps)(choice.provider, mcp.names)
   return {
     userLayers,

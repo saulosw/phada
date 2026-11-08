@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { findingFixture } from '../test/support/finding.js'
-import { createLocalRepository } from '../test/support/git-repo.js'
+import { fakeFixProvider } from '../test/support/fix-provider.js'
+import { createLocalRepository, GIT_ENV } from '../test/support/git-repo.js'
 import { memoryFiles } from '../test/support/memory-files.js'
 import type { MemoryFiles } from '../test/support/memory-files.js'
 import { pullRequestFixture } from '../test/support/pull-request.js'
@@ -3857,15 +3858,6 @@ describe('run review --head', () => {
 })
 
 describe('run review with no pull request', { timeout: 20_000 }, () => {
-  const GIT_ENV = {
-    ...process.env,
-    GIT_AUTHOR_NAME: 'T',
-    GIT_AUTHOR_EMAIL: 't@example.com',
-    GIT_COMMITTER_NAME: 'T',
-    GIT_COMMITTER_EMAIL: 't@example.com',
-    GIT_CONFIG_NOSYSTEM: '1',
-    GIT_CONFIG_GLOBAL: '/dev/null',
-  }
   const git = (dir: string, ...args: string[]) =>
     execFileSync('git', ['-C', dir, ...args], { env: GIT_ENV, encoding: 'utf8' }).trim()
   const scratch = mkdtempSync(join(tmpdir(), 'phada-main-local-'))
@@ -4264,18 +4256,13 @@ describe('run review with no pull request', { timeout: 20_000 }, () => {
       const chosen: [string, ProviderOptions][] = []
       h.deps.createProvider = (name, options) => {
         chosen.push([name, options])
-        return {
-          id: 'fake-cli',
-          review: async () => ({ text: '', durationMs: 1 }),
-          fix: async () => {
-            writeFileSync(join(dir, 'src/shop.ts'), `// auth\n${COUNT}`)
-            return {
-              text: 'Added the check.\n#1 fixed: checks the caller first.',
-              durationMs: 1,
-              blocked: [{ tool: 'Bash', input: 'npm test' }],
-            }
-          },
-        }
+        return fakeFixProvider(() => {
+          writeFileSync(join(dir, 'src/shop.ts'), `// auth\n${COUNT}`)
+          return {
+            text: 'Added the check.\n#1 fixed: checks the caller first.',
+            blocked: [{ tool: 'Bash', input: 'npm test' }],
+          }
+        })
       }
       return chosen
     }
@@ -4312,21 +4299,14 @@ describe('run review with no pull request', { timeout: 20_000 }, () => {
     it('says why a suggestion did not apply when the AI fixed its finding instead', async () => {
       const { dir, h, out } = await reviewed()
       writeFileSync(join(dir, 'src/shop.ts'), COUNT.replace('p.length', 'p.size'))
-      h.deps.createProvider = () => ({
-        id: 'fake-cli',
-        review: async () => ({ text: '', durationMs: 1 }),
-        fix: async () => {
+      h.deps.createProvider = () =>
+        fakeFixProvider(() => {
           writeFileSync(
             join(dir, 'src/shop.ts'),
             `// auth\n${COUNT.replace('  return p.length', SUM)}`,
           )
-          return {
-            text: '#1 fixed: checks the caller first.\n#2 fixed: sums the prices.',
-            durationMs: 1,
-            blocked: [],
-          }
-        },
-      })
+          return '#1 fixed: checks the caller first.\n#2 fixed: sums the prices.'
+        })
 
       expect(await run(['fix'], h.deps)).toBe(0)
 
@@ -4354,11 +4334,7 @@ describe('run review with no pull request', { timeout: 20_000 }, () => {
 
     it('names the findings the AI did not report and lists the ones it skipped as left', async () => {
       const { dir, h, out, err } = await reviewed()
-      h.deps.createProvider = () => ({
-        id: 'fake-cli',
-        review: async () => ({ text: '', durationMs: 1 }),
-        fix: async () => ({ text: 'Nothing to do.', durationMs: 1, blocked: [] }),
-      })
+      h.deps.createProvider = () => fakeFixProvider(() => 'Nothing to do.')
 
       expect(await run(['fix'], h.deps)).toBe(0)
 
@@ -4373,14 +4349,10 @@ describe('run review with no pull request', { timeout: 20_000 }, () => {
 
     it('prints the report of the suggestions and fails when the AI fails', async () => {
       const { dir, h, out, err } = await reviewed()
-      h.deps.createProvider = () => ({
-        id: 'claude-cli',
-        review: async () => ({ text: '', durationMs: 1 }),
-        fix: () =>
-          Promise.reject(
-            new ProviderError('claude-cli', 'timeout', 'Claude did not answer within 900s.'),
-          ),
-      })
+      h.deps.createProvider = () =>
+        fakeFixProvider(() => {
+          throw new ProviderError('claude-cli', 'timeout', 'Claude did not answer within 900s.')
+        }, 'claude-cli')
 
       expect(await run(['fix'], h.deps)).toBe(1)
 
@@ -4582,7 +4554,7 @@ describe('phada fix on a pull request', { timeout: 20_000 }, () => {
       pushes.push(
         `${options.owner}/${options.repo}:${options.branch} ${options.token === TOKEN ? 'token' : 'other'}`,
       )
-      return pushCommit({ ...options, url: `file://${bare}` })
+      return pushCommit({ ...options, remoteUrl: `file://${bare}` })
     }
     const remoteGit = (...args: string[]) =>
       execFileSync('git', ['-C', bare, ...args], { encoding: 'utf8' }).trim()
@@ -4603,15 +4575,12 @@ describe('phada fix on a pull request', { timeout: 20_000 }, () => {
 
   function recordingAi(h: ReturnType<typeof pullRequestHarness>['h']) {
     const dirs: string[] = []
-    h.deps.createProvider = () => ({
-      id: 'fake-cli',
-      review: async () => ({ text: '', durationMs: 1 }),
-      fix: async (request) => {
+    h.deps.createProvider = () =>
+      fakeFixProvider((request) => {
         dirs.push(request.cwd)
         writeFileSync(join(request.cwd, 'src/auth.ts'), 'export const auth = true\n')
-        return { text: '#1 fixed: added the check.', durationMs: 1, blocked: [] }
-      },
-    })
+        return '#1 fixed: added the check.'
+      })
     return dirs
   }
 
@@ -4767,14 +4736,11 @@ describe('phada fix on a pull request', { timeout: 20_000 }, () => {
   it('removes the work tree and fails when the AI CLI fails, without asking', async () => {
     const { h } = pullRequestHarness([SUGGESTED, NO_AUTH], { stdin: terminal('y') })
     const dirs: string[] = []
-    h.deps.createProvider = () => ({
-      id: 'fake-cli',
-      review: async () => ({ text: '', durationMs: 1 }),
-      fix: async (request) => {
+    h.deps.createProvider = () =>
+      fakeFixProvider((request) => {
         dirs.push(request.cwd)
         throw new Error('the CLI crashed')
-      },
-    })
+      })
 
     expect(await run(['fix', 'acme/shop#12'], h.deps)).toBe(1)
 

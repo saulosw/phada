@@ -20,7 +20,7 @@ export interface WorkTreeInput {
   headRef: string
   number: number
   commits: number
-  diff: string
+  diff?: string
   files?: Readonly<Record<string, string>>
 }
 
@@ -99,7 +99,7 @@ export async function materializeWorkTree(
     FETCH_TIMEOUT_MS,
   )
   const diffFile = join(input.dir, '.git', DIFF_FILE)
-  await writeFile(diffFile, input.diff)
+  await writeFile(diffFile, input.diff ?? '')
   const files: Record<string, string> = {}
   for (const [name, content] of Object.entries(input.files ?? {})) {
     files[name] = join(input.dir, '.git', name)

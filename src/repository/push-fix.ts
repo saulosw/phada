@@ -23,7 +23,7 @@ export interface PushCommitOptions {
   repo: string
   token: string
   env: NodeJS.ProcessEnv
-  url?: string
+  remoteUrl?: string
   run?: Run
 }
 
@@ -90,7 +90,7 @@ export async function pushCommit(options: PushCommitOptions): Promise<void> {
       '--no-verify',
       '--no-signed',
       '--recurse-submodules=no',
-      options.url ?? `https://github.com/${owner}/${repo}.git`,
+      options.remoteUrl ?? `https://github.com/${owner}/${repo}.git`,
       `${options.commit}:refs/heads/${branch}`,
     ],
     { env: { ...promptlessGitEnvironment(options.env), ...auth.env }, timeoutMs: FETCH_TIMEOUT_MS },

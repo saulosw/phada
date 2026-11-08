@@ -35,6 +35,11 @@ export function hasFindingMarker(body: string): boolean {
   return TRAILING_FINDING_MARKER.test(body)
 }
 
+export function withoutFindingMarker(body: string): string {
+  const marker = TRAILING_FINDING_MARKER.exec(body)
+  return marker === null ? body : body.slice(0, marker.index).trimEnd()
+}
+
 export function resolvedMarker(sha: string): string {
   return `<!-- phada:resolved sha=${sha} -->`
 }

@@ -143,7 +143,7 @@ describe('pushCommit', { timeout: 20_000 }, () => {
       owner: 'acme',
       repo: 'shop',
       token: TOKEN,
-      url: fixed.url,
+      remoteUrl: fixed.url,
       env: ENV,
     })
 
@@ -182,7 +182,7 @@ describe('pushCommit', { timeout: 20_000 }, () => {
       owner: 'acme',
       repo: 'shop',
       token: TOKEN,
-      url: fixed.url,
+      remoteUrl: fixed.url,
       env: ENV,
     })
 

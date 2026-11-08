@@ -57,12 +57,15 @@ export interface SkillRunRequest {
   maxTurns: number
 }
 
-export interface SkillRunOutput {
+export interface AgentOutput {
   text: string
   durationMs: number
   model?: string
   usage?: TokenUsage
   blocked: BlockedCommand[]
+}
+
+export interface SkillRunOutput extends AgentOutput {
   externalCalls?: ExternalToolCall[]
   warnings?: string[]
 }
@@ -75,13 +78,7 @@ export interface FixRequest {
   maxTurns: number
 }
 
-export interface FixOutput {
-  text: string
-  durationMs: number
-  model?: string
-  usage?: TokenUsage
-  blocked: BlockedCommand[]
-}
+export type FixOutput = AgentOutput
 
 export interface ReviewProvider {
   readonly id: string

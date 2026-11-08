@@ -44,7 +44,7 @@ import { prepareReview, runManualReview } from './cli/manual-review.js'
 import type { ReviewRun } from './app/review-and-publish.js'
 import { printHistorySave, savedAsLine } from './cli/print-history-save.js'
 import { runPublish } from './cli/publish-command.js'
-import { runFix } from './cli/fix-command.js'
+import { runLocalFix } from './cli/local-fix-command.js'
 import { runPullRequestFix } from './cli/pull-request-fix-command.js'
 import type { PullRequestFixCommandDeps } from './cli/pull-request-fix-command.js'
 import { assertProviderChoice } from './cli/provider-choice.js'
@@ -172,7 +172,7 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
     }
     if (command.kind === 'fix') {
       const { ref } = command
-      if (ref === undefined) await runFix(command, deps)
+      if (ref === undefined) await runLocalFix(command, deps)
       else await runPullRequestFix({ ...command, ref }, deps)
       return 0
     }

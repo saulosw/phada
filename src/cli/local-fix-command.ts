@@ -10,18 +10,17 @@ import { openLocalGit } from '../repository/local-git.js'
 import type { LocalGit, LocalGitOptions } from '../repository/local-git.js'
 import type { ReviewProvider } from '../providers/types.js'
 import type { HistoryStore } from '../store/history-store.js'
-import { fixProvider, pickNumbers, workingFiles } from './fix-wiring.js'
-import { formatFixList, formatFixReport, formatFixWarnings, formatHeadMoved } from './format-fix.js'
+import type { CliCommand } from './args.js'
+import { fixProvider, reportFix, startFix, workingFiles } from './fix-wiring.js'
+import { formatFixList, formatHeadMoved } from './format-fix.js'
 import { existingHistory } from './history-access.js'
 import type { TextOutput } from './progress.js'
 import type { ProviderOptions } from './provider-choice.js'
 
-export interface FixCommand {
-  list: boolean
-  only?: number[]
-  provider?: string
-  model?: string
-}
+export type FixCommand = Pick<
+  Extract<CliCommand, { kind: 'fix' }>,
+  'list' | 'only' | 'provider' | 'model'
+>
 
 export interface FixCommandDeps {
   cwd: string
@@ -33,39 +32,35 @@ export interface FixCommandDeps {
   openHistoryStore: (path: string) => Promise<HistoryStore>
   createProvider: (name: string, options: ProviderOptions) => ReviewProvider
   openLocalGit?: (options: LocalGitOptions) => Promise<LocalGit>
-  workingTreeFiles?: LocalFileSystem
 }
 
-export async function runFix(command: FixCommand, deps: FixCommandDeps): Promise<void> {
+export async function runLocalFix(command: FixCommand, deps: FixCommandDeps): Promise<void> {
   const local = await (deps.openLocalGit ?? openLocalGit)({ dir: deps.cwd, env: deps.env })
   const target = await readTarget(local, deps)
-  if (target.findings.length === 0) {
-    deps.stdout.write(`Nothing to fix: run ${target.run} found no findings.\n`)
-    return
-  }
-  const picked = pickNumbers(
-    target.findings,
-    command.only,
-    (number, last) =>
-      `No finding ${number} in run ${target.run}: its findings go from 1 to ${last}.`,
+  const started = await startFix(
+    command,
+    {
+      findings: target.findings,
+      nothingToFix: `Nothing to fix: run ${target.run} found no findings.`,
+      unknownNumber: (number, last) =>
+        `No finding ${number} in run ${target.run}: its findings go from 1 to ${last}.`,
+      list: formatFixList(target),
+      afterPick: () => {
+        if (target.head !== target.reviewedHead) {
+          deps.stderr.write(`${formatHeadMoved(target)}\n`)
+        }
+      },
+      prepare: async () => fixProvider(await local.origin(), command, deps),
+    },
+    deps.stdout,
   )
-  if (target.head !== target.reviewedHead) {
-    deps.stderr.write(`${formatHeadMoved(target)}\n`)
-  }
-  if (command.list) {
-    deps.stdout.write(formatFixList(target))
-    return
-  }
-  const provider = await fixProvider(await local.origin(), command, deps)
-  deps.stdout.write(formatFixList(target))
-  const fixed = await fixFindings(picked, {
+  if (started === undefined) return
+  const fixed = await fixFindings(started.picked, {
     tree: local,
-    files: workingFiles(local.root, deps.workingTreeFiles ?? nodeFileSystem),
-    provider,
+    files: workingFiles(local.root, nodeFileSystem),
+    provider: started.prepared,
   })
-  deps.stdout.write(`\n${formatFixReport(fixed)}`)
-  for (const warning of formatFixWarnings(fixed)) deps.stderr.write(`${warning}\n`)
-  if (fixed.ai?.status === 'failed') throw fixed.ai.error
+  reportFix(fixed, deps)
 }
 
 async function readTarget(local: LocalGit, deps: FixCommandDeps): Promise<LocalFixTarget> {

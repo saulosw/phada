@@ -1,11 +1,5 @@
 import { normalize } from './suggestions.js'
-
-export interface SuggestedEdit {
-  startLine: number
-  endLine: number
-  original?: string
-  replacement: string
-}
+import type { SuggestedEdit } from './types.js'
 
 export type RefusalReason = 'not-found' | 'ambiguous' | 'overlap'
 

@@ -49,33 +49,11 @@ const DISABLED_FEATURES: readonly string[] = [
   'hooks',
 ]
 const SHELL_FEATURES: ReadonlySet<string> = new Set(['shell_tool', 'unified_exec'])
-const BASE_ARGS: readonly string[] = [
-  'exec',
-  '--skip-git-repo-check',
-  '--ephemeral',
-  '-s',
-  'read-only',
-  '--ignore-user-config',
-  ...DISABLED_FEATURES.flatMap((feature) => ['--disable', feature]),
-  '-c',
-  'web_search="disabled"',
-  '--json',
-]
-const FIX_ARGS: readonly string[] = [
-  'exec',
-  '--skip-git-repo-check',
-  '--ephemeral',
-  '-s',
+const BASE_ARGS = execArgs('read-only', DISABLED_FEATURES)
+const FIX_ARGS = execArgs(
   'workspace-write',
-  '--ignore-user-config',
-  ...DISABLED_FEATURES.filter((feature) => !SHELL_FEATURES.has(feature)).flatMap((feature) => [
-    '--disable',
-    feature,
-  ]),
-  '-c',
-  'web_search="disabled"',
-  '--json',
-]
+  DISABLED_FEATURES.filter((feature) => !SHELL_FEATURES.has(feature)),
+)
 const NOT_AUTHENTICATED = /401 Unauthorized|missing bearer|not logged in|codex login/i
 
 const CodexEvent = z.discriminatedUnion('type', [
@@ -351,4 +329,22 @@ function errorMessages(events: readonly CodexEvent[]): string[] {
     if (event.type === 'turn.failed') return [event.error.message]
     return []
   })
+}
+
+function execArgs(
+  sandbox: 'read-only' | 'workspace-write',
+  disabledFeatures: readonly string[],
+): readonly string[] {
+  return [
+    'exec',
+    '--skip-git-repo-check',
+    '--ephemeral',
+    '-s',
+    sandbox,
+    '--ignore-user-config',
+    ...disabledFeatures.flatMap((feature) => ['--disable', feature]),
+    '-c',
+    'web_search="disabled"',
+    '--json',
+  ]
 }

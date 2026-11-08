@@ -1,35 +1,68 @@
 import { resolve, sep } from 'node:path'
 import type { WorkingFiles } from '../app/apply-file-suggestions.js'
+import type { FindingsFix } from '../app/fix-findings.js'
 import { reportProgress } from '../app/review-progress.js'
 import type { LocalFileSystem } from '../config/local-files.js'
-import { resolveProvider } from '../config/merge-config.js'
-import { loadUserLayers } from '../config/user-config.js'
 import type { ReviewProvider } from '../providers/types.js'
 import { UsageError } from './errors.js'
-import type { FixCommand, FixCommandDeps } from './fix-command.js'
+import { formatFixReport, formatFixWarnings } from './format-fix.js'
+import type { ListedFinding } from './format-fix.js'
+import type { FixCommand, FixCommandDeps } from './local-fix-command.js'
 import { printReviewProgress } from './print-review-progress.js'
-import { assertProviderChoice } from './provider-choice.js'
+import type { TextOutput } from './progress.js'
+import { assertProviderChoice, loadProviderChoice, modelOption } from './provider-choice.js'
 
 export async function fixProvider(
-  { owner, repo }: { owner: string; repo: string },
+  repository: { owner: string; repo: string },
   command: Pick<FixCommand, 'provider' | 'model'>,
   deps: Pick<FixCommandDeps, 'env' | 'home' | 'files' | 'stderr' | 'createProvider'>,
 ): Promise<ReviewProvider> {
-  const userLayers = await loadUserLayers({ ...deps, owner, repo })
-  const choice = resolveProvider(
-    {
-      ...(command.provider === undefined ? {} : { provider: command.provider }),
-      ...(command.model === undefined ? {} : { model: command.model }),
-    },
-    userLayers,
-  )
-  const options = choice.model === undefined ? {} : { model: choice.model }
+  const { choice } = await loadProviderChoice(repository, command, deps)
+  const options = modelOption(choice)
   assertProviderChoice(choice.provider, options)
   return reportProgress(
     deps.createProvider(choice.provider, options),
     'review',
     printReviewProgress(deps.stderr),
   )
+}
+
+export interface FixStart<T, P> {
+  findings: readonly T[]
+  nothingToFix: string
+  unknownNumber: (number: number, last: number) => string
+  list: string
+  afterPick?: () => void
+  prepare: () => Promise<P>
+}
+
+export async function startFix<T extends { number: number }, P>(
+  command: Pick<FixCommand, 'list' | 'only'>,
+  start: FixStart<T, P>,
+  stdout: TextOutput,
+): Promise<{ picked: T[]; prepared: P } | undefined> {
+  if (start.findings.length === 0) {
+    stdout.write(`${start.nothingToFix}\n`)
+    return undefined
+  }
+  const picked = pickNumbers(start.findings, command.only, start.unknownNumber)
+  start.afterPick?.()
+  if (command.list) {
+    stdout.write(start.list)
+    return undefined
+  }
+  const prepared = await start.prepare()
+  stdout.write(start.list)
+  return { picked, prepared }
+}
+
+export function reportFix(
+  fixed: FindingsFix<ListedFinding>,
+  output: { stdout: TextOutput; stderr: TextOutput },
+): void {
+  output.stdout.write(`\n${formatFixReport(fixed)}`)
+  for (const warning of formatFixWarnings(fixed)) output.stderr.write(`${warning}\n`)
+  if (fixed.ai?.status === 'failed') throw fixed.ai.error
 }
 
 export function pickNumbers<T extends { number: number }>(

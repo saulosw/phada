@@ -11,18 +11,19 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, afterEach, describe, expect, it } from 'vitest'
+import { fakeFixProvider, suggestionsOnlyProvider } from '../../test/support/fix-provider.js'
 import { createLocalRepository } from '../../test/support/git-repo.js'
 import type { LocalRepository } from '../../test/support/git-repo.js'
 import { pullRequestFixture } from '../../test/support/pull-request.js'
 import { reviewState, reviewThread } from '../../test/support/review-state.js'
+import { diskFiles } from '../../test/support/working-files.js'
 import type { PullRequestReviewState, ReviewThread } from '../github/pull-request-reviews.js'
 import type { PullRequestMetadata } from '../github/pull-request.js'
 import type { RepositoryInfo } from '../github/repository.js'
-import type { FixRequest, ReviewProvider } from '../providers/types.js'
+import type { ReviewProvider } from '../providers/types.js'
 import { FINDING_MARKER } from '../publish/markers.js'
 import { openGitMirror } from '../repository/git-mirror.js'
 import { openLocalGit } from '../repository/local-git.js'
-import type { WorkingFiles } from './apply-file-suggestions.js'
 import { BranchMovedError } from '../repository/branch-moved.js'
 import { commitWorkTree, pushCommit } from '../repository/push-fix.js'
 import {
@@ -206,7 +207,7 @@ describe('fixPullRequest', { timeout: 20_000 }, () => {
       files: diskFiles,
       env: process.env,
       warning: () => {},
-      ...(provider === undefined ? {} : { provider }),
+      provider: provider ?? suggestionsOnlyProvider(),
     }
   }
 
@@ -265,21 +266,12 @@ describe('fixPullRequest', { timeout: 20_000 }, () => {
       }),
       finding({ id: 'plain', line: 1, title: 'spend has no auth' }),
     ])
-    const requests: FixRequest[] = []
-    const provider: ReviewProvider = {
-      id: 'fake-cli',
-      review: async () => ({ text: '', durationMs: 1 }),
-      fix: async (request) => {
-        requests.push(request)
-        writeFileSync(join(request.cwd, 'src/cart.ts'), 'full cart\n')
-        writeFileSync(join(request.cwd, 'src/auth.ts'), 'export const auth = true\n')
-        return {
-          text: '#1 fixed: filled it.\n#2 skipped: needs a decision.',
-          durationMs: 1,
-          blocked: [],
-        }
-      },
-    }
+    const provider = fakeFixProvider((request) => {
+      writeFileSync(join(request.cwd, 'src/cart.ts'), 'full cart\n')
+      writeFileSync(join(request.cwd, 'src/auth.ts'), 'export const auth = true\n')
+      return '#1 fixed: filled it.\n#2 skipped: needs a decision.'
+    })
+    const { requests } = provider
 
     const fixed = await fixPullRequest(fixTarget, fixTarget.findings, deps(provider))
     cleanups.push(() => void fixed.close())
@@ -379,7 +371,7 @@ describe('pushPullRequestFix', { timeout: 20_000 }, () => {
       files: diskFiles,
       env: process.env,
       warning: () => {},
-      ...(provider === undefined ? {} : { provider }),
+      provider: provider ?? suggestionsOnlyProvider(),
     })
     cleanups.push(() => void fixed.close())
     const pushes: string[] = []
@@ -394,7 +386,7 @@ describe('pushPullRequestFix', { timeout: 20_000 }, () => {
           owner: 'acme',
           repo: 'shop',
           token: 'x',
-          url: `file://${bare}`,
+          remoteUrl: `file://${bare}`,
           env: process.env,
         })
       },
@@ -402,18 +394,10 @@ describe('pushPullRequestFix', { timeout: 20_000 }, () => {
     return { fixTarget, fixed, deps, bare, headSha, pushes }
   }
 
-  const editingAi: ReviewProvider = {
-    id: 'fake-cli',
-    review: async () => ({ text: '', durationMs: 1 }),
-    fix: async (request) => {
-      writeFileSync(join(request.cwd, 'src/auth.ts'), 'export const auth = true\n')
-      return {
-        text: '#1 fixed: added the check.\n#4 skipped: no test runner.',
-        durationMs: 1,
-        blocked: [],
-      }
-    },
-  }
+  const editingAi = fakeFixProvider((request) => {
+    writeFileSync(join(request.cwd, 'src/auth.ts'), 'export const auth = true\n')
+    return '#1 fixed: added the check.\n#4 skipped: no test runner.'
+  })
 
   it('commits the fix as the user on the head and pushes it to the branch of the pull request', async () => {
     const { fixTarget, fixed, deps, bare, headSha } = await fixedOnRemote(editingAi)
@@ -503,16 +487,3 @@ describe('fixCommitMessage', () => {
     )
   })
 })
-
-function diskFiles(root: string): WorkingFiles {
-  return {
-    read: async (path) => {
-      try {
-        return readFileSync(join(root, path), 'utf8')
-      } catch {
-        return undefined
-      }
-    },
-    write: async (path, text) => writeFileSync(join(root, path), text),
-  }
-}

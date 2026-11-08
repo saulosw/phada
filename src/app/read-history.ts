@@ -1,6 +1,6 @@
 import { destinationOf } from '../publish/feedback.js'
 import { numberOf, objectOf, parseJson, stringOf, stringsOf } from './stored-json.js'
-import { storedCoverage } from './stored-review.js'
+import { storedCoverage, storedSuggestion } from './stored-review.js'
 import type { CoverageGapKind, CoverageLevel, Suggestion } from '../review/types.js'
 import type { Destination, SignalKind } from '../publish/feedback.js'
 import type {
@@ -276,23 +276,6 @@ export function storedFindings(value: unknown): StoredFinding[] {
       },
     ]
   })
-}
-
-function storedSuggestion(value: unknown): Suggestion | undefined {
-  const suggestion = objectOf(value)
-  const startLine = numberOf(suggestion?.startLine)
-  const endLine = numberOf(suggestion?.endLine)
-  const original = stringOf(suggestion?.original)
-  const replacement = stringOf(suggestion?.replacement)
-  if (
-    startLine === undefined ||
-    endLine === undefined ||
-    original === undefined ||
-    replacement === undefined
-  ) {
-    return undefined
-  }
-  return { startLine, endLine, original, replacement }
 }
 
 export function storedClaims(value: unknown): StoredClaim[] {

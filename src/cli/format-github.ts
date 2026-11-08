@@ -3,9 +3,10 @@ import { redactSecrets } from '../providers/redact-secrets.js'
 import { findingMarker, reviewMarker } from '../publish/markers.js'
 import type { PublicationPlan } from '../publish/types.js'
 import type { CiSummary } from '../context/types.js'
+import { SEVERITIES } from '../review/finding-numbers.js'
 import { scoreFocus } from '../review/score.js'
 import { normalize } from '../review/suggestions.js'
-import type { FileChange, Finding, ReviewResult, Severity } from '../review/types.js'
+import type { FileChange, Finding, ReviewResult } from '../review/types.js'
 import { debtItem } from './debt-text.js'
 import { findingReferences, leftOutLine } from './finding-references.js'
 import { english } from './i18n/en.js'
@@ -17,7 +18,6 @@ import { shortSha } from './review-text.js'
 export const GITHUB_BODY_LIMIT = 65_536
 
 const MAX_FILE_ROWS = 300
-const SEVERITIES: readonly Severity[] = ['P0', 'P1', 'P2']
 const BUTTERFLY = '🦋'
 const MAX_DEBT_LINES = 20
 

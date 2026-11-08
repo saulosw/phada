@@ -1,9 +1,9 @@
 import type { LocalRun } from '../app/local-review.js'
 import { localRunName } from '../app/run-target.js'
 import type { PullRequest } from '../github/pull-request.js'
-import { numberFindings } from '../review/finding-numbers.js'
+import { numberFindings, SEVERITIES } from '../review/finding-numbers.js'
 import { scoreFocus } from '../review/score.js'
-import type { FileChange, Finding, ReviewResult, Severity, Suggestion } from '../review/types.js'
+import type { FileChange, Finding, ReviewResult, Suggestion } from '../review/types.js'
 import { english } from './i18n/en.js'
 import { debtItem } from './debt-text.js'
 import { findingReferences, leftOutLine } from './finding-references.js'
@@ -15,7 +15,6 @@ import { toTerminalText } from '../app/terminal-text.js'
 import { formatBytes, formatCount, formatDuration, formatTokens } from './units.js'
 
 const MAX_FILE_ROWS = 20
-const SEVERITIES: readonly Severity[] = ['P0', 'P1', 'P2']
 
 export function formatPullRequestSummary(pr: PullRequest): string {
   const { changedFiles, additions, deletions } = pr.stats

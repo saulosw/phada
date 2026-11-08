@@ -1,18 +1,17 @@
-import { join } from 'node:path'
 import type { PullRequestReviewState } from '../github/pull-request-reviews.js'
 import type { PullRequestMetadata } from '../github/pull-request.js'
 import type { RepositoryInfo } from '../github/repository.js'
-import { closeWorkDir, openWorkDir, sweepOrphanWorkDirs } from '../process/work-dirs.js'
+import { closeWorkDir } from '../process/work-dirs.js'
 import type { ReviewProvider } from '../providers/types.js'
 import { threadFindings } from '../publish/thread-findings.js'
 import type { ThreadFinding } from '../publish/thread-findings.js'
 import type { GitMirror } from '../repository/git-mirror.js'
 import type { LocalGit } from '../repository/local-git.js'
 import { BranchMovedError } from '../repository/branch-moved.js'
-import { materializeWorkTree } from '../repository/work-tree.js'
 import type { WorkingFiles } from './apply-file-suggestions.js'
-import { fixFindings } from './fix-findings.js'
+import { fixFindings, leftAfterAi } from './fix-findings.js'
 import type { FindingsFix, FixTree } from './fix-findings.js'
+import { materializePullRequest, openFreshWorkDir } from './pull-request-work-tree.js'
 import { singleLine } from './terminal-text.js'
 
 export interface PullRequestFixReadDeps {
@@ -32,7 +31,7 @@ export interface PullRequestFixDeps {
   openMirror(): Promise<GitMirror>
   openTree(dir: string): Promise<WorkTreeGit>
   files(root: string): WorkingFiles
-  provider?: ReviewProvider
+  provider: ReviewProvider
   env: NodeJS.ProcessEnv
   warning(message: string): void
   tempRoot?: string
@@ -105,30 +104,21 @@ export async function fixPullRequest(
   deps: PullRequestFixDeps,
 ): Promise<PullRequestFix> {
   const { pullRequest } = target
-  await sweepOrphanWorkDirs(deps.tempRoot)
-  const workDir = await openWorkDir(deps.tempRoot)
+  const workDir = await openFreshWorkDir(deps.tempRoot)
   const close = () => closeWorkDir(workDir)
   try {
-    const workTree = await materializeWorkTree(
+    const workTree = await materializePullRequest(
       await deps.openMirror(),
-      {
-        dir: join(workDir, 'repo'),
-        headSha: pullRequest.headSha,
-        baseSha: pullRequest.baseSha,
-        baseRef: pullRequest.baseRef,
-        headRef: pullRequest.headRef,
-        number: pullRequest.number,
-        commits: pullRequest.stats.commits,
-        diff: '',
-      },
-      { env: deps.env },
+      workDir,
+      pullRequest,
+      {},
+      deps,
     )
-    for (const warning of workTree.warnings) deps.warning(warning)
     const git = await deps.openTree(workTree.dir)
     const fixed = await fixFindings(findings, {
       tree: git,
       files: deps.files(workTree.dir),
-      ...(deps.provider === undefined ? {} : { provider: deps.provider }),
+      provider: deps.provider,
     })
     const tree = await git.workingTree()
     const diff =
@@ -161,15 +151,9 @@ export async function pushPullRequestFix(
 }
 
 export function fixCommitMessage(fixed: FindingsFix<ThreadFinding>): string {
-  const fixedByAi = new Set(
-    fixed.ai?.status === 'answered'
-      ? fixed.ai.outcomes.filter(({ status }) => status === 'fixed').map(({ number }) => number)
-      : [],
+  const handled = [...fixed.applied, ...leftAfterAi(fixed).fixed.map(({ item }) => item)].sort(
+    (a, b) => a.number - b.number,
   )
-  const handled = [
-    ...fixed.applied,
-    ...fixed.left.map(({ item }) => item).filter(({ number }) => fixedByAi.has(number)),
-  ].sort((a, b) => a.number - b.number)
   const lines = handled.map(
     ({ finding }) => `- ${singleLine(`${finding.file}:${finding.line} ${finding.title}`)}`,
   )

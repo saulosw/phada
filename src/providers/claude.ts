@@ -17,6 +17,7 @@ import {
 } from './claude-skill-args.js'
 import { ProviderError } from './types.js'
 import type {
+  AgentOutput,
   BlockedCommand,
   ExternalToolCall,
   FixOutput,
@@ -44,6 +45,15 @@ export const MAX_TOOL_TURNS = 40
 const MAX_TURNS_SUBTYPE = 'error_max_turns'
 const PHADA_TOOL_PREFIX = `mcp__${MCP_SERVER_NAME}__`
 const MCP_TOOL = /^mcp__(.+?)__(.+)$/
+const HEADLESS_AGENT_ARGS: readonly string[] = [
+  '-p',
+  '--output-format',
+  'stream-json',
+  '--verbose',
+  '--restricted',
+  '--setting-sources=',
+  '--no-session-persistence',
+]
 const NOT_AUTHENTICATED = /not logged in|\/login|authenticat|api key/i
 
 const ClaudeUsage = z.object({
@@ -199,13 +209,7 @@ export class ClaudeCliProvider implements ReviewProvider {
           command: this.#command,
           detached: this.#detached,
           args: [
-            '-p',
-            '--output-format',
-            'stream-json',
-            '--verbose',
-            '--restricted',
-            '--setting-sources=',
-            '--no-session-persistence',
+            ...HEADLESS_AGENT_ARGS,
             ...(this.#mcpNames.length === 0 ? ['--strict-mcp-config'] : []),
             '--tools',
             SKILL_TOOLS.join(','),
@@ -248,13 +252,7 @@ export class ClaudeCliProvider implements ReviewProvider {
         command: this.#command,
         detached: this.#detached,
         args: [
-          '-p',
-          '--output-format',
-          'stream-json',
-          '--verbose',
-          '--restricted',
-          '--setting-sources=',
-          '--no-session-persistence',
+          ...HEADLESS_AGENT_ARGS,
           '--strict-mcp-config',
           '--disable-slash-commands',
           '--tools',
@@ -321,7 +319,7 @@ function toFixOutput(run: RunCommandResult, maxTurns: number): FixOutput {
 function agentResult(
   run: RunCommandResult,
   maxTurns: number,
-  task: string,
+  task: 'skill' | 'fix',
 ): { claude: ClaudeResult; events: unknown[]; text: string } {
   const { claude, events } = finalResult(run)
   if (claude.subtype === MAX_TURNS_SUBTYPE) {
@@ -335,7 +333,7 @@ function agentResult(
   return { claude, events, text: claude.result }
 }
 
-function agentOutput(run: RunCommandResult, claude: ClaudeResult, text: string): FixOutput {
+function agentOutput(run: RunCommandResult, claude: ClaudeResult, text: string): AgentOutput {
   const [model] = modelsByOutput(claude.modelUsage ?? {})
   return {
     text,

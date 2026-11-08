@@ -4,26 +4,16 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, afterEach, describe, expect, it } from 'vitest'
 import { findingFixture } from '../../test/support/finding.js'
-import { createLocalRepository } from '../../test/support/git-repo.js'
+import { fakeFixProvider, suggestionsOnlyProvider } from '../../test/support/fix-provider.js'
+import { createLocalRepository, GIT_ENV } from '../../test/support/git-repo.js'
 import type { LocalRepository } from '../../test/support/git-repo.js'
-import type { FixRequest, ReviewProvider } from '../providers/types.js'
+import { diskFiles } from '../../test/support/working-files.js'
 import { openLocalGit } from '../repository/local-git.js'
 import type { Finding } from '../review/types.js'
 import { openHistoryStore } from '../store/history-store.js'
 import type { HistoryStore, RunRecord } from '../store/history-store.js'
 import { fixFindings } from './fix-findings.js'
 import { readLocalFix } from './local-fix.js'
-import type { WorkingFiles } from './apply-file-suggestions.js'
-
-const GIT_ENV = {
-  ...process.env,
-  GIT_AUTHOR_NAME: 'T',
-  GIT_AUTHOR_EMAIL: 't@example.com',
-  GIT_COMMITTER_NAME: 'T',
-  GIT_COMMITTER_EMAIL: 't@example.com',
-  GIT_CONFIG_NOSYSTEM: '1',
-  GIT_CONFIG_GLOBAL: '/dev/null',
-}
 
 const git = (dir: string, ...args: string[]) =>
   execFileSync('git', ['-C', dir, ...args], { env: GIT_ENV, encoding: 'utf8' }).trim()
@@ -93,19 +83,6 @@ function localRun(
   }
 }
 
-function diskFiles(root: string): WorkingFiles {
-  return {
-    read: async (path) => {
-      try {
-        return readFileSync(join(root, path), 'utf8')
-      } catch {
-        return undefined
-      }
-    },
-    write: async (path, text) => writeFileSync(join(root, path), text),
-  }
-}
-
 describe('phada fix on the local branch', { timeout: 20_000 }, () => {
   it('applies the suggestions of the last local review of the branch to the working tree, without a commit', async () => {
     const repository = repositoryOnBranch()
@@ -160,6 +137,7 @@ describe('phada fix on the local branch', { timeout: 20_000 }, () => {
     const fixed = await fixFindings(target.findings, {
       tree: local,
       files: diskFiles(repository.dir),
+      provider: suggestionsOnlyProvider(),
     })
 
     expect(fixed.applied.map(({ number }) => number)).toEqual([2])
@@ -250,7 +228,11 @@ describe('phada fix on the local branch', { timeout: 20_000 }, () => {
       }),
     ])
 
-    const fixed = await fixFindings(findings, { tree: local, files: diskFiles(repository.dir) })
+    const fixed = await fixFindings(findings, {
+      tree: local,
+      files: diskFiles(repository.dir),
+      provider: suggestionsOnlyProvider(),
+    })
 
     expect(fixed.left).toEqual([{ item: findings[0], reason: 'missing-file' }])
     expect(fixed.applied).toEqual([findings[1]])
@@ -262,7 +244,11 @@ describe('phada fix on the local branch', { timeout: 20_000 }, () => {
     const local = await openLocalGit({ dir: repository.dir, env: process.env })
     const findings = numbered([findingFixture({ title: 'no suggestion' })])
 
-    const fixed = await fixFindings(findings, { tree: local, files: diskFiles(repository.dir) })
+    const fixed = await fixFindings(findings, {
+      tree: local,
+      files: diskFiles(repository.dir),
+      provider: suggestionsOnlyProvider(),
+    })
 
     expect(fixed).toEqual({
       applied: [],
@@ -274,25 +260,6 @@ describe('phada fix on the local branch', { timeout: 20_000 }, () => {
 })
 
 describe('phada fix with an AI that edits', { timeout: 20_000 }, () => {
-  function editingProvider(
-    edit: (request: FixRequest) => string,
-  ): ReviewProvider & { requests: FixRequest[] } {
-    const requests: FixRequest[] = []
-    return {
-      id: 'fake-cli',
-      requests,
-      review: async () => ({ text: '', durationMs: 0 }),
-      fix: async (request) => {
-        requests.push(request)
-        return {
-          text: edit(request),
-          durationMs: 5,
-          blocked: [{ tool: 'Bash', input: 'npm test' }],
-        }
-      },
-    }
-  }
-
   it('sends the findings the suggestions left to the AI in the working tree and reports what it changed', async () => {
     const repository = repositoryOnBranch({ 'src/shop.ts': SHOP, 'src/cart.ts': 'let total = 0\n' })
     const local = await openLocalGit({ dir: repository.dir, env: process.env })
@@ -310,9 +277,12 @@ describe('phada fix with an AI that edits', { timeout: 20_000 }, () => {
       }),
       findingFixture({ title: 'race on crystals', rule: 'locks' }),
     ])
-    const provider = editingProvider((request) => {
+    const provider = fakeFixProvider((request) => {
       writeFileSync(join(request.cwd, 'src/shop.ts'), SHOP.replace('spend(', 'spend(auth, '))
-      return ['Guarded spend.', '#1 fixed: checks the auth first.'].join('\n')
+      return {
+        text: ['Guarded spend.', '#1 fixed: checks the auth first.'].join('\n'),
+        blocked: [{ tool: 'Bash', input: 'npm test' }],
+      }
     })
 
     const fixed = await fixFindings(findings, {
@@ -354,7 +324,7 @@ describe('phada fix with an AI that edits', { timeout: 20_000 }, () => {
       findingFixture({ title: 'race on crystals' }),
     ])
     const failure = new Error('Claude did not answer within 900s.')
-    const provider = editingProvider(() => {
+    const provider = fakeFixProvider(() => {
       throw failure
     })
 
@@ -383,7 +353,7 @@ describe('phada fix with an AI that edits', { timeout: 20_000 }, () => {
         suggestion: { startLine: 1, endLine: 1, original: 'let total = 0', replacement: 'x' },
       }),
     ])
-    const provider = editingProvider(() => '')
+    const provider = fakeFixProvider(() => '')
 
     const fixed = await fixFindings(findings, {
       tree: local,

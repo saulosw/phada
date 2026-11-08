@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { applySuggestions } from './apply-suggestions.js'
-import type { SuggestedEdit } from './apply-suggestions.js'
+import type { SuggestedEdit } from './types.js'
 
 interface Item {
   name: string

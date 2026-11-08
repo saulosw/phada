@@ -1,13 +1,9 @@
 import type { PullRequestReviewState, ReviewThread } from '../github/pull-request-reviews.js'
-import type { Severity } from '../review/types.js'
-import { findingSeverity, findingTitle, hasFindingMarker } from './markers.js'
+import type { Severity, SuggestedEdit } from '../review/types.js'
+import { findingSeverity, findingTitle, withoutFindingMarker } from './markers.js'
 import { openPhadaThreads } from './phada-state.js'
 
-export interface ThreadSuggestion {
-  startLine: number
-  endLine: number
-  replacement: string
-}
+type ThreadSuggestion = Omit<SuggestedEdit, 'original'>
 
 export interface ThreadFinding {
   number: number
@@ -37,7 +33,7 @@ export function threadFindings(state: PullRequestReviewState): ThreadFinding[] {
 }
 
 function findingOf(thread: ReviewThread, line: number): ThreadFinding['finding'] {
-  const lines = withoutMarker(thread.body.replace(/\r/g, '')).split('\n')
+  const lines = withoutFindingMarker(thread.body.replace(/\r/g, '')).split('\n')
   const [first = ''] = lines
   const severity = findingSeverity(thread.body)
   const suggestion = currentSuggestion(thread, lines)
@@ -70,11 +66,6 @@ function suggestionBlock(lines: readonly string[]): string | undefined {
     if (end !== -1) return lines.slice(start + 1, end).join('\n')
   }
   return undefined
-}
-
-function withoutMarker(body: string): string {
-  if (!hasFindingMarker(body)) return body
-  return body.slice(0, body.lastIndexOf('<!-- phada:finding')).trimEnd()
 }
 
 function compareText(a: string, b: string): number {

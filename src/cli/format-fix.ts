@@ -1,7 +1,9 @@
 import type { LeftItem, LeftReason } from '../app/apply-file-suggestions.js'
+import { leftAfterAi } from '../app/fix-findings.js'
 import type { AiFix, FindingsFix } from '../app/fix-findings.js'
 import type { LocalFixTarget } from '../app/local-fix.js'
 import { singleLine, toTerminalText } from '../app/terminal-text.js'
+import type { FixOutcome } from '../review/fix-outcomes.js'
 import type { Severity } from '../review/types.js'
 import { shortSha } from './review-text.js'
 import { formatCount } from './units.js'
@@ -10,6 +12,8 @@ export interface ListedFinding {
   number: number
   finding: { severity?: Severity; file: string; line: number; title: string; suggestion?: unknown }
 }
+
+type AnsweredFix = Extract<AiFix, { status: 'answered' }>
 
 const LEFT_REASONS: Readonly<Record<LeftReason, string>> = {
   'no-suggestion': 'no suggestion',
@@ -20,13 +24,13 @@ const LEFT_REASONS: Readonly<Record<LeftReason, string>> = {
 }
 
 export function formatFixList(target: LocalFixTarget): string {
-  return listed(
+  return formatNumberedList(
     `Findings of run ${target.run} (${singleLine(`${target.repo}@${target.branch}`)}):`,
     target.findings,
   )
 }
 
-export function listed(heading: string, findings: readonly ListedFinding[]): string {
+export function formatNumberedList(heading: string, findings: readonly ListedFinding[]): string {
   const lines = findings.map((item) => {
     const severity = item.finding.severity === undefined ? '' : `${item.finding.severity} `
     const suggestion = item.finding.suggestion === undefined ? '' : ' (suggestion)'
@@ -36,50 +40,8 @@ export function listed(heading: string, findings: readonly ListedFinding[]): str
 }
 
 export function formatFixReport(fix: FindingsFix<ListedFinding>): string {
-  const applied =
-    fix.applied.length === 0
-      ? 'Applied no suggestion.'
-      : `Applied ${formatCount(fix.applied.length, 'suggestion')}: ${fix.applied.map(({ number }) => number).join(', ')}.`
-  const changed = `Changed ${files(fix.changedFiles)}`
-  if (fix.ai?.status !== 'answered') {
-    const aiChanged =
-      fix.ai === undefined || fix.ai.changedFiles.length === 0
-        ? []
-        : [`${fix.ai.provider} changed ${files(fix.ai.changedFiles)} before it failed`]
-    return `${[applied, changed, ...aiChanged, ...leftLines(fix.left.map(suggestionLeft))].join('\n')}\n`
-  }
-  const { ai } = fix
-  const outcomes = new Map(ai.outcomes.map((outcome) => [outcome.number, outcome]))
-  const fixed = fix.left.flatMap(({ item, reason }) => {
-    const outcome = outcomes.get(item.number)
-    return outcome?.status === 'fixed'
-      ? [`${item.number}. ${place(item)}${unapplied(reason)}${because(outcome.reason)}`]
-      : []
-  })
-  const left = fix.left.flatMap(({ item, reason }): Left<ListedFinding>[] => {
-    const outcome = outcomes.get(item.number)
-    if (outcome?.status === 'fixed') return []
-    return [
-      {
-        item,
-        unapplied: unapplied(reason),
-        why:
-          outcome === undefined
-            ? `${ai.provider} did not say`
-            : `skipped by ${ai.provider}${because(outcome.reason)}`,
-      },
-    ]
-  })
-  return `${[
-    applied,
-    changed,
-    `${ai.provider} changed ${files(ai.changedFiles)}`,
-    ...(fixed.length === 0
-      ? [`${ai.provider} fixed no finding.`]
-      : [`${ai.provider} fixed ${formatCount(fixed.length, 'finding')}:`, ...fixed]),
-    ...leftLines(left),
-    ...(ai.summary === '' ? [] : [`Summary of ${ai.provider}:`, toTerminalText(ai.summary)]),
-  ].join('\n')}\n`
+  const lines = fix.ai?.status === 'answered' ? answeredLines(fix, fix.ai) : suggestionLines(fix)
+  return `${lines.join('\n')}\n`
 }
 
 export function formatFixWarnings(fix: FindingsFix<ListedFinding>): string[] {
@@ -92,7 +54,7 @@ export function formatFixWarnings(fix: FindingsFix<ListedFinding>): string[] {
   return fix.ai.status === 'answered' ? aiWarnings(fix.ai) : []
 }
 
-function aiWarnings(ai: Extract<AiFix, { status: 'answered' }>): string[] {
+function aiWarnings(ai: AnsweredFix): string[] {
   const { unreported, blocked } = ai
   return [
     ...(unreported.length === 0
@@ -116,6 +78,58 @@ interface Left<T> {
   item: T
   why: string
   unapplied?: string
+}
+
+function suggestionLines(fix: FindingsFix<ListedFinding>): string[] {
+  const failedChanges =
+    fix.ai === undefined || fix.ai.changedFiles.length === 0
+      ? []
+      : [`${fix.ai.provider} changed ${files(fix.ai.changedFiles)} before it failed`]
+  return [...headLines(fix), ...failedChanges, ...leftLines(fix.left.map(suggestionLeft))]
+}
+
+function answeredLines(fix: FindingsFix<ListedFinding>, ai: AnsweredFix): string[] {
+  const { fixed, left } = leftAfterAi(fix)
+  return [
+    ...headLines(fix),
+    `${ai.provider} changed ${files(ai.changedFiles)}`,
+    ...fixedLines(ai.provider, fixed),
+    ...leftLines(
+      left.map(({ item, reason, outcome }) => ({
+        item,
+        unapplied: unapplied(reason),
+        why:
+          outcome === undefined
+            ? `${ai.provider} did not say`
+            : `skipped by ${ai.provider}${because(outcome.reason)}`,
+      })),
+    ),
+    ...(ai.summary === '' ? [] : [`Summary of ${ai.provider}:`, toTerminalText(ai.summary)]),
+  ]
+}
+
+function headLines(fix: FindingsFix<ListedFinding>): string[] {
+  const { applied } = fix
+  return [
+    applied.length === 0
+      ? 'Applied no suggestion.'
+      : `Applied ${formatCount(applied.length, 'suggestion')}: ${applied.map(({ number }) => number).join(', ')}.`,
+    `Changed ${files(fix.changedFiles)}`,
+  ]
+}
+
+function fixedLines(
+  provider: string,
+  fixed: readonly (LeftItem<ListedFinding> & { outcome: FixOutcome })[],
+): string[] {
+  if (fixed.length === 0) return [`${provider} fixed no finding.`]
+  return [
+    `${provider} fixed ${formatCount(fixed.length, 'finding')}:`,
+    ...fixed.map(
+      ({ item, reason, outcome }) =>
+        `${item.number}. ${place(item)}${unapplied(reason)}${because(outcome.reason)}`,
+    ),
+  ]
 }
 
 function suggestionLeft<T>({ item, reason }: LeftItem<T>): Left<T> {

@@ -3,6 +3,7 @@ import {
   FINDING_MARKER,
   findingMarker,
   hasFindingMarker,
+  withoutFindingMarker,
   hasResolvedMarker,
   parseReviewMarker,
   resolvedMarker,
@@ -70,6 +71,21 @@ describe('hasFindingMarker', () => {
   it('finds the marker that names the skill of the finding', () => {
     expect(hasFindingMarker(`Title\n\n${findingMarker('code-review:code-review')}`)).toBe(true)
     expect(hasFindingMarker(`\`${findingMarker('x')}\` quoted`)).toBe(false)
+  })
+})
+
+describe('withoutFindingMarker', () => {
+  it('cuts the trailing finding marker, with or without a skill, and the blank lines before it', () => {
+    expect(withoutFindingMarker(`Title\n\nWhy.\n\n${FINDING_MARKER}\n`)).toBe('Title\n\nWhy.')
+    expect(withoutFindingMarker(`Title\n\n${findingMarker('code-review:code-review')}`)).toBe(
+      'Title',
+    )
+  })
+
+  it('leaves a body without a trailing marker as it is', () => {
+    expect(withoutFindingMarker(`\`${FINDING_MARKER}\` quoted  \n`)).toBe(
+      `\`${FINDING_MARKER}\` quoted  \n`,
+    )
   })
 })
 

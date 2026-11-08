@@ -8,6 +8,7 @@ import {
   readReviews,
   reviewDetailOf,
   ruleStats,
+  storedFindings,
 } from './read-history.js'
 import type { HistoryReader } from './read-history.js'
 
@@ -609,5 +610,29 @@ describe('readReviewDetail', () => {
   it('reads nothing for an unknown run or without a history', () => {
     expect(readReviewDetail(fakeHistory([RUN]), 99)).toBeUndefined()
     expect(readReviewDetail(undefined, 7)).toBeUndefined()
+  })
+})
+
+describe('storedFindings', () => {
+  const stored = { file: 'src/a.ts', title: 'off by one', severity: 'P1', line: 3 }
+
+  it('keeps a stored suggestion with its four fields only', () => {
+    const suggestion = { startLine: 3, endLine: 4, original: 'a', replacement: 'b' }
+
+    const [finding] = storedFindings([{ ...stored, suggestion: { ...suggestion, extra: true } }])
+
+    expect(finding?.suggestion).toEqual(suggestion)
+  })
+
+  it.each([
+    ['null', null],
+    ['missing a field', { startLine: 3, endLine: 4, original: 'a' }],
+    ['a field of the wrong type', { startLine: '3', endLine: 4, original: 'a', replacement: 'b' }],
+    ['not an object', 'replace a with b'],
+  ])('leaves out a suggestion that is %s', (_case, suggestion) => {
+    const [finding] = storedFindings([{ ...stored, suggestion }])
+
+    expect(finding).toBeDefined()
+    expect(finding).not.toHaveProperty('suggestion')
   })
 })

@@ -1,15 +1,13 @@
-import { join } from 'node:path'
 import type { ReviewSettings } from '../config/merge-config.js'
 import { serveGhFacade } from '../gh-facade/gh-server.js'
 import type { GhFacade } from '../gh-facade/gh-server.js'
 import type { GhCheck, ReadGitHub } from '../gh-facade/types.js'
 import type { PullRequest } from '../github/pull-request.js'
 import type { Toolbox } from '../investigation/toolbox.js'
-import { closeWorkDir, openWorkDir, sweepOrphanWorkDirs } from '../process/work-dirs.js'
+import { closeWorkDir } from '../process/work-dirs.js'
 import type { CommandPolicy, NativeSkillRef, ReviewProvider } from '../providers/types.js'
 import type { CiEntry } from '../context/types.js'
 import type { GitMirror } from '../repository/git-mirror.js'
-import { materializeWorkTree } from '../repository/work-tree.js'
 import type { WorkTree } from '../repository/work-tree.js'
 import {
   NATIVE_FILE_NAMES,
@@ -19,6 +17,7 @@ import {
 import type { NativeSkillData, NativeSkillFiles } from '../review/native-context.js'
 import type { NativeSkillRun, SkillPass } from '../review/types.js'
 import { TRUSTED_ASSOCIATIONS } from '../watch/filters.js'
+import { materializePullRequest, openFreshWorkDir } from './pull-request-work-tree.js'
 
 export const NATIVE_TIMEOUT_MS = 1_800_000
 export const NATIVE_MAX_TURNS = 100
@@ -55,31 +54,24 @@ export async function openNativeRunner(
   deps: NativeRunnerDeps,
 ): Promise<NativeRunner> {
   const { pullRequest, review } = input
-  await sweepOrphanWorkDirs(deps.tempRoot)
-  const dir = await openWorkDir(deps.tempRoot)
+  const dir = await openFreshWorkDir(deps.tempRoot)
   let facade: GhFacade | undefined
   let tree: WorkTree
   let policy: { commands: CommandPolicy; readDirs: string[] }
   const texts = nativeSkillTexts(input)
   try {
-    tree = await materializeWorkTree(
+    tree = await materializePullRequest(
       deps.mirror,
+      dir,
+      pullRequest,
       {
-        dir: join(dir, 'repo'),
-        headSha: pullRequest.headSha,
-        baseSha: pullRequest.baseSha,
-        baseRef: pullRequest.baseRef,
-        headRef: pullRequest.headRef,
-        number: pullRequest.number,
-        commits: pullRequest.stats.commits,
         diff: input.diff,
         files: Object.fromEntries(
           kinds(texts).map((kind) => [NATIVE_FILE_NAMES[kind], texts[kind] ?? '']),
         ),
       },
-      { env: deps.env },
+      deps,
     )
-    for (const warning of tree.warnings) deps.warning(warning)
     facade = await serveGhFacade({
       data: {
         repo: pullRequest.repo,

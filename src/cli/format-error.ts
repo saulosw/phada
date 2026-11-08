@@ -75,6 +75,43 @@ const PROVIDER_HINTS: Readonly<Record<string, ProviderHints>> = {
   },
 }
 
+type ErrorClass = abstract new (...args: never[]) => Error
+
+const USAGE_ERRORS: readonly ErrorClass[] = [
+  ConfigError,
+  SkillError,
+  InvalidPullRequestRefError,
+  ReplayNeedsDryRunError,
+]
+
+const MESSAGE_ERRORS: readonly ErrorClass[] = [
+  HeadNotInPullRequestError,
+  MissingGitHubTokenError,
+  WatchRunningError,
+  HistoryStoreError,
+  RunNotFoundError,
+  MissNotFoundError,
+  LessonNotFoundError,
+  LessonDecidedError,
+  LessonRuleRefusedError,
+  InvalidLessonEditError,
+  EditorNotFoundError,
+  PublishRefusedError,
+  NoDefaultBranchError,
+  NothingToReviewError,
+  NoLocalReviewError,
+  NoLocalBranchError,
+  ForkFixError,
+  ClosedPullRequestFixError,
+  NoPushPermissionError,
+  MissingGitIdentityError,
+  BranchMovedError,
+  CommitFailedError,
+  PushFailedError,
+  CheckoutUnavailableError,
+  IndexStoreError,
+]
+
 export function formatError(error: unknown, options: { debug: boolean }): FormattedError {
   const line = `phada: ${errorSummary(error)}`
   const { exitCode } = describe(error)
@@ -89,26 +126,8 @@ function describe(error: unknown): { summary: string; exitCode: 1 | 2 } {
   if (error instanceof UsageError) {
     return { summary: `${error.message} Run with --help for usage.`, exitCode: 2 }
   }
-  if (error instanceof ConfigError) return { summary: error.message, exitCode: 2 }
-  if (error instanceof SkillError) return { summary: error.message, exitCode: 2 }
-  if (error instanceof InvalidPullRequestRefError) return { summary: error.message, exitCode: 2 }
-  if (error instanceof ReplayNeedsDryRunError) return { summary: error.message, exitCode: 2 }
-  if (error instanceof HeadNotInPullRequestError) return { summary: error.message, exitCode: 1 }
-  if (error instanceof MissingGitHubTokenError) return { summary: error.message, exitCode: 1 }
-  if (
-    error instanceof WatchRunningError ||
-    error instanceof HistoryStoreError ||
-    error instanceof RunNotFoundError ||
-    error instanceof MissNotFoundError ||
-    error instanceof LessonNotFoundError ||
-    error instanceof LessonDecidedError ||
-    error instanceof LessonRuleRefusedError ||
-    error instanceof InvalidLessonEditError ||
-    error instanceof EditorNotFoundError ||
-    error instanceof PublishRefusedError
-  ) {
-    return { summary: error.message, exitCode: 1 }
-  }
+  if (isOneOf(error, USAGE_ERRORS)) return { summary: error.message, exitCode: 2 }
+  if (isOneOf(error, MESSAGE_ERRORS)) return { summary: error.message, exitCode: 1 }
   if (error instanceof LocalGitError) return describeLocalGitError(error)
   if (error instanceof LocalDiffTooLargeError) {
     return {
@@ -116,28 +135,10 @@ function describe(error: unknown): { summary: string; exitCode: 1 | 2 } {
       exitCode: 1,
     }
   }
-  if (
-    error instanceof NoDefaultBranchError ||
-    error instanceof NothingToReviewError ||
-    error instanceof NoLocalReviewError ||
-    error instanceof NoLocalBranchError ||
-    error instanceof ForkFixError ||
-    error instanceof ClosedPullRequestFixError ||
-    error instanceof NoPushPermissionError ||
-    error instanceof MissingGitIdentityError ||
-    error instanceof BranchMovedError ||
-    error instanceof CommitFailedError ||
-    error instanceof PushFailedError
-  ) {
-    return { summary: error.message, exitCode: 1 }
-  }
   if (error instanceof DiffTooLargeError) {
     return { summary: `${error.message} Phada never truncates a diff.`, exitCode: 1 }
   }
   if (error instanceof GitHubError) return { summary: error.message, exitCode: 1 }
-  if (error instanceof CheckoutUnavailableError || error instanceof IndexStoreError) {
-    return { summary: error.message, exitCode: 1 }
-  }
   if (error instanceof ProviderError) return { summary: describeProviderError(error), exitCode: 1 }
   if (error instanceof InvalidReviewReportError || error instanceof InvalidLessonsAnswerError) {
     return { summary: `${error.message} Run with --debug to see its answer.`, exitCode: 1 }
@@ -147,6 +148,10 @@ function describe(error: unknown): { summary: string; exitCode: 1 | 2 } {
     summary: `Unexpected error: ${message.replace(/\.$/, '')}. Run with --debug for details.`,
     exitCode: 1,
   }
+}
+
+function isOneOf(error: unknown, classes: readonly ErrorClass[]): error is Error {
+  return classes.some((errorClass) => error instanceof errorClass)
 }
 
 function describeLocalGitError(error: LocalGitError): { summary: string; exitCode: 1 | 2 } {

@@ -1,5 +1,6 @@
 import { applySuggestions } from '../review/apply-suggestions.js'
-import type { RefusalReason, SuggestedEdit } from '../review/apply-suggestions.js'
+import type { RefusalReason } from '../review/apply-suggestions.js'
+import type { SuggestedEdit } from '../review/types.js'
 
 export interface WorkingFiles {
   read(path: string): Promise<string | undefined>

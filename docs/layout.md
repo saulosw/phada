@@ -14,7 +14,7 @@ src/
                          #   run through formatRunSections()), a history save that failed and
                          #   the id of the saved run; review with no pull request →
                          #   runLocalReview() of local-review-command.ts (the start line, the
-                         #   review, the saved run); publish → runPublish(); fix → runFix();
+                         #   review, the saved run); publish → runPublish(); fix → runLocalFix();
                          #   no command →
                          #   runApp(); createProvider()
   architecture.test.ts   # allowed imports of src/review/, src/publish/, src/watch/, src/context/,
@@ -213,10 +213,13 @@ src/
                          #   and a line) and numbered as the review printed them, the head it
                          #   reviewed; NoLocalReviewError, NoLocalBranchError
     fix-findings.ts      #   fixFindings(): applyFileSuggestions(), then the findings left sent to
-                         #   the provider's fix() in the tree, with snapshots of the tree before,
-                         #   between and after → applied, files changed, left, AiFix (files the
-                         #   AI changed, its outcomes, or its failure); shared by the local and
-                         #   the pull request fix
+                         #   the provider's fix() in the tree (the fix prompt with a new nonce,
+                         #   15 min and 60 turns, the answer parsed into outcomes, summary and
+                         #   blocked commands; a provider error kept as failed), with snapshots
+                         #   of the tree before, between and after → applied, files changed,
+                         #   left, AiFix (files the AI changed, its outcomes, or its failure);
+                         #   leftAfterAi(): the findings left split into the ones the AI said
+                         #   it fixed and the rest; shared by the local and the pull request fix
     pull-request-fix.ts  #   readPullRequestFix(): the pull request (a fork or a closed one
                          #   refused), the repository (refused unless the token can push), then
                          #   threadFindings() of the review state (its head moved since the pull
@@ -230,9 +233,10 @@ src/
                          #   applied suggestion and of each finding the AI said it fixed) and
                          #   the push, both injected; ForkFixError, ClosedPullRequestFixError,
                          #   NoPushPermissionError
-    ai-fix.ts            #   askAiToFix(): the fix prompt with a new nonce, 15 min and 60 turns, the
-                         #   answer parsed into outcomes (fixed, skipped, unreported), summary and
-                         #   blocked commands; a provider error kept as failed
+    pull-request-work-tree.ts # openFreshWorkDir(): orphan work folders swept, then a new one;
+                         #   materializePullRequest(): the work tree of a pull request head
+                         #   from the mirror in that folder, its warnings reported; shared by
+                         #   the native skills and the pull request fix
     apply-file-suggestions.ts # applyFileSuggestions(): numbered findings grouped by file, each
                          #   file read and written through WorkingFiles with applySuggestions();
                          #   left with a reason (no suggestion, missing file, not found,
@@ -564,7 +568,9 @@ src/
     format-watch.ts      #   formatWatchEvent(), formatWatchStatus(), formatWatchStatusJson(); a
                          #   job waiting for CI with its deadline and pending checks, skipped
                          #   for failing CI or back in the queue
-    provider-choice.ts   #   assertProviderChoice(): known provider, model for ollama, no MCP
+    provider-choice.ts   #   loadProviderChoice(): the user layers of a repository and the
+                         #   provider and model of the flags or of those layers; modelOption();
+                         #   assertProviderChoice(): known provider, model for ollama, no MCP
                          #   server names with ollama; providerRunsSkills()
     mcp-names.ts         #   checkMcpNames(): MCP server names checked with `claude mcp get` or
                          #   read with `codex mcp get --json` before the review
@@ -590,16 +596,17 @@ src/
                          #   root and whose context is read from the local git → the run saved
                          #   as source local (branch, dirty, number 0, never feedback); prints
                          #   nothing; shared by phada review and phada mcp
-    fix-command.ts       #   runFix(): the local git of a folder (injectable), the history opened
-                         #   (missing → no local review), readLocalFix(), --only checked against
-                         #   the numbers, the HEAD moved as a warning, the list (--list stops),
-                         #   the provider of --provider/--model or the user config of the origin
-                         #   (with the progress of the fix), fixFindings() on the files of
-                         #   the working tree (inside its root, injectable), the report, the
-                         #   warnings, and the AI's error after the report; no token
-    fix-wiring.ts        #   shared by the fix commands: fixProvider() (--provider/--model or the
-                         #   user config, with the progress of the fix), pickNumbers() (--only
-                         #   checked against the numbers), workingFiles() (the files inside a root)
+    local-fix-command.ts #   runLocalFix(): the local git of a folder (injectable), the history
+                         #   opened (missing → no local review), readLocalFix(), then startFix()
+                         #   with the HEAD moved as a warning after --only and the provider of
+                         #   the origin, fixFindings() on the files of the working tree (inside
+                         #   its root), reportFix(); no token
+    fix-wiring.ts        #   shared by the fix commands: startFix() (nothing to fix, --only
+                         #   checked against the numbers by pickNumbers(), the list and --list,
+                         #   the preparation before the AI, the list again), reportFix() (the
+                         #   report, the warnings, and the AI's error after them), fixProvider()
+                         #   (--provider/--model or the user config, with the progress of the
+                         #   fix), workingFiles() (the files inside a root)
     pull-request-fix-command.ts # runPullRequestFix(): stdin not a terminal without --yes refused
                          #   first, then the token, readPullRequestFix(), --only, the list
                          #   (--list stops), the git identity of the folder (missing → error
@@ -1220,7 +1227,8 @@ src/
   publish/               # pure: what to publish, data in, decision out
     markers.ts           #   the review (with the diff fingerprint), finding (findingMarker():
                          #   with the skill, older ones without it still read) and resolved
-                         #   markers, read only at the end of a body; findingTitle()
+                         #   markers, read only at the end of a body; findingTitle();
+                         #   withoutFindingMarker()
     phada-state.ts       #   Phada's own reviews and open threads (author = token owner + marker);
                          #   resolvedByPhada(), reviewedShaOf()
     thread-findings.ts   #   threadFindings(): the open Phada threads numbered by file and line
@@ -1366,8 +1374,8 @@ src/
                          #   PublishTarget, PullRecord, PauseState, JobStatus (waiting for CI),
                          #   FailureKind
   review/                # the engine: data in, result out
-    types.ts             #   ReviewRequest, Finding (closeToCut), ReviewResult (passUsage),
-                         #   PassUsage, ReviewOutcome, …
+    types.ts             #   ReviewRequest, Finding (closeToCut), Suggestion, SuggestedEdit,
+                         #   ReviewResult (passUsage), PassUsage, ReviewOutcome, …
     token-usage.ts       #   sumUsage(), totalUsage(); usageReport(): the tokens of each AI pass
                          #   of a review and of the recheck, with their total
     prompt-parts.ts      #   text shared by the review and verification prompts: rules section,
@@ -1416,7 +1424,7 @@ src/
                          #   their range, or at the one place their original moved to; overlapping
                          #   ones after the first refused), keeping its line endings
     finding-numbers.ts   #   numberFindings(): the number of each finding as the review prints it
-                         #   (by severity, then in order); isSeverity()
+                         #   (by severity, then in order); SEVERITIES, isSeverity()
     fix-prompt.ts        #   buildFixPrompt(): the numbered findings to fix as a PHADA_FINDINGS
                          #   block with a nonce; fix only them, no git writes, one outcome line each
     fix-outcomes.ts      #   parseFixOutcomes(): the "#n fixed|skipped: reason" lines of a fix

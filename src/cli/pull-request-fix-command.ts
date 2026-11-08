@@ -21,9 +21,9 @@ import type { PushCommitOptions } from '../repository/push-fix.js'
 import type { StopSignal } from '../tui/open-app.js'
 import { confirm, isTerminalInput } from './confirm.js'
 import { UsageError } from './errors.js'
-import type { FixCommand, FixCommandDeps } from './fix-command.js'
-import { fixProvider, pickNumbers, workingFiles } from './fix-wiring.js'
-import { formatFixReport, formatFixWarnings, listed } from './format-fix.js'
+import type { FixCommand, FixCommandDeps } from './local-fix-command.js'
+import { fixProvider, reportFix, startFix, workingFiles } from './fix-wiring.js'
+import { formatNumberedList } from './format-fix.js'
 import { requireGitHubToken } from './github-token.js'
 import type { GitHubTokenDeps } from './github-token.js'
 
@@ -38,8 +38,18 @@ export interface PullRequestFixCommandDeps extends FixCommandDeps, GitHubTokenDe
   pushCommit?: (options: PushCommitOptions) => Promise<void>
 }
 
+type PullRequestFixCommand = FixCommand & { ref: PullRequestRef; yes: boolean }
+
+interface PushPlan {
+  ref: PullRequestRef
+  target: PullRequestFixTarget
+  token: string
+  identity: GitIdentity
+  yes: boolean
+}
+
 export async function runPullRequestFix(
-  command: FixCommand & { ref: PullRequestRef; yes: boolean },
+  command: PullRequestFixCommand,
   deps: PullRequestFixCommandDeps,
 ): Promise<void> {
   const { ref } = command
@@ -56,73 +66,66 @@ export async function runPullRequestFix(
     fetchRepository: () => deps.fetchRepository(repository),
     fetchReviewState: () => deps.fetchReviewState({ ...ref, token }),
   })
-  if (target.findings.length === 0) {
-    deps.stdout.write(`Nothing to fix: ${name} has no open Phada comment.\n`)
-    return
-  }
-  const picked = pickNumbers(
-    target.findings,
-    command.only,
-    (number, last) => `No comment ${number} on ${name}: its comments go from 1 to ${last}.`,
+  const started = await startFix(
+    command,
+    {
+      findings: target.findings,
+      nothingToFix: `Nothing to fix: ${name} has no open Phada comment.`,
+      unknownNumber: (number, last) =>
+        `No comment ${number} on ${name}: its comments go from 1 to ${last}.`,
+      list: formatNumberedList(
+        `Open Phada comments on ${name} (${branchOf(target)}):`,
+        target.findings,
+      ),
+      prepare: async () => ({
+        identity: await readGitIdentity({ dir: deps.cwd, env: deps.env }),
+        provider: await fixProvider(ref, command, deps),
+      }),
+    },
+    deps.stdout,
   )
-  const heading = `Open Phada comments on ${name} (${branchOf(target)}):`
-  if (command.list) {
-    deps.stdout.write(listed(heading, target.findings))
-    return
-  }
-  const identity = await readGitIdentity({ dir: deps.cwd, env: deps.env })
-  const provider = await fixProvider(ref, command, deps)
-  deps.stdout.write(listed(heading, target.findings))
+  if (started === undefined) return
+  const { identity, provider } = started.prepared
+  const plan: PushPlan = { ref, target, token, identity, yes: command.yes }
   deps.onSignal(() => deps.abort(130))
   const { mirror } = repositoryCache(deps.env, deps.home, ref.owner, ref.repo)
-  const fixed = await fixPullRequest(target, picked, {
+  const fixed = await fixPullRequest(target, started.picked, {
     openMirror: () => deps.openMirror({ dir: mirror, ...repository, env: deps.env }),
     openTree: (dir) => (deps.openLocalGit ?? openLocalGit)({ dir, env: deps.env }),
-    files: (root) => workingFiles(root, deps.workingTreeFiles ?? nodeFileSystem),
+    files: (root) => workingFiles(root, nodeFileSystem),
     env: deps.env,
     warning: (message) => deps.stderr.write(`Warning: ${toTerminalText(message)}\n`),
     provider,
   })
   try {
-    await accept(fixed, { name, branch: branchOf(target), target, token, identity }, command, deps)
+    if (showFix(fixed, name, deps)) await commitAndPush(fixed, plan, deps)
   } finally {
     await fixed.close()
   }
 }
 
-async function accept(
-  fixed: PullRequestFix,
-  {
-    name,
-    branch,
-    target,
-    token,
-    identity,
-  }: {
-    name: string
-    branch: string
-    target: PullRequestFixTarget
-    token: string
-    identity: GitIdentity
-  },
-  command: FixCommand & { ref: PullRequestRef; yes: boolean },
-  deps: PullRequestFixCommandDeps,
-): Promise<void> {
+function showFix(fixed: PullRequestFix, name: string, deps: PullRequestFixCommandDeps): boolean {
   if (fixed.diff !== '') deps.stdout.write(`\n${toTerminalText(fixed.diff)}`)
-  deps.stdout.write(`\n${formatFixReport(fixed)}`)
-  for (const warning of formatFixWarnings(fixed)) deps.stderr.write(`${warning}\n`)
-  if (fixed.ai?.status === 'failed') throw fixed.ai.error
+  reportFix(fixed, deps)
   if (fixed.changedFiles.length === 0) {
     deps.stdout.write(`Nothing changed: nothing to commit to ${name}.\n`)
-    return
+    return false
   }
+  return true
+}
+
+async function commitAndPush(
+  fixed: PullRequestFix,
+  { ref, target, token, identity, yes }: PushPlan,
+  deps: PullRequestFixCommandDeps,
+): Promise<void> {
+  const branch = branchOf(target)
   const destination = `${toTerminalText(target.pullRequest.repo)}:${branch}`
   const question = `Commit and push to ${destination}? [y/N] `
-  if (!command.yes && !(await confirm(deps.stdin, deps.stderr, question))) {
+  if (!yes && !(await confirm(deps.stdin, deps.stderr, question))) {
     deps.stderr.write('Nothing committed or pushed: the work tree is removed.\n')
     return
   }
-  const { ref } = command
   const commit = await pushPullRequestFix(target, fixed, {
     readHead: async () => (await deps.fetchPullRequestMetadata({ ...ref, token })).headSha,
     commit: (input) => commitWorkTree({ ...input, identity, env: deps.env }),

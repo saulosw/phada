@@ -5,7 +5,7 @@ export interface NumberedFinding {
   finding: Finding
 }
 
-const SEVERITIES: readonly Severity[] = ['P0', 'P1', 'P2']
+export const SEVERITIES: readonly Severity[] = ['P0', 'P1', 'P2']
 
 export function isSeverity(value: string | null): value is Severity {
   return SEVERITIES.some((severity) => severity === value)
