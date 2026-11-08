@@ -242,6 +242,28 @@ describe('formatWatchStatus', () => {
     )
   })
 
+  it('names a local review among the last reviews by its branch', () => {
+    const run = STATUS.lastRuns[0]
+    if (run === undefined) throw new Error('no run')
+    const status: HistoryStatus = {
+      ...STATUS,
+      lastRuns: [
+        {
+          ...run,
+          source: 'local',
+          number: 0,
+          status: 'not-published',
+          url: undefined,
+          branch: 'feat/x',
+        },
+      ],
+    }
+
+    expect(formatWatchStatus(status, { pid: 123 }, AT, { count: 6, max: 6 })).toContain(
+      '  acme/shop@feat/x (local)  a1b2c3d  not-published 2026-10-18 13:55\n',
+    )
+  })
+
   it('says when nothing runs and nothing is queued', () => {
     const empty: HistoryStatus = { repos: [], queued: [], running: [], failed: [], lastRuns: [] }
 

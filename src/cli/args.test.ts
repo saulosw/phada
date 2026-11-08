@@ -272,8 +272,96 @@ describe('parseCliArgs', () => {
     })
   })
 
+  it('reviews the local changes of the working folder when no pull request is given', () => {
+    expect(parseCliArgs(['review'])).toEqual({
+      kind: 'review-local',
+      uncommitted: false,
+      format: 'markdown',
+      debug: false,
+    })
+  })
+
+  it('takes the base, the uncommitted changes and the review options of a local review', () => {
+    const options = ['--provider', 'codex', '--model', ' opus ', '--language', 'pt-BR']
+    const more = ['--min-confidence', '60', '--format', 'json', '--no-verify', '--investigate']
+    const passes = ['--no-continuation', '--groups', '--skill', 'phada', '--debug']
+
+    expect(
+      parseCliArgs([
+        'review',
+        '--base',
+        'release/1.2',
+        '--uncommitted',
+        ...options,
+        ...more,
+        ...passes,
+      ]),
+    ).toEqual({
+      kind: 'review-local',
+      base: 'release/1.2',
+      uncommitted: true,
+      provider: 'codex',
+      model: 'opus',
+      language: 'pt-BR',
+      minConfidence: 60,
+      format: 'json',
+      verify: false,
+      continuation: false,
+      groups: true,
+      investigate: true,
+      skills: ['phada'],
+      debug: true,
+    })
+  })
+
+  it('accepts --dry-run in a local review, where nothing is ever posted', () => {
+    expect(parseCliArgs(['review', '--dry-run'])).toEqual({
+      kind: 'review-local',
+      uncommitted: false,
+      format: 'markdown',
+      debug: false,
+    })
+  })
+
   it.each([
-    [[], 'Missing the pull request to review.'],
+    ['--force'],
+    ['--wait-ci'],
+    ['--head', '1e6a005'],
+    ['--no-resolve'],
+    ['--no-conversation'],
+    ['--no-ci'],
+  ])('refuses %s in a local review: it needs a pull request', (flag, ...value) => {
+    expect(() => parseCliArgs(['review', flag, ...value])).toThrow(
+      new UsageError(
+        `${flag} needs a pull request: pass one (owner/repo#N), or leave ${flag} out of a local review.`,
+      ),
+    )
+  })
+
+  it.each([['--base', 'main'], ['--uncommitted']])(
+    'refuses %s with a pull request: it is for local reviews',
+    (flag, ...value) => {
+      expect(() => parseCliArgs(['review', 'acme/shop#12', flag, ...value])).toThrow(
+        new UsageError(
+          `${flag} is for local reviews: run phada review with no pull request in the clone.`,
+        ),
+      )
+    },
+  )
+
+  it('documents the local review in the usage text', () => {
+    expect(REVIEW_USAGE).toContain('Usage: phada review [<owner/repo#N | pull request URL>]')
+    for (const text of ['--base <ref>', '--uncommitted']) expect(REVIEW_USAGE).toContain(text)
+    expect(USAGE).toContain('review [pull request]')
+  })
+
+  it('refuses an empty --base', () => {
+    expect(() => parseCliArgs(['review', '--base', ' '])).toThrow(
+      new UsageError('--base needs a branch, tag or commit SHA.'),
+    )
+  })
+
+  it.each([
     [['acme/shop#12', 'acme/shop#13'], 'Review one pull request at a time.'],
     [['acme/shop#12', '--modle', 'opus'], "Unknown option '--modle'."],
     [['acme/shop#12', '--model'], "Option '--model <value>' argument missing."],
@@ -367,7 +455,7 @@ describe('parseCliArgs', () => {
 
   it('says that a review is published unless --dry-run is given', () => {
     expect(USAGE).toContain(
-      'review <pull request>  Review a pull request and publish the review on it',
+      'review [pull request]  Review a pull request and publish the review on it',
     )
     expect(REVIEW_USAGE).toContain('and publishes the')
     expect(REVIEW_USAGE).toContain('Use --dry-run to only print it.')

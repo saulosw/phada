@@ -1,4 +1,5 @@
 import type { RunReport } from '../app/read-run-report.js'
+import { runTarget } from '../app/run-target.js'
 import { toTerminalText } from '../app/terminal-text.js'
 import type { RunRecord } from '../store/history-store.js'
 import { formatGitHubPreview } from './format-github.js'
@@ -34,7 +35,7 @@ function headerLine(run: Omit<RunRecord, 'resultJson'>, publishedFrom?: number):
   const provider = run.model === undefined ? run.provider : `${run.provider}/${run.model}`
   return [
     `Run ${run.id ?? '?'}`,
-    `${run.repo}#${run.number} at ${shortSha(run.headSha)}`,
+    `${runTarget(run)} at ${shortSha(run.headSha)}`,
     formatLocalTime(new Date(run.startedAt)),
     run.requestSource ?? run.source,
     ...(provider === undefined ? [] : [provider]),

@@ -5,7 +5,11 @@ import { pullRequestFixture } from '../../test/support/pull-request.js'
 import type { Conversation } from '../publish/types.js'
 import type { Ci } from '../context/types.js'
 import type { RecheckReport, ReviewResult } from '../review/types.js'
-import { formatAlreadyReviewedJson, formatReviewJson } from './format-json.js'
+import {
+  formatAlreadyReviewedJson,
+  formatLocalReviewJson,
+  formatReviewJson,
+} from './format-json.js'
 
 const PULL_REQUEST = {
   repo: 'acme/shop',
@@ -1254,5 +1258,117 @@ describe('formatReviewJson with native skill passes', () => {
       review: { skillBodies: unknown }
     }
     expect(output.review.skillBodies).toBeNull()
+  })
+})
+
+describe('formatLocalReviewJson', () => {
+  const LOCAL = {
+    repo: 'acme/shop',
+    branch: 'feat/spend',
+    base: '0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c',
+    head: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
+    dirty: true,
+    reviewed: 'c3d4e5f60718293a4b5c6d7e8f9012345678a1b2',
+    title: 'Let users spend crystals',
+  }
+  const NO_REPORTS = { context: null, investigation: null, impact: null, related: null }
+
+  it('prints the local block in place of the pull request, with the same review and no publication', () => {
+    expect(
+      Object.keys(
+        (
+          parse(
+            formatLocalReviewJson(LOCAL, {
+              outcome: { status: 'reviewed', result: RESULT },
+              ...NO_REPORTS,
+            }),
+          ) as { local: object }
+        ).local,
+      ),
+    ).toEqual(['repo', 'branch', 'base', 'head', 'dirty', 'reviewed', 'title'])
+    const local = parse(
+      formatLocalReviewJson(LOCAL, {
+        outcome: { status: 'reviewed', result: RESULT },
+        ...NO_REPORTS,
+      }),
+    ) as Record<string, unknown>
+    const remote = parse(
+      formatReviewJson(pullRequestFixture(), { status: 'reviewed', result: RESULT }),
+    ) as Record<string, unknown>
+
+    expect(Object.keys(local)).toEqual([
+      'schemaVersion',
+      'status',
+      'verdict',
+      'local',
+      'review',
+      'context',
+      'investigation',
+      'impact',
+      'related',
+      'usage',
+    ])
+    expect(local).toEqual({
+      schemaVersion: 1,
+      status: 'reviewed',
+      verdict: 'blocking',
+      local: LOCAL,
+      review: remote.review,
+      context: null,
+      investigation: null,
+      impact: null,
+      related: null,
+      usage: remote.usage,
+    })
+  })
+
+  it('prints a null branch for a detached head, the reports and the impact text', () => {
+    const { branch: _, ...detached } = LOCAL
+    const context = contextReportFixture()
+    const impact = {
+      status: 'unavailable' as const,
+      reason: 'no index',
+      changed: [],
+      totals: { symbols: 0, callers: 0, files: 0 },
+      learned: [],
+    }
+
+    const output = parse(
+      formatLocalReviewJson(detached, {
+        outcome: { status: 'reviewed', result: RESULT },
+        ...NO_REPORTS,
+        context,
+        impact,
+        impactText: 'nothing',
+      }),
+    )
+
+    expect(output).toMatchObject({
+      local: { ...detached, branch: null },
+      context,
+      impact: { ...impact, text: 'nothing' },
+    })
+  })
+
+  it('prints a skipped local review with its reason', () => {
+    const output = parse(
+      formatLocalReviewJson(LOCAL, {
+        outcome: { status: 'skipped', reason: 'all-ignored' },
+        ...NO_REPORTS,
+      }),
+    )
+
+    expect(output).toEqual({
+      schemaVersion: 1,
+      status: 'skipped',
+      reason: 'all-ignored',
+      verdict: 'skipped',
+      local: LOCAL,
+      context: null,
+      investigation: null,
+      impact: null,
+      related: null,
+      usage: { passes: [], total: null },
+    })
   })
 })

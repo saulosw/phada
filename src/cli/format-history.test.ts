@@ -84,6 +84,31 @@ describe('formatHistoryText', () => {
     )
   })
 
+  it('names a local review by its branch, starred when it had uncommitted changes, never #0', () => {
+    const reviewed: RunRecord = {
+      ...RUN,
+      id: 4,
+      source: 'local',
+      number: 0,
+      status: 'not-published',
+      url: undefined,
+      branch: 'feat/spend',
+      dirty: true,
+    }
+    const detached: RunRecord = { ...reviewed, id: 5, branch: undefined, dirty: false }
+
+    const text = formatHistoryText([reviewed, detached], 2, undefined)
+
+    expect(text).toBe(
+      [
+        `   4  ${local(STARTED)}  acme/shop@feat/spend* (local)  a1b2c3d  local       not-published  claude/opus · score 4 · 2 findings`,
+        `   5  ${local(STARTED)}  acme/shop@a1b2c3d (local)  a1b2c3d  local       not-published  claude/opus · score 4 · 2 findings`,
+        '',
+      ].join('\n'),
+    )
+    expect(text).not.toContain('#0')
+  })
+
   it('says when more runs exist than shown', () => {
     expect(formatHistoryText([RUN], 7, undefined)).toContain(
       'Showing 1 of 7 reviews; use --limit or --since for more.',
@@ -137,6 +162,23 @@ describe('formatHistoryText', () => {
 })
 
 describe('formatHistoryJson', () => {
+  it('prints the branch and whether a local review had uncommitted changes, with no number', () => {
+    const json = JSON.parse(
+      formatHistoryJson(
+        [{ ...RUN, source: 'local', number: 0, branch: 'feat/spend', dirty: true }],
+        1,
+        [],
+      ),
+    ) as { runs: Record<string, unknown>[] }
+
+    expect(json.runs[0]).toMatchObject({
+      source: 'local',
+      number: null,
+      branch: 'feat/spend',
+      dirty: true,
+    })
+  })
+
   it('prints runs, findings and the total with schemaVersion 1', () => {
     const json = JSON.parse(formatHistoryJson([RUN], 4, [FINDING])) as Record<string, unknown>
 
@@ -164,6 +206,8 @@ describe('formatHistoryJson', () => {
           reason: null,
           errorKind: null,
           error: null,
+          branch: null,
+          dirty: null,
         },
       ],
       findings: [

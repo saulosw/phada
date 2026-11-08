@@ -7,6 +7,7 @@ import type { CheckedNames, NameCheck } from './mcp-names.js'
 import type { ReadFileAt } from '../app/code-elements.js'
 import type { FeedbackRefreshDeps } from '../app/feedback.js'
 import type { CompareCommits } from '../app/harvest-misses.js'
+import type { ReviewedLocalChanges } from '../app/local-review.js'
 import type { PullRequestReviewDeps } from '../app/review-pull-request.js'
 import type { CiReaders } from '../app/read-ci.js'
 import type { ReplayReaders } from '../app/replay.js'
@@ -73,7 +74,11 @@ import {
   formatIgnoredOnlyReview,
   formatResolvedReply,
 } from './format-github.js'
-import { formatAlreadyReviewedJson, formatReviewJson } from './format-json.js'
+import {
+  formatAlreadyReviewedJson,
+  formatLocalReviewJson,
+  formatReviewJson,
+} from './format-json.js'
 import type { Publication } from './format-json.js'
 import { messagesFor } from './i18n/messages.js'
 import { providerRunsSkills } from './provider-choice.js'
@@ -218,7 +223,7 @@ export const renderReview = {
 
 export function pullRequestReviewDeps(
   deps: ReviewWiringDeps,
-  repository: PublishTarget,
+  repository: RepositoryFilesOptions,
   choice: Choice & { detached?: boolean },
   pullRequest: PullRequest,
   progress: ReviewProgressSink,
@@ -357,6 +362,29 @@ export function reviewRunJson(
     reviewed.recheck ?? null,
     fixFor,
     { ...blocks, ...(impactText === undefined ? {} : { impactText }) },
+  )
+}
+
+export function localReviewJson(
+  {
+    local,
+    pullRequest,
+    reviewed,
+  }: Pick<ReviewedLocalChanges, 'local' | 'pullRequest' | 'reviewed'>,
+  fixFor?: (blocked: BlockedCommand) => string,
+): string {
+  return formatLocalReviewJson(
+    { ...local, title: pullRequest.title },
+    {
+      outcome: reviewed.outcome,
+      context: reviewed.context.report,
+      investigation: reviewed.investigation,
+      impact: reviewed.impact,
+      ...(reviewed.impactText === undefined ? {} : { impactText: reviewed.impactText }),
+      related: reviewed.related,
+      ...(reviewed.language === undefined ? {} : { language: reviewed.language }),
+    },
+    fixFor,
   )
 }
 

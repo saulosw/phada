@@ -40,6 +40,9 @@ export interface Messages {
   terminal: {
     reviewOf: string
     head: string
+    local: string
+    base: string
+    uncommitted: string
     state(state: 'open' | 'closed', draft: boolean): string
     score: string
     findings: string

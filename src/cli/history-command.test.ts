@@ -22,7 +22,12 @@ import type { ImpactReport } from '../graph/report.js'
 import type { InvestigationReport } from '../investigation/tools/report.js'
 import type { Conversation } from '../publish/types.js'
 import type { ReviewResult } from '../review/types.js'
-import { formatAlreadyReviewedJson, formatReviewJson, publishedRunJson } from './format-json.js'
+import {
+  formatAlreadyReviewedJson,
+  formatLocalReviewJson,
+  formatReviewJson,
+  publishedRunJson,
+} from './format-json.js'
 import type { Publication } from './format-json.js'
 import { formatLocalTime } from './units.js'
 import type { HistoryCommandDeps } from './history-access.js'
@@ -810,6 +815,57 @@ describe('runHistoryShow', () => {
         provider: 'codex',
       }) as unknown,
       result: JSON.parse(json) as unknown,
+    })
+  })
+
+  it('names a local run by its branch, with its title and the sections of the review', async () => {
+    const h = harness()
+    const json = formatLocalReviewJson(
+      {
+        repo: 'acme/shop',
+        branch: 'feat/spend',
+        base: 'c'.repeat(40),
+        head: SHA,
+        dirty: true,
+        reviewed: 'b'.repeat(40),
+        title: 'Let users spend crystals',
+      },
+      {
+        outcome: { status: 'reviewed', result: RESULT },
+        context: contextReportFixture(),
+        investigation: null,
+        impact: null,
+        related: null,
+      },
+    )
+    const changes = { source: 'local', number: 0, status: 'not-published' } as const
+    await h.seed((store) =>
+      store.addRun(storedRun(json, { ...changes, branch: 'feat/spend', dirty: true })),
+    )
+
+    await runHistoryShow(SHOW, h.deps)
+
+    const out = h.stdout()
+    expect(out.split('\n').slice(0, 2)).toEqual([
+      `Run 1 · acme/shop@feat/spend* (local) at a1b2c3d · ${local('2026-10-22T10:00:00.000Z')} · local · codex/gpt-6-astra · not published`,
+      'Let users spend crystals',
+    ])
+    expect(out).toContain('## Context sent to the AI')
+    expect(out).not.toContain('#0')
+  })
+
+  it('prints a local run as JSON with its branch and no number', async () => {
+    const h = harness()
+    await h.seed((store) =>
+      store.addRun(
+        storedRun('{}', { source: 'local', number: 0, status: 'not-published', branch: 'x' }),
+      ),
+    )
+
+    await runHistoryShow({ ...SHOW, format: 'json' }, h.deps)
+
+    expect(JSON.parse(h.stdout())).toMatchObject({
+      run: { source: 'local', number: null, branch: 'x', dirty: null },
     })
   })
 

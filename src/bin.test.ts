@@ -22,15 +22,16 @@ describe('bin', () => {
     expect(stdout).toBe(`${version}\n`)
   }, 20_000)
 
-  it('exits with 2 and a usage error when no pull request is given', async () => {
-    const failure = await execFileAsync(process.execPath, [...BIN, 'review']).then(
+  it('exits with 2 and a usage error when a flag needs a pull request', async () => {
+    const failure = await execFileAsync(process.execPath, [...BIN, 'review', '--force']).then(
       () => undefined,
       (error: unknown) => error,
     )
 
     expect(failure).toMatchObject({
       code: 2,
-      stderr: 'phada: Missing the pull request to review. Run with --help for usage.\n',
+      stderr:
+        'phada: --force needs a pull request: pass one (owner/repo#N), or leave --force out of a local review. Run with --help for usage.\n',
     })
   }, 20_000)
 })

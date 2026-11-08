@@ -7,6 +7,23 @@ output can change between minor versions.
 
 ## Unreleased
 
+### Added
+
+- `phada review` with no pull request reviews the branch you are on, before the pull request: its
+  commits against the merge base with `origin/<default branch>` (or `--base <ref>`), with the same
+  rules (read from your clone at the base), repository graph, related repositories and AI as a
+  pull request review, and nothing posted. The title and description come from the commit
+  messages, so their claims are checked too.
+- `--uncommitted` adds what is staged, modified or untracked (not ignored): Phada commits the
+  working tree with a temporary index, without touching your index, refs or `git status`, and
+  reviews that commit, so the graph and the AI's tools see the uncommitted files.
+- A local review is saved in the history as `owner/repo@branch (local)` (with `*` when it included
+  uncommitted changes), shown so in `phada history`, `phada history show`, `phada watch --status`
+  and the app, and left out of feedback, misses and lessons; `phada publish` refuses it. Its
+  `--format json` has a `local` block instead of `pullRequest`.
+- `phada mcp` has `review_local_changes` and `wait_for_local_review`, so a coding agent can
+  review its branch before opening the pull request.
+
 ## 0.16.0 - 2026-11-05
 
 ### Added

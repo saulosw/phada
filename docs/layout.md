@@ -12,7 +12,9 @@ src/
   main.ts                # run(argv, deps): CLI flow — flags, token, then prepareReview() and
                          #   runManualReview() of manual-review.ts, printing the run (the dry
                          #   run through formatRunSections()), a history save that failed and
-                         #   the id of the saved run; publish → runPublish(); no command →
+                         #   the id of the saved run; review with no pull request →
+                         #   runLocalReview() of local-review-command.ts (the start line, the
+                         #   review, the saved run); publish → runPublish(); no command →
                          #   runApp(); createProvider()
   architecture.test.ts   # allowed imports of src/review/, src/publish/, src/watch/, src/context/,
                          #   src/investigation/, src/repository/, src/repo-map/, src/store/,
@@ -95,7 +97,7 @@ src/
                          #   of a saved run); refreshFeedback(): read due pull requests and
                          #   harvest their misses
     publish-saved-review.ts # publishSavedReview(): a dry run of the history (readRun injected) →
-                         #   refused (not found, not a dry run, a replay, nothing to publish, saved
+                         #   refused (not found, a local review, not a dry run, a replay, nothing to publish, saved
                          #   without what publishing needs, the head moved unless force),
                          #   skipped (decideRun: a commit already reviewed or the same diff,
                          #   unless force) or published on the commit it reviewed: planned
@@ -193,6 +195,20 @@ src/
                          #   newest, with the count of accepted and discarded ones
     lesson-rule.ts       #   lessonRuleId() (lesson-<id>) and lessonThreads() (the thread links of
                          #   its misses, once each): pure, also drawn by the app
+    run-target.ts        #   runTarget() (owner/repo#N, or owner/repo@branch (local) with * when
+                         #   dirty), runPlace(), localRunName() (the branch, else the short head):
+                         #   pure, also drawn by the app
+    local-review.ts      #   reviewLocalChanges(): the local git (origin, branch, HEAD, the merge
+                         #   base with origin/<default branch on GitHub> or --base, the synthetic
+                         #   commit of the working tree with uncommitted) → the assembled pull
+                         #   request → reviewPullRequest() with the mirror ref refs/phada/local,
+                         #   the repository context read from the local git at the base, skills
+                         #   as text, no recheck, conversation, CI or learning; warnings for
+                         #   nothing uncommitted and skills sent as text; ReviewedLocalChanges,
+                         #   LocalRun; NoDefaultBranchError, NothingToReviewError
+    local-pull-request.ts #  localPullRequest(): the pull request of a local review (number 0,
+                         #   title from the only commit or the branch, the commit messages as
+                         #   description, a line for uncommitted changes)
     decide-lesson.ts     #   acceptLesson(): a pending lesson → the rule lesson-<id> (rule, scope,
                          #   its thread links as from) appended to rules: of the user's
                          #   repos/<owner>/<repo>/config.yml (lessonConfigPath(); a missing file
@@ -294,7 +310,9 @@ src/
   cli/                   # terminal edge
     args.ts              #   parseCliArgs(): `setup` (--debug), `review` (--dry-run, --force, --verify/--no-verify,
                          #   --investigate/--no-investigate, --no-resolve, --no-conversation,
-                         #   --no-ci, --wait-ci, --skill, --head only with --dry-run), `init`,
+                         #   --no-ci, --wait-ci, --skill, --head only with --dry-run), `review`
+                         #   with no pull request (review-local: --base, --uncommitted,
+                         #   --dry-run accepted, the pull request flags refused), `init`,
                          #   `index` (--ref, --format text|json), `rules` (--format text|json),
                          #   `prompt` (--default, --skill, --head, --format text|json), `watch` (--once,
                          #   --backfill, --status) and `history` (--since, --limit, --stats,
@@ -437,8 +455,13 @@ src/
                          #   ci.read: false, or ci.wait: 0s with onFailure: review; CiReadError
                          #   when they were not read
     enqueue-command.ts   #   runEnqueue(): a request from the command line
-    mcp-command.ts       #   runMcp(): the queue tools as an MCP server over stdio
+    mcp-command.ts       #   runMcp(): the queue tools and the local review tools as an MCP server
+                         #   over stdio, a local review run detached in the server's folder
+                         #   with its warnings kept, awaited before the history closes
     queue-tools.ts       #   queueToolbox(): review_pull_request, job_status, wait_for_job, list_queue
+    local-review-tools.ts #  localReviewToolbox(): review_local_changes (one at a time, an id at
+                         #   once) and wait_for_local_review (the review JSON, the run id and the
+                         #   warnings, or timedOut after 300 s by default, 1800 s at most)
     request-wiring.ts    #   submitDeps(): the pull request reader and the when command for requests;
                          #   requireWatchSettings(), watchSettingsOf(), RequestCommandDeps
     review-event-sinks.ts #  reviewEventSinkSettings(), openReviewEventSinks(): hooks and Slack as
@@ -479,7 +502,8 @@ src/
                          #   what phada lessons accept/discard and the app share
     format-lessons.ts    #   formatLessonsText/Json(): id, repository, state, miss count, the
                          #   whole rule, the globs and each thread link (schemaVersion 1)
-    format-history.ts    #   formatHistoryText/Json() (each run with its id), runJson(),
+    format-history.ts    #   formatHistoryText/Json() (each run with its id, a local run by its
+                         #   branch and number null), runJson(),
                          #   formatStatsText/Json() (schemaVersion 1)
     history-refresh.ts   #   refreshToken(), refreshHistory(): the due pull requests (or the one
                          #   named), with the closed ones listed, read on GitHub for phada history
@@ -527,7 +551,14 @@ src/
                          #   wait) with its deps and progress, then
                          #   the run saved in the history when it is on, with its feedback
                          #   (HistorySave; a replay is saved as source replay, without
-                         #   feedback); shared by phada review and the app
+                         #   feedback); shared by phada review and the app; prepareProvider()
+                         #   (the same for a repository), saveRunRecord()
+    local-review-command.ts # runLocalReview(): the local git of a folder (injectable) → the user
+                         #   layers and provider of its origin → reviewLocalChanges() with the
+                         #   review deps of a pull request whose mirror fetches from the local
+                         #   root and whose context is read from the local git → the run saved
+                         #   as source local (branch, dirty, number 0, never feedback); prints
+                         #   nothing; shared by phada review and phada mcp
     publish-saved.ts     #   publishSavedRun(): the history opened (missing → not found), then
                          #   publishSavedReview() with the GitHub readers and writers of the
                          #   token and renderReview, the publication saved as a new manual run
@@ -558,7 +589,8 @@ src/
     github-access.ts     #   readGitHubAccess(): where the token comes from and its owner's login,
                          #   a refused token (401) or the error of the read; never the token
     format-review.ts     #   pull request summary (stderr) and the Markdown review (stdout),
-                         #   with the repository debt after worth checking
+                         #   with the repository debt after worth checking; formatLocalReview()
+                         #   (the owner/repo@branch (local) header) and formatLocalReviewStart()
     debt-text.ts         #   debtItem(): one line of the repository debt (severity, place,
                          #   title, why cut at 200 characters)
     format-github.ts     #   the review as GitHub Markdown: body (the CI line under the score),
@@ -601,7 +633,10 @@ src/
                          #   comments); the review's language, diff fingerprint and files left
                          #   out (what phada publish needs); conversationJson(), ciJson() for
                          #   the dry run; publishedRunJson(): a saved run's JSON with its new
-                         #   publication and publishedFrom
+                         #   publication and publishedFrom; formatLocalReviewJson(): a local
+                         #   review with a local block (repo, branch, base, head, dirty,
+                         #   reviewed, title) instead of pullRequest, publication, conversation,
+                         #   ci and recheck
     markdown-text.ts     #   escapes AI text: block markers; for GitHub also HTML and mentions;
                          #   codeFence()
     review-text.ts       #   model label and short SHA
@@ -1160,7 +1195,8 @@ src/
                          #   findings whose thread a person resolved vs findings of a thread found
                          #   fixed in this run
     types.ts             #   PublicationPlan, RunDecision, SkipReason, Conversation(Report)
-  repository/            # the repository through git objects, in a persistent mirror
+  repository/            # the repository through git objects, in a persistent mirror, and the
+                         #   local clone a local review reads
     checkout.ts          #   Checkout (read, grep, list, history), CheckoutError
     git-checkout.ts      #   GitCheckout: one commit of the mirror (log, blame); the git environment
                          #   without tokens
@@ -1171,6 +1207,12 @@ src/
                          #   state, never creating or fetching one
     mirror-lock.ts       #   withMirrorLock(): one fetch at a time per mirror, stale locks taken over
     repo-path.ts         #   toRepoPath(): paths inside the repository only
+    local-git.ts         #   openLocalGit(): the repository of a folder through git — root, branch,
+                         #   HEAD, owner/repo of origin, the merge base, the diff as GitHub gives
+                         #   it whatever the user's git config (1 MB at most,
+                         #   LocalDiffTooLargeError), stats, commit messages, tree and files at a
+                         #   commit, and commitWorkingTree() (a temporary index, no ref, the
+                         #   user's index and status untouched, dated as HEAD); LocalGitError
     work-tree.ts         #   materializeWorkTree(): a checkout of the head with origin/<base> at
                          #   the merge base, objects shared with the mirror, the diff and the
                          #   files it is given next to it
@@ -1217,7 +1259,8 @@ src/
     history-migrations.ts #  versioned migrations (PRAGMA user_version), a table rebuilt with the
                          #   foreign keys off; a newer file is refused; v5: replay runs, the
                          #   misses (one per thread) and their replays (one per Phada version);
-                         #   v7: the lessons and their links to misses
+                         #   v7: the lessons and their links to misses; v8: local runs (source
+                         #   local, branch, dirty)
   watch/                 # pure: what the watch does, data in, decision out
     filters.ts           #   eligibility(): draft, bot, outside author, authors, labels, base
     plan-cycle.ts        #   planCycle(): baseline, seen, enqueue, supersede, move (the requests

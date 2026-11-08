@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { JobRecord } from '../watch/types.js'
 import { formatHistoryText } from './format-history.js'
-import { watchRun } from './history-run.js'
+import { localHistoryRun, watchRun } from './history-run.js'
 import type { RunMeta } from './history-run.js'
 
 const AT = '2026-10-18T12:08:00.000Z'
@@ -79,5 +79,40 @@ describe('watchRun', () => {
     expect(formatHistoryText([run], 1, undefined)).toMatch(
       /acme\/shop#3 {2}a1b2c3d {2}slack {7}skipped {4}ci-failing\n$/,
     )
+  })
+})
+
+describe('localHistoryRun', () => {
+  const LOCAL = {
+    repo: 'acme/shop',
+    baseRef: 'main',
+    base: 'c'.repeat(40),
+    head: 'a'.repeat(40),
+    reviewed: 'b'.repeat(40),
+    dirty: true,
+  }
+
+  it('records a local review that found nothing to review without calling the AI', () => {
+    const run = localHistoryRun(
+      { local: LOCAL, reviewed: { outcome: { status: 'skipped', reason: 'all-ignored' } } },
+      '{}',
+      { startedAt: AT, finishedAt: AT, provider: 'claude', model: 'opus' },
+    )
+
+    expect(run).toEqual({
+      source: 'local',
+      repo: 'acme/shop',
+      number: 0,
+      headSha: LOCAL.head,
+      dirty: true,
+      startedAt: AT,
+      finishedAt: AT,
+      status: 'nothing',
+      aiCalled: false,
+      provider: 'claude',
+      model: 'opus',
+      verdict: 'skipped',
+      resultJson: '{}',
+    })
   })
 })

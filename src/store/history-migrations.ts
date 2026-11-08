@@ -302,4 +302,47 @@ create table lesson_miss (
 create index lesson_miss_by_miss on lesson_miss (miss_id);
 `,
   },
+  {
+    version: 8,
+    rebuildsTables: true,
+    sql: `
+create table run_rebuilt (
+  id integer primary key,
+  job_id integer references job (id),
+  source text not null check (source in ('watch', 'manual', 'replay', 'local')),
+  repo text not null,
+  number integer not null,
+  head_sha text not null,
+  started_at text not null,
+  finished_at text not null,
+  status text not null
+    check (status in ('published', 'dry-run', 'not-published', 'superseded', 'skipped', 'nothing', 'failed')),
+  ai_called integer not null,
+  provider text,
+  model text,
+  score real,
+  findings integer,
+  url text,
+  reason text,
+  error_kind text,
+  error text,
+  result_json text,
+  verdict text check (verdict in ('clean', 'comments', 'blocking', 'failed', 'skipped')),
+  request_source text
+    check (request_source in ('watch', 'enqueue', 'mcp', 'pr-command', 'slack')),
+  branch text,
+  dirty integer
+);
+insert into run_rebuilt (id, job_id, source, repo, number, head_sha, started_at, finished_at,
+  status, ai_called, provider, model, score, findings, url, reason, error_kind, error,
+  result_json, verdict, request_source)
+  select id, job_id, source, repo, number, head_sha, started_at, finished_at, status, ai_called,
+    provider, model, score, findings, url, reason, error_kind, error, result_json, verdict,
+    request_source from run;
+drop table run;
+alter table run_rebuilt rename to run;
+create index run_by_source on run (source, started_at);
+create index run_by_job on run (job_id);
+`,
+  },
 ]

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { findingFixture } from '../../test/support/finding.js'
 import { pullRequestFixture } from '../../test/support/pull-request.js'
 import type { Coverage, ReviewResult } from '../review/types.js'
-import { formatPullRequestSummary, formatReview } from './format-review.js'
+import { formatLocalReview, formatPullRequestSummary, formatReview } from './format-review.js'
 import { messagesFor } from './i18n/messages.js'
 
 const RESULT: ReviewResult = {
@@ -641,5 +641,49 @@ describe('formatReview', () => {
     expect(output).toContain('| src/a\\|b.ts | Splits the \\| table | 1 |')
     expect(output).toContain('**src/a|b.ts:1**: Bad title[31m (confidence 90)')
     expect(output).toContain('- **P1** · src/a|b.ts:1: Unsure title[2J (confidence 60)')
+  })
+})
+
+describe('formatLocalReview', () => {
+  const LOCAL = {
+    repo: 'acme/shop',
+    branch: 'feat/spend',
+    base: '0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c',
+    head: 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678',
+    dirty: false,
+  }
+
+  it('heads the review with the branch, its base and its head instead of a pull request', () => {
+    const text = formatLocalReview(LOCAL, 'Let users spend crystals', RESULT)
+
+    expect(text.split('\n').slice(0, 3)).toEqual([
+      '# Review of acme/shop@feat/spend (local): Let users spend crystals',
+      'base 0f1e2d3 · head a1b2c3d',
+      '',
+    ])
+    expect(text).not.toContain('#0')
+    expect(text).toContain('## Findings')
+    expect(text.split('\n').slice(3).join('\n')).toBe(
+      formatReview(pullRequestFixture(), RESULT).split('\n').slice(3).join('\n'),
+    )
+  })
+
+  it('marks the uncommitted changes and names a detached head by its commit', () => {
+    const { branch: _, ...detached } = LOCAL
+    const text = formatLocalReview({ ...detached, dirty: true }, 'Spend\u001b[2J', RESULT)
+
+    expect(text.split('\n').slice(0, 2)).toEqual([
+      '# Review of acme/shop@a1b2c3d (local): Spend[2J',
+      'base 0f1e2d3 · head a1b2c3d + uncommitted',
+    ])
+  })
+
+  it('writes the header in the language of the review', () => {
+    const text = formatLocalReview({ ...LOCAL, dirty: true }, 'Gastos', RESULT, messagesFor('pt'))
+
+    expect(text.split('\n').slice(0, 2)).toEqual([
+      '# Revisão de acme/shop@feat/spend (local): Gastos',
+      'base 0f1e2d3 · commit a1b2c3d + não commitado',
+    ])
   })
 })

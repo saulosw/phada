@@ -241,6 +241,44 @@ describe('the Reviews screen', () => {
     expect(frame()).toMatch(/❯ …[\w/-]*phada-dev-web#5\s+Weekly ranking/)
   })
 
+  it('names a local review by its branch, starred when it had uncommitted changes, in the list and the detail', async () => {
+    const local = run(4, {
+      source: 'local',
+      number: 0,
+      status: 'not-published',
+      branch: 'feat/spend',
+      dirty: true,
+      title: 'Spend crystals',
+    })
+    const { title: _title, ...stored } = local
+    const { frame, press, showing } = openReviews({
+      runs: () => [local],
+      size: { columns: 120, rows: 40 },
+      detail: () => ({
+        ...detail(),
+        run: stored,
+        pullRequest: { url: null, title: 'Spend crystals' },
+        publication: null,
+        ci: null,
+        published: [],
+      }),
+    })
+    await showing('Spend crystals', 'Enter open')
+    expect(frame()).toMatch(
+      /❯ acme\/shop@feat\/spend\* \(local\)\s+Spend crystals\s+comments\s+3\/5/,
+    )
+    expect(frame()).toMatch(/43m ago\s+local/)
+    expect(frame()).not.toContain('#0')
+    await press(KEYS.enter)
+    await showing('Score', 'Esc back')
+    const text = frame()
+    expect(text).toContain('acme/shop@feat/spend* (local) · Spend crystals')
+    expect(text).toMatch(/Status\s+not published/)
+    expect(text).toMatch(/Reviewed\s+.* · local · a1b2c3d/)
+    expect(text).not.toContain('github.com')
+    expect(text).not.toContain('#0')
+  })
+
   it('filters by text with f, typing the shell keys into the field, and Esc leaves it unapplied', async () => {
     const { frame, press, type, showing, filters, exits } = openReviews()
     await showing('3 reviews', 'f filter')

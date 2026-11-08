@@ -391,6 +391,15 @@ describe('reviewPullRequest', () => {
     expect(result.investigation).toMatchObject({ status: 'used', totals: { calls: 1 } })
   })
 
+  it('keeps the head under the mirror ref it is given', async () => {
+    const h = setup()
+
+    const result = await reviewPullRequest({ ...input, mirrorRef: 'refs/phada/local' }, h.deps)
+
+    expect(h.fetched).toEqual([`${HEAD} refs/phada/local`])
+    expect(result.impact.status).toBe('used')
+  })
+
   it('leaves out of the graph what the base config ignores, whatever the head config says', async () => {
     const h = setup({ contextSources: sources('ignore: ["src/api.ts"]\n') })
 
@@ -574,6 +583,31 @@ describe('reviewPullRequest', () => {
       { from: 'src/shop.ts spend', to: 'src/routes.ts', pullRequest: 12 },
     ])
     expect((await h.observedEdges()).map((edge) => edge.to.path)).toEqual(['src/routes.ts'])
+  })
+
+  it('learns nothing when asked not to', async () => {
+    const finding = findingFixture({
+      file: 'src/shop.ts',
+      line: 3,
+      confidence: 95,
+      sources: ['src/routes.ts'],
+    })
+    const h = setup({}, [
+      { text: reviewReportJson({ findings: [finding] }), durationMs: 10 },
+      {
+        text: verificationJson([verdictFixture({ id: 1, reason: 'The route calls it by name' })]),
+        durationMs: 5,
+      },
+    ])
+
+    const result = await reviewPullRequest(
+      { ...input, options: { verify: true }, learnEdges: false },
+      h.deps,
+    )
+
+    expect(result.outcome.status).toBe('reviewed')
+    expect(result.impact.learned).toEqual([])
+    expect(await h.observedEdges()).toEqual([])
   })
 
   it('learns nothing from a file of the diff that a tool only listed', async () => {

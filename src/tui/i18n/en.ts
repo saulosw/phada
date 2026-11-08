@@ -276,6 +276,7 @@ export const english: UiMessages = {
       watch: 'watch',
       manual: 'review',
       replay: 'replay',
+      local: 'local',
       enqueue: 'enqueue',
       mcp: 'MCP',
       'pr-command': '/phada',
@@ -1051,6 +1052,7 @@ export const english: UiMessages = {
         notADryRun: 'Not published: this run is not a review that only looked.',
         replay:
           'Not published: this run replayed an earlier commit, and a replay is never published.',
+        local: 'Not published: a local review has no pull request to publish on.',
         nothing: 'Not published: this review found nothing to post.',
         outdated:
           'Not published: this run was kept by an older Phada without everything needed to publish it.',

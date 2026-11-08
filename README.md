@@ -44,6 +44,7 @@ npx phada review owner/repo#123
 ```bash
 phada review owner/repo#123
 phada review https://github.com/owner/repo/pull/123 --provider codex
+phada review                                    # the branch you are on, before the pull request
 ```
 
 Progress goes to stderr and the review to stdout, so `phada review owner/repo#123 > review.md`
@@ -59,6 +60,39 @@ AI again (see [Look first, publish later](#look-first-publish-later)).
 [History](#history), and for what people pointed out that Phada did not, [Misses](#misses) and
 [Lessons](#lessons). To see all of it in one place, run `phada` alone (see
 [Terminal app](#terminal-app)).
+
+### Your branch, before the pull request
+
+`phada review` with no pull request, inside a clone of a GitHub repository, reviews the commits of
+the branch you are on against where it left the default branch: the merge base of `HEAD` with
+`origin/<default branch>`, as your clone last fetched it (Phada never fetches your remotes; run
+`git fetch origin` when it is behind). Nothing is posted anywhere.
+
+```bash
+phada review                    # the commits of this branch
+phada review --uncommitted      # plus what is staged, modified or untracked (not ignored)
+phada review --base release/2.x # against another branch, tag or commit
+phada review --format json      # for scripts and AI agents
+```
+
+It is the review of the pull request you are about to open: the same rules and docs (read from
+your clone at the merge base), the same repository graph, the same related repositories and the
+same AI. The title is the subject of the only commit, or the branch name when there are several,
+and the description is every commit message, so the claims of your commit messages are checked
+too. With `--uncommitted`, Phada writes a commit of your working tree with a temporary index —
+your index, refs and `git status` do not change — and reviews it, so the graph and the AI's tools
+see your uncommitted files; when there is nothing uncommitted it says so and reviews the commits.
+There is no conversation, CI, recheck or publication, a skill that runs natively runs as text,
+and the review does not count in the feedback, misses or lessons of the repository. It needs
+the GitHub token like any review, to read the default branch, whether the repository is private,
+and the related repositories.
+
+The review is saved in the [history](#history) as a local run, named
+`owner/repo@branch (local)` (`*` after the branch when it included uncommitted changes);
+`phada publish` refuses it, since it has no pull request. `--dry-run` is accepted and changes
+nothing; `--force`, `--wait-ci`, `--head`, `--no-resolve`, `--no-conversation` and `--no-ci` need
+a pull request. In `--format json` a `local` block (`repo`, `branch`, `base`, `head`, `dirty`,
+`reviewed`, `title`) takes the place of `pullRequest`, `publication`, `conversation` and `ci`.
 
 ### GitHub token
 
@@ -696,15 +730,18 @@ For example, from cron every morning:
 `phada mcp` is an MCP server over stdio. Add it to your AI CLI, for instance
 `claude mcp add phada -- phada mcp`, and the AI can ask for a review and wait for the answer:
 
-| Tool                  | What it does                                                                                                                               |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `review_pull_request` | `pr` (`owner/repo#N` or a URL) and `publish` (`pr` or `none`): queues the review, joins the one already queued, or says why it was refused |
-| `job_status`          | The state of a job, its place in the queue and, once it ended, its event                                                                   |
-| `wait_for_job`        | Waits until the job ends (`timeoutSeconds`, 300 by default, 1800 at most) and returns its event with the full review                       |
-| `list_queue`          | The jobs waiting and the one running                                                                                                       |
+| Tool                    | What it does                                                                                                                                                                             |
+| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `review_pull_request`   | `pr` (`owner/repo#N` or a URL) and `publish` (`pr` or `none`): queues the review, joins the one already queued, or says why it was refused                                               |
+| `job_status`            | The state of a job, its place in the queue and, once it ended, its event                                                                                                                 |
+| `wait_for_job`          | Waits until the job ends (`timeoutSeconds`, 300 by default, 1800 at most) and returns its event with the full review                                                                     |
+| `list_queue`            | The jobs waiting and the one running                                                                                                                                                     |
+| `review_local_changes`  | `base` and `uncommitted`: starts a [review of the branch](#your-branch-before-the-pull-request) checked out in the folder `phada mcp` runs in, and answers its id at once; one at a time |
+| `wait_for_local_review` | Waits until that review ends (`timeoutSeconds`, 300 by default, 1800 at most) and returns its JSON, the id of the saved run and its warnings                                             |
 
 The AI asks; Phada decides. A message that talks the AI into asking for a review of some other
-repository is refused like any other request. `phada mcp` needs a GitHub token (`GITHUB_TOKEN`,
+repository is refused like any other request. The local review tools let your coding agent
+review its own branch before it opens the pull request; they do not need the watch. `phada mcp` needs a GitHub token (`GITHUB_TOKEN`,
 `GH_TOKEN` or the `gh` login) to read the pull requests asked for.
 
 ### From the pull request: `/phada review`
@@ -866,7 +903,8 @@ phada history prune --older-than 180d
 ```
 
 Each review of the watch shows who asked for it: `watch` (the polling), `enqueue`, `mcp`,
-`pr-command` or `slack`.
+`pr-command` or `slack`. A [review of your branch](#your-branch-before-the-pull-request) shows as
+`owner/repo@branch (local)` in `phada history owner/repo` and in the app.
 
 Each run of the list starts with its id, and `phada review` ends with it when it saves the run
 (`Saved as run 42: phada history show 42`). `phada history show <id>` prints that run again with
@@ -1668,6 +1706,8 @@ your own stops Phada with an error that names the file and the key.
 | `--no-ci`              | Does not read the checks of the head: no CI for the AI and no CI line in the review (see [The checks](#the-checks)); same as `ci.read: false`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `--wait-ci`            | Before reviewing, waits for the pending checks of the head for at most `ci.wait` (default 15 minutes) since the command started (see [Waiting for the checks](#waiting-for-the-checks))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `--skill <name>`       | Reviews with this skill, one pass each when repeated; replaces `review.skills` (see [Review focus and skills](#review-focus-and-skills))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `--base <ref>`         | With no pull request: reviews the branch against this branch, tag or commit of your clone instead of `origin/<default branch>` (see [Your branch, before the pull request](#your-branch-before-the-pull-request))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `--uncommitted`        | With no pull request: also reviews what is staged, modified or untracked (not ignored)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `--dry-run`            | Prints exactly what would be published (the review body and every comment) and posts nothing                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | `--force`              | Reviews and publishes even when Phada already reviewed this commit (see [Publishing](#publishing))                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `--debug`              | Shows error details                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
@@ -1680,6 +1720,9 @@ your own stops Phada with an error that names the file and the key.
 | 1    | Something failed: GitHub, the AI provider, an answer that is not a review, or publishing (the review is printed first)                                                   |
 | 2    | The command line or your own config is wrong (unknown option, invalid pull request reference, invalid `config.yml`, a skill that is not installed, …)                    |
 
+`phada review` with no pull request exits with 0 when it printed the review, 1 when there is
+nothing to review against the base, GitHub, git or the AI failed, and 2 outside a git repository
+or with an unknown `--base`.
 `phada index` exits with 0 when the map was built and 1 when fetching or writing it failed.
 `phada rules` exits with 0 when it printed the context and 1 when GitHub could not be read.
 `phada prompt` exits with 0 when it printed the prompt, 1 when GitHub could not be read and 2

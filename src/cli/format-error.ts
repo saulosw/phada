@@ -21,7 +21,10 @@ import {
   LessonNotFoundError,
   LessonRuleRefusedError,
 } from '../app/decide-lesson.js'
+import { NoDefaultBranchError, NothingToReviewError } from '../app/local-review.js'
 import { toTerminalText } from '../app/terminal-text.js'
+import { LocalDiffTooLargeError, LocalGitError } from '../repository/local-git.js'
+import type { LocalGitErrorReason } from '../repository/local-git.js'
 import { EditorNotFoundError } from './text-editor.js'
 
 export interface FormattedError {
@@ -33,6 +36,16 @@ interface ProviderHints {
   name: string
   install: string
   login: string
+}
+
+const LOCAL_GIT_HINTS: Readonly<Partial<Record<LocalGitErrorReason, string>>> = {
+  'not-a-repository':
+    'Run phada review in a clone of the repository, or pass a pull request (owner/repo#N).',
+  'unknown-base': 'Pass a branch, tag or commit SHA to --base.',
+  'no-origin':
+    'A local review takes its GitHub repository from origin: git remote add origin <URL of the repository on GitHub>.',
+  'origin-not-github': 'Phada reviews repositories on GitHub.',
+  'no-merge-base': 'Pass the commit to compare with in --base.',
 }
 
 const PROVIDER_HINTS: Readonly<Record<string, ProviderHints>> = {
@@ -87,6 +100,16 @@ function describe(error: unknown): { summary: string; exitCode: 1 | 2 } {
   ) {
     return { summary: error.message, exitCode: 1 }
   }
+  if (error instanceof LocalGitError) return describeLocalGitError(error)
+  if (error instanceof LocalDiffTooLargeError) {
+    return {
+      summary: `${error.message} Phada never truncates a diff: pass a closer --base.`,
+      exitCode: 1,
+    }
+  }
+  if (error instanceof NoDefaultBranchError || error instanceof NothingToReviewError) {
+    return { summary: error.message, exitCode: 1 }
+  }
   if (error instanceof DiffTooLargeError) {
     return { summary: `${error.message} Phada never truncates a diff.`, exitCode: 1 }
   }
@@ -103,6 +126,19 @@ function describe(error: unknown): { summary: string; exitCode: 1 | 2 } {
     summary: `Unexpected error: ${message.replace(/\.$/, '')}. Run with --debug for details.`,
     exitCode: 1,
   }
+}
+
+function describeLocalGitError(error: LocalGitError): { summary: string; exitCode: 1 | 2 } {
+  const hint = LOCAL_GIT_HINTS[error.reason]
+  const usage = error.reason === 'not-a-repository' || error.reason === 'unknown-base'
+  return {
+    summary: hint === undefined ? error.message : `${sentence(error.message)} ${hint}`,
+    exitCode: usage ? 2 : 1,
+  }
+}
+
+function sentence(text: string): string {
+  return /[.!?]$/.test(text) ? text : `${text}.`
 }
 
 function describeProviderError(error: ProviderError): string {

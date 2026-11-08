@@ -18,7 +18,7 @@ import { textWidth } from './tab-layout.js'
 import type { Theme } from './theme.js'
 import { fit, oneLine, wrapText } from './text-fit.js'
 import { tokensText } from './units.js'
-import { pullRef, shortSha } from './refs.js'
+import { runRef, shortSha } from './refs.js'
 
 const PLACE_SHARE = 0.4
 const GAP = '  '
@@ -49,10 +49,12 @@ export function reviewDetailLines(
     lines.length === 0 ? [] : [<Text> </Text>, <Text bold>{heading}</Text>, ...lines]
   const lines: ReactNode[] = [
     <Text bold>
-      {pullRef(run.repo, run.number)}
+      {runRef(run)}
       {title}
     </Text>,
-    <Text color={colors.info}>{oneLine(detail.pullRequest.url)}</Text>,
+    ...(detail.pullRequest.url === null
+      ? []
+      : [<Text color={colors.info}>{oneLine(detail.pullRequest.url)}</Text>]),
     <Text> </Text>,
     ...labeledLines(
       [

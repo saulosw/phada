@@ -39,7 +39,7 @@ import { textWidth } from '../tab-layout.js'
 import type { Theme } from '../theme.js'
 import { fit, oneLine, shortenHome, wrapText } from '../text-fit.js'
 import { bytesText } from '../units.js'
-import { shortSha } from '../refs.js'
+import { runPlaceRef, shortSha } from '../refs.js'
 
 const GAP = '  '
 const MIN_NAME_WIDTH = 16
@@ -545,7 +545,7 @@ function reviewLines(
 ): ReactNode[] {
   const cells = runs.map((run) => ({
     run,
-    number: `#${run.number}`,
+    number: runPlaceRef(run),
     verdict: verdictLabel(run, messages),
     score: run.score === undefined ? '–' : `${run.score}/5`,
     when: relativeTime(run.startedAt, now, messages.time),

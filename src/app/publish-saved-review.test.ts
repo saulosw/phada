@@ -300,6 +300,9 @@ describe('publishSavedReview', () => {
       ),
     ).toEqual({ kind: 'nothing-to-publish' })
     expect(await refusal(storedRun({ source: 'replay' }))).toEqual({ kind: 'replay' })
+    expect(
+      await refusal(storedRun({ source: 'local', number: 0, status: 'not-published' })),
+    ).toEqual({ kind: 'local' })
   })
 
   it('posts a run saved before findings carried the existing code they reimplement', async () => {

@@ -203,6 +203,7 @@ export interface ReviewFlowMessages {
       published: string
       notADryRun: string
       replay: string
+      local: string
       nothing: string
       outdated: string
       headMoved(from: string, to: string): string

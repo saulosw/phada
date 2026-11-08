@@ -160,6 +160,8 @@ function refusalText(refusal: PublishRefusal, messages: UiMessages): string {
       return m.nothing
     case 'replay':
       return m.replay
+    case 'local':
+      return m.local
     case 'outdated':
       return m.outdated
     case 'head-moved':
