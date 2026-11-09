@@ -166,6 +166,6 @@ describe('HistoryStore replies', () => {
     const db = new DatabaseSync(path)
     const version = Number(db.prepare('pragma user_version').get()?.user_version)
     db.close()
-    expect(version).toBe(9)
+    expect(version).toBe(HISTORY_MIGRATIONS.length)
   })
 })

@@ -731,6 +731,7 @@ export const portuguese: UiMessages = {
     comments: (count) => `${count} ${count === 1 ? 'comentário' : 'comentários'}`,
     noComments: 'sem comentários',
     misses: (count) => `${count} ${count === 1 ? 'miss' : 'misses'}`,
+    refused: (count) => `${count} ${count === 1 ? 'recusado' : 'recusados'}`,
     lessons: (count) => `${count} ${count === 1 ? 'lesson' : 'lessons'}`,
     outcome: {
       fixed: (count) => `${count} ${count === 1 ? 'corrigido' : 'corrigidos'}`,
@@ -760,8 +761,10 @@ export const portuguese: UiMessages = {
       lessons: (count) => `Lessons para decidir (${count})`,
       lessonMeta: (files, misses) =>
         `arquivos: ${files} · com base em ${misses} ${misses === 1 ? 'miss' : 'misses'}`,
+      avoidMeta: (files, comments) =>
+        `avoid · arquivos: ${files} · com base em ${comments} ${comments === 1 ? 'comentário recusado' : 'comentários recusados'}`,
       lessonsHint:
-        'Regras que o Phada propôs a partir dos misses. Aceita, uma lesson vira regra da sua config para este repositório.',
+        'Regras que o Phada propôs a partir dos misses, e regras avoid a partir dos comentários que o time recusou. Aceita, uma lesson vira regra da sua config para este repositório.',
       noLessons: 'Nenhuma lesson proposta ainda. Proponha a partir dos misses com',
     },
     decide: {
@@ -775,6 +778,8 @@ export const portuguese: UiMessages = {
       },
       acceptQuestion: (id, repo) => `Aceitar a lesson ${id} como regra da sua config para ${repo}?`,
       acceptTarget: (ruleId, path) => `Adiciona a regra ${ruleId} a ${path}:`,
+      acceptAvoidTarget: (ruleId, path) =>
+        `Adiciona a regra avoid ${ruleId} a ${path}; os reviews deixam de reportar o que ela descreve nos arquivos dela:`,
       acceptMeta: (files, threads) =>
         `arquivos: ${files} · de ${threads} ${threads === 1 ? 'thread' : 'threads'}`,
       discardQuestion: (id) =>

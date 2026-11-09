@@ -19,6 +19,7 @@ export interface MissRecord extends Miss {
   id: number
   state: MissState
   harvestedAt: string
+  lessonsSentAt?: string
 }
 
 export type MissOutcome = 'caught' | 'missed'
@@ -38,7 +39,7 @@ export interface MissFilter {
   limit?: number
 }
 
-const KEPT_ON_HARVEST = new Set(['key', 'state', 'harvestedAt'])
+const KEPT_ON_HARVEST = new Set(['key', 'state', 'harvestedAt', 'lessonsSentAt'])
 
 export function recordMisses(
   db: DatabaseSync,

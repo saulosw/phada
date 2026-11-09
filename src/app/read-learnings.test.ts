@@ -247,20 +247,26 @@ describe('readLearnings', () => {
     })
   })
 
-  it('lists the pending lessons of each repository, the ones more misses back first', async () => {
+  it('lists the pending lessons of each repository, the ones more misses or comments back first', async () => {
     const lesson = (
       id: number,
       repo: string,
       state: LessonRecord['state'],
       missIds: number[],
+      findingIds: number[] = [],
     ): LessonRecord => ({
       id,
       repo,
+      kind: findingIds.length === 0 ? 'check' : 'avoid',
       rule: `Rule ${id}.`,
       scope: ['src/**'],
       state,
       createdAt: '2026-11-03T10:00:00.000Z',
       misses: missIds.map((missId) => openMiss(missId, repo)),
+      findings: findingIds.map((findingId) => {
+        const { signals: _signals, ...row } = finding(findingId, { repo })
+        return row
+      }),
     })
     const learnings = await readLearnings(
       readers([finding(1)], {}, { open: [], replays: [] }, [
@@ -269,12 +275,14 @@ describe('readLearnings', () => {
         lesson(3, 'acme/shop', 'accepted', [4, 5, 6]),
         lesson(4, 'acme/api', 'discarded', [7]),
         lesson(5, 'acme/web', 'pending', [8]),
+        lesson(6, 'acme/shop', 'pending', [], [9, 10, 11]),
+        lesson(7, 'acme/shop', 'pending', [], [12]),
       ]),
     )
 
     expect(learnings.repos.map(({ repo, lessons }) => [repo, lessons.map(({ id }) => id)])).toEqual(
       [
-        ['acme/shop', [2, 1]],
+        ['acme/shop', [6, 2, 7, 1]],
         ['acme/web', [5]],
       ],
     )

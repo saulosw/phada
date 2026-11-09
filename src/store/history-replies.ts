@@ -11,6 +11,7 @@ export interface ClassifiedReply {
   threadId: string
   commentId: string
   author: string
+  body?: string
   kind: ReplyKind
   answered: boolean
   answerId?: string

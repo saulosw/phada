@@ -1,25 +1,33 @@
 import type { DatabaseSync, SQLInputValue } from 'node:sqlite'
 import {
+  FINDING_TABLE,
   fromRow,
   insertStatement,
   LESSON_TABLE,
   MISS_TABLE,
   updateStatement,
 } from './history-columns.js'
+import type { HistoryTable } from './history-columns.js'
 import { transaction } from './history-feedback.js'
+import type { FindingRow } from './history-feedback.js'
 import type { MissRecord } from './history-misses.js'
 
 export type LessonState = 'pending' | 'accepted' | 'discarded'
 
+export type LessonKind = 'check' | 'avoid'
+
 export interface NewLesson {
+  kind?: LessonKind
   rule: string
   scope: readonly string[]
   missIds: readonly number[]
+  findingIds?: readonly number[]
 }
 
 export interface LessonLink {
   lessonId: number
   missIds: readonly number[]
+  findingIds?: readonly number[]
 }
 
 export interface LessonChanges {
@@ -28,11 +36,14 @@ export interface LessonChanges {
   model?: string
   created: readonly NewLesson[]
   attached: readonly LessonLink[]
+  sent?: readonly number[]
+  sentFindings?: readonly number[]
 }
 
 export interface LessonRecord {
   id: number
   repo: string
+  kind: LessonKind
   rule: string
   scope: string[]
   state: LessonState
@@ -41,6 +52,7 @@ export interface LessonRecord {
   createdAt: string
   decidedAt?: string
   misses: MissRecord[]
+  findings: FindingRow[]
 }
 
 export type LessonDecision = Exclude<LessonState, 'pending'>
@@ -58,16 +70,21 @@ export function recordLessons(
   changes: LessonChanges,
   createdAt: string,
 ): number[] {
-  const link = db.prepare(
+  const linkMiss = db.prepare(
     'insert into lesson_miss (lesson_id, miss_id) values (?, ?) on conflict do nothing',
   )
-  const linkAll = (lessonId: number, missIds: readonly number[]) => {
-    for (const missId of missIds) link.run(lessonId, missId)
+  const linkFinding = db.prepare(
+    'insert into lesson_finding (lesson_id, finding_id) values (?, ?) on conflict do nothing',
+  )
+  const linkAll = (lessonId: number, { missIds, findingIds = [] }: LessonSources) => {
+    for (const missId of missIds) linkMiss.run(lessonId, missId)
+    for (const findingId of findingIds) linkFinding.run(lessonId, findingId)
   }
   return transaction(db, () => {
-    const ids = changes.created.map(({ rule, scope, missIds }) => {
+    const ids = changes.created.map(({ kind, rule, scope, ...sources }) => {
       const { sql, values } = insertStatement(LESSON_TABLE, {
         repo: changes.repo,
+        kind,
         rule,
         scope,
         state: 'pending',
@@ -76,10 +93,14 @@ export function recordLessons(
         createdAt,
       })
       const id = Number(db.prepare(sql).run(...values).lastInsertRowid)
-      linkAll(id, missIds)
+      linkAll(id, sources)
       return id
     })
-    for (const { lessonId, missIds } of changes.attached) linkAll(lessonId, missIds)
+    for (const { lessonId, ...sources } of changes.attached) linkAll(lessonId, sources)
+    const markMiss = db.prepare('update miss set lessons_sent_at = ? where id = ?')
+    for (const missId of changes.sent ?? []) markMiss.run(createdAt, missId)
+    const markFinding = db.prepare('update finding set lessons_sent_at = ? where id = ?')
+    for (const findingId of changes.sentFindings ?? []) markFinding.run(createdAt, findingId)
     return ids
   })
 }
@@ -102,12 +123,17 @@ export function lessons(db: DatabaseSync, filter: LessonFilter): LessonRecord[] 
   }
   const clause = where.length === 0 ? '' : ` where ${where.join(' and ')}`
   const rows = db.prepare(`select * from lesson${clause} order by id`).all(...values)
-  const found = rows.map((row) => fromRow<Omit<LessonRecord, 'misses'>>(row, LESSON_TABLE))
-  const missesOf = lessonMisses(
-    db,
-    found.map(({ id }) => id),
+  const found = rows.map((row) =>
+    fromRow<Omit<LessonRecord, 'misses' | 'findings'>>(row, LESSON_TABLE),
   )
-  return found.map((lesson) => ({ ...lesson, misses: missesOf.get(lesson.id) ?? [] }))
+  const ids = found.map(({ id }) => id)
+  const missesOf = linkedRows<MissRecord>(db, ids, MISS_LINK)
+  const findingsOf = linkedRows<FindingRow>(db, ids, FINDING_LINK)
+  return found.map((lesson) => ({
+    ...lesson,
+    misses: missesOf.get(lesson.id) ?? [],
+    findings: findingsOf.get(lesson.id) ?? [],
+  }))
 }
 
 export function decideLesson(
@@ -125,31 +151,54 @@ export function decideLesson(
 }
 
 export function linkedMissIds(db: DatabaseSync): Set<number> {
+  return linkedIds(db, MISS_LINK)
+}
+
+export function linkedFindingIds(db: DatabaseSync): Set<number> {
+  return linkedIds(db, FINDING_LINK)
+}
+
+interface LessonSources {
+  missIds: readonly number[]
+  findingIds?: readonly number[]
+}
+
+interface Link {
+  table: string
+  column: string
+  target: HistoryTable
+}
+
+const MISS_LINK: Link = { table: 'lesson_miss', column: 'miss_id', target: MISS_TABLE }
+const FINDING_LINK: Link = { table: 'lesson_finding', column: 'finding_id', target: FINDING_TABLE }
+
+function linkedIds(db: DatabaseSync, { table, column }: Link): Set<number> {
   return new Set(
     db
-      .prepare('select distinct miss_id from lesson_miss')
+      .prepare(`select distinct ${column} from ${table}`)
       .all()
-      .map((row) => Number(row.miss_id)),
+      .map((row) => Number(row[column])),
   )
 }
 
-function lessonMisses(db: DatabaseSync, lessonIds: readonly number[]): Map<number, MissRecord[]> {
-  const byLesson = new Map<number, MissRecord[]>()
+function linkedRows<T>(
+  db: DatabaseSync,
+  lessonIds: readonly number[],
+  { table, column, target }: Link,
+): Map<number, T[]> {
+  const byLesson = new Map<number, T[]>()
   if (lessonIds.length === 0) return byLesson
   const rows = db
     .prepare(
-      `select lesson_miss.lesson_id as lesson_id, miss.* from lesson_miss
-       join miss on miss.id = lesson_miss.miss_id
-       where lesson_miss.lesson_id in (${lessonIds.map(() => '?').join(', ')})
-       order by miss.id`,
+      `select ${table}.lesson_id as lesson_id, ${target.name}.* from ${table}
+       join ${target.name} on ${target.name}.id = ${table}.${column}
+       where ${table}.lesson_id in (${lessonIds.map(() => '?').join(', ')})
+       order by ${target.name}.id`,
     )
     .all(...lessonIds)
   for (const row of rows) {
     const lessonId = Number(row.lesson_id)
-    byLesson.set(lessonId, [
-      ...(byLesson.get(lessonId) ?? []),
-      fromRow<MissRecord>(row, MISS_TABLE),
-    ])
+    byLesson.set(lessonId, [...(byLesson.get(lessonId) ?? []), fromRow<T>(row, target)])
   }
   return byLesson
 }

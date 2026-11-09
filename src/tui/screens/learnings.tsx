@@ -488,8 +488,8 @@ function LessonsView({
     selected === undefined
       ? []
       : lessonLines(selected, draw, 0).slice(0, Math.max(size.rows - fixedRows - listRows - 1, 0))
-  const missWidth = Math.max(0, ...lessons.map(({ misses }) => textWidth(m.misses(misses.length))))
-  const ruleWidth = Math.max(size.columns - 4 - missWidth, 1)
+  const weightWidth = Math.max(0, ...lessons.map((lesson) => textWidth(weightText(lesson, m))))
+  const ruleWidth = Math.max(size.columns - 4 - weightWidth, 1)
   return (
     <Box flexDirection="column" width={size.columns}>
       {title}
@@ -506,7 +506,7 @@ function LessonsView({
             <>
               {fit(oneLine(lesson.rule), ruleWidth)}
               {'  '}
-              <Text color={colors.warn}>{m.misses(lesson.misses.length)}</Text>
+              <Text color={colors.warn}>{weightText(lesson, m)}</Text>
             </>
           )}
         />
@@ -535,7 +535,15 @@ function LessonsView({
   )
 }
 
+function weightText(lesson: Lesson, m: UiMessages['learnings']): string {
+  return lesson.kind === 'avoid'
+    ? `avoid · ${m.refused(lesson.findings.length)}`
+    : m.misses(lesson.misses.length)
+}
+
 function lessonLines(lesson: Lesson, { messages, theme, width }: DrawContext, indent: number) {
+  const d = messages.learnings.detail
+  const { colors } = theme
   const pad = (lines: ReactNode[], by: number) =>
     lines.map((line) => (
       <Text>
@@ -543,13 +551,27 @@ function lessonLines(lesson: Lesson, { messages, theme, width }: DrawContext, in
         {line}
       </Text>
     ))
-  const meta = messages.learnings.detail.lessonMeta(
-    lesson.scope.map(oneLine).join(', '),
-    lesson.misses.length,
-  )
+  const files = lesson.scope.map(oneLine).join(', ')
+  const meta =
+    lesson.kind === 'avoid'
+      ? d.avoidMeta(files, lesson.findings.length)
+      : d.lessonMeta(files, lesson.misses.length)
+  const comments = lesson.kind === 'avoid' ? lesson.findings : []
   return [
-    ...pad(textLines(lesson.rule, width - indent, theme.colors.soft), indent),
-    ...pad(textLines(meta, width - indent - 2, theme.colors.dim), indent + 2),
+    ...pad(textLines(lesson.rule, width - indent, colors.soft), indent),
+    ...pad(textLines(meta, width - indent - 2, colors.dim), indent + 2),
+    ...comments.flatMap((finding) => {
+      const place = `${finding.file}${finding.line === undefined ? '' : `:${finding.line}`}`
+      return [
+        ...pad(
+          textLines(`${oneLine(finding.title)} · ${oneLine(place)}`, width - indent - 4),
+          indent + 4,
+        ),
+        ...(finding.threadUrl === undefined || finding.threadUrl === ''
+          ? []
+          : pad(textLines(oneLine(finding.threadUrl), width - indent - 4, colors.dim), indent + 4)),
+      ]
+    }),
   ]
 }
 
@@ -572,7 +594,10 @@ function acceptLines(
   return [
     ...questionLines({ action: 'accept', lesson }, repo.repo, draw),
     ...textLines(
-      d.acceptTarget(lessonRuleId(lesson.id), shortenHome(oneLine(repo.lessonFile), home)),
+      (lesson.kind === 'avoid' ? d.acceptAvoidTarget : d.acceptTarget)(
+        lessonRuleId(lesson.id),
+        shortenHome(oneLine(repo.lessonFile), home),
+      ),
       draw.width,
     ),
     ...indented(textLines(lesson.rule, draw.width - 2, colors.soft)),

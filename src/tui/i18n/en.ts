@@ -721,6 +721,7 @@ export const english: UiMessages = {
     comments: (count) => `${count} ${count === 1 ? 'comment' : 'comments'}`,
     noComments: 'no comments',
     misses: (count) => `${count} ${count === 1 ? 'miss' : 'misses'}`,
+    refused: (count) => `${count} refused`,
     lessons: (count) => `${count} ${count === 1 ? 'lesson' : 'lessons'}`,
     outcome: {
       fixed: (count) => `${count} fixed`,
@@ -750,8 +751,10 @@ export const english: UiMessages = {
       lessons: (count) => `Lessons to decide (${count})`,
       lessonMeta: (files, misses) =>
         `files: ${files} · backed by ${misses} ${misses === 1 ? 'miss' : 'misses'}`,
+      avoidMeta: (files, comments) =>
+        `avoid · files: ${files} · backed by ${comments} refused ${comments === 1 ? 'comment' : 'comments'}`,
       lessonsHint:
-        'Rules Phada proposed from the misses. Accepted, one becomes a rule of your config for this repository.',
+        'Rules Phada proposed from the misses, and avoid rules from the comments the team refused. Accepted, one becomes a rule of your config for this repository.',
       noLessons: 'No lessons proposed yet. Propose them from the misses with',
     },
     decide: {
@@ -760,6 +763,8 @@ export const english: UiMessages = {
       keys: { lessons: 'decide lessons', accept: 'accept', discard: 'discard', cancel: 'cancel' },
       acceptQuestion: (id, repo) => `Accept lesson ${id} as a rule of your config for ${repo}?`,
       acceptTarget: (ruleId, path) => `Adds the rule ${ruleId} to ${path}:`,
+      acceptAvoidTarget: (ruleId, path) =>
+        `Adds the avoid rule ${ruleId} to ${path}; reviews stop reporting what it describes in its files:`,
       acceptMeta: (files, threads) =>
         `files: ${files} · from ${threads} ${threads === 1 ? 'thread' : 'threads'}`,
       discardQuestion: (id) =>

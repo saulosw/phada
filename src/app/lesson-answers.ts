@@ -1,7 +1,8 @@
 import { posix } from 'node:path'
 import { matcher } from '../context/ignore.js'
 import type { LessonAnswer } from '../review/parse-lessons.js'
-import type { LessonChanges } from '../store/history-store.js'
+import type { LessonKind } from '../review/lessons-prompt.js'
+import type { LessonChanges, LessonLink, NewLesson } from '../store/history-store.js'
 
 const MAX_RULE_CHARS = 1000
 const MAX_GLOBS = 10
@@ -11,32 +12,51 @@ export interface LessonFile {
   file: string
 }
 
+export interface SentToLessons {
+  misses: readonly LessonFile[]
+  findings: readonly LessonFile[]
+  pending: readonly { id: number; kind: LessonKind }[]
+}
+
 export function checkLessonAnswers(
   answers: readonly LessonAnswer[],
-  sent: readonly LessonFile[],
-  pendingIds: ReadonlySet<number>,
+  sent: SentToLessons,
 ): Pick<LessonChanges, 'created' | 'attached'> {
-  const fileOf = new Map(sent.map(({ id, file }) => [id, file]))
-  const created: LessonChanges['created'][number][] = []
-  const attached = new Map<number, number[]>()
+  const fileOf = {
+    check: new Map(sent.misses.map(({ id, file }) => [id, file])),
+    avoid: new Map(sent.findings.map(({ id, file }) => [id, file])),
+  }
+  const pendingKind = new Map(sent.pending.map(({ id, kind }) => [id, kind]))
+  const created: NewLesson[] = []
+  const attached = new Map<number, Required<LessonLink>>()
   for (const answer of answers) {
-    const missIds = [...new Set(answer.misses)].filter((id) => fileOf.has(id))
-    if (missIds.length === 0) continue
-    if (answer.extends !== null && pendingIds.has(answer.extends)) {
-      const known = attached.get(answer.extends) ?? []
-      attached.set(answer.extends, [...new Set([...known, ...missIds])])
+    const files = fileOf[answer.kind]
+    const ids = [...new Set(answer.kind === 'check' ? answer.misses : answer.findings)].filter(
+      (id) => files.has(id),
+    )
+    if (ids.length === 0) continue
+    const sources = {
+      missIds: answer.kind === 'check' ? ids : [],
+      findingIds: answer.kind === 'avoid' ? ids : [],
+    }
+    if (answer.extends !== null && pendingKind.get(answer.extends) === answer.kind) {
+      const known = attached.get(answer.extends)
+      attached.set(answer.extends, {
+        lessonId: answer.extends,
+        missIds: [...new Set([...(known?.missIds ?? []), ...sources.missIds])],
+        findingIds: [...new Set([...(known?.findingIds ?? []), ...sources.findingIds])],
+      })
       continue
     }
     const rule = answer.rule.trim()
     const globs = answer.scope.map((glob) => glob.trim()).filter((glob) => glob !== '')
     if (rule === '' || rule.length > MAX_RULE_CHARS || globs.length === 0) continue
-    const files = [...new Set(missIds.map((id) => fileOf.get(id) ?? ''))]
-    created.push({ rule, scope: scopeOf(globs.slice(0, MAX_GLOBS), files), missIds })
+    const scope = scopeOf(globs.slice(0, MAX_GLOBS), [
+      ...new Set(ids.map((id) => files.get(id) ?? '')),
+    ])
+    created.push({ kind: answer.kind, rule, scope, ...sources })
   }
-  return {
-    created,
-    attached: [...attached].map(([lessonId, missIds]) => ({ lessonId, missIds })),
-  }
+  return { created, attached: [...attached.values()] }
 }
 
 function scopeOf(globs: readonly string[], files: readonly string[]): string[] {

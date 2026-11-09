@@ -1164,15 +1164,36 @@ phada misses --replay --format json   # outcomes and tallies as data (schemaVers
 ### Lessons
 
 The misses of people of the team — the owner, a member or a collaborator of the repository — can
-teach the review a rule. `phada lessons --refresh` sends the open misses of team people that no
-lesson holds yet (the 50 most recent of each repository) to your AI, once per repository, with the
-pending lessons and the rules of your own config for that repository. The AI proposes a lesson
+teach the review a rule. `phada lessons --refresh` first reads, on GitHub, the pull requests
+closed or merged in each repository — the one you name, or every repository with a review in the
+history — and keeps the comments of the team as misses, the same way `phada misses --refresh`
+does, also on pull requests Phada never reviewed. The first time it reads the last 90 days; then
+only what closed after the newest pull request it read (a cursor per repository, kept in the
+history and moved only when every pull request of the run was read); `--since YYYY-MM-DD`
+reads from that day instead. It reads at most the 200 most recently closed pull requests of a
+repository per run, and needs a GitHub token (`GITHUB_TOKEN`, `GH_TOKEN` or your `gh` login).
+Then it sends to your AI the open misses of team people that no lesson holds and that it never
+sent before, 50 at a time (the most recent first, at most 5 calls per repository per run; the
+rest waits for the next run), with up to 25 earlier misses no lesson holds yet as context, the
+pending lessons and the rules of your own config for that repository; with no new miss it makes
+no call. The AI proposes a lesson
 only when the comments show a rule that repeats there — a convention or a recurring risk, not a
 one-off bug — as one rule, the files it covers (globs from the files of its comments) and the
 misses it comes from; a miss can also join a pending lesson. Comments of bots, of people outside
-the team, of the pull request's author and of Phada never become lessons, and the comments reach
-the AI as data, never as instructions. It uses the provider and model of your config and does not
-read GitHub.
+the team, of the pull request's author and of Phada never become lessons as misses, and the
+comments reach the AI as data, never as instructions. It uses the provider and model of your
+config.
+
+The same call also gets the comments Phada published that the team refused: resolved as
+dismissed or refuted, answered with a 👎, or replied to with a reply Phada classified as
+`refuted` or `disagreed`. Each goes with its text, severity and rule, the signals of the team and
+the replies in its thread (their text kept from now on, cut to 2 KB), 30 never sent at a time with
+up to 15 earlier ones no lesson holds yet as context, and with up to 20 comments Phada published
+in the same files that the team fixed. From them the AI can propose an **avoid** lesson: one or
+two sentences on what the review should not report in those files, only when the comments show
+something it keeps reporting that the team does not want there — a convention or an accepted
+trade-off, not a one-off wrong comment — and never one that would hide a fixed comment, a
+security hole, data loss or a crash.
 
 A lesson never reaches a review on its own. `phada lessons` lists the pending ones in full, with
 their files, how many misses back them and the link of each thread; `accept` adds one as a rule of
@@ -1190,6 +1211,23 @@ rules:
       - https://github.com/acme/shop/pull/12#discussion_r123
 ```
 
+An avoid lesson is marked `avoid` and lists the comments of Phada it comes from (title, file and
+line, and the link of each thread) instead of misses, the ones more misses or comments back
+first. Accepting it writes a rule with `kind: avoid` (and no `severity`) whose `from` holds the
+threads of those comments; from then on the reviews of that repository stop reporting what it
+describes in its files:
+
+```yaml
+rules:
+  - id: lesson-8
+    kind: avoid
+    rule: Do not ask for comments on the config loaders; the team documents them in docs/.
+    scope:
+      - src/config/**
+    from:
+      - https://github.com/acme/shop/pull/15#discussion_r456
+```
+
 That file is the rule's only copy: edit or remove it there. `discard` drops a lesson and writes
 nothing. `accept --edit` first opens the rule and its files in `$VISUAL`, `$EDITOR` or `vi`;
 saving an empty file cancels. The Learnings screen of the [terminal app](#terminal-app) shows the
@@ -1197,12 +1235,13 @@ pending lessons of each repository and accepts or discards them (`l`), showing t
 rule before it writes; it never proposes them.
 
 ```bash
-phada lessons --refresh               # propose lessons from the new misses
+phada lessons --refresh               # read the closed pull requests, then propose lessons
+phada lessons --refresh owner/repo --since 2026-06-01   # one repository, from that day
 phada lessons owner/repo --all        # one repository, accepted and discarded ones included
 phada lessons accept 7                # add lesson 7 as the rule lesson-7
 phada lessons accept 7 --edit         # edit it first
 phada lessons discard 7               # drop lesson 7
-phada lessons --format json           # as data (schemaVersion: 1)
+phada lessons --format json           # as data (schemaVersion: 1), with kind and findings
 ```
 
 ## Rules and repository context
@@ -1215,6 +1254,11 @@ rules that review it.
   [Configuration](#configuration)). They reach the AI as instructions: a change that breaks one
   is a finding that names the rule, even when nearby existing code breaks it too, and a rule can
   set the lowest severity of those findings.
+- **Exceptions**: a rule with `kind: avoid` (and no `severity`) says what not to report in the
+  files of its `scope`. It reaches the AI in its own block after the rules, "Repository
+  exceptions", and never as something to break; the rest of those files is reviewed as usual,
+  and a security hole, data loss or a crash is reported anyway. `phada rules` and the app mark it
+  `avoid`.
 - **Claude Code rules**: each `.claude/rules/**/*.md` file at the root is a rule too, named by its
   path (`.claude/rules/sql.md`). Its `paths:` front matter (one glob or a list, relative to the
   root) sets the files it applies to: it is sent when a changed file matches, and left out
@@ -1798,7 +1842,7 @@ ci:
 | `ci.onFailure`            | `review` (default) or `skip`: the watch skips a commit whose checks fail until they pass (see [Watch mode](#watch-mode))                     | both (root)             |
 | `ci.checks`               | The checks that count, by name or glob (default: all)                                                                                        | both (root)             |
 | `ignore`                  | More files to leave out of the diff                                                                                                          | both                    |
-| `rules`                   | Rules with `rule`, and optionally `id`, `scope` (globs), `severity` (`P0`, `P1` or `P2`) and `from`                                          | both                    |
+| `rules`                   | Rules with `rule`, and optionally `id`, `scope` (globs), `severity` (`P0`, `P1` or `P2`), `kind` (`check` or `avoid`) and `from`             | both                    |
 | `review.debt`             | `summary` (default), `comments` or `off`: what to do with the [repository debt](#repository-debt)                                            | both (root)             |
 | `review.continuation`     | `true` (default) or `false`: one more pass over the files a review with low [coverage](#what-a-review-looks-like) left out                   | both (root)             |
 | `review.groups`           | `false` (default), `true` or `{ concurrency: 1–4 }`: review a [large pull request](#large-pull-requests) in diff groups                      | both (root)             |

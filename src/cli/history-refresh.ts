@@ -20,15 +20,15 @@ export async function refreshHistory(
   token: string,
   deps: HistoryCommandDeps,
   closed: readonly number[] = [],
-): Promise<void> {
+): Promise<{ observed: number; failed: number }> {
   const due =
     filter.repo !== undefined && filter.number !== undefined
       ? [{ repo: filter.repo.toLowerCase(), number: filter.number }]
       : withClosed(history.feedbackDue(filter, deps.clock().toISOString()), filter.repo, closed)
-  if (due.length === 0) return
+  if (due.length === 0) return { observed: 0, failed: 0 }
   deps.stderr.write(`Refreshing ${formatCount(due.length, 'pull request')}…\n`)
   let misses = 0
-  await refreshFeedback(
+  const refreshed = await refreshFeedback(
     due,
     'refresh',
     feedbackRefreshDeps(history, token, deps, {
@@ -41,6 +41,7 @@ export async function refreshHistory(
   if (misses > 0) {
     deps.stderr.write(`Found ${formatCount(misses, 'new miss', 'new misses')}.\n`)
   }
+  return refreshed
 }
 
 function withClosed(

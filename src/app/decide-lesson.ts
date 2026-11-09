@@ -5,7 +5,12 @@ import type { LocalFileSystem } from '../config/local-files.js'
 import { userRepoDir } from '../config/user-config.js'
 import { planUserConfigEdit } from '../config/user-config-edit.js'
 import type { PlannedUserConfig } from '../config/user-config-edit.js'
-import type { HistoryStore, LessonDecision, LessonRecord } from '../store/history-store.js'
+import type {
+  HistoryStore,
+  LessonDecision,
+  LessonKind,
+  LessonRecord,
+} from '../store/history-store.js'
 import { lessonRuleId, lessonThreads } from './lesson-rule.js'
 
 export type LessonDecider = Pick<HistoryStore, 'lessons' | 'decideLesson'>
@@ -27,6 +32,7 @@ export interface DiscardLessonDeps {
 export interface AcceptedLesson {
   lessonId: number
   repo: string
+  kind: LessonKind
   ruleId: string
   path: string
   created: boolean
@@ -85,13 +91,31 @@ export async function acceptLesson(
     path,
     current: current ?? deps.template(lesson.repo),
     template: '',
-    changes: [{ kind: 'rule', rule: { id: ruleId, rule: text.rule, scope: text.scope, from } }],
+    changes: [
+      {
+        kind: 'rule',
+        rule: {
+          id: ruleId,
+          ...(lesson.kind === 'avoid' ? { kind: 'avoid' as const } : {}),
+          rule: text.rule,
+          scope: text.scope,
+          from,
+        },
+      },
+    ],
   })
   if (!planned.ok) throw new LessonRuleRefusedError(refusalText(planned, path))
   await deps.files.writeAtomic(path, planned.plan.text)
   const changed = edit === undefined ? undefined : { rule: text.rule, scope: text.scope }
   decide(lesson.id, 'accepted', deps, changed)
-  return { lessonId: lesson.id, repo: lesson.repo, ruleId, path, created: current === null }
+  return {
+    lessonId: lesson.id,
+    repo: lesson.repo,
+    kind: lesson.kind,
+    ruleId,
+    path,
+    created: current === null,
+  }
 }
 
 async function editedText(

@@ -63,6 +63,7 @@ export interface FindingRecord {
   threadUrl?: string
   outdated: boolean
   publishedAt: string
+  lessonsSentAt?: string
   signals: SignalRecord[]
 }
 
@@ -83,7 +84,7 @@ export interface DuePull {
   number: number
 }
 
-type FindingRow = Omit<FindingRecord, 'signals'>
+export type FindingRow = Omit<FindingRecord, 'signals'>
 
 export function recordPublished(db: DatabaseSync, findings: readonly PublishedFinding[]): void {
   transaction(db, () => {

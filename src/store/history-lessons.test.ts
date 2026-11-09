@@ -1,8 +1,11 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
+import { DatabaseSync } from 'node:sqlite'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import type { Miss } from '../publish/misses.js'
+import type { PublishedFinding } from './history-feedback.js'
+import { HISTORY_MIGRATIONS } from './history-migrations.js'
 import { openHistoryStore } from './history-store.js'
 import type { HistoryStore } from './history-store.js'
 
@@ -35,8 +38,31 @@ function miss(threadId: string, overrides: Partial<Miss> = {}): Miss {
   }
 }
 
-async function withStore(test: (store: HistoryStore) => void): Promise<void> {
-  const store = await openHistoryStore(fresh())
+function published(fingerprint: string, overrides: Partial<PublishedFinding> = {}) {
+  return {
+    repo: 'acme/shop',
+    number: 3,
+    commitSha: 'c'.repeat(40),
+    fingerprint,
+    file: 'src/api/shop.ts',
+    line: 20,
+    title: 'Missing null check',
+    severity: 'P2',
+    confidence: 80,
+    publishedAt: T1,
+    ...overrides,
+  } satisfies PublishedFinding
+}
+
+function findingIds(store: HistoryStore): number[] {
+  return store
+    .findings({})
+    .map(({ id }) => id)
+    .sort((a, b) => a - b)
+}
+
+async function withStore(test: (store: HistoryStore) => void, path = fresh()): Promise<void> {
+  const store = await openHistoryStore(path)
   try {
     test(store)
   } finally {
@@ -79,6 +105,7 @@ describe('HistoryStore lessons', () => {
         {
           id: ids[0],
           repo: 'acme/shop',
+          kind: 'check',
           rule: 'Validate request bodies at the edge.',
           scope: ['src/api/**'],
           state: 'pending',
@@ -89,6 +116,7 @@ describe('HistoryStore lessons', () => {
             expect.objectContaining({ id: first, threadId: 'T1' }),
             expect.objectContaining({ id: second, threadId: 'T2' }),
           ],
+          findings: [],
         },
       ])
       expect([...store.linkedMissIds()].sort((a, b) => a - b)).toEqual([first, second])
@@ -118,6 +146,96 @@ describe('HistoryStore lessons', () => {
 
       expect(store.lessons({})[0]?.misses.map(({ id }) => id)).toEqual([first, second, third])
     }))
+
+  it('marks the misses sent to the AI with the lessons, and a new harvest keeps the mark', () =>
+    withStore((store) => {
+      store.recordMisses([miss('T1'), miss('T2'), miss('T3')], T1)
+      const [first, second] = missIds(store)
+
+      store.recordLessons(
+        {
+          repo: 'acme/shop',
+          created: [{ rule: 'Rule.', scope: ['src/**'], missIds: [first ?? 0] }],
+          attached: [],
+          sent: [first ?? 0, second ?? 0],
+        },
+        T2,
+      )
+      store.recordMisses([miss('T1', { body: 'Edited.' }), miss('T2')], T2)
+
+      expect(
+        store
+          .misses({})
+          .misses.map(({ threadId, lessonsSentAt }) => [threadId, lessonsSentAt])
+          .sort(),
+      ).toEqual([
+        ['T1', T2],
+        ['T2', T2],
+        ['T3', undefined],
+      ])
+    }))
+
+  it('records an avoid lesson with the findings it comes from and marks the findings sent', () =>
+    withStore((store) => {
+      store.recordPublished([published('f1'), published('f2', { line: 40 }), published('f3')])
+      const [first, second, third] = findingIds(store)
+
+      const [lesson] = store.recordLessons(
+        {
+          repo: 'acme/shop',
+          created: [
+            {
+              kind: 'avoid',
+              rule: 'Do not ask for null checks on parsed configs.',
+              scope: ['src/api/**'],
+              missIds: [],
+              findingIds: [first ?? 0],
+            },
+          ],
+          attached: [],
+          sentFindings: [first ?? 0, second ?? 0],
+        },
+        T1,
+      )
+      store.recordLessons(
+        {
+          repo: 'acme/shop',
+          created: [],
+          attached: [{ lessonId: lesson ?? 0, missIds: [], findingIds: [first ?? 0, second ?? 0] }],
+        },
+        T2,
+      )
+
+      const [recorded] = store.lessons({})
+      expect(recorded).toMatchObject({ kind: 'avoid', misses: [] })
+      expect(recorded?.findings).toEqual([
+        expect.objectContaining({ id: first, fingerprint: 'f1', title: 'Missing null check' }),
+        expect.objectContaining({ id: second, fingerprint: 'f2', line: 40 }),
+      ])
+      expect([...store.linkedFindingIds()].sort((a, b) => a - b)).toEqual([first, second])
+      expect(store.findings({}).map(({ id, lessonsSentAt }) => [id, lessonsSentAt])).toEqual([
+        [first, T1],
+        [second, T1],
+        [third, undefined],
+      ])
+    }))
+
+  it('reads the lessons of a version 9 file as check lessons without findings', async () => {
+    const path = fresh()
+    const v9 = await openHistoryStore(path, { migrations: HISTORY_MIGRATIONS.slice(0, 9) })
+    v9.close()
+    const db = new DatabaseSync(path)
+    db.exec(
+      `insert into lesson (id, repo, rule, scope, state, created_at)
+       values (1, 'acme/shop', 'Old.', '["src/**"]', 'pending', '${T1}')`,
+    )
+    db.close()
+
+    await withStore((store) => {
+      expect(store.lessons({})).toMatchObject([{ rule: 'Old.', kind: 'check', findings: [] }])
+      expect(store.linkedFindingIds().size).toBe(0)
+    }, path)
+  })
 
   it('lists lessons by repository and state', () =>
     withStore((store) => {

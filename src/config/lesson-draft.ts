@@ -9,6 +9,7 @@ export interface LessonText {
 
 export interface LessonDraft extends LessonText {
   id: number
+  kind: 'check' | 'avoid'
   repo: string
   from: readonly string[]
 }
@@ -18,8 +19,16 @@ export type ReadLessonDraft =
 
 export function lessonDraftText(draft: LessonDraft): string {
   const header = [
-    `# Lesson ${draft.id} for ${draft.repo}, accepted as the rule lesson-${draft.id}.`,
-    '# Edit rule and scope; Phada sets id and from. Saving an empty file cancels the accept.',
+    ...(draft.kind === 'avoid'
+      ? [
+          `# Lesson ${draft.id} for ${draft.repo}, accepted as the avoid rule lesson-${draft.id} (kind: avoid):`,
+          '# reviews stop reporting what it describes in the files of its scope.',
+          '# Edit rule and scope; Phada sets id, kind and from. Saving an empty file cancels the accept.',
+        ]
+      : [
+          `# Lesson ${draft.id} for ${draft.repo}, accepted as the rule lesson-${draft.id}.`,
+          '# Edit rule and scope; Phada sets id and from. Saving an empty file cancels the accept.',
+        ]),
     ...(draft.from.length === 0 ? [] : ['# From:', ...draft.from.map((url) => `# ${url}`)]),
   ]
   return `${header.join('\n')}\n${stringify({ rule: draft.rule, scope: draft.scope })}`

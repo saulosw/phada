@@ -167,6 +167,7 @@ describe('replyToThreads', () => {
         threadId: 'T1',
         commentId: 'C2',
         author: 'alice',
+        body: 'Why is this unsafe?',
         kind: 'question',
         answered: true,
         answerId: 'R1',
@@ -176,6 +177,22 @@ describe('replyToThreads', () => {
         observedAt: NOW,
       },
     ])
+    history.close()
+  })
+
+  it('records the reply of the person cut to 2 KB', async () => {
+    const history = await freshHistory()
+    const run = setup({
+      threads: [thread('T1', [comment('C2', 'alice', `We want this.${'x'.repeat(3000)}`)])],
+      answers: [answer('disagreed', 'It stays unsafe.')],
+      history,
+    })
+
+    await replyToThreads(INPUT, run.deps)
+
+    const [recorded] = history.replies({})
+    expect(recorded?.body?.startsWith('We want this.x')).toBe(true)
+    expect(recorded?.body).toContain('[truncated by Phada: 2048 of 3013 bytes]')
     history.close()
   })
 

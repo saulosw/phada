@@ -376,4 +376,24 @@ create table reply_due (
 );
 `,
   },
+  {
+    version: 10,
+    sql: `
+create table lesson_harvest (
+  repo text primary key,
+  closed_since text not null,
+  harvested_at text not null
+);
+alter table miss add column lessons_sent_at text;
+alter table thread_reply add column body text;
+alter table lesson add column kind text not null default 'check' check (kind in ('check', 'avoid'));
+create table lesson_finding (
+  lesson_id integer not null references lesson (id) on delete cascade,
+  finding_id integer not null references finding (id) on delete cascade,
+  primary key (lesson_id, finding_id)
+);
+create index lesson_finding_by_finding on lesson_finding (finding_id);
+alter table finding add column lessons_sent_at text;
+`,
+  },
 ]
