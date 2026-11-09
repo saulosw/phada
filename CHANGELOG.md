@@ -7,6 +7,8 @@ output can change between minor versions.
 
 ## Unreleased
 
+## 0.18.0 - 2026-11-09
+
 ### Added
 
 - `phada reply owner/repo#N` answers, with the AI, the replies people left in Phada's open
