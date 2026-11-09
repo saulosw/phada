@@ -989,6 +989,48 @@ describe('loadContext with a lesson rule', () => {
     ])
   })
 
+  it('applies an avoid rule only where it covers a changed file, keeping its kind', async () => {
+    const loaded = await loadWith(
+      [
+        'rules:',
+        '  - id: lesson-5',
+        '    rule: Retries in the API client are deliberate.',
+        '    scope: ["src/api/**"]',
+        '    kind: avoid',
+        '  - id: lesson-6',
+        '    rule: The web bundle size is checked elsewhere.',
+        '    scope: ["web/**"]',
+        '    kind: avoid',
+      ].join('\n'),
+    )
+
+    expect(loaded.report.rules).toEqual([
+      {
+        key: 'lesson-5',
+        origin: 'user:repos/acme/shop/config.yml',
+        scope: ['src/api/**'],
+        kind: 'avoid',
+        status: 'applied',
+      },
+      {
+        key: 'lesson-6',
+        origin: 'user:repos/acme/shop/config.yml',
+        scope: ['web/**'],
+        kind: 'avoid',
+        status: 'out-of-scope',
+      },
+    ])
+    expect(loaded.context.rules).toEqual([
+      {
+        key: 'lesson-5',
+        text: 'Retries in the API client are deliberate.',
+        scope: ['src/api/**'],
+        kind: 'avoid',
+        origin: 'user:repos/acme/shop/config.yml',
+      },
+    ])
+  })
+
   it('sends the same prompt with and without the threads it comes from', async () => {
     const withFrom = await loadWith(lessonConfig(FROM))
     const without = await loadWith(lessonConfig(''))

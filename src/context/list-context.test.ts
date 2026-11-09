@@ -195,6 +195,28 @@ describe('listContext', () => {
     ])
   })
 
+  it('lists the kind of an avoid rule', async () => {
+    const { report } = await listContext({
+      ref: REF,
+      userLayers: [
+        userLayer({
+          rules: [{ id: 'lesson-5', rule: 'Retries are deliberate.', kind: 'avoid' }],
+        }),
+      ],
+      sources: sources({}),
+    })
+
+    expect(report.rules).toEqual([
+      {
+        key: 'lesson-5',
+        origin: 'user:config.yml',
+        scope: ['**'],
+        kind: 'avoid',
+        status: 'listed',
+      },
+    ])
+  })
+
   it('returns the review settings of the branch, the repository over the user', async () => {
     const user: ConfigLayer = {
       kind: 'user',

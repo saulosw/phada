@@ -15,16 +15,29 @@ const Pattern = z
 
 const Globs = z.array(Pattern)
 
-const RuleSchema = z.strictObject({
-  id: z
-    .string()
-    .regex(/^[A-Za-z0-9][\w.-]*$/, 'use letters, digits, dots, dashes or underscores')
-    .optional(),
-  rule: z.string().trim().min(1),
-  scope: Globs.optional(),
-  severity: z.enum(['P0', 'P1', 'P2']).optional(),
-  from: z.array(z.url({ protocol: /^https$/, error: 'use the https link of a thread' })).optional(),
-})
+const RuleSchema = z
+  .strictObject({
+    id: z
+      .string()
+      .regex(/^[A-Za-z0-9][\w.-]*$/, 'use letters, digits, dots, dashes or underscores')
+      .optional(),
+    rule: z.string().trim().min(1),
+    scope: Globs.optional(),
+    severity: z.enum(['P0', 'P1', 'P2']).optional(),
+    kind: z.enum(['check', 'avoid']).optional(),
+    from: z
+      .array(z.url({ protocol: /^https$/, error: 'use the https link of a thread' }))
+      .optional(),
+  })
+  .superRefine((rule, context) => {
+    if (rule.kind === 'avoid' && rule.severity !== undefined) {
+      context.addIssue({
+        code: 'custom',
+        path: ['severity'],
+        message: 'an avoid rule takes no severity',
+      })
+    }
+  })
 
 export const EditedLessonSchema = z.strictObject({
   rule: RuleSchema.shape.rule,

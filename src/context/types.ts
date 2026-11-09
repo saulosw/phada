@@ -21,6 +21,7 @@ export interface RuleReport {
   origin: string
   scope: string[]
   severity?: 'P0' | 'P1' | 'P2'
+  kind?: 'avoid'
   from?: string[]
   status: 'applied' | 'disabled' | 'out-of-scope' | 'listed'
 }

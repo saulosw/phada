@@ -8,6 +8,7 @@ export interface ResolvedRule {
   text: string
   scope: string[]
   severity?: 'P0' | 'P1' | 'P2'
+  kind?: 'avoid'
   origin: string
   from?: string[]
 }
@@ -417,6 +418,7 @@ function rulesOf(layer: ConfigLayer, warnings: string[]): ResolvedRule[] {
         ? defaultScope
         : rule.scope.flatMap((glob) => inLayer(layer, glob, warnings, true) ?? []),
     ...(rule.severity === undefined ? {} : { severity: rule.severity }),
+    ...(rule.kind === 'avoid' ? { kind: rule.kind } : {}),
     origin: layer.configLabel,
     ...(rule.from === undefined ? {} : { from: rule.from }),
   }))

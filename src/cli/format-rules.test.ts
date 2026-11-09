@@ -43,6 +43,28 @@ describe('formatRulesText', () => {
     )
   })
 
+  it('marks an avoid rule', () => {
+    const text = formatRulesText(
+      REPO,
+      contextReportFixture({
+        configFiles: [],
+        docs: [],
+        ignored: [],
+        rules: [
+          {
+            key: 'lesson-5',
+            origin: 'user:repos/acme/api/config.yml',
+            scope: ['src/**'],
+            kind: 'avoid',
+            status: 'listed',
+          },
+        ],
+      }),
+    )
+
+    expect(text).toContain('- lesson-5 (user:repos/acme/api/config.yml, avoid, src/**)\n')
+  })
+
   it('prints the ignore patterns of a repository and says when there is nothing', () => {
     const text = formatRulesText(
       REPO,
@@ -79,5 +101,21 @@ describe('formatRulesJson', () => {
       expect.objectContaining({ key: 'orm-only', scope: ['**/*.py'] }),
     )
     expect(JSON.parse(formatRulesJson(PULL, contextReportFixture())).ignore).toBeNull()
+  })
+
+  it('gives the kind of an avoid rule and none for a check rule', () => {
+    const report = contextReportFixture({
+      rules: [
+        { key: 'lesson-5', origin: 'x', scope: ['**'], kind: 'avoid', status: 'listed' },
+        { key: 'orm-only', origin: 'x', scope: ['**'], status: 'listed' },
+      ],
+    })
+
+    const json = JSON.parse(formatRulesJson(REPO, report))
+
+    expect(json.context.rules).toEqual([
+      { key: 'lesson-5', origin: 'x', scope: ['**'], kind: 'avoid', status: 'listed' },
+      { key: 'orm-only', origin: 'x', scope: ['**'], status: 'listed' },
+    ])
   })
 })

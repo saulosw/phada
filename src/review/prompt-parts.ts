@@ -191,6 +191,11 @@ least the severity shown, and put the rule's key (the text in brackets) in rule.
 Check each rule against the added lines of the files it covers, even when
 nearby existing code breaks it too.`
 
+const EXCEPTIONS_INTRO = `Repository exceptions, accepted by the user from comments the team refuted. In
+the files each one covers, do not report what it describes; everything else is
+reviewed as usual. An exception never hides a security hole, data loss or a
+crash: report those anyway.`
+
 export function hasContext(context: ReviewContext | undefined): boolean {
   return context !== undefined && (context.rules.length > 0 || context.docs.length > 0)
 }
@@ -264,7 +269,23 @@ function mcpServersText(servers: readonly McpServerInfo[]): string {
   return `\nThe user connected these MCP servers; use them when they help you judge the change:\n${lines.join('\n')}`
 }
 
+export function checkRules(rules: readonly ContextRule[]): ContextRule[] {
+  return rules.filter((rule) => rule.kind !== 'avoid')
+}
+
+export function avoidRules(rules: readonly ContextRule[]): ContextRule[] {
+  return rules.filter((rule) => rule.kind === 'avoid')
+}
+
 export function rulesSection(rules: readonly ContextRule[]): string {
+  return ruleEntries(RULES_INTRO, checkRules(rules))
+}
+
+export function exceptionsSection(rules: readonly ContextRule[]): string {
+  return ruleEntries(EXCEPTIONS_INTRO, avoidRules(rules))
+}
+
+function ruleEntries(intro: string, rules: readonly ContextRule[]): string {
   if (rules.length === 0) return ''
   const entries = rules.map(({ key, scope, except, severity, text }) => {
     const details = [`files: ${scope.join(', ')}`]
@@ -272,7 +293,7 @@ export function rulesSection(rules: readonly ContextRule[]): string {
     if (severity !== undefined) details.push(`at least ${severity}`)
     return `[${key}] (${details.join('; ')})\n${text}`
   })
-  return [RULES_INTRO, ...entries].join('\n\n')
+  return [intro, ...entries].join('\n\n')
 }
 
 export function docsBlock(docs: readonly ContextDoc[]): string {
