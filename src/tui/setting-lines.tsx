@@ -45,10 +45,12 @@ export function ruleLines(
 ): ReactNode[] {
   const keys = rules.map(({ name }) => oneLine(name))
   const keyWidth = Math.min(Math.max(0, ...keys.map(textWidth)), Math.floor(columns * KEY_SHARE))
-  const origins = rules.map(({ origin, from }) =>
-    from === undefined || from.length === 0
-      ? messages.settings.origins[origin]
-      : `${messages.settings.origins[origin]} · ${messages.settings.threads(from.length)}`,
+  const origins = rules.map(({ origin, kind, from }) =>
+    [
+      messages.settings.origins[origin],
+      ...(kind === undefined ? [] : [kind]),
+      ...(from === undefined || from.length === 0 ? [] : [messages.settings.threads(from.length)]),
+    ].join(' · '),
   )
   const originWidth = Math.max(
     ...Object.values(messages.settings.origins).map(textWidth),

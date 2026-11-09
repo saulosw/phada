@@ -17,6 +17,7 @@ export type UserConfigChange =
 
 export interface NewRule {
   id: string
+  kind?: 'avoid'
   rule: string
   scope: readonly string[]
   from: readonly string[]
@@ -134,6 +135,7 @@ function addRule(doc: Document, rule: NewRule): ChangeRefusal | undefined {
   const rules = doc.get('rules')
   const written = {
     id: rule.id,
+    ...(rule.kind === undefined ? {} : { kind: rule.kind }),
     rule: rule.rule,
     scope: [...rule.scope],
     ...(rule.from.length === 0 ? {} : { from: [...rule.from] }),

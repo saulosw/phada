@@ -69,6 +69,7 @@ export interface UserRule {
   name: string
   text: string
   origin: SettingOrigin
+  kind?: 'avoid'
   from?: string[]
 }
 
@@ -225,11 +226,12 @@ async function indexOf(
 }
 
 export function userRules(rules: readonly ResolvedRule[]): UserRule[] {
-  return rules.map(({ key, text, origin, from }) => ({
+  return rules.map(({ key, text, origin, kind, from }) => ({
     key,
     name: layerOrigin(key).name,
     text,
     origin: settingOrigin(origin),
+    ...(kind === undefined ? {} : { kind }),
     ...(from === undefined ? {} : { from: [...from] }),
   }))
 }

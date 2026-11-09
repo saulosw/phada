@@ -393,6 +393,82 @@ describe('buildReviewPrompt with repository context', () => {
     expect(data).not.toContain('Use the ORM')
   })
 
+  it('keeps the instructions word for word with rules and no exception', () => {
+    const { instructions } = buildReviewPrompt(
+      { pullRequest: pullRequestFixture(), context: reviewContextFixture() },
+      NONCE,
+    )
+
+    expect(createHash('sha256').update(instructions).digest('hex')).toBe(
+      '61e30b8c181fee21ed6862e2189d1c23c8252d2c605dabe4efd7e35c57995b0a',
+    )
+  })
+
+  it('puts avoid rules in their own exceptions block right after the rules', () => {
+    const context = reviewContextFixture({
+      docs: [],
+      rules: [
+        ...reviewContextFixture().rules,
+        {
+          key: 'lesson-5',
+          text: 'Retries in the API client are deliberate.',
+          scope: ['src/api/**', 'src/client/**'],
+          except: ['src/api/legacy/**'],
+          kind: 'avoid',
+          origin: 'user:repos/acme/shop/config.yml',
+        },
+      ],
+    })
+
+    const { instructions } = buildReviewPrompt(
+      { pullRequest: pullRequestFixture(), context },
+      NONCE,
+    )
+
+    const rules = instructions.indexOf('Repository rules')
+    const exceptions = instructions.indexOf('Repository exceptions')
+    expect(rules).toBeGreaterThan(-1)
+    expect(exceptions).toBeGreaterThan(rules)
+    expect(instructions.slice(rules, exceptions)).not.toContain('lesson-5')
+    expect(instructions).toContain(
+      [
+        'Repository exceptions, accepted by the user from comments the team refuted. In',
+        'the files each one covers, do not report what it describes; everything else is',
+        'reviewed as usual. An exception never hides a security hole, data loss or a',
+        'crash: report those anyway.',
+        '',
+        '[lesson-5] (files: src/api/**, src/client/**; not in src/api/legacy/**)',
+        'Retries in the API client are deliberate.',
+      ].join('\n'),
+    )
+    expect(instructions.indexOf('Repository exceptions')).toBeLessThan(
+      instructions.indexOf('Rate each candidate'),
+    )
+  })
+
+  it('sends only the exceptions block when every rule applied is an avoid rule', () => {
+    const context = reviewContextFixture({
+      docs: [],
+      rules: [
+        {
+          key: 'lesson-5',
+          text: 'Retries are deliberate.',
+          scope: ['**'],
+          kind: 'avoid',
+          origin: 'x',
+        },
+      ],
+    })
+
+    const parts = reviewInstructionParts({ context })
+
+    expect(parts.map((part) => part.text).join('\n\n')).not.toContain('Repository rules')
+    expect(parts.find((part) => part.text.startsWith('Repository exceptions'))).toMatchObject({
+      section: 'rules',
+      origin: 'x',
+    })
+  })
+
   it('names the folders where a rule is turned off', () => {
     const context = reviewContextFixture({
       docs: [],

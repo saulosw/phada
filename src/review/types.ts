@@ -9,6 +9,7 @@ export interface ContextRule {
   scope: string[]
   except?: string[]
   severity?: Severity
+  kind?: 'avoid'
   origin: string
 }
 

@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import type { RepoStats, RuleStats } from '../../app/read-history.js'
 import type { Learnings, RepoLearnings } from '../../app/read-learnings.js'
 import type { AcceptedLesson } from '../../app/decide-lesson.js'
-import type { LessonRecord, MissRecord } from '../../store/history-store.js'
+import type { FindingRow, LessonRecord, MissRecord } from '../../store/history-store.js'
 import type { ObservedEdge } from '../../store/observed-store.js'
 import {
   frameLines,
@@ -150,11 +150,37 @@ function lesson(id: number, rule: string, scope: string[], misses: number): Less
   return {
     id,
     repo: 'acme/shop',
+    kind: 'check',
     rule,
     scope,
     state: 'pending',
     createdAt: '2026-11-03T10:00:00.000Z',
     misses: Array.from({ length: misses }, (_, index) => miss(id * 10 + index)),
+    findings: [],
+  }
+}
+
+function comment(id: number, title: string): FindingRow {
+  return {
+    id,
+    repo: 'acme/shop',
+    number: 5,
+    fingerprint: `f${id}`,
+    file: 'src/config/load.ts',
+    line: 8 + id,
+    title,
+    severity: 'P2',
+    threadUrl: `https://github.com/acme/shop/pull/5#discussion_r${id}`,
+    outdated: false,
+    publishedAt: '2026-10-21T10:00:00.000Z',
+  }
+}
+
+function avoidLesson(id: number): LessonRecord {
+  return {
+    ...lesson(id, 'Do not ask for comments on config loaders.', ['src/config/**'], 0),
+    kind: 'avoid',
+    findings: [comment(1, 'Comment the loader'), comment(2, 'Document the defaults')],
   }
 }
 
@@ -184,6 +210,7 @@ function lessonHistory(
           Promise.resolve({
             lessonId: id,
             repo: 'acme/shop',
+            kind: 'check' as const,
             ruleId: `lesson-${id}`,
             path: '/home/ana/.config/phada/repos/acme/shop/config.yml',
             created: false,
@@ -455,6 +482,51 @@ describe('the Learnings screen', () => {
       expect(text.indexOf('Keep every price')).toBeLessThan(text.indexOf('Never log'))
     })
 
+    it('marks an avoid lesson and lists the Phada comments it comes from', async () => {
+      const history = lessonHistory({
+        pending: [
+          avoidLesson(3),
+          lesson(1, 'Never log the payment token.', ['src/payments/**'], 1),
+        ],
+      })
+      const { frame, press, showing } = await openShop(history)
+      await press(KEYS.enter)
+      await showing('Lessons to decide (2)', 'l decide lessons')
+      const text = frame()
+      expectFits(text, { columns: 80, rows: 24 })
+      expect(text).toContain('Do not ask for comments on config loaders.')
+      expect(text).toContain('avoid · files: src/config/** · backed by 2 refused comments')
+      expect(text).toContain('Comment the loader · src/config/load.ts:9')
+      expect(text).toContain('https://github.com/acme/shop/pull/5#discussion_r1')
+      expect(text).toContain('Document the defaults · src/config/load.ts:10')
+      expect(text).toContain('files: src/payments/** · backed by 1 miss')
+    })
+
+    it('marks an avoid lesson in the list and says what accepting it writes, in 80×24', async () => {
+      const history = lessonHistory({
+        pending: [
+          avoidLesson(3),
+          lesson(1, 'Never log the payment token.', ['src/payments/**'], 1),
+        ],
+      })
+      const { frame, press, showing } = await openShop(history)
+      await press(KEYS.enter)
+      await showing('l decide lessons')
+      await press('l')
+      await showing('Lessons of acme/shop to decide (2)', 'a accept')
+      expectFits(frame(), { columns: 80, rows: 24 })
+      expect(row(frame(), 'Do not ask for comments')).toMatch(/avoid · 2 refused\s*$/)
+      expect(row(frame(), 'Never log')).toMatch(/1 miss\s*$/)
+      await press('a')
+      await showing('Accept lesson 3 as a rule of your config for acme/shop?', 'Enter accept')
+      const text = frame()
+      expectFits(text, { columns: 80, rows: 24 })
+      expect(flat(text)).toContain(
+        'Adds the avoid rule lesson-3 to ~/.config/phada/repos/acme/shop/config.yml; reviews stop reporting what it describes in its files:',
+      )
+      expect(text).toContain('files: src/config/** · from 2 threads')
+    })
+
     it('says where lessons come from when there are misses but none was proposed', async () => {
       const { frame, press, showing } = openLearnings(async () => ({
         recorded: true,
@@ -590,6 +662,27 @@ describe('the Learnings screen', () => {
       await press('l', 'a')
       await showing('Aceitar a lesson 2 como regra da sua config para acme/shop?')
       expect(frame()).toContain('Enter aceitar')
+    })
+
+    it.each([
+      [
+        'pt',
+        'avoid · arquivos: src/config/** · com base em 2 comentários recusados',
+        'avoid · 2 recusados',
+      ],
+      [
+        'es',
+        'avoid · archivos: src/config/** · respaldada por 2 comentarios rechazados',
+        'avoid · 2 rechazados',
+      ],
+    ])('marks an avoid lesson in %s', async (language, meta, weight) => {
+      const history = lessonHistory({ pending: [avoidLesson(3)] })
+      const { frame, press, showing } = await openShop(history, language)
+      await press(KEYS.enter)
+      await showing(meta)
+      await press('l')
+      await showing(weight)
+      expect(row(frame(), 'Do not ask for comments')).toContain(weight)
     })
   })
 })

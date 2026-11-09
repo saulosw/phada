@@ -19,7 +19,9 @@ export function withKnownReferences(
   investigated: InvestigatedReferences = { touched: [], servers: [] },
   failingChecks: readonly string[] = [],
 ): Finding[] {
-  const rules = new Set(context?.rules.map((rule) => rule.key))
+  const rules = new Set(
+    context?.rules.filter((rule) => rule.kind !== 'avoid').map((rule) => rule.key),
+  )
   const known = new Set([
     ...diffPaths,
     ...(context?.docs.map((doc) => doc.path) ?? []),

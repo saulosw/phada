@@ -628,6 +628,23 @@ describe('parseCliArgs lessons', () => {
     })
   })
 
+  it('reads --since with --refresh, with or without a repository', () => {
+    expect(parseCliArgs(['lessons', '--refresh', '--since', '2026-10-01'])).toEqual({
+      kind: 'lessons',
+      all: false,
+      refresh: true,
+      since: '2026-10-01T00:00:00.000Z',
+      format: 'text',
+      debug: false,
+    })
+    expect(parseCliArgs(['lessons', 'acme/shop', '--refresh', '--since', '2026-10-01'])).toEqual(
+      expect.objectContaining({
+        repo: { owner: 'acme', repo: 'shop' },
+        since: '2026-10-01T00:00:00.000Z',
+      }),
+    )
+  })
+
   it('shows its help', () => {
     expect(parseCliArgs(['lessons', '--help'])).toEqual({ kind: 'help', text: LESSONS_USAGE })
     expect(USAGE).toContain(
@@ -644,6 +661,18 @@ describe('parseCliArgs lessons', () => {
     ],
     [['lessons', 'shop'], 'Invalid repository "shop". Use owner/repo.'],
     [['lessons', '--format', 'yaml'], 'Invalid --format "yaml". Use text or json.'],
+    [
+      ['lessons', '--since', '2026-10-01'],
+      '--since says which closed pull requests --refresh reads; add --refresh.',
+    ],
+    [
+      ['lessons', '--refresh', '--since', '2026-02-30'],
+      'Invalid --since "2026-02-30". Use a date as YYYY-MM-DD, e.g. 2026-10-01.',
+    ],
+    [
+      ['lessons', 'accept', '1', '--since', '2026-10-01'],
+      'phada lessons accept takes only a lesson id.',
+    ],
   ])('refuses %j', (argv, message) => {
     expect(() => parseCliArgs(argv)).toThrow(new UsageError(message))
   })

@@ -37,7 +37,8 @@ src/
                          #   warning and no tools when it is unavailable) → replyToThread() per
                          #   thread → ack/applied: nothing posted; question/disagreed: posted if
                          #   the thread is still open; refuted: posted, then resolved → each new
-                         #   comment recorded with the kind (not in a dry run); an invalid
+                         #   comment recorded with the kind and its text cut to 2 KB (not in a
+                         #   dry run); an invalid
                          #   answer is a warning (nothing posted nor recorded), the usage limit
                          #   stops the rest (limited); the formatting of the reply is injected
     review-cancelled.ts  #   ReviewCancelledError; stopIfCancelled(): throws it once the signal
@@ -185,7 +186,8 @@ src/
                          #   with replays, the known misses, the code elements and the commit
                          #   comparisons vanishedElementSites/Comparisons() name →
                          #   decideVanished() → the history; the count of new misses;
-                         #   comparedCommits(): an injected compare cached per commit pair
+                         #   comparedCommits(): an injected compare cached per commit pair;
+                         #   storedFindings(): the findings of a run's stored JSON
     remembered.ts        #   remembered(): an async read cached per key, read again after a
                          #   failure
     code-elements.ts     #   codeElements(): the code elements (line spans) of a file at a commit,
@@ -199,18 +201,28 @@ src/
                          #   group), kept per Phada version; a failed group is an event and the rest goes on; stops
                          #   between groups on the signal; the tally and the earlier version's
     miss-tally.ts        #   latestTally(): caught/replayed of the latest version replayed
-    propose-lessons.ts   #   proposeLessons(): per repository, the 50 most recent open misses of
-                         #   team people (owner, member, collaborator) no lesson holds → one AI
-                         #   call with the pending lessons and the user's rules → new lessons and
-                         #   misses added to pending ones, recorded together; none → no call
-    lesson-answers.ts    #   checkLessonAnswers(): misses not sent left out, a lesson with none
+    propose-lessons.ts   #   proposeLessons(): per repository, the open misses of team people
+                         #   (owner, member, collaborator) no lesson holds and never sent (the 50
+                         #   most recent) with the 25 most recent already sent as context, and
+                         #   the published findings the team refused (dismissed, a negative
+                         #   reaction, or a refuted/disagreed reply in the thread) no lesson
+                         #   holds (30 new, 15 sent as context), with the why of the run's JSON
+                         #   and the replies, plus up to 20 fixed findings in their files → an
+                         #   AI call with the pending lessons and the user's rules → new check
+                         #   and avoid lessons, misses and findings added to pending ones and
+                         #   the new ones marked sent, recorded together; repeated while new
+                         #   misses or findings remain, at most 5 calls; nothing new → no call
+    lesson-answers.ts    #   checkLessonAnswers(): a check lesson keeps only sent misses, an avoid
+                         #   lesson only sent findings (the other list ignored), one with none
                          #   dropped, a rule up to 1000 characters, 10 globs, a glob that matches
                          #   none of its files → <folder>/** of one (a root file as itself),
-                         #   extends of an unknown lesson read as a new one
-    read-lessons.ts      #   readLessons(): the pending lessons (or all), most misses first, then
-                         #   newest, with the count of accepted and discarded ones
+                         #   extends of an unknown lesson or one of the other kind read as a
+                         #   new one
+    read-lessons.ts      #   readLessons(): the pending lessons (or all), most misses and findings
+                         #   first, then newest, with the count of accepted and discarded ones
     lesson-rule.ts       #   lessonRuleId() (lesson-<id>) and lessonThreads() (the thread links of
-                         #   its misses, once each): pure, also drawn by the app
+                         #   its misses, or of its findings for an avoid lesson, once each): pure,
+                         #   also drawn by the app
     reply-kinds.ts       #   ReplyCounts, noReplies(), repliedKinds() (the kinds with replies, in
                          #   the order of the kinds): pure, also drawn by the app
     run-target.ts        #   runTarget() (owner/repo#N, or owner/repo@branch (local) with * when
@@ -262,7 +274,7 @@ src/
                          #   title from the only commit or the branch, the commit messages as
                          #   description, a line for uncommitted changes)
     decide-lesson.ts     #   acceptLesson(): a pending lesson → the rule lesson-<id> (rule, scope,
-                         #   its thread links as from) appended to rules: of the user's
+                         #   kind: avoid for an avoid lesson, its thread links as from) appended to rules: of the user's
                          #   repos/<owner>/<repo>/config.yml (lessonConfigPath(); a missing file
                          #   starts from the template), then marked accepted; with an editor, the draft of
                          #   lesson-draft.ts edited first (empty or the editor failing →
@@ -544,23 +556,30 @@ src/
     history-access.ts    #   HistoryCommandDeps, existingHistory() (the history opened only when
                          #   its file exists), filterOf(): what the history and misses commands
                          #   share
-    lessons-command.ts   #   runLessons(): list, --all, --refresh (history on; the provider,
-                         #   model and rules of the user config of each repository; a line per
-                         #   repository); runLessonsAccept() (where the rule was written and its
+    lessons-command.ts   #   runLessons(): list, --all, --refresh (history on, a token; the
+                         #   team harvest first, then the provider, model and rules of the user
+                         #   config of each repository; a line per repository); runLessonsAccept() (where the rule was written and its
                          #   id; --edit through textEditor(), a cancel said on stderr),
                          #   runLessonsDiscard()
     lesson-history.ts    #   withLessonHistory(): the history opened for writing (missing →
                          #   LessonNotFoundError) with the deps of decide-lesson.ts, closed after;
                          #   what phada lessons accept/discard and the app share
-    format-lessons.ts    #   formatLessonsText/Json(): id, repository, state, miss count, the
-                         #   whole rule, the globs and each thread link (schemaVersion 1)
+    format-lessons.ts    #   formatLessonsText/Json(): id, repository, state, miss count (avoid and
+                         #   the count of refused Phada comments for an avoid lesson), the whole
+                         #   rule, the globs and each thread link (a comment's with its title);
+                         #   JSON with kind, misses and findings (schemaVersion 1)
     format-history.ts    #   formatHistoryText/Json() (each run with its id, a local run by its
                          #   branch and number null; each finding with its reply kinds), runJson(),
                          #   formatStatsText/Json() (schemaVersion 1, the reply kinds any
                          #   comment got)
     history-refresh.ts   #   refreshToken(), refreshHistory(): the due pull requests (or the one
-                         #   named), with the closed ones listed, read on GitHub for phada history
-                         #   and phada misses --refresh, with the count of new misses
+                         #   named), with the closed ones listed, read on GitHub for phada history,
+                         #   phada misses --refresh and the team harvest, with the count of new
+                         #   misses; returns how many were observed and failed
+    team-harvest.ts      #   harvestTeamComments(): per repository, the pull requests closed since
+                         #   --since, the cursor or 90 days ago (at most 200) through
+                         #   refreshHistory(); the cursor moves to the newest closed_at read when
+                         #   nothing failed; a repository that cannot be listed is a warning
     misses-command.ts    #   runMisses() (list, --all, --refresh, --since: the pull requests
                          #   closed since the date), runMissesDismiss()
                          #   (MissNotFoundError for an unknown id)
@@ -827,11 +846,13 @@ src/
                          #   or Esc with the AIs checked again; none while the config is
                          #   invalid, when the AIs are checked without it), learnings.tsx (each
                          #   repository's relations, misses, lessons and feedback → its pending
-                         #   lessons in full (rule, files, misses), its feedback and reply kinds
+                         #   lessons in full (rule, files, misses; an avoid one marked, with
+                         #   the title, file:line and link of each Phada comment), its feedback and reply kinds
                          #   per rule, its misses (phada lessons --refresh named when none was proposed) and
                          #   its relations; l → the lessons, a/d asks to accept or discard the
                          #   selected one (accept: the list hidden, the file under ~, the rule id,
-                         #   the whole rule, its files and threads, scrolling when long), Enter
+                         #   the whole rule, its files and threads, scrolling when long; an
+                         #   avoid lesson marked in the list and said as an avoid rule), Enter
                          #   does it, the list read again and the result or
                          #   the refusal shown; never proposes lessons), rules.tsx (a repository → the lens and who set it, the
                          #   user's rules at once, .phada/ and docs of the default branch on open
@@ -1025,8 +1046,8 @@ src/
                          #   at least one scope glob); LANGUAGE_TAG, DEBT_MODES
     parse-config.ts      #   parseConfigText(): YAML → config or an error naming the key;
                          #   issueText(), firstLine()
-    lesson-draft.ts      #   lessonDraftText(): a lesson as rule and scope in YAML, its thread
-                         #   links and how to cancel as comments; readLessonDraft(): the saved
+    lesson-draft.ts      #   lessonDraftText(): a lesson as rule and scope in YAML, its kind (when
+                         #   avoid), thread links and how to cancel as comments; readLessonDraft(): the saved
                          #   text → empty, edited (EditedLessonSchema) or an error naming the key
     merge-config.ts      #   mergeConfig(): layers → options, rules, files, ignore with origins (pure),
                          #   the ci settings with DEFAULT_CI (read, 15 min wait, onFailure: review)
@@ -1039,8 +1060,8 @@ src/
                          #   listUserRepoConfigs():
                          #   the repos/<owner>/<repo>/ folders with a config.yml or rules.md
     user-config-edit.ts  #   planUserConfigEdit(): changes (provider, model, language, watch.repos,
-                         #   publish of a watched repository, a rule appended to rules:, its id
-                         #   not taken) on the text of a user config with its
+                         #   publish of a watched repository, a rule appended to rules: with
+                         #   kind: avoid when asked, its id not taken) on the text of a user config with its
                          #   comments and order → the new text (a new file on top of the template)
                          #   and the changes by value, checked with the schema; the lines the
                          #   change leaves alone kept as written (keepLayout()), else the file
@@ -1146,9 +1167,9 @@ src/
                          #   token can push; fetchBranchHead()
     list-pull-requests.ts #  listOpenPullRequests(): open pull requests, ETag of the first page;
                          #   readPullPage() (404/403 → RepositoryAccessError), MAX_PULL_PAGES
-    list-closed-pull-requests.ts # listClosedPullRequests(): the numbers of the pull requests
-                         #   closed or merged since a time (every page updated since then
-                         #   read), the most recently closed first, at most 50
+    list-closed-pull-requests.ts # listClosedPullRequests(): the number and closed_at of the pull
+                         #   requests closed or merged since a time (every page updated since then
+                         #   read), the most recently closed first, at most 50 or the limit
     issue-comments.ts    #   listIssueComments(): the comments of a repository since a time, ETag;
                          #   listCommentPages() (pages capped, 304 → not-modified);
                          #   addCommentReaction()
@@ -1287,6 +1308,7 @@ src/
                          #   user lists (not Phada or the author), missed live or not reviewed,
                          #   with no Phada finding near → misses with the thread's commit;
                          #   missElementSites(): the commit and file whose code elements decide;
+                         #   cutCommentBody(): a comment cut to 2 KB;
                          #   isNearMiss(), missWindow(): the innermost code element holding the
                          #   line, ±10 in one of more than 80 lines, ±5 outside any or without them
     vanished-findings.ts #   decideVanished(): a final finding of a run with the AI (replays too),
@@ -1385,19 +1407,24 @@ src/
                          #   cleared), feedbackDue() (pull requests with findings or a run with
                          #   the AI outside replays), publishedPulls() (the pull requests of a
                          #   repository with published findings)
-    history-misses.ts    #   recordMisses() (one per thread; data refreshed, state and first
-                         #   harvest kept), misses(), dismissMiss(), aiRuns() (replays when
+    history-misses.ts    #   recordMisses() (one per thread; data refreshed, state, first
+                         #   harvest and when the lessons AI got it kept), misses(), dismissMiss(), aiRuns() (replays when
                          #   asked),
                          #   recordMissReplays() (one per miss × version, the last wins),
                          #   missReplays()
-    history-lessons.ts   #   recordLessons() (new lessons and misses added to pending ones, in
-                         #   one transaction), lessons() with their misses (by id, repository,
-                         #   state), decideLesson() (only a pending one, with the rule and
-                         #   scope of an edited accept), linkedMissIds()
-    history-replies.ts   #   recordReplies() (one per comment, the first classification kept),
+    history-lessons.ts   #   recordLessons() (new check and avoid lessons, misses and findings
+                         #   added to pending ones and the ones sent to the AI marked, in one
+                         #   transaction), lessons() with their kind, misses and findings (by id,
+                         #   repository, state), decideLesson() (only a pending one, with the
+                         #   rule and scope of an edited accept), linkedMissIds(),
+                         #   linkedFindingIds()
+    history-replies.ts   #   recordReplies() (one per comment with its text, the first
+                         #   classification kept),
                          #   classifiedComments() of a pull request, replies() by repository,
                          #   pull request and thread; the replies due (markRepliesDue(),
                          #   repliesDue() oldest first, triedReplyDue(), clearReplyDue())
+    history-harvest.ts   #   lessonHarvest(), saveLessonHarvest(): the cursor of the team harvest
+                         #   per repository; runRepos(): each repository with a run
     history-columns.ts   #   the history tables (columns, keys) and their insert/upsert/update
     history-migrations.ts #  versioned migrations (PRAGMA user_version), a table rebuilt with the
                          #   foreign keys off; a newer file is refused; v5: replay runs, the
@@ -1405,7 +1432,11 @@ src/
                          #   v7: the lessons and their links to misses; v8: local runs (source
                          #   local, branch, dirty); v9: the classified replies in Phada's
                          #   threads (thread_reply), the replies due (reply_due) and the cursor
-                         #   of the review comments on the watched repository
+                         #   of the review comments on the watched repository; v10: the cursor
+                         #   of the team harvest (lesson_harvest), when a miss or a finding was
+                         #   sent to the lessons AI (lessons_sent_at), the kind of a lesson and
+                         #   its links to findings (lesson_finding), the text of a reply
+                         #   (thread_reply.body)
   watch/                 # pure: what the watch does, data in, decision out
     filters.ts           #   eligibility(): draft, bot, outside author, authors, labels, base
     plan-cycle.ts        #   planCycle(): baseline, seen, enqueue, supersede, move (the requests
@@ -1506,10 +1537,14 @@ src/
     reply-schema.ts      #   Zod schema of a reply (ack, applied, question, disagreed, refuted)
     reply-to-thread.ts   #   replyToThread(): one call per thread → the reply kind and the text
                          #   (required for question, disagreed and refuted, dropped otherwise)
-    lessons-prompt.ts    #   buildLessonsPrompt(): the misses (no links), the pending lessons and
-                         #   the user's rules as untrusted blocks; a lesson only for a rule that
-                         #   repeats
-    lessons-schema.ts    #   Zod schema of the lessons answer (rule, scope, misses, extends)
+    lessons-prompt.ts    #   buildLessonsPrompt(): the misses (no links), the findings the team
+                         #   refused with their replies, the fixed ones in their files, the
+                         #   pending lessons and the user's rules (with their kind) as untrusted
+                         #   blocks; a check lesson only for a rule that repeats, an avoid lesson
+                         #   only for what the team keeps refusing, never hiding a fixed finding,
+                         #   a security hole, data loss or a crash
+    lessons-schema.ts    #   Zod schema of the lessons answer (kind, rule, scope, misses,
+                         #   findings, extends)
     parse-lessons.ts     #   parseLessons(): the lessons list, items of the wrong shape left out
     json-objects.ts      #   top-level JSON objects found in a text
     parse-report.ts      #   parseReviewReport(): a missing claims list as undefined, claims of

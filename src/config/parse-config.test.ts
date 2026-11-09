@@ -112,6 +112,34 @@ describe('parseConfigText', () => {
     })
   })
 
+  it('reads the kind of a rule', () => {
+    const text = [
+      'rules:',
+      '  - id: no-retry-note',
+      '    rule: Retries in the client are deliberate.',
+      '    kind: avoid',
+      '  - rule: Use the ORM.',
+      '    kind: check',
+    ].join('\n')
+
+    expect(parseConfigText(text)).toEqual({
+      ok: true,
+      config: {
+        rules: [
+          { id: 'no-retry-note', rule: 'Retries in the client are deliberate.', kind: 'avoid' },
+          { rule: 'Use the ORM.', kind: 'check' },
+        ],
+      },
+    })
+  })
+
+  it('refuses a severity on an avoid rule', () => {
+    expect(parseConfigText('rules:\n  - rule: x\n    kind: avoid\n    severity: P1')).toEqual({
+      ok: false,
+      message: 'rules.0.severity: an avoid rule takes no severity',
+    })
+  })
+
   it.each([
     ['an empty file', ''],
     ['only comments', '# nothing here\n'],
@@ -126,6 +154,7 @@ describe('parseConfigText', () => {
     ['an invalid language tag', 'language: português', 'language'],
     ['an empty rule', 'rules:\n  - rule: "  "', 'rules.0.rule'],
     ['a rule id with spaces', 'rules:\n  - id: no console\n    rule: x', 'rules.0.id'],
+    ['an unknown rule kind', 'rules:\n  - rule: x\n    kind: skip', 'rules.0.kind'],
     ['an unknown key inside a rule', 'rules:\n  - rule: x\n    level: high', 'rules.0.level'],
     ['a rule origin that is not a link', 'rules:\n  - rule: x\n    from: [PR 3]', 'rules.0.from.0'],
     [

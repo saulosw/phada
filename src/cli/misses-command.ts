@@ -2,7 +2,10 @@ import { readMisses } from '../app/read-misses.js'
 import { dataFiles } from '../config/data-paths.js'
 import { loadTopLevelUserLayers } from '../config/user-config.js'
 import { historyEnabled } from '../config/watch-settings.js'
-import type { ListClosedPullRequestsOptions } from '../github/list-closed-pull-requests.js'
+import type {
+  ClosedPull,
+  ListClosedPullRequestsOptions,
+} from '../github/list-closed-pull-requests.js'
 import type { IndexFormat, RulesTarget } from './args.js'
 import { MissNotFoundError } from './errors.js'
 import { formatMissesJson, formatMissesText } from './format-misses.js'
@@ -19,7 +22,7 @@ export interface MissesCommand {
 }
 
 export interface MissesCommandDeps extends HistoryCommandDeps {
-  listClosedPullRequests: (options: ListClosedPullRequestsOptions) => Promise<number[]>
+  listClosedPullRequests: (options: ListClosedPullRequestsOptions) => Promise<ClosedPull[]>
 }
 
 export interface MissesDismissCommand {
@@ -44,7 +47,13 @@ export async function runMisses(command: MissesCommand, deps: MissesCommandDeps)
               since: command.since,
             })
           : []
-      await refreshHistory(history, filter, token, deps, closed)
+      await refreshHistory(
+        history,
+        filter,
+        token,
+        deps,
+        closed.map(({ number }) => number),
+      )
     }
     const list = readMisses(history, filter, command.all)
     deps.stdout.write(

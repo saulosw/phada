@@ -147,6 +147,7 @@ export const FINDING_TABLE: HistoryTable = {
     threadUrl: 'thread_url',
     outdated: 'outdated',
     publishedAt: 'published_at',
+    lessonsSentAt: 'lessons_sent_at',
   },
 }
 
@@ -186,6 +187,7 @@ export const MISS_TABLE: HistoryTable = {
     createdAt: 'created_at',
     harvestedAt: 'harvested_at',
     state: 'state',
+    lessonsSentAt: 'lessons_sent_at',
   },
 }
 
@@ -207,6 +209,7 @@ export const LESSON_TABLE: HistoryTable = {
   columns: {
     id: 'id',
     repo: 'repo',
+    kind: 'kind',
     rule: 'rule',
     scope: 'scope',
     state: 'state',
@@ -228,6 +231,16 @@ export const REPLY_DUE_TABLE: HistoryTable = {
   },
 }
 
+export const HARVEST_TABLE: HistoryTable = {
+  name: 'lesson_harvest',
+  keys: ['repo'],
+  columns: {
+    repo: 'repo',
+    closedSince: 'closed_since',
+    harvestedAt: 'harvested_at',
+  },
+}
+
 export const REPLY_TABLE: HistoryTable = {
   name: 'thread_reply',
   keys: ['commentId'],
@@ -237,6 +250,7 @@ export const REPLY_TABLE: HistoryTable = {
     threadId: 'thread_id',
     commentId: 'comment_id',
     author: 'author',
+    body: 'body',
     kind: 'kind',
     answered: 'answered',
     answerId: 'answer_id',

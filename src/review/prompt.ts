@@ -25,6 +25,9 @@ import {
   relatedBlocks,
   pullRequestDetails,
   rulesSection,
+  avoidRules,
+  checkRules,
+  exceptionsSection,
   SEVERITY,
   mcpServersOf,
   toolNamesOf,
@@ -33,7 +36,7 @@ import { GROUPS, groupText } from './group-prompt.js'
 import type { GroupView } from './group-prompt.js'
 import { REVIEW_REPORT_JSON_SCHEMA } from './report-schema.js'
 import { CONFIDENCE_FLOOR, VERIFY_CANDIDATE_FLOOR } from './select-findings.js'
-import type { ReviewerLens, ReviewRequest, SkillPass } from './types.js'
+import type { ContextRule, ReviewerLens, ReviewRequest, SkillPass } from './types.js'
 
 const ROLE = `You are a senior engineer reviewing a pull request. Aim for high signal:
 report only real problems that a careful senior reviewer would raise.`
@@ -254,11 +257,8 @@ export function reviewInstructionParts(
   const languageLine = reportLanguageLine(language)
   const parts: PromptPart[] = [
     ...lensParts(pass),
-    {
-      section: 'rules',
-      origin: [...new Set(rules.map((rule) => rule.origin))].join(', '),
-      text: rulesSection(rules),
-    },
+    { section: 'rules', origin: originsOf(checkRules(rules)), text: rulesSection(rules) },
+    { section: 'rules', origin: originsOf(avoidRules(rules)), text: exceptionsSection(rules) },
     phada('context', (context?.docs.length ?? 0) > 0 ? CONTEXT_DOCS : ''),
     phada('context', hasConversation(conversation) ? CONVERSATION : ''),
     phada('contract', hasConversation(conversation) ? CONVERSATION_RULES : ''),
@@ -284,6 +284,10 @@ export function reviewInstructionParts(
     phada('contract', [UNTRUSTED_DATA, ...languageLine].join('\n')),
   ]
   return parts.filter((part) => part.text !== '')
+}
+
+function originsOf(rules: readonly ContextRule[]): string {
+  return [...new Set(rules.map((rule) => rule.origin))].join(', ')
 }
 
 function lensParts(pass: SkillPass | undefined): PromptPart[] {

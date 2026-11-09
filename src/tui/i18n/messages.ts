@@ -794,6 +794,7 @@ export interface LearningsMessages {
   comments(count: number): string
   noComments: string
   misses(count: number): string
+  refused(count: number): string
   lessons(count: number): string
   outcome: Readonly<Record<FeedbackFinding['destination'], (count: number) => string>>
   marks(negative: number, replies: number): string
@@ -814,6 +815,7 @@ export interface LearningsMessages {
     gone: string
     lessons(count: number): string
     lessonMeta(files: string, misses: number): string
+    avoidMeta(files: string, comments: number): string
     lessonsHint: string
     noLessons: string
   }
@@ -823,6 +825,7 @@ export interface LearningsMessages {
     keys: { lessons: string; accept: string; discard: string; cancel: string }
     acceptQuestion(id: number, repo: string): string
     acceptTarget(ruleId: string, path: string): string
+    acceptAvoidTarget(ruleId: string, path: string): string
     acceptMeta(files: string, threads: number): string
     discardQuestion(id: number): string
     accepting: string

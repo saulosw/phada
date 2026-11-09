@@ -87,6 +87,8 @@ describe('openHistoryStore migrations', () => {
       'finding',
       'job',
       'lesson',
+      'lesson_finding',
+      'lesson_harvest',
       'lesson_miss',
       'miss',
       'miss_replay',

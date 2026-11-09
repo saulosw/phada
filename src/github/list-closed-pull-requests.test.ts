@@ -25,6 +25,8 @@ const page = (items: unknown[], next?: number): FakeResponse => ({
   headers: next === undefined ? {} : { link: `<${FIRST}&page=${next}>; rel="next"` },
 })
 
+const numbers = (pulls: readonly { number: number }[]) => pulls.map(({ number }) => number)
+
 const options = (fetch: typeof globalThis.fetch, limit?: number) => ({
   owner: 'acme',
   repo: 'shop',
@@ -47,7 +49,11 @@ describe('listClosedPullRequests', () => {
       ],
     })
 
-    expect(await listClosedPullRequests(options(fetch))).toEqual([9, 7, 8])
+    expect(await listClosedPullRequests(options(fetch))).toEqual([
+      { number: 9, closedAt: '2026-10-15T10:00:00Z' },
+      { number: 7, closedAt: '2026-10-02T10:00:00Z' },
+      { number: 8, closedAt: '2026-10-01T00:00:00Z' },
+    ])
     expect(calls.map(({ url }) => url)).toEqual([FIRST])
   })
 
@@ -61,7 +67,7 @@ describe('listClosedPullRequests', () => {
       ],
     })
 
-    expect(await listClosedPullRequests(options(fetch))).toEqual([12])
+    expect(numbers(await listClosedPullRequests(options(fetch)))).toEqual([12])
     expect(calls).toHaveLength(3)
   })
 
@@ -71,7 +77,7 @@ describe('listClosedPullRequests', () => {
     )
     const { fetch } = createFakeFetch({ [JSON_ACCEPT]: [page(items)] })
 
-    const listed = await listClosedPullRequests(options(fetch))
+    const listed = numbers(await listClosedPullRequests(options(fetch)))
 
     expect(listed).toHaveLength(50)
     expect(listed.slice(0, 3)).toEqual([28, 56, 27])
@@ -92,8 +98,28 @@ describe('listClosedPullRequests', () => {
       ],
     })
 
-    expect(await listClosedPullRequests(options(fetch, 2))).toEqual([9, 6])
+    expect(numbers(await listClosedPullRequests(options(fetch, 2)))).toEqual([9, 6])
     expect(calls).toHaveLength(2)
+  })
+
+  it('reads 250 pull requests over three pages and keeps the 200 most recently closed', async () => {
+    const closedAt = (n: number) => new Date(Date.parse(SINCE) + n * 60_000).toISOString()
+    const pages = [0, 1, 2].map((p) =>
+      page(
+        Array.from({ length: p === 2 ? 50 : 100 }, (_, i) =>
+          pull(250 - (p * 100 + i), closedAt(250 - (p * 100 + i))),
+        ),
+        p === 2 ? undefined : p + 2,
+      ),
+    )
+    const { fetch, calls } = createFakeFetch({ [JSON_ACCEPT]: pages })
+
+    const listed = numbers(await listClosedPullRequests(options(fetch, 200)))
+
+    expect(calls).toHaveLength(3)
+    expect(listed).toHaveLength(200)
+    expect(listed[0]).toBe(250)
+    expect(listed.at(-1)).toBe(51)
   })
 
   it(`stops after ${MAX_PULL_PAGES} pages`, async () => {

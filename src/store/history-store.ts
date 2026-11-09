@@ -42,7 +42,13 @@ import {
   recordMissReplays,
 } from './history-misses.js'
 import type { AiRunFilter, MissFilter, MissRecord, MissReplayRecord } from './history-misses.js'
-import { decideLesson, lessons, linkedMissIds, recordLessons } from './history-lessons.js'
+import {
+  decideLesson,
+  lessons,
+  linkedFindingIds,
+  linkedMissIds,
+  recordLessons,
+} from './history-lessons.js'
 import type {
   LessonChanges,
   LessonDecision,
@@ -60,6 +66,8 @@ import {
   triedReplyDue,
 } from './history-replies.js'
 import type { ClassifiedReply, ReplyDue, ReplyFilter } from './history-replies.js'
+import { lessonHarvest, runRepos, saveLessonHarvest } from './history-harvest.js'
+import type { LessonHarvest } from './history-harvest.js'
 import type { Miss } from '../publish/misses.js'
 import type {
   FailureKind,
@@ -77,12 +85,22 @@ export type {
   FeedbackObservation,
   FindingFilter,
   FindingRecord,
+  FindingRow,
   PublishedFinding,
   SignalSource,
 } from './history-feedback.js'
 export type { MissFilter, MissOutcome, MissRecord, MissReplayRecord } from './history-misses.js'
-export type { LessonChanges, LessonDecision, LessonEdit, LessonRecord } from './history-lessons.js'
+export type {
+  LessonChanges,
+  LessonDecision,
+  LessonEdit,
+  LessonKind,
+  LessonLink,
+  LessonRecord,
+  NewLesson,
+} from './history-lessons.js'
 export type { ClassifiedReply, ReplyDue, ReplyFilter, ReplySource } from './history-replies.js'
+export type { LessonHarvest } from './history-harvest.js'
 
 export type RunStatus =
   'published' | 'dry-run' | 'not-published' | 'superseded' | 'skipped' | 'nothing' | 'failed'
@@ -202,6 +220,7 @@ export interface HistoryStore {
   lessons(filter: LessonFilter): LessonRecord[]
   decideLesson(id: number, decision: LessonDecision, decidedAt: string, edit?: LessonEdit): boolean
   linkedMissIds(): Set<number>
+  linkedFindingIds(): Set<number>
   recordReplies(replies: readonly ClassifiedReply[]): void
   classifiedComments(repo: string, number: number): Set<string>
   replies(filter: ReplyFilter): ClassifiedReply[]
@@ -209,6 +228,9 @@ export interface HistoryStore {
   repliesDue(repo: string): ReplyDue[]
   triedReplyDue(repo: string, number: number, at: string): void
   clearReplyDue(repo: string, number: number): void
+  lessonHarvest(repo: string): LessonHarvest | undefined
+  saveLessonHarvest(harvest: LessonHarvest): void
+  runRepos(): string[]
   runs(filter: HistoryFilter): { runs: ListedRun[]; total: number }
   prune(before: string): PruneCounts
   close(): void
@@ -664,6 +686,10 @@ class SqliteHistoryStore implements HistoryStore {
     return linkedMissIds(this.#db)
   }
 
+  linkedFindingIds(): Set<number> {
+    return linkedFindingIds(this.#db)
+  }
+
   recordReplies(found: readonly ClassifiedReply[]): void {
     recordReplies(this.#db, found)
   }
@@ -690,6 +716,18 @@ class SqliteHistoryStore implements HistoryStore {
 
   clearReplyDue(repo: string, number: number): void {
     clearReplyDue(this.#db, repo, number)
+  }
+
+  lessonHarvest(repo: string): LessonHarvest | undefined {
+    return lessonHarvest(this.#db, repo)
+  }
+
+  saveLessonHarvest(harvest: LessonHarvest): void {
+    saveLessonHarvest(this.#db, harvest)
+  }
+
+  runRepos(): string[] {
+    return runRepos(this.#db)
   }
 
   runs(filter: HistoryFilter): { runs: ListedRun[]; total: number } {

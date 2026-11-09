@@ -5,6 +5,7 @@ import { createInvestigation } from '../investigation/create-investigation.js'
 import type { Investigation } from '../investigation/create-investigation.js'
 import type { ReviewProvider } from '../providers/types.js'
 import { replyMarker } from '../publish/markers.js'
+import { cutCommentBody } from '../publish/misses.js'
 import { isPhadaComment } from '../publish/phada-state.js'
 import { threadsToReply } from '../publish/reply-candidates.js'
 import type { RepliesMode, ThreadToReply } from '../publish/reply-candidates.js'
@@ -242,6 +243,7 @@ function classifiedReplies(
             threadId: thread.id,
             commentId: comment.id,
             author: comment.author,
+            body: cutCommentBody(comment.body),
             kind: reply.kind,
             answered: reply.posted,
             ...(posted === undefined ? {} : { answerId: posted.id, answerUrl: posted.url }),

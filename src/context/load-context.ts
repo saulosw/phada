@@ -250,6 +250,7 @@ function selectRules(
       origin: rule.origin,
       scope: [...rule.scope],
       ...(rule.severity === undefined ? {} : { severity: rule.severity }),
+      ...(rule.kind === undefined ? {} : { kind: rule.kind }),
       ...(rule.from === undefined ? {} : { from: [...rule.from] }),
       status,
     })
@@ -265,6 +266,7 @@ function contextRule(rule: ResolvedRule, except: readonly string[]): ContextRule
     scope: rule.scope,
     ...(except.length === 0 ? {} : { except: [...except] }),
     ...(rule.severity === undefined ? {} : { severity: rule.severity }),
+    ...(rule.kind === undefined ? {} : { kind: rule.kind }),
     origin: rule.origin,
   }
 }

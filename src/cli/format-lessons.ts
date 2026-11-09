@@ -1,6 +1,6 @@
 import type { LessonList } from '../app/read-lessons.js'
 import { toTerminalText } from '../app/terminal-text.js'
-import type { LessonRecord, MissRecord } from '../store/history-store.js'
+import type { FindingRow, LessonRecord, MissRecord } from '../store/history-store.js'
 import { formatCount } from './units.js'
 
 const SCHEMA_VERSION = 1
@@ -25,34 +25,45 @@ export function formatLessonsJson({ lessons }: LessonList): string {
 }
 
 function lessonLines(lesson: LessonRecord): string[] {
+  const avoid = lesson.kind === 'avoid'
   const header = [
     String(lesson.id).padStart(4),
     lesson.repo,
     lesson.state,
-    formatCount(lesson.misses.length, 'miss', 'misses'),
+    ...(avoid
+      ? ['avoid', formatCount(lesson.findings.length, 'refused Phada comment')]
+      : [formatCount(lesson.misses.length, 'miss', 'misses')]),
   ].join('  ')
+  const sources = avoid ? lesson.findings.map(commentLink) : lesson.misses.map(missLink)
   return [
     toTerminalText(header),
     ...toTerminalText(lesson.rule.trim())
       .split('\n')
       .map((line) => `${INDENT}${line.trim()}`),
     `${INDENT}${toTerminalText(`files: ${lesson.scope.join(', ')}`)}`,
-    ...lesson.misses.map((miss) => `${INDENT}${toTerminalText(missLink(miss))}`),
+    ...sources.map((source) => `${INDENT}${toTerminalText(source)}`),
   ]
+}
+
+function commentLink(finding: FindingRow): string {
+  const place = `${finding.file}${finding.line === undefined ? '' : `:${finding.line}`}`
+  const link = threadUrlOf(finding) ?? `${finding.repo}#${finding.number} ${place}`
+  return `${link}  ${finding.title}`
 }
 
 function missLink(miss: MissRecord): string {
   return threadUrlOf(miss) ?? `${miss.repo}#${miss.number} ${miss.file}:${miss.line}`
 }
 
-function threadUrlOf(miss: MissRecord): string | null {
-  return miss.threadUrl === undefined || miss.threadUrl === '' ? null : miss.threadUrl
+function threadUrlOf({ threadUrl }: { threadUrl?: string }): string | null {
+  return threadUrl === undefined || threadUrl === '' ? null : threadUrl
 }
 
 function lessonJson(lesson: LessonRecord) {
   return {
     id: lesson.id,
     repo: lesson.repo,
+    kind: lesson.kind,
     state: lesson.state,
     rule: lesson.rule,
     scope: lesson.scope,
@@ -68,6 +79,14 @@ function lessonJson(lesson: LessonRecord) {
       author: miss.author,
       role: miss.role ?? null,
       threadUrl: threadUrlOf(miss),
+    })),
+    findings: lesson.findings.map((finding) => ({
+      id: finding.id,
+      number: finding.number,
+      file: finding.file,
+      line: finding.line ?? null,
+      title: finding.title,
+      threadUrl: threadUrlOf(finding),
     })),
   }
 }

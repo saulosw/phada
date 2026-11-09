@@ -1,8 +1,7 @@
 import type { ComparedFile } from '../github/compare-commits.js'
 import type { PullRequestReviewState } from '../github/pull-request-reviews.js'
-import { cutBytes } from '../context/byte-cut.js'
 import { findingFingerprint, threadFeedback } from './feedback.js'
-import { isNearMiss, MISS_BODY_BYTES, missWindow, siteKey } from './misses.js'
+import { cutCommentBody, isNearMiss, missWindow, siteKey } from './misses.js'
 import type { ElementSite, LineSpan, Miss } from './misses.js'
 import { phadaThreads } from './phada-state.js'
 import { writtenLine } from './written-line.js'
@@ -156,7 +155,7 @@ function vanishedMiss(input: VanishedInput, { found, lost, finding }: Candidate)
     file: finding.file,
     line: finding.line + offset,
     author: 'phada',
-    body: cutBytes(text, MISS_BODY_BYTES, { truncated: 0 }),
+    body: cutCommentBody(text),
     createdAt: lost.finishedAt,
   }
 }

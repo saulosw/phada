@@ -9,7 +9,7 @@ import { writtenLine } from './written-line.js'
 const MISS_WINDOW_LINES = 5
 const LONG_ELEMENT_LINES = 80
 const LONG_ELEMENT_WINDOW_LINES = 10
-export const MISS_BODY_BYTES = 2 * 1024
+const MISS_BODY_BYTES = 2 * 1024
 
 export interface FindingPlace {
   file: string
@@ -129,7 +129,7 @@ function candidates({ repo, number, state, localReviews, bots }: MissInput): Can
       ...range,
       author: thread.author,
       role: associationRole(thread.association),
-      body: cutBytes(thread.body, MISS_BODY_BYTES, { truncated: 0 }),
+      body: cutCommentBody(thread.body),
       createdAt: thread.createdAt ?? '',
     }
     return [{ miss, findings }]
@@ -228,4 +228,8 @@ function undatedOrUpTo(thread: ReviewThread, at: number): boolean {
 function placeOf(thread: ReviewThread): FindingPlace[] {
   const line = writtenLine(thread)
   return line === null ? [] : [{ file: thread.path, line }]
+}
+
+export function cutCommentBody(text: string): string {
+  return cutBytes(text, MISS_BODY_BYTES, { truncated: 0 })
 }

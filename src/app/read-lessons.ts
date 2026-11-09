@@ -19,5 +19,9 @@ export function readLessons(
 }
 
 function byWeight(a: LessonRecord, b: LessonRecord): number {
-  return b.misses.length - a.misses.length || b.createdAt.localeCompare(a.createdAt) || b.id - a.id
+  return sources(b) - sources(a) || b.createdAt.localeCompare(a.createdAt) || b.id - a.id
+}
+
+function sources(lesson: LessonRecord): number {
+  return lesson.misses.length + lesson.findings.length
 }

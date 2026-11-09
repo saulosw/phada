@@ -1595,6 +1595,7 @@ describe('the lessons of the app', () => {
         {
           lessonId: kept,
           repo: 'acme/shop',
+          kind: 'check',
           ruleId: `lesson-${kept}`,
           path: '/cfg/repos/acme/shop/config.yml',
           created: true,

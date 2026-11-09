@@ -65,6 +65,7 @@ export type CliCommand =
       repo?: RepositoryName
       all: boolean
       refresh: boolean
+      since?: string
       format: IndexFormat
       debug: boolean
     }
@@ -598,7 +599,7 @@ Environment:
   PHADA_DATA_HOME      Folder of the history (default: ~/.local/share/phada)`
 
 export const LESSONS_USAGE = `Usage: phada lessons [<owner/repo>] [options]
-       phada lessons --refresh [<owner/repo>]
+       phada lessons --refresh [<owner/repo>] [--since <YYYY-MM-DD>]
        phada lessons accept <id> [--edit]
        phada lessons discard <id>
 
@@ -607,16 +608,29 @@ Phada proposes from the misses of people of the team (owner, member or
 collaborator of the repository), with the files it covers and the threads it
 comes from. A lesson never reaches a review on its own.
 
---refresh sends the open misses of team people that no lesson holds yet (the
-50 most recent of each repository) to your AI, once per repository, with the
-pending lessons and the rules of your config for that repository, and keeps
-the lessons it proposes. It uses the provider and model of your config.
-Comments of bots, of people outside the team and of Phada are never sent.
+--refresh first reads the pull requests closed or merged in the repository
+(without one, in every repository with a review in the history) and keeps the
+comments of the team as misses, like phada misses --refresh: the last 90 days
+the first time, then what closed after the newest one read, at most the 200
+most recently closed per repository. It needs a GitHub token. Then it sends to
+your AI the open misses of team people that no lesson holds and that it never
+sent before, 50 at a time (most recent first, at most 5 calls per repository),
+with up to 25 earlier misses no lesson holds yet as context, the pending lessons
+and the rules of your config for that repository, and keeps the lessons it
+proposes. The same call gets the comments of Phada the team refused (dismissed,
+refuted, a thumbs down, or a refuted or disagreed reply), 30 at a time with up
+to 15 earlier ones, and up to 20 comments the team fixed in their files: from
+them the AI can propose an avoid lesson, what the review should not report
+there. With nothing new it makes no call. It uses the provider and model of
+your config. Comments of bots and of people outside the team are never sent,
+and Phada's own comments only as the ones the team refused or fixed.
 
 accept adds a pending lesson as the rule lesson-<id> (its rule, its files as
 scope and the links of its threads as from) to rules: of your own config for
 that repository, repos/<owner>/<repo>/config.yml, keeping the comments and the
-order of the file, and from then on the review applies it like any rule. That
+order of the file, and from then on the review applies it like any rule. An
+avoid lesson becomes a rule with kind: avoid, from the threads of its comments
+of Phada, and the review stops reporting what it describes in its files. That
 file is the rule's only copy: edit or remove it there. discard drops a pending
 lesson and writes nothing.
 
@@ -627,7 +641,9 @@ file, or an editor that ends with an error, cancels and leaves the lesson
 pending.
 
 Options:
-  --refresh            Propose lessons from the new misses first
+  --refresh            Read the closed pull requests and propose lessons first
+  --since <date>       With --refresh, read the pull requests closed since that
+                       day (YYYY-MM-DD) instead of since the last refresh
   --all                Also show the accepted and discarded lessons
   --edit               With accept, edit the rule in your editor first
   --format <name>      Output: text or json (default: text)
@@ -635,6 +651,9 @@ Options:
   -h, --help           Show this help
 
 Environment:
+  GITHUB_TOKEN         GitHub token for --refresh
+  GH_TOKEN             Used when GITHUB_TOKEN is not set; with neither, Phada
+                       uses the token of your gh login (gh auth login)
   PHADA_CONFIG_HOME    Folder of your own config (default: ~/.config/phada)
   PHADA_DATA_HOME      Folder of the history (default: ~/.local/share/phada)
   VISUAL, EDITOR       Editor of accept --edit (default: vi)`
@@ -1183,6 +1202,7 @@ function parseLessonsArgs(argv: readonly string[]): CliCommand {
   const { values, positionals } = parseOptions(argv, {
     all: { type: 'boolean', default: false },
     refresh: { type: 'boolean', default: false },
+    since: { type: 'string' },
     format: { type: 'string' },
     edit: { type: 'boolean', default: false },
     debug: { type: 'boolean', default: false },
@@ -1195,7 +1215,7 @@ function parseLessonsArgs(argv: readonly string[]): CliCommand {
   }
   if (action === 'accept' || action === 'discard') {
     const command = `phada lessons ${action}`
-    if (values.all || values.refresh || values.format !== undefined) {
+    if (values.all || values.refresh || values.since !== undefined || values.format !== undefined) {
       throw new UsageError(`${command} takes only a lesson id.`)
     }
     const id = parseRunId(positionals.slice(1), command, 'lesson id')
@@ -1212,11 +1232,14 @@ function parseLessonsArgs(argv: readonly string[]): CliCommand {
   if (input !== undefined && isPullRequestRef(input)) {
     throw new UsageError('phada lessons takes a repository, e.g. acme/shop, not a pull request.')
   }
+  const repo = input === undefined ? undefined : parseRepositoryName(input)
+  const since = values.since === undefined ? undefined : harvestSince(values.since, values.refresh)
   return {
     kind: 'lessons',
-    ...(input === undefined ? {} : { repo: parseRepositoryName(input) }),
+    ...(repo === undefined ? {} : { repo }),
     all: values.all,
     refresh: values.refresh,
+    ...(since === undefined ? {} : { since }),
     format,
     debug: values.debug,
   }
@@ -1238,6 +1261,17 @@ function closedSince(input: string, refresh: boolean, target: RulesTarget | unde
       '--since needs a repository, e.g. phada misses --refresh acme/shop --since 2026-10-01.',
     )
   }
+  return calendarDay(input)
+}
+
+function harvestSince(input: string, refresh: boolean): string {
+  if (!refresh) {
+    throw new UsageError('--since says which closed pull requests --refresh reads; add --refresh.')
+  }
+  return calendarDay(input)
+}
+
+function calendarDay(input: string): string {
   const start = CALENDAR_DATE.test(input) ? new Date(`${input}T00:00:00.000Z`) : undefined
   if (
     start === undefined ||

@@ -289,6 +289,43 @@ describe('the Rules screen', () => {
     )
   })
 
+  it('marks an avoid rule of your config and of the branch', async () => {
+    const avoid = {
+      key: 'lesson-5',
+      name: 'lesson-5',
+      text: 'Retries are deliberate.',
+      origin: 'repository' as const,
+      kind: 'avoid' as const,
+      from: ['https://github.com/acme/shop/pull/3#r1'],
+    }
+    const rules = openRules({
+      deps: {
+        readLocalRules: async () => local({ rules: [avoid] }),
+        readRepositoryRules: async () =>
+          branch({
+            report: {
+              ...REPORT,
+              rules: [
+                {
+                  key: 'lesson-5',
+                  origin: 'user:repos/acme/shop/config.yml',
+                  scope: ['src/api/**'],
+                  kind: 'avoid',
+                  status: 'listed',
+                },
+              ],
+            },
+          }),
+      },
+    })
+    await openShop(rules)
+    await rules.showing('at main', 'Your rules (1)')
+    const text = rules.frame()
+    expectFits(text, SMALL)
+    expect(text).toMatch(/lesson-5\s+Retries are deliberate\.\s+this repo · avoid · 1 thread/)
+    expect(text).toMatch(/lesson-5\s+user:repos\/acme\/shop\/config\.yml · avoid · src\/api\/\*\*/)
+  })
+
   it('shows the own prompt of the user config with its mode and who set it', async () => {
     const rules = openRules({
       deps: {

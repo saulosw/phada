@@ -626,7 +626,10 @@ describe('runMisses', () => {
     const h = harness({
       listClosedPullRequests: async ({ owner, repo, token, since }) => {
         listed.push(`${owner}/${repo} ${token} ${since}`)
-        return [8, 3]
+        return [
+          { number: 8, closedAt: '2026-10-21T00:00:00Z' },
+          { number: 3, closedAt: '2026-10-20T00:00:00Z' },
+        ]
       },
       state: (request) =>
         reviewState({

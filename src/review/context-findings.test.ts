@@ -26,6 +26,16 @@ describe('withKnownReferences', () => {
     ])
   })
 
+  it('drops the key of an avoid rule, which is never a rule a finding breaks', () => {
+    const context = reviewContextFixture({
+      rules: [{ key: 'lesson-5', text: 'x', scope: ['**'], kind: 'avoid', origin: 'x' }],
+    })
+
+    expect(
+      withKnownReferences([findingFixture({ rule: 'lesson-5' })], context, DIFF_PATHS),
+    ).toEqual([findingFixture()])
+  })
+
   it('keeps a failing CI check as a source, but not a check that passed or does not exist', () => {
     const finding = findingFixture({ sources: ['ci:test', 'ci:build', 'ci:made-up'] })
 

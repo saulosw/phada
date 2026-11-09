@@ -486,6 +486,7 @@ function ruleNotes(rule: RuleReport, messages: UiMessages): string {
   return [
     rule.origin,
     ...(rule.severity === undefined ? [] : [rule.severity]),
+    ...(rule.kind === undefined ? [] : [rule.kind]),
     ...(rule.scope.some((pattern) => pattern !== EVERYWHERE) ? [rule.scope.join(', ')] : []),
     ...(rule.status === 'applied' || rule.status === 'listed' ? [] : [m.ruleStatuses[rule.status]]),
   ].join(' · ')

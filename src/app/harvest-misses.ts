@@ -95,7 +95,7 @@ function findingRun(run: RunRecord): FindingRun[] {
   return [{ id, headSha, source, finishedAt, findings }]
 }
 
-function storedFindings(resultJson: string | undefined): RunFinding[] | undefined {
+export function storedFindings(resultJson: string | undefined): RunFinding[] | undefined {
   const findings = objectOf(objectOf(parseJson(resultJson))?.review)?.findings
   if (!Array.isArray(findings)) return undefined
   return findings.flatMap((finding: unknown) => {

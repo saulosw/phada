@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { memoryFiles } from '../../test/support/memory-files.js'
+import { parseConfigText } from '../config/parse-config.js'
 import type { Miss } from '../publish/misses.js'
 import { openHistoryStore } from '../store/history-store.js'
 import type { HistoryStore } from '../store/history-store.js'
@@ -66,6 +67,79 @@ async function withLesson(
   }
 }
 
+function publishFinding(history: HistoryStore, threadId: string, url: string): number {
+  const commitSha = 'd'.repeat(40)
+  const file = 'src/config/load.ts'
+  const title = `Finding ${threadId}`
+  history.recordPublished([
+    {
+      repo: 'acme/shop',
+      number: 5,
+      commitSha,
+      fingerprint: threadId,
+      file,
+      line: 8,
+      title,
+      severity: 'P2',
+      confidence: 80,
+      publishedAt: T1,
+    },
+  ])
+  history.observeFeedback({
+    repo: 'acme/shop',
+    number: 5,
+    pullState: 'open',
+    observedAt: T1,
+    source: 'refresh',
+    threads: [
+      {
+        threadId,
+        fingerprint: threadId,
+        url,
+        file,
+        line: 8,
+        title,
+        severity: 'P2',
+        commitSha,
+        outdated: false,
+        destination: 'open',
+        signals: ['dismissed'],
+      },
+    ],
+  })
+  const found = history.findings({}).find((finding) => finding.fingerprint === threadId)
+  return found?.id ?? 0
+}
+
+async function withAvoidLesson(
+  urls: string[],
+  test: (history: HistoryStore, lessonId: number) => Promise<void>,
+): Promise<void> {
+  const history = await openHistoryStore(join(dir, `h${++stores}`, 'history.sqlite'))
+  try {
+    const findingIds = urls.map((url, index) => publishFinding(history, `f${index}`, url))
+    const [lessonId] = history.recordLessons(
+      {
+        repo: 'acme/shop',
+        created: [
+          {
+            kind: 'avoid',
+            rule: 'Do not ask for comments on config loaders.',
+            scope: ['src/config/**'],
+            missIds: [],
+            findingIds,
+          },
+        ],
+        attached: [],
+      },
+      T1,
+    )
+    await test(history, lessonId ?? 0)
+  } finally {
+    history.close()
+  }
+}
+
 function acceptDeps(history: HistoryStore, initial: Record<string, string> = {}) {
   const files = memoryFiles(initial)
   const deps: AcceptLessonDeps = {
@@ -89,6 +163,7 @@ describe('acceptLesson', () => {
       expect(accepted).toEqual({
         lessonId: id,
         repo: 'acme/shop',
+        kind: 'check',
         ruleId: `lesson-${id}`,
         path: PATH,
         created: true,
@@ -129,6 +204,70 @@ describe('acceptLesson', () => {
           '      - src/api/**',
           '',
         ].join('\n'),
+      )
+    }))
+
+  it('writes an avoid lesson as an avoid rule from the threads of its Phada comments', () =>
+    withAvoidLesson(
+      [
+        'https://github.com/acme/shop/pull/5#discussion_r1',
+        '',
+        'https://github.com/acme/shop/pull/5#discussion_r1',
+        'https://github.com/acme/shop/pull/5#discussion_r2',
+      ],
+      async (history, id) => {
+        const { deps, files } = acceptDeps(history)
+
+        const accepted = await acceptLesson(id, deps)
+
+        expect(accepted).toEqual(expect.objectContaining({ kind: 'avoid', ruleId: `lesson-${id}` }))
+        const written = files.files.get(PATH) ?? ''
+        expect(written).toBe(
+          [
+            HEADER,
+            'rules:',
+            `  - id: lesson-${id}`,
+            '    kind: avoid',
+            '    rule: Do not ask for comments on config loaders.',
+            '    scope:',
+            '      - src/config/**',
+            '    from:',
+            '      - https://github.com/acme/shop/pull/5#discussion_r1',
+            '      - https://github.com/acme/shop/pull/5#discussion_r2',
+            '',
+          ].join('\n'),
+        )
+        const parsed = parseConfigText(written)
+        expect(parsed.ok && parsed.config.rules).toEqual([
+          {
+            id: `lesson-${id}`,
+            kind: 'avoid',
+            rule: 'Do not ask for comments on config loaders.',
+            scope: ['src/config/**'],
+            from: [
+              'https://github.com/acme/shop/pull/5#discussion_r1',
+              'https://github.com/acme/shop/pull/5#discussion_r2',
+            ],
+          },
+        ])
+      },
+    ))
+
+  it('shows the kind of an avoid lesson in the draft and keeps it after the edit', () =>
+    withAvoidLesson(['https://github.com/acme/shop/pull/5#discussion_r1'], async (history, id) => {
+      const { deps, files } = acceptDeps(history)
+      const drafts: string[] = []
+
+      await acceptLesson(id, deps, async (draft) => {
+        drafts.push(draft)
+        return 'rule: Do not ask for comments.\nscope: [src/**]\n'
+      })
+
+      expect(drafts[0]).toMatch(/^# .*avoid rule lesson-\d+/m)
+      expect(drafts[0]).toContain('# https://github.com/acme/shop/pull/5#discussion_r1\n')
+      expect(drafts[0]).toContain('rule: Do not ask for comments on config loaders.\n')
+      expect(files.files.get(PATH)).toContain(
+        `  - id: lesson-${id}\n    kind: avoid\n    rule: Do not ask for comments.\n`,
       )
     }))
 

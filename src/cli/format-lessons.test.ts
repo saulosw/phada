@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { LessonList } from '../app/read-lessons.js'
-import type { LessonRecord, MissRecord } from '../store/history-store.js'
+import type { FindingRow, LessonRecord, MissRecord } from '../store/history-store.js'
 import { formatLessonsJson, formatLessonsText } from './format-lessons.js'
 
 function miss(id: number, overrides: Partial<MissRecord> = {}): MissRecord {
@@ -29,6 +29,7 @@ function miss(id: number, overrides: Partial<MissRecord> = {}): MissRecord {
 const LESSON: LessonRecord = {
   id: 7,
   repo: 'acme/shop',
+  kind: 'check',
   rule: 'Validate request bodies at the edge.\nReturn 400 on a bad body.',
   scope: ['src/api/**', 'src/db/**'],
   state: 'pending',
@@ -36,6 +37,34 @@ const LESSON: LessonRecord = {
   model: 'opus',
   createdAt: '2026-11-04T10:00:00.000Z',
   misses: [miss(1), miss(2, { number: 4, threadUrl: '', file: 'src/db/pool.ts', line: 9 })],
+  findings: [],
+}
+
+function comment(id: number, overrides: Partial<FindingRow> = {}): FindingRow {
+  return {
+    id,
+    repo: 'acme/shop',
+    number: 5,
+    fingerprint: `f${id}`,
+    file: 'src/config/load.ts',
+    line: 8,
+    title: `Add a comment to loader ${id}`,
+    severity: 'P2',
+    threadUrl: `https://github.com/acme/shop/pull/5#discussion_r${id}`,
+    outdated: false,
+    publishedAt: '2026-10-21T10:00:00.000Z',
+    ...overrides,
+  }
+}
+
+const AVOID: LessonRecord = {
+  ...LESSON,
+  id: 8,
+  kind: 'avoid',
+  rule: 'Do not ask for comments on config loaders.',
+  scope: ['src/config/**'],
+  misses: [],
+  findings: [comment(11), comment(12, { number: 6, threadUrl: undefined, line: undefined })],
 }
 
 describe('formatLessonsText', () => {
@@ -51,6 +80,22 @@ describe('formatLessonsText', () => {
         '',
       ].join('\n'),
     )
+  })
+
+  it('marks an avoid lesson and lists the Phada comments it comes from', () => {
+    expect(formatLessonsText({ lessons: [AVOID], hidden: 0 }, false)).toBe(
+      [
+        '   8  acme/shop  pending  avoid  2 refused Phada comments',
+        '      Do not ask for comments on config loaders.',
+        '      files: src/config/**',
+        '      https://github.com/acme/shop/pull/5#discussion_r11  Add a comment to loader 11',
+        '      acme/shop#6 src/config/load.ts  Add a comment to loader 12',
+        '',
+      ].join('\n'),
+    )
+    expect(
+      formatLessonsText({ lessons: [{ ...AVOID, findings: [comment(11)] }], hidden: 0 }, false),
+    ).toContain('avoid  1 refused Phada comment\n')
   })
 
   it('says how many decided lessons it hides, and when there is none', () => {
@@ -83,6 +128,7 @@ describe('formatLessonsJson', () => {
         {
           id: 7,
           repo: 'acme/shop',
+          kind: 'check',
           state: 'pending',
           rule: 'Validate request bodies at the edge.\nReturn 400 on a bad body.',
           scope: ['src/api/**', 'src/db/**'],
@@ -110,8 +156,39 @@ describe('formatLessonsJson', () => {
               threadUrl: null,
             },
           ],
+          findings: [],
         },
       ],
     })
+  })
+
+  it('gives an avoid lesson its kind and the Phada comments it comes from', () => {
+    const [lesson] = JSON.parse(formatLessonsJson({ lessons: [AVOID], hidden: 0 })).lessons
+
+    expect(lesson).toEqual(
+      expect.objectContaining({
+        id: 8,
+        kind: 'avoid',
+        misses: [],
+        findings: [
+          {
+            id: 11,
+            number: 5,
+            file: 'src/config/load.ts',
+            line: 8,
+            title: 'Add a comment to loader 11',
+            threadUrl: 'https://github.com/acme/shop/pull/5#discussion_r11',
+          },
+          {
+            id: 12,
+            number: 6,
+            file: 'src/config/load.ts',
+            line: null,
+            title: 'Add a comment to loader 12',
+            threadUrl: null,
+          },
+        ],
+      }),
+    )
   })
 })

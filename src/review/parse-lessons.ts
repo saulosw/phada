@@ -1,11 +1,14 @@
 import { InvalidLessonsAnswerError } from './errors.js'
 import { jsonObjects, preview } from './json-objects.js'
+import type { LessonKind } from './lessons-prompt.js'
 import { LessonAnswerSchema, LessonsEnvelopeSchema } from './lessons-schema.js'
 
 export interface LessonAnswer {
+  kind: LessonKind
   rule: string
   scope: string[]
   misses: number[]
+  findings: number[]
   extends: number | null
 }
 

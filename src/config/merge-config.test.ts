@@ -180,6 +180,23 @@ describe('mergeConfig rules', () => {
     ])
   })
 
+  it('keeps the kind of an avoid rule and leaves a check rule without one', () => {
+    const merged = mergeConfig([
+      userRepo({
+        rules: [
+          { id: 'lesson-4', rule: 'Retries are deliberate.', scope: ['src/**'], kind: 'avoid' },
+          { id: 'orm-only', rule: 'Use the ORM.', kind: 'check' },
+        ],
+      }),
+    ])
+
+    expect(merged.rules.map(({ key, kind }) => ({ key, kind }))).toEqual([
+      { key: 'lesson-4', kind: 'avoid' },
+      { key: 'orm-only', kind: undefined },
+    ])
+    expect(merged.rules[1]).not.toHaveProperty('kind')
+  })
+
   it('makes subfolder scopes, files and ignore relative to the subfolder', () => {
     const merged = mergeConfig([
       sub('src/api', {

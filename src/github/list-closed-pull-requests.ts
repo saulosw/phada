@@ -12,14 +12,14 @@ export type ListClosedPullRequestsOptions = RepositoryFilesOptions & {
   limit?: number
 }
 
-interface ClosedPull {
+export interface ClosedPull {
   number: number
   closedAt: string
 }
 
 export async function listClosedPullRequests(
   options: ListClosedPullRequestsOptions,
-): Promise<number[]> {
+): Promise<ClosedPull[]> {
   const name = `${options.owner}/${options.repo}`
   const ctx: GitHubRequestContext = {
     token: options.token,
@@ -44,8 +44,5 @@ export async function listClosedPullRequests(
     if (older) break
     path = nextPagePath(response.headers.get('link'))
   }
-  return closed
-    .sort((a, b) => Date.parse(b.closedAt) - Date.parse(a.closedAt))
-    .slice(0, limit)
-    .map(({ number }) => number)
+  return closed.sort((a, b) => Date.parse(b.closedAt) - Date.parse(a.closedAt)).slice(0, limit)
 }

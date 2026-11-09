@@ -26,6 +26,28 @@ output can change between minor versions.
   and `--stats` how many comments got each kind per repository; the JSON gains `replies` on each
   comment and each repository. The app shows them on the Learnings screen, per repository and per
   rule, and on each published comment of a review.
+- A rule with `kind: avoid` is an exception: the review gets it in a "Repository exceptions"
+  block after the rules and does not report what it describes in its files, except a security
+  hole, data loss or a crash; `phada rules` and the app mark it `avoid`.
+- `phada lessons --refresh [owner/repo] [--since YYYY-MM-DD]` first reads the pull requests closed
+  in the repository (or in every repository with a review in the history) and keeps the team's
+  comments as misses: the last 90 days the first time, then only what closed since the last run,
+  at most 200 pull requests per repository; it now needs a GitHub token.
+- `phada lessons --refresh` also proposes avoid lessons from the comments of Phada the team
+  refused (dismissed or refuted, a 👎, or a `refuted` or `disagreed` reply), with the comments the
+  team fixed in the same files as a counterweight; the history keeps the text of each classified
+  reply from now on.
+- Accepting an avoid lesson (`phada lessons accept` or the app) writes a rule with `kind: avoid`
+  whose `from` holds the threads of the comments of Phada it comes from. `phada lessons` marks it
+  `avoid` and lists those comments instead of misses, its JSON gains `kind` and `findings`, and
+  the Learnings screen of the app marks it and lists its comments.
+
+### Changed
+
+- `phada lessons` and the app list first the lessons more misses or comments of Phada back.
+- `phada lessons --refresh` sends each miss to the AI as new only once: a call takes up to 50
+  misses never sent, with up to 25 earlier ones no lesson holds yet as context, and repeats while
+  new misses remain, at most 5 calls per repository per run; with no new miss it makes no call.
 
 ## 0.17.0 - 2026-11-08
 

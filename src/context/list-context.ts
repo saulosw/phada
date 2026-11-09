@@ -56,6 +56,7 @@ export async function listContext(input: {
         origin: rule.origin,
         scope: [...rule.scope],
         ...(rule.severity === undefined ? {} : { severity: rule.severity }),
+        ...(rule.kind === undefined ? {} : { kind: rule.kind }),
         ...(rule.from === undefined ? {} : { from: [...rule.from] }),
         status: merged.disabledRules.has(rule.key) ? 'disabled' : 'listed',
       })),

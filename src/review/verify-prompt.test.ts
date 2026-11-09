@@ -30,6 +30,33 @@ describe('buildVerifyPrompt', () => {
     expect(createHash('sha256').update(instructions).digest('hex')).toBe(digest)
   })
 
+  it('keeps the instructions word for word with rules, and never passes an avoid rule as one', () => {
+    const digest = (context: ReturnType<typeof reviewContextFixture>) =>
+      createHash('sha256')
+        .update(
+          buildVerifyPrompt(
+            { pullRequest: pullRequestFixture(), context },
+            [findingFixture()],
+            NONCE,
+          ).instructions,
+        )
+        .digest('hex')
+    const avoid = {
+      key: 'lesson-5',
+      text: 'Retries are deliberate.',
+      scope: ['**'],
+      kind: 'avoid' as const,
+      origin: 'x',
+    }
+
+    expect(digest(reviewContextFixture())).toBe(
+      '02340c1eec1b458b1471b057f98225c1a29b690a9a258458b9444fae5caf9fd4',
+    )
+    expect(digest(reviewContextFixture({ rules: [...reviewContextFixture().rules, avoid] }))).toBe(
+      '02340c1eec1b458b1471b057f98225c1a29b690a9a258458b9444fae5caf9fd4',
+    )
+  })
+
   it('asks a skeptical reviewer to confirm or reject each candidate on its own', () => {
     const { instructions } = verifyPrompt()
 
