@@ -1,0 +1,32 @@
+#!/usr/bin/env node
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { setTimeout as wait } from 'node:timers/promises'
+
+const args = process.argv.slice(2)
+if (args[0] === '--version') {
+  process.stdout.write('2.1.0 (Claude Code)\n')
+} else if (args[0] === 'auth') {
+  process.stdout.write(JSON.stringify({ loggedIn: true, authMethod: 'claude.ai' }) + '\n')
+} else {
+  for await (const _ of process.stdin);
+  const recording = process.env.PHADA_DEMO_RECORDING
+  const state = process.env.PHADA_DEMO_STATE
+  const delayMs = Number(process.env.PHADA_DEMO_DELAY_MS ?? 6000)
+  const answers = readdirSync(recording)
+    .filter((name) => name.endsWith('.jsonl'))
+    .sort()
+  let next = 0
+  try {
+    next = Number(readFileSync(state, 'utf8'))
+  } catch {}
+  writeFileSync(state, String(next + 1))
+  const answer = answers[next % answers.length]
+  const lines = readFileSync(join(recording, answer), 'utf8')
+    .split('\n')
+    .filter((line) => line)
+  for (const line of lines) {
+    await wait(delayMs / lines.length)
+    process.stdout.write(line + '\n')
+  }
+}

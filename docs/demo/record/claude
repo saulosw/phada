@@ -1,0 +1,65 @@
+#!/usr/bin/env node
+import { spawn } from 'node:child_process'
+import { mkdirSync, readdirSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+const real = process.env.PHADA_DEMO_REAL_CLAUDE
+const recording = process.env.PHADA_DEMO_RECORDING
+if (real === undefined || recording === undefined) {
+  process.stderr.write('PHADA_DEMO_REAL_CLAUDE and PHADA_DEMO_RECORDING must be set\n')
+  process.exit(2)
+}
+
+const args = process.argv.slice(2)
+const child = spawn(real, args, { stdio: ['pipe', 'pipe', 'inherit'] })
+process.stdin.pipe(child.stdin)
+let stdout = ''
+child.stdout.on('data', (chunk) => {
+  stdout += chunk
+  process.stdout.write(chunk)
+})
+child.on('close', (code) => {
+  if (args.includes('-p') && code === 0) {
+    mkdirSync(recording, { recursive: true })
+    const name = `${String(readdirSync(recording).length + 1).padStart(2, '0')}.jsonl`
+    writeFileSync(join(recording, name), scrub(stdout))
+  }
+  process.exit(code ?? 1)
+})
+
+const KEPT = {
+  assistant: ['type', 'message'],
+  user: ['type', 'message'],
+  result: [
+    'type',
+    'subtype',
+    'is_error',
+    'result',
+    'structured_output',
+    'num_turns',
+    'usage',
+    'modelUsage',
+    'permission_denials',
+    'duration_ms',
+  ],
+}
+
+function scrub(text) {
+  const prefixes = [process.env.HOME, tmpdir(), '/tmp'].filter((path) => path)
+  return text
+    .split('\n')
+    .filter((line) => line.trim() !== '')
+    .map((line) => JSON.parse(line))
+    .filter((event) => KEPT[event.type] !== undefined)
+    .map((event) =>
+      JSON.stringify(
+        Object.fromEntries(
+          KEPT[event.type].filter((key) => key in event).map((key) => [key, event[key]]),
+        ),
+      ),
+    )
+    .map((line) => prefixes.reduce((out, prefix) => out.replaceAll(prefix, '<dir>'), line))
+    .join('\n')
+    .concat('\n')
+}

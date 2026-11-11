@@ -164,6 +164,7 @@ npm test
 npm run format
 npm run lint:unused                    # unused files, exports and dependencies (Knip)
 npm run smoke                          # pack, install and run the package
+npm run demo                           # the README media (docs/demo/README.md); needs Docker
 npm run dev -- review owner/repo#N     # needs GITHUB_TOKEN, GH_TOKEN or a gh login
 npm run dev -- index owner/repo        # the repository map; PHADA_CACHE_HOME to keep it apart
 npm run dev                            # the terminal app (in a terminal of at least 80×24)

@@ -1,0 +1,2 @@
+#!/bin/sh
+exec node /phada/dist/bin.js "$@"
