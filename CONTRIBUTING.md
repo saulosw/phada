@@ -27,7 +27,6 @@ npm run dev -- review owner/repo#123
 | `npm run lint:unused`  | Finds unused files, exports and dependencies with Knip                                     |
 | `npm run build`        | Compiles `src/` (without tests) to `dist/`                                                 |
 | `npm run smoke`        | Packs the npm package, installs it in a temporary directory and runs the installed `phada` |
-| `npm run demo`         | Makes the GIFs and the image of the README again, in Docker (see `docs/demo/README.md`)    |
 
 ## Before you open a pull request
 

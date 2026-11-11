@@ -1,7 +1,5 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "ignoreExportsUsedInFile": true,
-  "ignoreDependencies": ["tree-sitter-.*"],
-  "ignoreBinaries": ["chromium"],
-  "entry": ["docs/demo/render.mjs"]
+  "ignoreDependencies": ["tree-sitter-.*"]
 }

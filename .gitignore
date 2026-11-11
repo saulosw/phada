@@ -11,6 +11,3 @@ coverage/
 
 # personal agent instructions
 CLAUDE.local.md
-
-# frames of the demo recordings, checked and removed by npm run demo
-docs/demo/*.txt
