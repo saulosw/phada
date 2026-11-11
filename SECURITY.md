@@ -1,16 +1,12 @@
 # Security policy
 
-## Supported versions
-
 Security fixes go into the latest published `0.x` release of the `phada` npm package.
 
 ## Reporting a vulnerability
 
-Please report vulnerabilities privately through GitHub: open the repository's **Security** tab
-and choose **Report a vulnerability**. Do not open a public issue.
-
-Include what you found, how to reproduce it and what an attacker could do with it. You will get a
-first answer within 7 days; fixes are handled on a best-effort basis.
+Report it privately: open the repository's **Security** tab on GitHub and choose **Report a
+vulnerability**. Do not open a public issue. Say what you found, how to reproduce it and what an
+attacker could do with it. You get a first answer within 7 days; fixes are best effort.
 
 ## Scope
 
@@ -21,9 +17,9 @@ Reports are especially welcome about:
 - text inside a pull request (code, comments, description) that changes the review, the score or
   what Phada does, beyond being reviewed;
 - the isolation of the AI CLI process: the empty temporary directory, the disabled tools and
-  settings, and the removal of token variables from its environment.
-- the repository investigation: Phada's read-only tools reading anything outside the fetched
-  pull request commit, the GitHub token reaching `git` arguments or messages, the AI using MCP
-  servers your config did not name, or temporary files left behind.
+  settings, and the token variables removed from its environment;
+- the repository investigation: Phada's read-only tools reading anything outside the fetched pull
+  request commit, the token reaching `git` arguments or messages, the AI using MCP servers your
+  config did not name, or temporary files left behind.
 
 Problems in the AI CLIs themselves (Claude Code, Codex) or in Ollama belong to those projects.
