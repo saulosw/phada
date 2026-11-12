@@ -137,10 +137,18 @@ export type CliCommand =
       debug: boolean
     }
 
+export type CommandOf<K extends CliCommand['kind']> = Extract<CliCommand, { kind: K }>
+
+export type CommandOptions<K extends CliCommand['kind']> = Omit<CommandOf<K>, 'kind' | 'debug'>
+
 export const DEFAULT_HISTORY_LIMIT = 50
 const COMMIT_SHA = /^[0-9a-f]{7,40}$/i
 const MIN_PRUNE_MS = durationMs('1d')
 const MAX_AGE_MS = durationMs('36500d')
+const COMMON_OPTIONS = {
+  debug: { type: 'boolean', default: false },
+  help: { type: 'boolean', short: 'h', default: false },
+} as const satisfies ParseArgsOptionsConfig
 
 export const USAGE = `Usage: phada <command> [options]
 
@@ -867,8 +875,7 @@ const REVIEW_OPTIONS = {
   uncommitted: { type: 'boolean' },
   'dry-run': { type: 'boolean', default: false },
   force: { type: 'boolean', default: false },
-  debug: { type: 'boolean', default: false },
-  help: { type: 'boolean', short: 'h', default: false },
+  ...COMMON_OPTIONS,
 } as const satisfies ParseArgsOptionsConfig
 
 export function parseSkills(values: readonly string[] | undefined): string[] | undefined {
@@ -902,11 +909,9 @@ function parseInitArgs(argv: readonly string[]): CliCommand {
 }
 
 function parseIndexArgs(argv: readonly string[]): CliCommand {
-  const { values, positionals } = parseOptions(argv, {
+  const { values, positionals } = parseCommandOptions(argv, {
     ref: { type: 'string' },
     format: { type: 'string', default: 'text' },
-    debug: { type: 'boolean', default: false },
-    help: { type: 'boolean', short: 'h', default: false },
   })
   if (values.help) return { kind: 'help', text: INDEX_USAGE }
   const [name, ...extra] = positionals
@@ -915,25 +920,21 @@ function parseIndexArgs(argv: readonly string[]): CliCommand {
   }
   if (extra.length > 0) throw new UsageError('Index one repository at a time.')
   const repo = parseRepositoryName(name)
-  if (values.format !== 'text' && values.format !== 'json') {
-    throw new UsageError(`Invalid --format "${values.format}". Use text or json.`)
-  }
+  const format = textOrJson(values.format)
   const ref = values.ref?.trim()
   if (ref === '') throw new UsageError('--ref needs a branch, tag or commit.')
   return {
     kind: 'index',
     repo,
     ...(ref === undefined ? {} : { ref }),
-    format: values.format,
+    format,
     debug: values.debug,
   }
 }
 
 function parseRulesArgs(argv: readonly string[]): CliCommand {
-  const { values, positionals } = parseOptions(argv, {
+  const { values, positionals } = parseCommandOptions(argv, {
     format: { type: 'string', default: 'text' },
-    debug: { type: 'boolean', default: false },
-    help: { type: 'boolean', short: 'h', default: false },
   })
   if (values.help) return { kind: 'help', text: RULES_USAGE }
   const [input, ...extra] = positionals
@@ -941,23 +942,19 @@ function parseRulesArgs(argv: readonly string[]): CliCommand {
     throw new UsageError('Missing the repository or pull request, e.g. phada rules owner/repo#123.')
   }
   if (extra.length > 0) throw new UsageError('Give one repository or pull request at a time.')
-  if (values.format !== 'text' && values.format !== 'json') {
-    throw new UsageError(`Invalid --format "${values.format}". Use text or json.`)
-  }
+  const format = textOrJson(values.format)
   const target: RulesTarget = isPullRequestRef(input)
     ? { kind: 'pull', ref: parsePullRequestRef(input) }
     : { kind: 'repo', repo: parseRepositoryName(input) }
-  return { kind: 'rules', target, format: values.format, debug: values.debug }
+  return { kind: 'rules', target, format, debug: values.debug }
 }
 
 function parsePromptArgs(argv: readonly string[]): CliCommand {
-  const { values, positionals } = parseOptions(argv, {
+  const { values, positionals } = parseCommandOptions(argv, {
     default: { type: 'boolean', default: false },
     skill: { type: 'string', multiple: true },
     head: { type: 'string' },
     format: { type: 'string', default: 'text' },
-    debug: { type: 'boolean', default: false },
-    help: { type: 'boolean', short: 'h', default: false },
   })
   if (values.help) return { kind: 'help', text: PROMPT_USAGE }
   const [input, ...extra] = positionals
@@ -970,9 +967,7 @@ function parsePromptArgs(argv: readonly string[]): CliCommand {
     )
   }
   if (extra.length > 0) throw new UsageError('Show one pull request at a time.')
-  if (values.format !== 'text' && values.format !== 'json') {
-    throw new UsageError(`Invalid --format "${values.format}". Use text or json.`)
-  }
+  const format = textOrJson(values.format)
   const skills = parseSkills(values.skill)
   if (values.default && skills !== undefined) throw new UsageError('--skill needs a pull request.')
   if (values.default && values.head !== undefined) {
@@ -990,19 +985,17 @@ function parsePromptArgs(argv: readonly string[]): CliCommand {
             ...(head === undefined ? {} : { head }),
           },
     ...(skills === undefined ? {} : { skills }),
-    format: values.format,
+    format,
     debug: values.debug,
   }
 }
 
 function parseWatchArgs(argv: readonly string[]): CliCommand {
-  const { values, positionals } = parseOptions(argv, {
+  const { values, positionals } = parseCommandOptions(argv, {
     once: { type: 'boolean', default: false },
     backfill: { type: 'boolean', default: false },
     status: { type: 'boolean', default: false },
     format: { type: 'string' },
-    debug: { type: 'boolean', default: false },
-    help: { type: 'boolean', short: 'h', default: false },
   })
   if (values.help) return { kind: 'help', text: WATCH_USAGE }
   if (positionals.length > 0) {
@@ -1014,10 +1007,7 @@ function parseWatchArgs(argv: readonly string[]): CliCommand {
   if (values.status && (values.once || values.backfill)) {
     throw new UsageError('Use --status alone, without --once or --backfill.')
   }
-  const format = values.format ?? 'text'
-  if (format !== 'text' && format !== 'json') {
-    throw new UsageError(`Invalid --format "${format}". Use text or json.`)
-  }
+  const format = textOrJson(values.format)
   return {
     kind: 'watch',
     once: values.once,
@@ -1029,57 +1019,45 @@ function parseWatchArgs(argv: readonly string[]): CliCommand {
 }
 
 function parseSetupArgs(argv: readonly string[]): CliCommand {
-  const { values, positionals } = parseOptions(argv, {
-    debug: { type: 'boolean', default: false },
-    help: { type: 'boolean', short: 'h', default: false },
-  })
+  const { values, positionals } = parseCommandOptions(argv, {})
   if (values.help) return { kind: 'help', text: SETUP_USAGE }
   if (positionals.length > 0) throw new UsageError('phada setup takes no argument.')
   return { kind: 'setup', debug: values.debug }
 }
 
 function parseMcpArgs(argv: readonly string[]): CliCommand {
-  const { values, positionals } = parseOptions(argv, {
-    debug: { type: 'boolean', default: false },
-    help: { type: 'boolean', short: 'h', default: false },
-  })
+  const { values, positionals } = parseCommandOptions(argv, {})
   if (values.help) return { kind: 'help', text: MCP_USAGE }
   if (positionals.length > 0) throw new UsageError('phada mcp takes no argument.')
   return { kind: 'mcp', debug: values.debug }
 }
 
 function parseEnqueueArgs(argv: readonly string[]): CliCommand {
-  const { values, positionals } = parseOptions(argv, {
+  const { values, positionals } = parseCommandOptions(argv, {
     publish: { type: 'string', default: 'pr' },
     format: { type: 'string', default: 'text' },
-    debug: { type: 'boolean', default: false },
-    help: { type: 'boolean', short: 'h', default: false },
   })
   if (values.help) return { kind: 'help', text: ENQUEUE_USAGE }
   const [input, ...extra] = positionals
   if (input === undefined)
     throw new UsageError('Missing the pull request, e.g. phada enqueue owner/repo#123.')
   if (extra.length > 0) throw new UsageError('Enqueue one pull request at a time.')
-  const { publish, format } = values
+  const { publish } = values
   if (publish !== 'pr' && publish !== 'none') {
     throw new UsageError(`Invalid --publish "${publish}". Use pr or none.`)
   }
-  if (format !== 'text' && format !== 'json') {
-    throw new UsageError(`Invalid --format "${format}". Use text or json.`)
-  }
+  const format = textOrJson(values.format)
   return { kind: 'enqueue', ref: parsePullRequestRef(input), publish, format, debug: values.debug }
 }
 
 function parseHistoryArgs(argv: readonly string[]): CliCommand {
-  const { values, positionals } = parseOptions(argv, {
+  const { values, positionals } = parseCommandOptions(argv, {
     since: { type: 'string' },
     limit: { type: 'string' },
     stats: { type: 'boolean', default: false },
     refresh: { type: 'boolean', default: false },
     format: { type: 'string' },
     'older-than': { type: 'string' },
-    debug: { type: 'boolean', default: false },
-    help: { type: 'boolean', short: 'h', default: false },
   })
   if (values.help) return { kind: 'help', text: HISTORY_USAGE }
   const olderThan = values['older-than']
@@ -1119,10 +1097,7 @@ function parseHistoryArgs(argv: readonly string[]): CliCommand {
   if (!Number.isSafeInteger(limit) || limit < 1 || !/^\d+$/.test(values.limit ?? '1')) {
     throw new UsageError(`Invalid --limit "${values.limit}". Use a whole number from 1.`)
   }
-  const format = values.format ?? 'text'
-  if (format !== 'text' && format !== 'json') {
-    throw new UsageError(`Invalid --format "${format}". Use text or json.`)
-  }
+  const format = textOrJson(values.format)
   return {
     kind: 'history',
     ...(target === undefined ? {} : { target }),
@@ -1136,14 +1111,12 @@ function parseHistoryArgs(argv: readonly string[]): CliCommand {
 }
 
 function parseMissesArgs(argv: readonly string[]): CliCommand {
-  const { values, positionals } = parseOptions(argv, {
+  const { values, positionals } = parseCommandOptions(argv, {
     all: { type: 'boolean', default: false },
     refresh: { type: 'boolean', default: false },
     replay: { type: 'boolean', default: false },
     since: { type: 'string' },
     format: { type: 'string' },
-    debug: { type: 'boolean', default: false },
-    help: { type: 'boolean', short: 'h', default: false },
   })
   if (values.help) return { kind: 'help', text: MISSES_USAGE }
   if (positionals[0] === 'dismiss') {
@@ -1162,10 +1135,7 @@ function parseMissesArgs(argv: readonly string[]): CliCommand {
   if (positionals.length > 1) {
     throw new UsageError('Give one repository or pull request at a time.')
   }
-  const format = values.format ?? 'text'
-  if (format !== 'text' && format !== 'json') {
-    throw new UsageError(`Invalid --format "${format}". Use text or json.`)
-  }
+  const format = textOrJson(values.format)
   const [input] = positionals
   const target = input === undefined ? undefined : targetOf(input)
   if (values.replay) {
@@ -1199,14 +1169,12 @@ function parseMissesArgs(argv: readonly string[]): CliCommand {
 }
 
 function parseLessonsArgs(argv: readonly string[]): CliCommand {
-  const { values, positionals } = parseOptions(argv, {
+  const { values, positionals } = parseCommandOptions(argv, {
     all: { type: 'boolean', default: false },
     refresh: { type: 'boolean', default: false },
     since: { type: 'string' },
     format: { type: 'string' },
     edit: { type: 'boolean', default: false },
-    debug: { type: 'boolean', default: false },
-    help: { type: 'boolean', short: 'h', default: false },
   })
   if (values.help) return { kind: 'help', text: LESSONS_USAGE }
   const [action] = positionals
@@ -1224,10 +1192,7 @@ function parseLessonsArgs(argv: readonly string[]): CliCommand {
       : { kind: 'lessons-discard', id, debug: values.debug }
   }
   if (positionals.length > 1) throw new UsageError('Give one repository at a time.')
-  const format = values.format ?? 'text'
-  if (format !== 'text' && format !== 'json') {
-    throw new UsageError(`Invalid --format "${format}". Use text or json.`)
-  }
+  const format = textOrJson(values.format)
   const [input] = positionals
   if (input !== undefined && isPullRequestRef(input)) {
     throw new UsageError('phada lessons takes a repository, e.g. acme/shop, not a pull request.')
@@ -1304,35 +1269,25 @@ function parseHistoryShow(
     throw new UsageError('phada history show takes only --format.')
   }
   const id = parseRunId(positionals, 'phada history show')
-  const format = values.format ?? 'text'
-  if (format !== 'text' && format !== 'json') {
-    throw new UsageError(`Invalid --format "${format}". Use text or json.`)
-  }
+  const format = textOrJson(values.format)
   return { kind: 'history-show', id, format, debug: values.debug }
 }
 
 function parsePublishArgs(argv: readonly string[]): CliCommand {
-  const { values, positionals } = parseOptions(argv, {
+  const { values, positionals } = parseCommandOptions(argv, {
     force: { type: 'boolean', default: false },
     format: { type: 'string' },
-    debug: { type: 'boolean', default: false },
-    help: { type: 'boolean', short: 'h', default: false },
   })
   if (values.help) return { kind: 'help', text: PUBLISH_USAGE }
   const id = parseRunId(positionals, 'phada publish')
-  const format = values.format ?? 'text'
-  if (format !== 'text' && format !== 'json') {
-    throw new UsageError(`Invalid --format "${format}". Use text or json.`)
-  }
+  const format = textOrJson(values.format)
   return { kind: 'publish', id, force: values.force, format, debug: values.debug }
 }
 
 function parseReplyArgs(argv: readonly string[]): CliCommand {
-  const { values, positionals } = parseOptions(argv, {
+  const { values, positionals } = parseCommandOptions(argv, {
     'dry-run': { type: 'boolean', default: false },
     format: { type: 'string', default: 'text' },
-    debug: { type: 'boolean', default: false },
-    help: { type: 'boolean', short: 'h', default: false },
   })
   if (values.help) return { kind: 'help', text: REPLY_USAGE }
   const [input, ...extra] = positionals
@@ -1340,10 +1295,7 @@ function parseReplyArgs(argv: readonly string[]): CliCommand {
     throw new UsageError('Missing the pull request, e.g. phada reply owner/repo#123.')
   }
   if (extra.length > 0) throw new UsageError('Answer one pull request at a time.')
-  const { format } = values
-  if (format !== 'text' && format !== 'json') {
-    throw new UsageError(`Invalid --format "${format}". Use text or json.`)
-  }
+  const format = textOrJson(values.format)
   return {
     kind: 'reply',
     ref: parsePullRequestRef(input),
@@ -1354,14 +1306,12 @@ function parseReplyArgs(argv: readonly string[]): CliCommand {
 }
 
 function parseFixArgs(argv: readonly string[]): CliCommand {
-  const { values, positionals } = parseOptions(argv, {
+  const { values, positionals } = parseCommandOptions(argv, {
     provider: { type: 'string' },
     model: { type: 'string' },
     only: { type: 'string' },
     list: { type: 'boolean', default: false },
     yes: { type: 'boolean', short: 'y', default: false },
-    debug: { type: 'boolean', default: false },
-    help: { type: 'boolean', short: 'h', default: false },
   })
   if (values.help) return { kind: 'help', text: FIX_USAGE }
   const [input, ...extra] = positionals
@@ -1424,6 +1374,13 @@ function parseRepositoryName(name: string): RepositoryName {
   return { owner, repo }
 }
 
+function parseCommandOptions<T extends ParseArgsOptionsConfig>(
+  argv: readonly string[],
+  options: T,
+) {
+  return parseOptions(argv, { ...options, ...COMMON_OPTIONS })
+}
+
 function parseOptions<T extends ParseArgsOptionsConfig>(argv: readonly string[], options: T) {
   try {
     return parseArgs({ args: [...argv], allowPositionals: true, strict: true, options })
@@ -1442,6 +1399,13 @@ function parseMinConfidence(value: string | undefined): number | undefined {
     )
   }
   return cut
+}
+
+function textOrJson(format = 'text'): IndexFormat {
+  if (format !== 'text' && format !== 'json') {
+    throw new UsageError(`Invalid --format "${format}". Use text or json.`)
+  }
+  return format
 }
 
 function isOutputFormat(value: string): value is OutputFormat {

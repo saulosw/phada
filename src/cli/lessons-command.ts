@@ -9,7 +9,7 @@ import { loadTopLevelUserLayers } from '../config/user-config.js'
 import { historyEnabled } from '../config/watch-settings.js'
 import { splitRepoName } from '../github/pull-request-ref.js'
 import type { ReviewProvider } from '../providers/types.js'
-import type { IndexFormat, RepositoryName } from './args.js'
+import type { CommandOptions } from './args.js'
 import { formatLessonsJson, formatLessonsText } from './format-lessons.js'
 import { existingHistory } from './history-access.js'
 import { refreshToken } from './history-refresh.js'
@@ -22,21 +22,11 @@ import { harvestTeamComments } from './team-harvest.js'
 import type { TeamHarvestDeps } from './team-harvest.js'
 import { formatCount } from './units.js'
 
-export interface LessonsCommand {
-  repo?: RepositoryName
-  all: boolean
-  refresh: boolean
-  since?: string
-  format: IndexFormat
-}
+export type LessonsCommand = CommandOptions<'lessons'>
 
-export interface LessonDecisionCommand {
-  id: number
-}
+export type LessonDiscardCommand = CommandOptions<'lessons-discard'>
 
-export interface LessonAcceptCommand extends LessonDecisionCommand {
-  edit: boolean
-}
+export type LessonAcceptCommand = CommandOptions<'lessons-accept'>
 
 export interface LessonsCommandDeps extends TextEditorDeps, TeamHarvestDeps {
   createProvider: (name: string, options: ProviderOptions) => ReviewProvider
@@ -95,7 +85,7 @@ export async function runLessonsAccept(
 }
 
 export async function runLessonsDiscard(
-  command: LessonDecisionCommand,
+  command: LessonDiscardCommand,
   deps: LessonsCommandDeps,
 ): Promise<void> {
   await withLessonHistory(command.id, deps, (lessonDeps) => discardLesson(command.id, lessonDeps))

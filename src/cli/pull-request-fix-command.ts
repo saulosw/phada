@@ -21,6 +21,7 @@ import type { PushCommitOptions } from '../repository/push-fix.js'
 import type { StopSignal } from '../tui/open-app.js'
 import { confirm, isTerminalInput } from './confirm.js'
 import { UsageError } from './errors.js'
+import type { CommandOf } from './args.js'
 import type { FixCommand, FixCommandDeps } from './local-fix-command.js'
 import { fixProvider, reportFix, startFix, workingFiles } from './fix-wiring.js'
 import { formatNumberedList } from './format-fix.js'
@@ -38,7 +39,7 @@ export interface PullRequestFixCommandDeps extends FixCommandDeps, GitHubTokenDe
   pushCommit?: (options: PushCommitOptions) => Promise<void>
 }
 
-type PullRequestFixCommand = FixCommand & { ref: PullRequestRef; yes: boolean }
+type PullRequestFixCommand = FixCommand & Required<Pick<CommandOf<'fix'>, 'ref' | 'yes'>>
 
 interface PushPlan {
   ref: PullRequestRef

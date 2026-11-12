@@ -3,7 +3,7 @@ import { findRepositoryRoot } from '../app/repository-folder.js'
 import type { InitializedFile, RepositoryInit } from '../app/repository-folder.js'
 import type { LocalFileSystem } from '../config/local-files.js'
 import { userConfigDir, userRepoDir } from '../config/user-config.js'
-import type { RepositoryName } from './args.js'
+import type { CommandOptions } from './args.js'
 import { UsageError } from './errors.js'
 import {
   REPOSITORY_CONFIG_TEMPLATE,
@@ -11,10 +11,7 @@ import {
   USER_CONFIG_TEMPLATE,
 } from './init-templates.js'
 
-export interface InitCommand {
-  global: boolean
-  repo?: RepositoryName
-}
+export type InitCommand = CommandOptions<'init'>
 
 export interface InitDeps {
   cwd: string

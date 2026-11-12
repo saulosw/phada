@@ -326,7 +326,7 @@ export function reviewRunJson(
     const publication =
       run.publication === undefined || note === undefined
         ? null
-        : toPublication(run.publication, note, { comments: 0, stillOpen: 0, dismissed: 0 })
+        : toPublication(run.publication, note, publicationCounts(run))
     return formatReviewJson(
       pullRequest,
       reviewed.outcome,
@@ -340,21 +340,12 @@ export function reviewRunJson(
       blocks,
     )
   }
-  const { plan, rendered } = run
+  const { rendered } = run
   const { investigation, impact, related, impactText } = reviewed
   return formatReviewJson(
     pullRequest,
     reviewed.outcome,
-    toPublication(
-      run.publication,
-      rendered,
-      {
-        comments: rendered.comments.length,
-        stillOpen: plan.stillOpen.length,
-        dismissed: plan.dismissed.length,
-      },
-      run.wouldSkip,
-    ),
+    toPublication(run.publication, rendered, publicationCounts(run), run.wouldSkip),
     context,
     investigation,
     impact,
@@ -392,6 +383,15 @@ interface PublicationCounts {
   comments: number
   stillOpen: number
   dismissed: number
+}
+
+export function publicationCounts(run: ReviewRun): PublicationCounts {
+  if (run.status !== 'reviewed') return { comments: 0, stillOpen: 0, dismissed: 0 }
+  return {
+    comments: run.rendered.comments.length,
+    stillOpen: run.plan.stillOpen.length,
+    dismissed: run.plan.dismissed.length,
+  }
 }
 
 function toPublication(

@@ -5,7 +5,7 @@ import { dataFiles } from '../config/data-paths.js'
 import { loadTopLevelUserLayers } from '../config/user-config.js'
 import { historyEnabled } from '../config/watch-settings.js'
 import type { StopSignal } from '../tui/open-app.js'
-import type { IndexFormat, RulesTarget } from './args.js'
+import type { CommandOptions } from './args.js'
 import { UsageError } from './errors.js'
 import { formatMissesReplayJson, formatMissesReplayText } from './format-misses-replay.js'
 import { requireGitHubToken } from './github-token.js'
@@ -15,10 +15,7 @@ import { fileAtCommit } from './review-wiring.js'
 import { formatCount } from './units.js'
 import { ABORTED_EXIT_CODE } from './watch-command.js'
 
-export interface MissesReplayCommand {
-  target?: RulesTarget
-  format: IndexFormat
-}
+export type MissesReplayCommand = CommandOptions<'misses-replay'>
 
 export interface MissesReplayDeps extends HistoryCommandDeps {
   version: string
