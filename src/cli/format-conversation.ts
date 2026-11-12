@@ -1,5 +1,5 @@
 import { CONVERSATION_BODY_BYTES, CONVERSATION_BUDGET_BYTES } from '../publish/conversation.js'
-import type { ConversationBlock, ConversationEntry } from '../app/read-run-report.js'
+import type { ConversationBlock, ConversationEntry } from '../app/stored-report-blocks.js'
 import type { Conversation } from '../publish/types.js'
 import { toTerminalText } from '../app/terminal-text.js'
 import { formatBytes, formatCount } from './units.js'

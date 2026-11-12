@@ -6,28 +6,20 @@ import type {
   ClosedPull,
   ListClosedPullRequestsOptions,
 } from '../github/list-closed-pull-requests.js'
-import type { IndexFormat, RulesTarget } from './args.js'
+import type { CommandOptions } from './args.js'
 import { MissNotFoundError } from './errors.js'
 import { formatMissesJson, formatMissesText } from './format-misses.js'
 import { existingHistory, filterOf } from './history-access.js'
 import type { HistoryCommandDeps } from './history-access.js'
 import { refreshHistory, refreshToken } from './history-refresh.js'
 
-export interface MissesCommand {
-  target?: RulesTarget
-  all: boolean
-  refresh: boolean
-  since?: string
-  format: IndexFormat
-}
+export type MissesCommand = CommandOptions<'misses'>
 
 export interface MissesCommandDeps extends HistoryCommandDeps {
   listClosedPullRequests: (options: ListClosedPullRequestsOptions) => Promise<ClosedPull[]>
 }
 
-export interface MissesDismissCommand {
-  id: number
-}
+export type MissesDismissCommand = CommandOptions<'misses-dismiss'>
 
 export async function runMisses(command: MissesCommand, deps: MissesCommandDeps): Promise<void> {
   const token = command.refresh

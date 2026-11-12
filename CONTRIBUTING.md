@@ -2,6 +2,7 @@
 
 Thanks for helping. [AGENTS.md](AGENTS.md) holds the architecture rules and
 [docs/layout.md](docs/layout.md) the code layout.
+[docs/architecture.md](docs/architecture.md) explains how the layers fit and where the tests cut in.
 
 ## Run from source
 

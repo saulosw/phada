@@ -1,4 +1,4 @@
-import type { CiBlock, ConversationBlock } from '../app/read-run-report.js'
+import type { CiBlock, ConversationBlock } from '../app/stored-report-blocks.js'
 import type { RelatedReport } from '../app/related-report.js'
 import type { ContextReport } from '../context/types.js'
 import type { ImpactReport } from '../graph/report.js'

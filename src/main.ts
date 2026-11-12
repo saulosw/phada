@@ -1,33 +1,8 @@
-import type { ReviewedLocalChanges } from './app/local-review.js'
-import type { PullRequestReview, ReviewOptions } from './app/review-pull-request.js'
 import { assertAppTerminal, runApp } from './cli/app-command.js'
 import type { AppCommandDeps } from './cli/app-command.js'
 import { parseCliArgs } from './cli/args.js'
-import type { CliCommand } from './cli/args.js'
-import { requireGitHubToken } from './cli/github-token.js'
+import type { CliCommand, CommandOf } from './cli/args.js'
 import { formatError } from './cli/format-error.js'
-import { formatGitHubPreview } from './cli/format-github.js'
-import { formatUsageLine } from './cli/format-usage.js'
-import { ciJson, conversationJson } from './cli/format-json.js'
-import { formatRunSections } from './cli/format-run-sections.js'
-import type { RunSections } from './cli/format-run-sections.js'
-import { usageReport } from './review/token-usage.js'
-import type { UsageReport } from './review/token-usage.js'
-import { formatInvestigationLine } from './cli/format-investigation.js'
-import { formatSkillRunLines } from './cli/format-passes.js'
-import type { BlockedFix } from './cli/format-passes.js'
-import { blockedFixer } from './cli/blocked-fix.js'
-import { printReviewProgress } from './cli/print-review-progress.js'
-import type { ReviewOutcome } from './review/types.js'
-import {
-  formatPublishedMessage,
-  formatRecheckMessage,
-  formatResolvedMessage,
-  formatSkipMessage,
-  formatWouldResolveMessage,
-} from './cli/format-publication.js'
-import { formatLocalReview, formatLocalReviewStart, formatReview } from './cli/format-review.js'
-import { messagesFor } from './cli/i18n/messages.js'
 import { runIndex } from './cli/index-command.js'
 import { runInit } from './cli/init.js'
 import { runPrompt } from './cli/prompt-command.js'
@@ -38,12 +13,9 @@ import type { MissesCommandDeps } from './cli/misses-command.js'
 import { runMissesReplay } from './cli/misses-replay-command.js'
 import { runLessons, runLessonsAccept, runLessonsDiscard } from './cli/lessons-command.js'
 import { reviewReplayer } from './cli/miss-replayer.js'
-import { localReviewJson, reviewRunJson } from './cli/review-wiring.js'
-import { runLocalReview } from './cli/local-review-command.js'
-import { prepareReview, runManualReview } from './cli/manual-review.js'
-import type { ReviewRun } from './app/review-and-publish.js'
-import { printHistorySave, savedAsLine } from './cli/print-history-save.js'
 import { runPublish } from './cli/publish-command.js'
+import { runLocalReviewCommand, runReviewCommand } from './cli/review-command.js'
+import type { ReviewCommandDeps } from './cli/review-command.js'
 import { runLocalFix } from './cli/local-fix-command.js'
 import { runPullRequestFix } from './cli/pull-request-fix-command.js'
 import type { PullRequestFixCommandDeps } from './cli/pull-request-fix-command.js'
@@ -53,9 +25,6 @@ import { assertProviderChoice } from './cli/provider-choice.js'
 import type { ProviderOptions } from './cli/provider-choice.js'
 export { assertProviderChoice } from './cli/provider-choice.js'
 export type { ProviderOptions } from './cli/provider-choice.js'
-import { toTerminalText } from './app/terminal-text.js'
-import { formatPullRequestRef } from './github/pull-request-ref.js'
-import type { PullRequest } from './github/pull-request.js'
 import { runEnqueue } from './cli/enqueue-command.js'
 import { runMcp } from './cli/mcp-command.js'
 import type { McpCommandDeps } from './cli/mcp-command.js'
@@ -73,8 +42,8 @@ export interface MainDeps
     AppCommandDeps,
     MissesCommandDeps,
     PullRequestFixCommandDeps,
-    ReplyCommandDeps {
-  cwd: string
+    ReplyCommandDeps,
+    ReviewCommandDeps {
   pathSize: (path: string) => Promise<number>
   killDetachedChildren: () => void
 }
@@ -97,166 +66,48 @@ export function createProvider(name: string, options: ProviderOptions): ReviewPr
   }
 }
 
+type CommandKind = CliCommand['kind']
+type CommandHandler<K extends CommandKind> = (
+  command: CommandOf<K>,
+  deps: MainDeps,
+) => Promise<number>
+
+const COMMANDS: { [K in CommandKind]: CommandHandler<K> } = {
+  help: async (command, deps) => printed(deps.stdout, command.text),
+  version: async (_command, deps) => printed(deps.stdout, deps.version),
+  init: async (command, deps) => printed(deps.stderr, (await runInit(command, deps)).join('\n')),
+  app: (command, deps) => runApp(deps, { debug: command.debug }),
+  setup: (command, deps) => runApp(deps, { setup: true, debug: command.debug }),
+  index: exitZero(runIndex),
+  rules: exitZero(runRules),
+  prompt: exitZero(runPrompt),
+  watch: runWatch,
+  enqueue: runEnqueue,
+  mcp: (_command, deps) => runMcp(deps),
+  history: exitZero(runHistory),
+  'history-show': exitZero(runHistoryShow),
+  'history-prune': exitZero(runHistoryPrune),
+  misses: exitZero(runMisses),
+  'misses-dismiss': exitZero(runMissesDismiss),
+  'misses-replay': (command, deps) => runMissesReplay(command, deps, reviewReplayer(deps)),
+  lessons: exitZero(runLessons),
+  'lessons-accept': exitZero(runLessonsAccept),
+  'lessons-discard': exitZero(runLessonsDiscard),
+  publish: exitZero(runPublish),
+  fix: exitZero(runFix),
+  reply: runReply,
+  review: runReviewCommand,
+  'review-local': runLocalReviewCommand,
+}
+
 export async function run(argv: readonly string[], deps: MainDeps): Promise<number> {
   let debug = false
   try {
     const command = parseCliArgs(argv)
-    if (command.kind === 'help') {
-      deps.stdout.write(`${command.text}\n`)
-      return 0
-    }
-    if (command.kind === 'version') {
-      deps.stdout.write(`${deps.version}\n`)
-      return 0
-    }
-    if (command.kind === 'init') {
-      const lines = await runInit(command, deps)
-      deps.stderr.write(`${lines.join('\n')}\n`)
-      return 0
-    }
-    if (command.kind === 'app') {
-      assertAppTerminal(command, deps)
-      debug = command.debug
-      return await runApp(deps, { debug })
-    }
-    if (command.kind === 'setup') {
-      debug = command.debug
-      return await runApp(deps, { setup: true, debug })
-    }
-    debug = command.debug
-    if (command.kind === 'index') {
-      await runIndex(command, deps)
-      return 0
-    }
-    if (command.kind === 'rules') {
-      await runRules(command, deps)
-      return 0
-    }
-    if (command.kind === 'prompt') {
-      await runPrompt(command, deps)
-      return 0
-    }
-    if (command.kind === 'watch') return await runWatch(command, deps)
-    if (command.kind === 'enqueue') return await runEnqueue(command, deps)
-    if (command.kind === 'mcp') return await runMcp(deps)
-    if (command.kind === 'history') {
-      await runHistory(command, deps)
-      return 0
-    }
-    if (command.kind === 'misses') {
-      await runMisses(command, deps)
-      return 0
-    }
-    if (command.kind === 'misses-replay')
-      return await runMissesReplay(command, deps, reviewReplayer(deps))
-    if (command.kind === 'lessons') {
-      await runLessons(command, deps)
-      return 0
-    }
-    if (command.kind === 'lessons-accept') {
-      await runLessonsAccept(command, deps)
-      return 0
-    }
-    if (command.kind === 'lessons-discard') {
-      await runLessonsDiscard(command, deps)
-      return 0
-    }
-    if (command.kind === 'misses-dismiss') {
-      await runMissesDismiss(command, deps)
-      return 0
-    }
-    if (command.kind === 'history-show') {
-      await runHistoryShow(command, deps)
-      return 0
-    }
-    if (command.kind === 'publish') {
-      await runPublish(command, deps)
-      return 0
-    }
-    if (command.kind === 'fix') {
-      const { ref } = command
-      if (ref === undefined) await runLocalFix(command, deps)
-      else await runPullRequestFix({ ...command, ref }, deps)
-      return 0
-    }
-    if (command.kind === 'reply') return await runReply(command, deps)
-    if (command.kind === 'history-prune') {
-      await runHistoryPrune(command, deps)
-      return 0
-    }
-
-    const token = await requireGitHubToken(deps)
-    if (command.kind === 'review-local') {
-      deps.onSignal(() => deps.abort(130))
-      const { review, history } = await runLocalReview(
-        {
-          cwd: deps.cwd,
-          token,
-          ...(command.base === undefined ? {} : { base: command.base }),
-          uncommitted: command.uncommitted,
-          ...(command.provider === undefined ? {} : { provider: command.provider }),
-          ...(command.model === undefined ? {} : { model: command.model }),
-          options: reviewOptions(command),
-        },
-        deps,
-        {
-          progress: printReviewProgress(deps.stderr, deps.clock),
-          started: (local) => deps.stderr.write(`${formatLocalReviewStart(local)}\n`),
-        },
-      )
-      printHistorySave(deps.stderr, history)
-      try {
-        printLocalReview(deps, command, review)
-      } finally {
-        const saved = savedAsLine(history)
-        if (saved !== undefined) deps.stderr.write(`${saved}\n`)
-      }
-      return 0
-    }
-    const prepared = await prepareReview(
-      command.ref,
-      token,
-      {
-        ...(command.provider === undefined ? {} : { provider: command.provider }),
-        ...(command.model === undefined ? {} : { model: command.model }),
-      },
-      deps,
-    )
-
-    deps.onSignal(() => deps.abort(130))
-    deps.stderr.write(`Fetching ${formatPullRequestRef(command.ref)}…\n`)
-    const { run: reviewRun, history } = await runManualReview(
-      prepared,
-      {
-        force: command.force,
-        dryRun: command.dryRun,
-        waitCi: command.waitCi === true,
-        ...(command.head === undefined ? {} : { head: command.head }),
-        options: {
-          ...reviewOptions(command),
-          ...(command.resolveThreads === undefined
-            ? {}
-            : { resolveThreads: command.resolveThreads }),
-          ...(command.conversation === undefined ? {} : { conversation: command.conversation }),
-          ...(command.ci === undefined ? {} : { ci: command.ci }),
-        },
-      },
-      deps,
-      {
-        progress: printReviewProgress(deps.stderr, deps.clock),
-        reviewed: (reviewed, pullRequest) => printReviewed(deps, command, reviewed, pullRequest),
-      },
-    )
-    printHistorySave(deps.stderr, history)
-    try {
-      printRun(deps, command, reviewRun)
-      const usageLine = formatUsageLine(runUsage(reviewRun))
-      if (usageLine !== undefined) deps.stderr.write(`${usageLine}\n`)
-    } finally {
-      const saved = savedAsLine(history)
-      if (saved !== undefined) deps.stderr.write(`${saved}\n`)
-    }
-    return 0
+    if (command.kind === 'app') assertAppTerminal(command, deps)
+    debug = 'debug' in command && command.debug
+    const handle = COMMANDS[command.kind] as CommandHandler<CommandKind>
+    return await handle(command, deps)
   } catch (error) {
     const { message, exitCode } = formatError(error, { debug })
     deps.stderr.write(`${message}\n`)
@@ -264,192 +115,24 @@ export async function run(argv: readonly string[], deps: MainDeps): Promise<numb
   }
 }
 
-type ReviewCommand = Extract<CliCommand, { kind: 'review' }>
-type LocalReviewCommand = Extract<CliCommand, { kind: 'review-local' }>
+async function runFix(command: CommandOf<'fix'>, deps: MainDeps): Promise<void> {
+  const { ref } = command
+  if (ref === undefined) await runLocalFix(command, deps)
+  else await runPullRequestFix({ ...command, ref }, deps)
+}
 
-function reviewOptions(command: ReviewCommand | LocalReviewCommand): ReviewOptions {
-  return {
-    language: command.language,
-    minConfidence: command.minConfidence,
-    verify: command.verify,
-    ...(command.continuation === undefined ? {} : { continuation: command.continuation }),
-    ...(command.groups === undefined ? {} : { groups: command.groups }),
-    investigate: command.investigate,
-    ...(command.skills === undefined ? {} : { skills: command.skills }),
+function exitZero<C>(
+  runCommand: (command: C, deps: MainDeps) => Promise<unknown>,
+): (command: C, deps: MainDeps) => Promise<number> {
+  return async (command, deps) => {
+    await runCommand(command, deps)
+    return 0
   }
 }
 
-function printLocalReview(
-  deps: MainDeps,
-  command: LocalReviewCommand,
-  review: ReviewedLocalChanges,
-): void {
-  const { local, pullRequest, reviewed } = review
-  const fixFor = printReviewNotes(deps, reviewed, pullRequest)
-  const { outcome } = reviewed
-  if (command.format === 'json') deps.stdout.write(localReviewJson(review, fixFor))
-  if (outcome.status === 'skipped') return
-  if (command.format === 'markdown') {
-    deps.stdout.write(
-      formatLocalReview(local, pullRequest.title, outcome.result, messagesFor(reviewed.language)),
-    )
-  }
-  const usageLine = formatUsageLine(usageReport(outcome.result.passUsage, undefined))
-  if (usageLine !== undefined) deps.stderr.write(`${usageLine}\n`)
-}
-
-function printReviewNotes(
-  deps: MainDeps,
-  reviewed: PullRequestReview,
-  pullRequest: PullRequest,
-): BlockedFix {
-  const review = reviewed.context.options.review
-  const fixFor = blockedFixer({
-    pullRequest,
-    env: deps.env,
-    home: deps.home,
-    ...(review === undefined ? {} : { review }),
-  })
-  const { outcome } = reviewed
-  if (outcome.status === 'skipped') {
-    deps.stderr.write(`${toTerminalText(skipLine(outcome))}\n`)
-    return fixFor
-  }
-  for (const warning of outcome.result.warnings ?? []) {
-    deps.stderr.write(`Warning: ${toTerminalText(warning)}\n`)
-  }
-  for (const line of formatSkillRunLines(outcome.result.passes ?? [], fixFor)) {
-    deps.stderr.write(`${line}\n`)
-  }
-  const investigationLine = formatInvestigationLine(reviewed.investigation)
-  if (investigationLine !== undefined) deps.stderr.write(`${investigationLine}\n`)
-  return fixFor
-}
-
-function printReviewed(
-  deps: MainDeps,
-  command: ReviewCommand,
-  reviewed: PullRequestReview,
-  pullRequest: PullRequest,
-): void {
-  printReviewNotes(deps, reviewed, pullRequest)
-  const { outcome } = reviewed
-  if (outcome.status === 'skipped') return
-  if (reviewed.recheck !== undefined) {
-    deps.stderr.write(`${formatRecheckMessage(reviewed.recheck)}\n`)
-  }
-  if (!command.dryRun && command.format === 'markdown') {
-    deps.stdout.write(formatReview(pullRequest, outcome.result, messagesFor(reviewed.language)))
-  }
-}
-
-function printRun(deps: MainDeps, command: ReviewCommand, run: ReviewRun): void {
-  const json = command.format === 'json'
-  const review = run.status === 'skipped' ? undefined : run.reviewed.context.options.review
-  const fixFor = blockedFixer({
-    pullRequest: run.pullRequest,
-    env: deps.env,
-    home: deps.home,
-    ...(review === undefined ? {} : { review }),
-  })
-  if (json) deps.stdout.write(reviewRunJson(run, fixFor))
-  const { pullRequest } = run
-  if (run.status === 'skipped') {
-    deps.stderr.write(`${formatSkipMessage(pullRequest.headSha, run.reason)}\n`)
-    return
-  }
-  const { publication, rendered } = run
-  if (publication === undefined || rendered === undefined) return
-  const { reviewed } = run
-  const messages = messagesFor(reviewed.language)
-  const counts =
-    run.status === 'reviewed'
-      ? {
-          comments: rendered.comments.length,
-          stillOpen: run.plan.stillOpen.length,
-          dismissed: run.plan.dismissed.length,
-        }
-      : { comments: 0, stillOpen: 0, dismissed: 0 }
-  switch (publication.status) {
-    case 'dry-run':
-      if (!json) {
-        deps.stdout.write(
-          run.status === 'nothing'
-            ? formatGitHubPreview(rendered, messages)
-            : [
-                formatGitHubPreview(rendered, messages),
-                ...formatRunSections(dryRunSections(run, fixFor)),
-              ].join('\n'),
-        )
-      }
-      deps.stderr.write('Dry run: nothing was posted.\n')
-      if (publication.wouldResolve.length > 0) {
-        deps.stderr.write(`${formatWouldResolveMessage(publication.wouldResolve.length)}\n`)
-      }
-      if (run.status === 'reviewed' && run.wouldSkip !== undefined) {
-        deps.stderr.write(
-          `Without --dry-run: ${formatSkipMessage(pullRequest.headSha, run.wouldSkip)}\n`,
-        )
-      }
-      return
-    case 'failed':
-      throw publication.error
-    case 'published':
-      deps.stderr.write(
-        `${formatPublishedMessage(publication.url, counts.comments, counts.stillOpen, counts.dismissed)}\n`,
-      )
-      if (publication.resolved.total > 0) {
-        const { resolved, total } = publication.resolved
-        deps.stderr.write(`${formatResolvedMessage(resolved, total)}\n`)
-      }
-      return
-    default:
-      return
-  }
-}
-
-function skipLine(outcome: Extract<ReviewOutcome, { status: 'skipped' }>): string {
-  if (outcome.reason === 'all-ignored') return 'Nothing to review: every changed file is ignored.'
-  if (outcome.reason === 'empty-diff') return 'Nothing to review: the pull request has no changes.'
-  const skipped = (outcome.passes ?? []).map(({ skill, reason }) => `${skill} — ${reason ?? ''}`)
-  return `Nothing to review: no skill applies to the changed files (${skipped.join('; ')}).`
-}
-
-function runUsage(run: ReviewRun): UsageReport {
-  if (run.status === 'skipped') return { passes: [] }
-  const { outcome, recheck } = run.reviewed
-  return usageReport(outcome.status === 'reviewed' ? outcome.result.passUsage : undefined, recheck)
-}
-
-function dryRunSections(
-  run: Extract<ReviewRun, { status: 'reviewed' }>,
-  fixFor: BlockedFix,
-): RunSections {
-  const { reviewed } = run
-  const { outcome } = reviewed
-  const result = outcome.status === 'reviewed' ? outcome.result : undefined
-  return {
-    ...(result === undefined
-      ? {}
-      : {
-          closeToCut: { findings: result.findings, minConfidence: result.minConfidence },
-          claims: result.claims,
-        }),
-    context: reviewed.context.report,
-    conversation:
-      reviewed.conversation === undefined ? null : conversationJson(reviewed.conversation),
-    ci: reviewed.ci === undefined ? null : ciJson(reviewed.ci),
-    impact: {
-      report: reviewed.impact,
-      ...(reviewed.impactText === undefined ? {} : { text: reviewed.impactText }),
-    },
-    related: reviewed.related,
-    ...(result?.passes === undefined ? {} : { passes: { reports: result.passes, fixFor } }),
-    ...(result?.groups === undefined ? {} : { groups: result.groups }),
-    investigation: reviewed.investigation,
-    ...(result?.coverage === undefined ? {} : { coverage: result.coverage }),
-    usage: runUsage(run),
-  }
+function printed(output: MainDeps['stdout'], text: string): number {
+  output.write(`${text}\n`)
+  return 0
 }
 
 function cliOptions({ model, detached }: ProviderOptions): { model?: string; detached?: boolean } {

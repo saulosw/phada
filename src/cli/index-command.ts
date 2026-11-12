@@ -5,7 +5,7 @@ import { loadUserLayers } from '../config/user-config.js'
 import type { Extractor } from '../repo-map/extract.js'
 import type { GitMirror, GitMirrorOptions } from '../repository/git-mirror.js'
 import type { IndexStore } from '../store/index-store.js'
-import type { IndexFormat, RepositoryName } from './args.js'
+import type { CommandOf } from './args.js'
 import { requireGitHubToken } from './github-token.js'
 import type { GitHubTokenDeps } from './github-token.js'
 import { formatIndexJson, formatIndexText } from './format-index.js'
@@ -13,11 +13,7 @@ import { indexProgress } from './progress.js'
 import type { TextOutput } from './progress.js'
 import { toTerminalText } from '../app/terminal-text.js'
 
-export interface IndexCommand {
-  repo: RepositoryName
-  ref?: string
-  format: IndexFormat
-}
+export type IndexCommand = CommandOf<'index'>
 
 export interface IndexCommandDeps extends GitHubTokenDeps {
   version: string

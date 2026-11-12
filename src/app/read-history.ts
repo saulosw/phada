@@ -1,9 +1,16 @@
 import { destinationOf } from '../publish/feedback.js'
 import { noReplies, repliedKinds } from './reply-kinds.js'
 import type { ReplyCounts } from './reply-kinds.js'
-import { numberOf, objectOf, parseJson, stringOf, stringsOf } from './stored-json.js'
-import { storedCoverage, storedSuggestion } from './stored-review.js'
-import type { CoverageGapKind, CoverageLevel, Suggestion } from '../review/types.js'
+import { readStoredRun, titledFindings } from './stored-run.js'
+import type {
+  StoredCi,
+  StoredClaim,
+  StoredFinding,
+  StoredRunPublication,
+  StoredTokens,
+  StoredUsage,
+} from './stored-run.js'
+import type { Coverage, CoverageGapKind, CoverageLevel, DiffGroupReport } from '../review/types.js'
 import type { Destination, SignalKind } from '../publish/feedback.js'
 import type {
   ClassifiedReply,
@@ -47,28 +54,6 @@ export interface RuleStats extends FeedbackCounts {
   rule: string
 }
 
-export interface StoredFinding {
-  severity: string | null
-  confidence: number | null
-  file: string
-  line: number | null
-  title: string
-  why: string | null
-  fix: string | null
-  rule: string | null
-  skill: string | null
-  sources: string[]
-  scope: 'change' | 'repository'
-  closeToCut: boolean
-  suggestion?: Suggestion
-}
-
-export interface StoredClaim {
-  claim: string
-  verdict: string
-  evidence: string | null
-}
-
 export interface StoredPublication {
   status: string
   url: string | null
@@ -77,35 +62,10 @@ export interface StoredPublication {
   reason: string | null
 }
 
-export interface StoredCi {
-  state: string
-  failing: string[]
-  pending: string[]
-  checks: { name: string; state: string }[]
-}
-
-export interface StoredTokens {
-  input: number
-  cached: number | null
-  output: number
-}
-
-export interface StoredPassUsage {
-  pass: string
-  skill: string | null
-  group: string | null
-  tokens: StoredTokens | null
-}
-
 export interface StoredGroups {
   directory: number
   single: number
   failed: number
-}
-
-export interface StoredUsage {
-  passes: StoredPassUsage[]
-  total: StoredTokens | null
 }
 
 export interface StoredCoverage {
@@ -198,35 +158,30 @@ export function readReviewDetail(
 
 export function reviewDetailOf(stored: RunRecord, published: FeedbackFinding[]): ReviewDetail {
   const { resultJson, ...run } = stored
-  const result = objectOf(parseJson(resultJson))
-  const pullRequest = objectOf(result?.pullRequest)
-  const local = objectOf(result?.local)
-  const review = objectOf(result?.review)
-  const score = objectOf(review?.score)
-  const scoreValue = numberOf(score?.value) ?? run.score ?? null
+  const view = readStoredRun(resultJson)
+  const { review } = view
+  const scoreValue = review?.score.value ?? run.score ?? null
   return {
     run,
     pullRequest: {
       url:
         run.source === 'local'
           ? null
-          : (stringOf(pullRequest?.url) ??
-            `https://github.com/${run.repo}/pull/${String(run.number)}`),
-      title: stringOf(pullRequest?.title) ?? stringOf(local?.title) ?? null,
+          : (view.pullRequest?.url ?? `https://github.com/${run.repo}/pull/${String(run.number)}`),
+      title: view.pullRequest?.title ?? view.localTitle,
     },
     verdict: run.verdict ?? null,
-    score:
-      scoreValue === null ? null : { value: scoreValue, reason: stringOf(score?.reason) ?? null },
-    coverage: coverageSummary(review?.coverage),
-    summary: stringOf(review?.summary) ?? null,
-    claims: storedClaims(review?.claims),
-    findings: storedFindings(review?.findings),
-    debt: storedFindings(review?.debt),
-    worthChecking: storedFindings(review?.worthChecking),
-    publication: storedPublication(result?.publication),
-    ci: storedCi(result?.ci),
-    groups: storedGroups(review?.groups),
-    usage: storedUsage(result?.usage, review?.usage),
+    score: scoreValue === null ? null : { value: scoreValue, reason: review?.score.reason ?? null },
+    coverage: coverageSummary(review?.coverage ?? null),
+    summary: review?.summary ?? null,
+    claims: review?.claims ?? [],
+    findings: titledFindings(review?.findings ?? []),
+    debt: titledFindings(review?.debt ?? []),
+    worthChecking: titledFindings(review?.worthChecking ?? []),
+    publication: publicationOf(view.publication),
+    ci: view.ci,
+    groups: groupCounts(review?.groups ?? null),
+    usage: view.usage ?? totalOnly(review?.usage ?? null),
     published,
   }
 }
@@ -290,48 +245,8 @@ function emptyCounts(): FeedbackCounts {
   }
 }
 
-export function storedFindings(value: unknown): StoredFinding[] {
-  if (!Array.isArray(value)) return []
-  return value.flatMap((item): StoredFinding[] => {
-    const finding = objectOf(item)
-    const file = stringOf(finding?.file)
-    const title = stringOf(finding?.title)
-    if (finding === undefined || file === undefined || title === undefined) return []
-    const suggestion = storedSuggestion(finding.suggestion)
-    return [
-      {
-        severity: stringOf(finding.severity) ?? null,
-        confidence: numberOf(finding.confidence) ?? null,
-        file,
-        line: numberOf(finding.line) ?? null,
-        title,
-        why: stringOf(finding.why) ?? null,
-        fix: stringOf(finding.fix) ?? null,
-        rule: stringOf(finding.rule) ?? null,
-        skill: stringOf(finding.skill) ?? null,
-        sources: stringsOf(finding.sources),
-        scope: finding.scope === 'repository' ? 'repository' : 'change',
-        closeToCut: finding.closeToCut === true,
-        ...(suggestion === undefined ? {} : { suggestion }),
-      },
-    ]
-  })
-}
-
-export function storedClaims(value: unknown): StoredClaim[] {
-  if (!Array.isArray(value)) return []
-  return value.flatMap((item): StoredClaim[] => {
-    const claim = objectOf(item)
-    const text = stringOf(claim?.claim)
-    const verdict = stringOf(claim?.verdict)
-    if (text === undefined || verdict === undefined) return []
-    return [{ claim: text, verdict, evidence: stringOf(claim?.evidence) ?? null }]
-  })
-}
-
-function coverageSummary(value: unknown): StoredCoverage | null {
-  const coverage = storedCoverage(value)
-  if (coverage === undefined) return null
+function coverageSummary(coverage: Coverage | null): StoredCoverage | null {
+  if (coverage === null) return null
   const { level, covered, total, verified, gaps } = coverage
   const count = (kind: CoverageGapKind) => gaps.filter((gap) => gap.kind === kind).length
   return {
@@ -347,72 +262,14 @@ function coverageSummary(value: unknown): StoredCoverage | null {
   }
 }
 
-function storedPublication(value: unknown): StoredPublication | null {
-  const publication = objectOf(value)
-  const status = stringOf(publication?.status)
-  if (publication === undefined || status === undefined) return null
-  return {
-    status,
-    url: stringOf(publication.url) ?? null,
-    comments: Array.isArray(publication.comments)
-      ? publication.comments.length
-      : (numberOf(publication.comments) ?? null),
-    wouldResolve: Array.isArray(publication.wouldResolve) ? publication.wouldResolve.length : null,
-    reason:
-      stringOf(publication.reason) ?? stringOf(objectOf(publication.wouldSkip)?.reason) ?? null,
-  }
+function publicationOf(publication: StoredRunPublication | null): StoredPublication | null {
+  if (publication === null || publication.status === null) return null
+  const { status, url, comments, wouldResolve, reason } = publication
+  return { status, url, comments, wouldResolve, reason }
 }
 
-export function storedCi(value: unknown): StoredCi | null {
-  const ci = objectOf(value)
-  const state = stringOf(ci?.state)
-  if (ci === undefined || state === undefined) return null
-  const checks = Array.isArray(ci.checks) ? ci.checks : []
-  return {
-    state,
-    failing: stringsOf(ci.failing),
-    pending: stringsOf(ci.pending),
-    checks: checks.flatMap((item) => {
-      const check = objectOf(item)
-      const name = stringOf(check?.name)
-      const checkState = stringOf(check?.state)
-      return name === undefined || checkState === undefined ? [] : [{ name, state: checkState }]
-    }),
-  }
-}
-
-function storedUsage(value: unknown, reviewTotal: unknown): StoredUsage | null {
-  const usage = objectOf(value)
-  if (usage === undefined) {
-    const total = storedTokens(reviewTotal)
-    return total === null ? null : { passes: [], total }
-  }
-  const passes = Array.isArray(usage.passes) ? usage.passes : []
-  return {
-    passes: passes.flatMap((item): StoredPassUsage[] => {
-      const entry = objectOf(item)
-      const pass = stringOf(entry?.pass)
-      if (entry === undefined || pass === undefined) return []
-      return [
-        {
-          pass,
-          skill: stringOf(entry.skill) ?? null,
-          group: stringOf(entry.group) ?? null,
-          tokens: storedTokens(entry.usage),
-        },
-      ]
-    }),
-    total: storedTokens(usage.total),
-  }
-}
-
-function storedGroups(value: unknown): StoredGroups | null {
-  if (!Array.isArray(value)) return null
-  const groups = value.flatMap((item) => {
-    const group = objectOf(item)
-    return group === undefined || stringOf(group.label) === undefined ? [] : [group]
-  })
-  if (groups.length === 0) return null
+function groupCounts(groups: DiffGroupReport[] | null): StoredGroups | null {
+  if (groups === null || groups.length === 0) return null
   return {
     directory: groups.filter(({ link }) => link !== 'single').length,
     single: groups.filter(({ link }) => link === 'single').length,
@@ -420,10 +277,6 @@ function storedGroups(value: unknown): StoredGroups | null {
   }
 }
 
-function storedTokens(value: unknown): StoredTokens | null {
-  const usage = objectOf(value)
-  const input = numberOf(usage?.inputTokens)
-  const output = numberOf(usage?.outputTokens)
-  if (input === undefined || output === undefined) return null
-  return { input, cached: numberOf(usage?.cachedInputTokens) ?? null, output }
+function totalOnly(total: StoredTokens | null): StoredUsage | null {
+  return total === null ? null : { passes: [], total }
 }

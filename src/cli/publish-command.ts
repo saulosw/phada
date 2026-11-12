@@ -1,7 +1,7 @@
 import type { PublishRefusal, SavedPublication } from '../app/publish-saved-review.js'
 import { toTerminalText } from '../app/terminal-text.js'
 import type { SkipReason } from '../publish/types.js'
-import type { IndexFormat } from './args.js'
+import type { CommandOf } from './args.js'
 import { PublishRefusedError, RunNotFoundError } from './errors.js'
 import { formatPublishedMessage, formatResolvedMessage } from './format-publication.js'
 import { publishedRunJson } from './format-json.js'
@@ -13,11 +13,7 @@ import { publishSavedRun } from './publish-saved.js'
 import type { PublishSavedDeps } from './publish-saved.js'
 import { shortSha } from './review-text.js'
 
-export interface PublishCommand {
-  id: number
-  force: boolean
-  format: IndexFormat
-}
+export type PublishCommand = CommandOf<'publish'>
 
 export interface PublishCommandDeps extends PublishSavedDeps, GitHubTokenDeps {
   stdout: TextOutput

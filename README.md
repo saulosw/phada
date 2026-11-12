@@ -233,6 +233,7 @@ Every key, where it is read and how the files add up is in
 | [History, misses and lessons](docs/history-and-lessons.md) | The local history, what happened to each comment, misses and lessons                                      |
 | [What a review reads](docs/review-context.md)              | Rules and docs, the conversation and CI, focus and skills, the investigation, the graph, MCP servers      |
 | [The terminal app](docs/terminal-app.md)                   | The screens and keys of the app, the setup, and reviewing, watching and configuring from it               |
+| [Architecture](docs/architecture.md)                       | How the code is organized: the layers, the dependency rule, the path of a review and the test seams       |
 
 ## Status
 

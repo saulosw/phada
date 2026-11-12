@@ -10,17 +10,14 @@ import { openLocalGit } from '../repository/local-git.js'
 import type { LocalGit, LocalGitOptions } from '../repository/local-git.js'
 import type { ReviewProvider } from '../providers/types.js'
 import type { HistoryStore } from '../store/history-store.js'
-import type { CliCommand } from './args.js'
+import type { CommandOf } from './args.js'
 import { fixProvider, reportFix, startFix, workingFiles } from './fix-wiring.js'
 import { formatFixList, formatHeadMoved } from './format-fix.js'
 import { existingHistory } from './history-access.js'
 import type { TextOutput } from './progress.js'
 import type { ProviderOptions } from './provider-choice.js'
 
-export type FixCommand = Pick<
-  Extract<CliCommand, { kind: 'fix' }>,
-  'list' | 'only' | 'provider' | 'model'
->
+export type FixCommand = Pick<CommandOf<'fix'>, 'list' | 'only' | 'provider' | 'model'>
 
 export interface FixCommandDeps {
   cwd: string

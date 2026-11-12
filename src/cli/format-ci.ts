@@ -1,4 +1,4 @@
-import type { CiBlock, CiCheckLine } from '../app/read-run-report.js'
+import type { CiBlock, CiCheckLine } from '../app/stored-report-blocks.js'
 import { CI_LOG_TOTAL_BYTES, CI_MAX_ANNOTATIONS } from '../context/ci.js'
 import type { Ci } from '../context/types.js'
 import { nameList } from './name-list.js'

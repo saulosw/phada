@@ -6,7 +6,7 @@ import { loadTopLevelUserLayers } from '../config/user-config.js'
 import { historyEnabled } from '../config/watch-settings.js'
 import { openHistoryStore } from '../store/history-store.js'
 import type { HistoryStore } from '../store/history-store.js'
-import type { IndexFormat, RulesTarget } from './args.js'
+import type { CommandOptions } from './args.js'
 import { RunNotFoundError } from './errors.js'
 import { existingHistory, filterOf } from './history-access.js'
 import type { Filter, HistoryCommandDeps } from './history-access.js'
@@ -19,23 +19,11 @@ import {
 } from './format-history.js'
 import { formatCount } from './units.js'
 
-export interface HistoryCommand {
-  target?: RulesTarget
-  sinceMs?: number
-  limit: number
-  stats: boolean
-  refresh: boolean
-  format: IndexFormat
-}
+export type HistoryCommand = CommandOptions<'history'>
 
-export interface HistoryPruneCommand {
-  olderThanMs: number
-}
+export type HistoryPruneCommand = CommandOptions<'history-prune'>
 
-export interface HistoryShowCommand {
-  id: number
-  format: IndexFormat
-}
+export type HistoryShowCommand = CommandOptions<'history-show'>
 
 export async function runHistory(command: HistoryCommand, deps: HistoryCommandDeps): Promise<void> {
   const enabled = historyEnabled(await loadTopLevelUserLayers(deps))

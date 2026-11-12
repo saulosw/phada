@@ -1,9 +1,10 @@
+import { readStoredRun } from '../app/stored-run.js'
 import type { JobEvent } from '../app/watch-repositories.js'
 import type { ReviewEventName } from '../config/schema.js'
 import type { Verdict } from '../review/verdict.js'
 import type { HistoryStore, RunRecord, RunStatus } from '../store/history-store.js'
 import type { JobRecord, PublishTarget, RequestRecord, RequestSource } from '../watch/types.js'
-import { storedCi } from './stored-ci.js'
+import { eventCiOf } from './stored-ci.js'
 import type { EventCi } from './stored-ci.js'
 
 const SCHEMA_VERSION = 1
@@ -44,6 +45,7 @@ export function reviewEvent(event: JobEvent, run: RunRecord | undefined): Review
   const { job, kind } = event
   const ended = kind !== 'started'
   const error = kind === 'failed' ? (job.error ?? run?.error) : undefined
+  const stored = readStoredRun(run?.resultJson)
   return {
     schemaVersion: SCHEMA_VERSION,
     event: `review.${kind}`,
@@ -60,14 +62,14 @@ export function reviewEvent(event: JobEvent, run: RunRecord | undefined): Review
       ...(data === undefined ? {} : { data }),
     })),
     verdict: verdictOf(kind, run),
-    ci: ended ? storedCi(run?.resultJson) : startedCi(event),
+    ci: ended ? eventCiOf(stored) : startedCi(event),
     ...(event.reason === undefined ? {} : { reason: event.reason }),
     publication:
       ended && run !== undefined
         ? { status: run.status, ...(run.url === undefined ? {} : { url: run.url }) }
         : null,
-    ...(kind === 'finished' && run?.resultJson !== undefined
-      ? { review: JSON.parse(run.resultJson) as ReviewDocument }
+    ...(kind === 'finished' && stored.document !== undefined
+      ? { review: stored.document as ReviewDocument }
       : {}),
     ...(error === undefined ? {} : { error }),
   }

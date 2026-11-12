@@ -5,7 +5,7 @@ import { GitHubError } from '../github/errors.js'
 import type { FetchPullRequestOptions, PullRequest } from '../github/pull-request.js'
 import type { RepositoryFilesOptions } from '../github/repository-files.js'
 import type { RepositoryInfo } from '../github/repository.js'
-import type { IndexFormat, RulesTarget } from './args.js'
+import type { CommandOf } from './args.js'
 import { contextSourcesAt } from './context-sources.js'
 import type { ContextReaders } from './context-sources.js'
 import { requireGitHubToken } from './github-token.js'
@@ -14,10 +14,7 @@ import { formatRulesJson, formatRulesText } from './format-rules.js'
 import type { RulesView } from './format-rules.js'
 import type { TextOutput } from './progress.js'
 
-export interface RulesCommand {
-  target: RulesTarget
-  format: IndexFormat
-}
+export type RulesCommand = CommandOf<'rules'>
 
 export interface RulesCommandDeps extends ContextReaders, GitHubTokenDeps {
   files: LocalFileSystem

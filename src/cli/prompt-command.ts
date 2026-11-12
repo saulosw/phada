@@ -16,7 +16,7 @@ import type {
   PullRequestReviewState,
 } from '../github/pull-request-reviews.js'
 import type { FetchPullRequestOptions, PullRequest } from '../github/pull-request.js'
-import type { CliCommand } from './args.js'
+import type { CommandOf } from './args.js'
 import { contextSourcesAt } from './context-sources.js'
 import type { ContextReaders } from './context-sources.js'
 import { requireGitHubToken } from './github-token.js'
@@ -28,7 +28,7 @@ import { ciReaders, replayReaders } from './review-wiring.js'
 import type { CiReaderDeps, PublishTarget, ReplayReaderDeps } from './review-wiring.js'
 import { diskSkillCatalog } from './skill-catalog.js'
 
-export type PromptCommand = Extract<CliCommand, { kind: 'prompt' }>
+export type PromptCommand = CommandOf<'prompt'>
 
 export interface PromptReaderDeps extends ContextReaders, CiReaderDeps, GitHubTokenDeps {
   files: LocalFileSystem

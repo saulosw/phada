@@ -8,7 +8,7 @@ import type { PullRequestRef } from '../github/pull-request-ref.js'
 import type { ReviewProvider } from '../providers/types.js'
 import type { HistoryStore } from '../store/history-store.js'
 import type { StopSignal } from '../tui/open-app.js'
-import type { IndexFormat } from './args.js'
+import type { CommandOptions } from './args.js'
 import { UsageError } from './errors.js'
 import { formatReplyRun, replyRunJson } from './format-reply.js'
 import { requireGitHubToken } from './github-token.js'
@@ -21,11 +21,7 @@ import type { ProviderOptions } from './provider-choice.js'
 import { threadReplyDeps, threadReplySetup } from './reply-wiring.js'
 import type { ThreadReplyDeps } from './reply-wiring.js'
 
-export interface ReplyCommand {
-  ref: PullRequestRef
-  dryRun: boolean
-  format: IndexFormat
-}
+export type ReplyCommand = CommandOptions<'reply'>
 
 export interface ReplyCommandDeps extends GitHubTokenDeps, ThreadReplyDeps {
   stdout: TextOutput

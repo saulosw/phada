@@ -2,19 +2,13 @@ import { submitRequest } from '../app/submit-request.js'
 import { dataFiles } from '../config/data-paths.js'
 import { loadTopLevelUserLayers } from '../config/user-config.js'
 import { formatPullRequestRef } from '../github/pull-request-ref.js'
-import type { PullRequestRef } from '../github/pull-request-ref.js'
-import type { PublishTarget } from '../watch/types.js'
-import type { IndexFormat } from './args.js'
+import type { CommandOf } from './args.js'
 import { requireGitHubToken } from './github-token.js'
 import { formatSubmitJson, formatSubmitText, NO_WATCH_WARNING } from './format-request.js'
 import { requireWatchSettings, submitDeps } from './request-wiring.js'
 import type { RequestCommandDeps } from './request-wiring.js'
 
-export interface EnqueueCommand {
-  ref: PullRequestRef
-  publish: PublishTarget
-  format: IndexFormat
-}
+export type EnqueueCommand = CommandOf<'enqueue'>
 
 export async function runEnqueue(
   command: EnqueueCommand,

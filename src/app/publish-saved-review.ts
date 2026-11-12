@@ -11,8 +11,9 @@ import type {
   ResolveDeps,
   ReviewAndPublishDeps,
 } from './review-and-publish.js'
-import { objectOf, parseJson } from './stored-json.js'
+import { objectOf } from './stored-json.js'
 import { storedReview } from './stored-review.js'
+import { readStoredRun } from './stored-run.js'
 import type { StoredReview } from './stored-review.js'
 
 export interface PublishSavedReviewInput {
@@ -130,9 +131,10 @@ function savedReview(id: number, deps: PublishSavedReviewDeps): SavedReview | Pu
       ...(run.url === undefined ? {} : { url: run.url }),
     }
   }
-  const record = objectOf(parseJson(run.resultJson))
+  const { document, status } = readStoredRun(run.resultJson)
+  const record = objectOf(document)
   if (record === undefined) return { kind: 'outdated' }
-  if (record.status === 'skipped') return { kind: 'nothing-to-publish' }
+  if (status === 'skipped') return { kind: 'nothing-to-publish' }
   const stored = storedReview(record)
   if (stored === undefined) return { kind: 'outdated' }
   const [owner = '', repo = ''] = stored.pullRequest.repo.split('/')

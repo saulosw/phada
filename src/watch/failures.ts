@@ -39,16 +39,8 @@ export function afterFailure({ job, kind, now, pause, resetAt }: FailureInput): 
         pause: { until: later(now, delay), reason: kind, streak },
       }
     }
-    case 'rate-limit': {
-      const until =
-        resetAt === undefined
-          ? later(now, RATE_LIMIT_FALLBACK_MS)
-          : later(resetAt, RATE_LIMIT_MARGIN_MS)
-      return {
-        job: { status: 'queued', errorKind: kind },
-        pause: { until, reason: kind, streak: 1 },
-      }
-    }
+    case 'rate-limit':
+      return { job: { status: 'queued', errorKind: kind }, pause: rateLimitPause(now, resetAt) }
     case 'definitive':
       return {
         job: { status: 'failed', attempts: job.attempts + 1, errorKind: kind, finishedAt: now },

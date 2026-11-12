@@ -6,16 +6,18 @@ import type { OpenPull, PullListing } from '../github/list-pull-requests.js'
 import type { BranchHead } from '../github/repository.js'
 import type { CiState } from '../context/types.js'
 import type { CiCheckState } from '../review/types.js'
-import type { DuePull, HistoryStore } from '../store/history-store.js'
+import type { DuePull, HistoryStore, RepoRecord } from '../store/history-store.js'
 import { listedPullFacts } from '../watch/pull-facts.js'
 import type { FailureKind, JobRecord, PauseState, RequestRecord } from '../watch/types.js'
 import { afterFailure, MAX_ATTEMPTS, rateLimitPause } from '../watch/failures.js'
+import { afterRun } from '../watch/after-run.js'
 import { later } from '../watch/time.js'
 import { CI_PENDING, ciGate } from '../watch/ci-gate.js'
 import type { CiFailurePolicy, CiGateSummary } from '../watch/ci-gate.js'
 import { CI_FAILING, ciRevisits, requeueForCi, revisitsCi } from '../watch/ci-revisit.js'
 import { NOT_STARTED, notStarted, pickNext, RATE_WINDOW_MS } from '../watch/next-job.js'
 import { planCycle } from '../watch/plan-cycle.js'
+import type { CommentCursor, CursorMove } from '../watch/comment-cursor.js'
 import { prCommands } from '../watch/pr-commands.js'
 import { replyScan } from '../watch/reply-scan.js'
 import type { CycleAction } from '../watch/plan-cycle.js'
@@ -229,43 +231,18 @@ async function answerReplies(
   )
   const published = new Set(deps.history.publishedPulls(repo.repo))
   const withThreads = new Set([...open].filter((number) => published.has(number)))
-  await scanReplies(repo.repo, withThreads, listReviewComments, deps)
+  await scanSince(
+    repo.repo,
+    REVIEW_COMMENTS,
+    listReviewComments,
+    (comments, cursor) => {
+      const scan = replyScan(comments, { ...cursor, open: withThreads })
+      deps.history.markRepliesDue(repo.repo, scan.numbers, iso(deps))
+      return scan
+    },
+    deps,
+  )
   await replyToDue(repo, open, settings, deps, budget)
-}
-
-async function scanReplies(
-  repo: string,
-  open: ReadonlySet<number>,
-  list: NonNullable<WatchDeps['listReviewComments']>,
-  deps: WatchDeps,
-): Promise<void> {
-  const { history } = deps
-  const record = history.repo(repo)
-  if (record?.baselineAt === undefined) return
-  let listing: ReviewCommentListing
-  try {
-    listing = await list(
-      repo,
-      record.reviewCommentsSince ?? record.baselineAt,
-      record.reviewCommentsEtag,
-    )
-  } catch (error) {
-    deps.events.warning(`${repo}: could not read the review comments (${errorMessage(error)})`)
-    return
-  }
-  if (listing.status === 'not-modified') return
-  const scan = replyScan(listing.comments, {
-    baselineAt: record.baselineAt,
-    ...(record.reviewCommentsLastId === undefined ? {} : { lastId: record.reviewCommentsLastId }),
-    open,
-  })
-  history.markRepliesDue(repo, scan.numbers, iso(deps))
-  history.saveRepo({
-    ...record,
-    ...(listing.etag === undefined ? {} : { reviewCommentsEtag: listing.etag }),
-    ...(scan.lastId === undefined ? {} : { reviewCommentsLastId: scan.lastId }),
-    ...(scan.since === undefined ? {} : { reviewCommentsSince: scan.since }),
-  })
 }
 
 async function replyToDue(
@@ -585,34 +562,26 @@ async function runJob(
   }
   deps.recordRun(running, { run }, startedAt)
   const finishedAt = iso(deps)
-  if (run.status === 'reviewed') history.setPause(undefined)
-  const ended = { ...running, finishedAt }
-  if (run.status === 'skipped') {
-    history.updateJob(job.id, { status: 'skipped', reason: run.reason.kind, finishedAt })
-    events.finished(running, run)
-    await deps.notify({ kind: 'skipped', job: ended, requests, reason: run.reason.kind })
-  } else if (run.publication?.status === 'failed') {
-    const error = run.publication.error
-    return fail(running, requests, error, deps.classify(error), deps)
-  } else if (run.publication?.status === 'superseded') {
-    history.updateJob(job.id, { status: 'superseded', finishedAt })
-    const pull = history.pulls(job.repo).find((stored) => stored.number === job.number)
-    if (pull !== undefined) {
-      history.savePull({ ...pull, headSha: run.publication.headSha, headSeenAt: finishedAt })
-    }
-    events.finished(running, run)
+  const after = afterRun(running, run, finishedAt)
+  if (after.clearPause) history.setPause(undefined)
+  if ('failed' in after)
+    return fail(running, requests, after.failed, deps.classify(after.failed), deps)
+  history.updateJob(job.id, after.job)
+  if (after.pullHead !== undefined) movePullHead(job, after.pullHead, finishedAt, deps)
+  events.finished(running, run)
+  const event: JobEvent = { ...after.notice, requests }
+  if (after.follow) {
     await follow(running, settings, deps)
-    await notifyStaying({ kind: 'skipped', job: ended, requests, reason: 'superseded' }, deps)
-  } else if (run.publication?.status === 'closed-or-draft') {
-    history.updateJob(job.id, { status: 'skipped', reason: 'closed-or-draft', finishedAt })
-    events.finished(running, run)
-    await deps.notify({ kind: 'skipped', job: ended, requests, reason: 'closed-or-draft' })
+    await notifyStaying(event, deps)
   } else {
-    history.updateJob(job.id, { status: 'done', finishedAt })
-    events.finished(running, run)
-    await deps.notify({ kind: 'finished', job: { ...ended, status: 'done' }, requests })
+    await deps.notify(event)
   }
   return undefined
+}
+
+function movePullHead(job: JobRecord, headSha: string, seenAt: string, deps: WatchDeps): void {
+  const pull = deps.history.pulls(job.repo).find((stored) => stored.number === job.number)
+  if (pull !== undefined) deps.history.savePull({ ...pull, headSha, headSeenAt: seenAt })
 }
 
 async function scanCommands(
@@ -620,31 +589,9 @@ async function scanCommands(
   settings: WatchSettings,
   deps: WatchDeps,
 ): Promise<void> {
-  const { history } = deps
-  const record = history.repo(repo.repo)
-  if (record?.baselineAt === undefined || deps.listComments === undefined) return
-  let listing: CommentListing
-  try {
-    listing = await deps.listComments(
-      repo.repo,
-      record.commentsSince ?? record.baselineAt,
-      record.commentsEtag,
-    )
-  } catch (error) {
-    deps.events.warning(`${repo.repo}: could not read the comments (${errorMessage(error)})`)
-    return
-  }
-  if (listing.status === 'not-modified') return
-  const scan = prCommands(listing.comments, {
-    baselineAt: record.baselineAt,
-    ...(record.commentsLastId === undefined ? {} : { lastId: record.commentsLastId }),
-  })
-  history.saveRepo({
-    ...record,
-    ...(listing.etag === undefined ? {} : { commentsEtag: listing.etag }),
-    ...(scan.lastId === undefined ? {} : { commentsLastId: scan.lastId }),
-    ...(scan.since === undefined ? {} : { commentsSince: scan.since }),
-  })
+  if (deps.listComments === undefined) return
+  const scan = await scanSince(repo.repo, COMMENTS, deps.listComments, prCommands, deps)
+  if (scan === undefined) return
   for (const command of scan.commands) {
     const request = {
       repo: repo.repo,
@@ -667,6 +614,60 @@ async function scanCommands(
       )
     }
   }
+}
+
+interface CommentStream {
+  label: string
+  since: 'commentsSince' | 'reviewCommentsSince'
+  etag: 'commentsEtag' | 'reviewCommentsEtag'
+  lastId: 'commentsLastId' | 'reviewCommentsLastId'
+}
+
+const COMMENTS: CommentStream = {
+  label: 'comments',
+  since: 'commentsSince',
+  etag: 'commentsEtag',
+  lastId: 'commentsLastId',
+}
+
+const REVIEW_COMMENTS: CommentStream = {
+  label: 'review comments',
+  since: 'reviewCommentsSince',
+  etag: 'reviewCommentsEtag',
+  lastId: 'reviewCommentsLastId',
+}
+
+type ListingOf<C> = { status: 'not-modified' } | { status: 'ok'; etag?: string; comments: C[] }
+
+async function scanSince<C, S extends CursorMove>(
+  repo: string,
+  stream: CommentStream,
+  list: (repo: string, since: string, etag?: string) => Promise<ListingOf<C>>,
+  take: (comments: readonly C[], cursor: CommentCursor) => S,
+  deps: WatchDeps,
+): Promise<S | undefined> {
+  const { history } = deps
+  const record = history.repo(repo)
+  if (record?.baselineAt === undefined) return undefined
+  let listing: ListingOf<C>
+  try {
+    listing = await list(repo, record[stream.since] ?? record.baselineAt, record[stream.etag])
+  } catch (error) {
+    deps.events.warning(`${repo}: could not read the ${stream.label} (${errorMessage(error)})`)
+    return undefined
+  }
+  if (listing.status === 'not-modified') return undefined
+  const lastId = record[stream.lastId]
+  const scan = take(listing.comments, {
+    baselineAt: record.baselineAt,
+    ...(lastId === undefined ? {} : { lastId }),
+  })
+  const saved: RepoRecord = { ...record }
+  if (listing.etag !== undefined) saved[stream.etag] = listing.etag
+  if (scan.lastId !== undefined) saved[stream.lastId] = scan.lastId
+  if (scan.since !== undefined) saved[stream.since] = scan.since
+  history.saveRepo(saved)
+  return scan
 }
 
 async function refusedByWhen(

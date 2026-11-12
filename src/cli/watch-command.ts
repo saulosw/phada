@@ -2,7 +2,7 @@ import { toTerminalText } from '../app/terminal-text.js'
 import { dataFiles } from '../config/data-paths.js'
 import { loadTopLevelUserLayers, userConfigFile } from '../config/user-config.js'
 import type { StopSignal } from '../tui/open-app.js'
-import type { IndexFormat } from './args.js'
+import type { CommandOf } from './args.js'
 import { formatError } from './format-error.js'
 import { formatWatchEvent } from './format-watch.js'
 import { printReviewProgress } from './print-review-progress.js'
@@ -20,13 +20,7 @@ export interface WatchCommandDeps extends WatchSessionDeps {
   abort: (code: number) => void
 }
 
-export interface WatchCommand {
-  once: boolean
-  backfill: boolean
-  status: boolean
-  format: IndexFormat
-  debug: boolean
-}
+export type WatchCommand = CommandOf<'watch'>
 
 export async function runWatch(command: WatchCommand, deps: WatchCommandDeps): Promise<number> {
   if (command.status) return printStatus(command, deps)
