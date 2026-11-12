@@ -1,103 +1,73 @@
 # AGENTS.md — Phada
 
-Instructions for people and coding agents working in this repository. User documentation is in
-[README.md](README.md); the contribution workflow is in [CONTRIBUTING.md](CONTRIBUTING.md).
+Instructions for people and coding agents working in this repository.
+
+## Where to read
+
+- [README.md](README.md) — what Phada does and how to use it, with the index of the user docs:
+  [commands](docs/commands.md), [configuration](docs/configuration.md),
+  [publishing](docs/publishing.md), [watch and requests](docs/watch-and-requests.md),
+  [history and lessons](docs/history-and-lessons.md), [review context](docs/review-context.md),
+  [terminal app](docs/terminal-app.md), [providers](docs/providers.md).
+- [docs/architecture.md](docs/architecture.md) — the layers, the path of a review, why the engine
+  is pure and where the tests cut in. Read it before changing how the folders work together.
+- [docs/layout.md](docs/layout.md) — every module and what it holds. Read it when looking for a
+  module.
+- [CONTRIBUTING.md](CONTRIBUTING.md) — the contribution workflow.
+- [src/tui/README.md](src/tui/README.md) — read it first when creating or changing a screen of the
+  app.
+- [CODING_STANDARDS.md](CODING_STANDARDS.md) — the judgment rules a review of a change checks.
 
 ## What Phada is
 
 A command-line tool that reviews a GitHub pull request with an AI provider the developer already
-uses — an AI CLI they are logged into (Claude Code, Codex) or a model served by Ollama — prints
-the review as Markdown or JSON and publishes it on the pull request as the owner of the GitHub
-token. Phada is not the AI: it fetches the pull request, builds the prompt, runs the provider,
-validates and scores the answer, formats the result and posts it.
-`phada` with no command, in a terminal, opens an app (`src/tui/`, Ink and React) that shows what
-Phada has set up, running and reviewed, over the same use cases the commands use. `phada setup`
-opens it on a step-by-step setup. The app writes only the user's own config (and the
-`repos/<owner>/<repo>/` files it opens in the editor), and, when asked, the index and a
-repository's `.phada/` (as `phada index` and `phada init` do), the history of a review or the
-watch it runs (as `phada review` and `phada watch` do), and the history and the repository's file
-of the user config when it decides a lesson (as `phada lessons accept` and `discard` do).
+uses (Claude Code or Codex they are logged into, or a model served by Ollama), prints the review as
+Markdown or JSON and publishes it on the pull request as the owner of the GitHub token. Phada is
+not the AI: it fetches the pull request, builds the prompt, runs the provider, validates and
+scores the answer, formats the result and posts it.
+
+`phada` with no command, in a terminal, opens an app (`src/tui/`, Ink and React) over the same use
+cases the commands use; `phada setup` opens it on a step-by-step setup. The app writes only the
+user's own config and, when asked, what the matching command would write: the list is in
+[CODING_STANDARDS.md](CODING_STANDARDS.md#the-app-only-reads-what-is-phadas-own).
 
 ## One engine, many callers
 
-Keep **which AI reviews** (`ReviewProvider`) separate from **who runs the review** (the caller of
-the engine, today `src/main.ts`). Code in `src/review/`:
-
-- receives the pull request, the options and the provider as data and returns a result;
-- never reads files, environment variables or `process.cwd()`, never prints, never talks to
-  GitHub;
-- never sees credentials.
-
-The read use cases of `src/app/` (queue, history, rules, repositories, automation, provider,
-learnings, home) return data, never text; the commands format it and the app draws it, so both
-show the same facts.
-
-`src/publish/` follows the same rules: it takes the earlier reviews and threads on the pull request
-and the review result as data, decides whether to review and which findings to post, and never
-talks to GitHub itself.
-
-## Layout
-
-One line per folder. [docs/layout.md](docs/layout.md) names every module and what it holds: read
-it when looking for a module.
-
-- `src/bin.ts` — entry point of the `phada` command: passes the real `process` streams,
-  environment and signals to `run()`.
-- `src/main.ts` — `run(argv, deps)`: the CLI flow and the wiring of the concrete implementations.
-- `src/architecture.test.ts` — the dependency rule below, enforced.
-- `src/app/` — use cases any caller runs (review and publish, watch, requests, indexing, the reads
-  the commands and the terminal app share, the changes to the user config), with injected readers;
-  reports through events.
-- `src/cli/` — terminal edge: the commands, their wiring, and the review as text and JSON.
-- `src/tui/` — the app `phada` opens in a terminal (Ink + React): data in, frames out.
-- `src/config/` — the config files (`.phada/` in the repository and the user's own), the cache and
-  data folders.
-- `src/context/` — what the review sends besides the diff: rules, docs, CI, with injected readers.
-- `src/skills/` — the skills installed for the AI CLIs.
-- `src/github/` — GitHub REST and GraphQL.
-- `src/gh-facade/` — the `gh` a native skill runs: reads answered by Phada, writes captured.
-- `src/slack/` — Slack, and nothing else.
-- `src/graph/` — the repository graph, resolved on demand from the index of a commit.
-- `src/investigation/` — Phada's read-only tools the AI calls on the pull request head, and MCP.
-- `src/process/` — the subprocess runners (output captured, or the terminal handed over) and the
-  work folders.
-- `src/providers/` — `ReviewProvider` and its implementations (Claude Code, Codex, Ollama).
-- `src/publish/` — pure: what to publish, data in, decision out.
-- `src/repository/` — the repository through git objects, in a persistent mirror, and the local
-  clone a local review reads.
-- `src/repo-map/` — the code elements of a file, with tree-sitter (WASM).
-- `src/store/` — SQLite: the index of each repository, the observed relations and the history.
-- `src/watch/` — pure: what the watch does, data in, decision out.
-- `src/review/` — the engine: data in, result out.
-- `scripts/` — the build step for the grammars and the smoke test of the packed package.
-- `test/` — fake AI CLIs, trimmed GitHub responses and shared helpers; each test sits next to the
-  code it tests.
-
-## Guides
-
-- **Creating or changing a screen of the app:** read [src/tui/README.md](src/tui/README.md) first.
-- **Reviewing a change:** [CODING_STANDARDS.md](CODING_STANDARDS.md) holds the judgment rules a
-  review checks.
+- Keep **which AI reviews** (`ReviewProvider`) apart from **who runs the review** (the use cases
+  of `src/app/`, called by the commands and the app).
+- `src/review/` receives the pull request, the options and the provider as data and returns a
+  result. It never reads files, environment variables or `process.cwd()`, never prints, never
+  talks to GitHub and never sees credentials.
+- `src/publish/` follows the same rules: it takes the earlier reviews and threads and the review
+  result as data, decides whether to review and which findings to post, and never talks to GitHub.
+- The read use cases of `src/app/` (queue, history, rules, repositories, automation, provider,
+  learnings, home) return data, never text. The commands format it and the app draws it, so both
+  show the same facts.
 
 ## Dependency rule
 
-Only `src/main.ts` wires concrete implementations, and `src/bin.ts` passes it the real `process`
-streams and environment. The limits of each folder:
+Concrete implementations are chosen at the edge: `src/bin.ts` passes `run()` the real `process`
+and the concrete adapters (GitHub, file system, mirror, stores, extractor, lock, clock);
+`src/main.ts` builds the provider (`createProvider()`) and hands each command to its module of
+`src/cli/`, which binds those deps into what the use cases take. Each command module declares its
+deps (`ReviewCommandDeps`, `WatchCommandDeps`, …) and `MainDeps` extends them.
 
-- `src/review/` depends only on interfaces and types (`ReviewProvider`, `PullRequest`); its only
-  value imports from outside the folder are `node:crypto` and `zod`. It never imports a concrete
-  provider (`providers/claude.ts`, `providers/codex.ts`, `providers/ollama.ts`).
-- `src/context/` reads nothing itself: `loadContext()` gets the readers of the repository and of the
-  local disk as data, and its only value imports from outside the folder are `picomatch`,
-  `node:path` and the pure config helpers (`parse-config.ts`, `merge-config.ts`); it takes the check
-  runs, commit statuses and job logs of `src/github/` as types only.
+The limits of each folder:
+
+- `src/review/` depends only on interfaces and types (`ReviewProvider`, `PullRequest`, `Toolbox`);
+  its only value imports from outside the folder are `node:crypto` and `zod`. It never imports a
+  concrete provider (`providers/claude.ts`, `providers/codex.ts`, `providers/ollama.ts`).
+- `src/context/` reads nothing itself: `loadContext()` gets the readers of the repository and of
+  the local disk as data. Its only value imports from outside the folder are `picomatch`,
+  `node:path` and the pure config helpers (`parse-config.ts`, `merge-config.ts`); it takes the
+  check runs, commit statuses and job logs of `src/github/` as types only.
 - `src/publish/` imports only types from outside the folder (`src/review/types.ts`,
   `src/github/pull-request-reviews.ts`, `src/github/compare-commits.ts`), and the byte cut of
   `src/context/byte-cut.ts`.
 - `src/watch/` imports only types from outside the folder (the watch settings, the listed and
-  fetched pull requests, the issue comments and the CI summary) and never reads the clock: `now`
-  comes in as data. Its records (`src/watch/types.ts`) are the watch's own; `src/store/` stores
-  them.
+  fetched pull requests, the issue and review comments, the CI summary) and never reads the clock:
+  `now` comes in as data. Its records (`src/watch/types.ts`) are the watch's own; `src/store/`
+  stores them.
 - `src/store/` only talks to SQLite and never runs `git`; it stores the feedback records of
   `src/publish/feedback.ts` and the misses of `src/publish/misses.ts` as types only.
 - `src/repo-map/` parses text it is given (`web-tree-sitter`, reading only its grammars) and never
@@ -107,40 +77,40 @@ streams and environment. The limits of each folder:
 - `src/graph/` reads the index through an `IndexReader` and files through a function it is given;
   its only value imports from outside the folder are `node:path` and the pure diff parser
   (`src/review/diff-lines.ts`).
-- `src/investigation/` reads the repository only through a `Checkout` (`src/repository/checkout.ts`)
-  and a `RepositoryGraph` (`src/graph/types.ts`) the caller passes in, and never imports the mirror,
-  the store, the CLI, the engine or a concrete provider. Its MCP client (`mcp/mcp-client.ts`) starts
-  the declared servers with `node:child_process`, redacts what leaves it with
-  `src/providers/redact-secrets.ts`, and gets their definitions (`src/config/mcp-servers.ts`, as a
-  type) and the environment as data. The engine sees its tools only as a `Toolbox`
-  (`src/investigation/toolbox.ts`) that the caller passes in.
-- `src/app/` orchestrates a review from injected readers and factories and never imports the CLI, a
-  concrete provider or the GitHub client, nor prints: it reports through events, and `main.ts` turns
-  them into terminal output. `src/app/native-skill.ts` runs a native skill with the work tree, the
-  gh facade and the work folders, and never sees the token.
+- `src/investigation/` reads the repository only through a `Checkout`
+  (`src/repository/checkout.ts`) and a `RepositoryGraph` (`src/graph/types.ts`) the caller passes
+  in, and never imports the mirror, the store, the CLI, the engine or a concrete provider. Its MCP
+  client (`mcp/mcp-client.ts`) starts the declared servers with `node:child_process`, redacts what
+  leaves it with `src/providers/redact-secrets.ts`, and gets their definitions
+  (`src/config/mcp-servers.ts`, as a type) and the environment as data. The engine sees its tools
+  only as a `Toolbox` (`src/investigation/toolbox.ts`) that the caller passes in.
+- `src/app/` orchestrates from injected readers and factories and never imports the CLI, a
+  concrete provider or the GitHub client, nor prints: it reports through events, which `src/cli/`
+  turns into terminal output and `src/tui/` into frames. `src/app/native-skill.ts` runs a native
+  skill with the work tree, the gh facade and the work folders, and never sees the token.
 - `src/skills/` reads the skills of the AI CLIs only through the `LocalFileSystem` it is given; its
   only value imports from outside the folder are `node:path` and `src/context/frontmatter.ts`.
 - `src/slack/` only talks to Slack (`fetch` and `WebSocket`, both injectable) and imports nothing
-  else; requests and replies are wired in `src/cli/slack-port.ts`, which only uses `submitRequest()`
-  and the review events.
-- `src/gh-facade/` never imports the GitHub client: reads go through the `ReadGitHub` function it is
-  given, and writes are only captured.
+  else. Requests and replies are wired in `src/cli/slack-port.ts`, which only uses
+  `submitRequest()` and the review events.
+- `src/gh-facade/` never imports the GitHub client: reads go through the `ReadGitHub` function it
+  is given, and writes are only captured.
 - `src/tui/` draws the app with `ink` and `react` and imports, from outside the folder, only types
   of `src/app/` and `src/config/` and the pure helpers it names (`src/app/error-message.ts`,
   `src/app/terminal-text.ts`, `src/app/read-home.ts`, `src/app/home-recommendation.ts`,
   `src/app/read-provider.ts`, `src/app/lesson-rule.ts`, `src/app/run-target.ts`,
-  `src/app/reply-kinds.ts`); it never imports `src/github/`, a concrete provider or `src/cli/`,
+  `src/app/reply-kinds.ts`). It never imports `src/github/`, a concrete provider or `src/cli/`,
   never touches `process` or `console` and never starts a timer: the streams, the signals, the
   environment and the scheduler come in through `openApp()`, which `src/cli/app-command.ts` loads
   with `import()` so the other commands never load React.
-- `src/cli/review-wiring.ts` and `src/cli/watch-command.ts` declare the deps they need
-  (`ReviewWiringDeps`, `WatchCommandDeps`); `MainDeps` extends them.
 
-`src/architecture.test.ts` enforces the allowed imports of these folders and forbids
-`process`/`console` inside them (`console` only, in `src/investigation/`). It also refuses a
-provider importing one of its callers, a screen of `src/tui/screens/` importing another screen,
-and a fixed pause (`setTimeout`, `setInterval`, `settle()`, `sleep()`, `node:timers`) in the tests
-of `src/tui/`, which wait on a condition.
+`src/architecture.test.ts` enforces this: the allowed value and type imports of each folder above
+(all but `src/providers/`), and the globals it may not use (`process` and `console`; only
+`console` in `src/investigation/` and `src/gh-facade/`; also the clock and timers in `src/watch/`
+and `src/tui/`). It also refuses a provider importing one of its callers, a screen of
+`src/tui/screens/` importing another screen, and a fixed pause (`setTimeout`, `setInterval`,
+`settle()`, `sleep()`, `node:timers`) in the tests of `src/tui/`, which wait on a condition. How
+it works is in [docs/architecture.md](docs/architecture.md#the-dependency-rule).
 
 ## Conventions
 
@@ -151,7 +121,8 @@ of `src/tui/`, which wait on a condition.
 - Typed errors (classes extending `Error`) at boundaries: GitHub, subprocess, provider.
 - External dependencies (`fetch`, command path, file reader) are injectable through an optional
   parameter with a real default, so tests never need module mocks.
-- `npm test` never touches the network or a real AI CLI: use the fake `fetch` and fake binaries.
+- `npm test` never touches the network or a real AI CLI: use the fake `fetch` and the fake
+  binaries of `test/`. Each test sits next to the code it tests.
 - Names carry the intent; no comments that restate the code.
 - Never print, log or commit tokens. AI CLI authentication belongs to the CLI.
 - Do not add folders, abstractions or dependencies before something uses them.
@@ -173,6 +144,6 @@ npm run dev                            # the terminal app (in a terminal of at l
 
 - One change per pull request, with Conventional Commits messages in English.
 - Done means: format, typecheck, tests, `lint:unused` and smoke green (locally and in CI), no
-  secrets, and the README and the `Unreleased` section of [CHANGELOG.md](CHANGELOG.md) updated
-  when user-visible behavior changes.
-- A module added, moved or removed updates its entry in [docs/layout.md](docs/layout.md).
+  secrets, and the README (or the page of `docs/` that covers it) and the `Unreleased` section of
+  [CHANGELOG.md](CHANGELOG.md) updated when user-visible behavior changes.
+- A module added, moved or removed updates its line in [docs/layout.md](docs/layout.md).
