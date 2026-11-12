@@ -3,12 +3,10 @@ import type { ReactNode } from 'react'
 import type {
   FeedbackFinding,
   ReviewDetail,
-  StoredClaim,
   StoredCoverage,
-  StoredFinding,
   StoredGroups,
-  StoredTokens,
 } from '../app/read-history.js'
+import type { StoredClaim, StoredFinding, StoredTokens } from '../app/stored-run.js'
 import type { DrawContext } from './frame-lines.js'
 import { repliedKinds } from '../app/reply-kinds.js'
 import type { UiMessages } from './i18n/messages.js'

@@ -13,8 +13,9 @@ import type {
   LessonChanges,
   MissRecord,
 } from '../store/history-store.js'
-import { storedFindings } from './harvest-misses.js'
+import { reportedFindings } from './harvest-misses.js'
 import { checkLessonAnswers } from './lesson-answers.js'
+import { readStoredRun } from './stored-run.js'
 
 const TEAM_ROLES: ReadonlySet<AssociationRole> = new Set(['owner', 'member', 'collaborator'])
 const REFUSING_SIGNALS: ReadonlySet<string> = new Set(['dismissed', 'negative-reaction'])
@@ -283,7 +284,7 @@ function lessonFinding({ finding, replies }: AvoidCandidate, history: History): 
 
 function whyOf(finding: FindingRecord, history: History): string {
   const run = finding.runId === undefined ? undefined : history.run(finding.runId)
-  const reported = storedFindings(run?.resultJson) ?? []
+  const reported = reportedFindings(readStoredRun(run?.resultJson)) ?? []
   const same = (item: RunFinding) => item.file === finding.file && item.title === finding.title
   const match =
     reported.find((item) => same(item) && item.line === finding.line) ?? reported.find(same)

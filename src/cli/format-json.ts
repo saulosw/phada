@@ -4,7 +4,7 @@ import type {
   CiCheckLine,
   ConversationBlock,
   ConversationEntry,
-} from '../app/read-run-report.js'
+} from '../app/stored-report-blocks.js'
 import type { RelatedReport } from '../app/related-report.js'
 import type { Ci, ContextReport } from '../context/types.js'
 import type { ImpactReport } from '../graph/report.js'

@@ -3,8 +3,7 @@ import { isSeverity, numberFindings } from '../review/finding-numbers.js'
 import type { NumberedFinding } from '../review/finding-numbers.js'
 import type { Finding } from '../review/types.js'
 import type { RunRecord } from '../store/history-store.js'
-import { storedFindings } from './read-history.js'
-import { objectOf, parseJson } from './stored-json.js'
+import { readStoredRun, titledFindings } from './stored-run.js'
 
 export interface LocalFixReadDeps {
   local: Pick<LocalGit, 'branch' | 'head' | 'origin'>
@@ -69,8 +68,8 @@ export async function readLocalFix(
 }
 
 function fixableFindings(json: string | undefined): Finding[] {
-  const review = objectOf(objectOf(parseJson(json))?.review)
-  return storedFindings(review?.findings).flatMap((stored): Finding[] => {
+  const findings = readStoredRun(json).review?.findings ?? []
+  return titledFindings(findings).flatMap((stored): Finding[] => {
     const { severity, line, rule, suggestion } = stored
     if (!isSeverity(severity) || line === null) return []
     return [

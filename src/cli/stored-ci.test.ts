@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { ciSkipJson, storedCi } from './stored-ci.js'
+import { readStoredRun } from '../app/stored-run.js'
+import { ciSkipJson, eventCiOf } from './stored-ci.js'
 
-describe('storedCi', () => {
+const eventCi = (resultJson: string | undefined) => eventCiOf(readStoredRun(resultJson))
+
+describe('eventCiOf', () => {
   it('reads back the CI of a commit skipped for failing CI', () => {
     const json = ciSkipJson({
       waitMs: 0,
@@ -13,7 +16,7 @@ describe('storedCi', () => {
       ],
     })
 
-    expect(storedCi(json)).toEqual({
+    expect(eventCi(json)).toEqual({
       state: 'failing',
       checks: [
         { name: 'build', state: 'passing' },
@@ -34,18 +37,18 @@ describe('storedCi', () => {
       },
     }
 
-    expect(storedCi(JSON.stringify(review))).toEqual({
+    expect(eventCi(JSON.stringify(review))).toEqual({
       state: 'pending',
       checks: [{ name: 'e2e', state: 'pending' }],
     })
   })
 
   it('is null without a ci block, or with one it cannot read', () => {
-    expect(storedCi(undefined)).toBeNull()
-    expect(storedCi(JSON.stringify({ ci: null }))).toBeNull()
-    expect(storedCi(JSON.stringify({ schemaVersion: 1 }))).toBeNull()
-    expect(storedCi(JSON.stringify({ ci: { state: 'red', checks: [] } }))).toBeNull()
-    expect(storedCi(JSON.stringify({ ci: { state: 'passing', checks: [{ name: 1 }] } }))).toBeNull()
-    expect(storedCi('{')).toBeNull()
+    expect(eventCi(undefined)).toBeNull()
+    expect(eventCi(JSON.stringify({ ci: null }))).toBeNull()
+    expect(eventCi(JSON.stringify({ schemaVersion: 1 }))).toBeNull()
+    expect(eventCi(JSON.stringify({ ci: { state: 'red', checks: [] } }))).toBeNull()
+    expect(eventCi(JSON.stringify({ ci: { state: 'passing', checks: [{ name: 1 }] } }))).toBeNull()
+    expect(eventCi('{')).toBeNull()
   })
 })

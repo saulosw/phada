@@ -12,7 +12,8 @@ import type { FindingRun, RunFinding, VanishedInput } from '../publish/vanished-
 import type { DuePull, HistoryStore, RunRecord } from '../store/history-store.js'
 import type { CodeElements } from './code-elements.js'
 import { remembered } from './remembered.js'
-import { numberOf, objectOf, parseJson, stringOf } from './stored-json.js'
+import { readStoredRun } from './stored-run.js'
+import type { StoredRun } from './stored-run.js'
 
 export type CompareCommits = (
   repo: string,
@@ -85,24 +86,22 @@ async function readElements(
 }
 
 function localReview(run: RunRecord): LocalReview {
-  return { sha: run.headSha, at: run.finishedAt, findings: storedFindings(run.resultJson) ?? [] }
+  return {
+    sha: run.headSha,
+    at: run.finishedAt,
+    findings: reportedFindings(readStoredRun(run.resultJson)) ?? [],
+  }
 }
 
 function findingRun(run: RunRecord): FindingRun[] {
-  const findings = storedFindings(run.resultJson)
+  const findings = reportedFindings(readStoredRun(run.resultJson))
   if (run.id === undefined || findings === undefined || run.source === 'local') return []
   const { id, headSha, source, finishedAt } = run
   return [{ id, headSha, source, finishedAt, findings }]
 }
 
-export function storedFindings(resultJson: string | undefined): RunFinding[] | undefined {
-  const findings = objectOf(objectOf(parseJson(resultJson))?.review)?.findings
-  if (!Array.isArray(findings)) return undefined
-  return findings.flatMap((finding: unknown) => {
-    const item = objectOf(finding)
-    const file = stringOf(item?.file)
-    const line = numberOf(item?.line)
-    if (file === undefined || line === undefined) return []
-    return [{ file, line, title: stringOf(item?.title) ?? '', body: stringOf(item?.why) ?? '' }]
-  })
+export function reportedFindings({ review }: StoredRun): RunFinding[] | undefined {
+  return review?.findings?.flatMap(({ file, line, title, why }) =>
+    line === null ? [] : [{ file, line, title: title ?? '', body: why ?? '' }],
+  )
 }
