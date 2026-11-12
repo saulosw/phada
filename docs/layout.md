@@ -1581,6 +1581,7 @@ src/
                          #   (provider concurrency), joined into one review
 scripts/smoke.ts         # packs the package, installs the tarball, runs the installed `phada`
 scripts/copy-grammars.ts # build step: the tree-sitter grammars into dist/grammars/
+docs/demo/               # the GIFs and the image the README shows
 test/fixtures/bin/       # fake AI CLIs used by the provider, status and phada reply tests
 test/fixtures/github/    # trimmed GitHub API responses (REST and GraphQL) and a synthetic diff
 test/support/            # shared test helpers (fake fetch, fixtures for pull requests, findings, …;
