@@ -7,6 +7,16 @@ output can change between minor versions.
 
 ## Unreleased
 
+## 0.18.1 - 2026-11-12
+
+### Changed
+
+- The README is a short entry point (what Phada does, a quick start, the commands and how a review
+  works, with images of the terminal app and of a review), and the reference moved, by topic, to
+  pages of [`docs/`](docs/): commands, configuration, publishing, providers, watch and requests,
+  history and lessons, review context and the terminal app. `docs/architecture.md` explains the
+  layers and the path of a review.
+
 ## 0.18.0 - 2026-11-09
 
 ### Added
