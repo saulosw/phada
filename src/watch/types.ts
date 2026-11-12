@@ -50,3 +50,12 @@ export interface RequestRecord {
   data?: Record<string, unknown>
   createdAt: string
 }
+
+export type PublicationEnd =
+  | { status: 'superseded'; headSha: string }
+  | { status: 'failed'; error: unknown }
+  | { status: 'published' | 'dry-run' | 'not-published' | 'closed-or-draft' }
+
+export type RunEnd =
+  | { status: 'skipped'; reason: { kind: string } }
+  | { status: 'nothing' | 'reviewed'; publication?: PublicationEnd }
